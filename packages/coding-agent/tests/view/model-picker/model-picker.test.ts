@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import type { ModelCatalogEntry } from "@rukie/agent";
-import { modelProviderTabs, modelRowText } from "../../../src/view/model-picker";
+import {
+  modelProviderTabs,
+  modelRowText,
+  modelSelectionNotice,
+} from "../../../src/view/model-picker";
 
 const model = (providerId: string, custom: boolean, authenticated: boolean): ModelCatalogEntry => ({
   spec: `${providerId}/same`,
@@ -34,4 +38,31 @@ test("row truncation preserves the distinguishing spec before the name", () => {
   expect(
     modelRowText({ name: "custom/same", spec: "custom/same" }, 10, (text) => text.length),
   ).toEqual({ name: "", spec: "custom/sa…" });
+});
+
+test("selection notices omit unchanged facts and preserve downgrade explanations in narrow output", () => {
+  expect(
+    modelSelectionNotice(
+      { model: "a/a", thinkingLevel: "high" },
+      { model: "a/a", thinkingLevel: "high" },
+      "A",
+      "en",
+    ),
+  ).toBeUndefined();
+  expect(
+    modelSelectionNotice(
+      { model: "a/a", thinkingLevel: "low" },
+      { model: "a/a", thinkingLevel: "high" },
+      "A",
+      "zh",
+    ),
+  ).toBe("已切换档位：high");
+  const text = modelSelectionNotice(
+    { model: "a/a", thinkingLevel: "high" },
+    { model: "b/b", thinkingLevel: "off", clampedFrom: "high" },
+    "Bee",
+    "en",
+    { columns: 30, measure: (text) => text.length },
+  );
+  expect(text).toBe("Model changed to Bee (b/b)\n· thinking off\n· reduced high → off");
 });

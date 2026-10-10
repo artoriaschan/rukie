@@ -1,3 +1,6 @@
+import type { Locale } from "@rukie/i18n";
+import type { ThinkingLevel } from "@rukie/shared";
+import { createTuiI18n } from "../i18n";
 import type { ModelCatalogEntry } from "@rukie/agent";
 
 export interface ModelProviderTab {
@@ -55,4 +58,51 @@ export function modelRowText(
   const spec = truncate(model.spec, columns);
   const nameWidth = columns - measure(spec) - 1;
   return { name: model.name === model.spec ? "" : truncate(model.name, nameWidth), spec };
+}
+
+/** One localized notice describes only the changed facts in the effective selection. */
+export function modelSelectionNotice(
+  before: { model: string; thinkingLevel: ThinkingLevel },
+  after: { model: string; thinkingLevel: ThinkingLevel; clampedFrom?: ThinkingLevel },
+  name: string | undefined,
+  locale: Locale,
+  layout?: { columns: number; measure(text: string): number },
+): string | undefined {
+  const t = createTuiI18n(locale);
+  const changes: string[] = [];
+  if (before.model !== after.model) {
+    const model = name && name !== after.model ? `${name} (${after.model})` : after.model;
+    changes.push(t("model.changed", { model }));
+  }
+  if (before.thinkingLevel !== after.thinkingLevel)
+    changes.push(
+      t(changes.length ? "model.thinking-value" : "model.thinking-changed", {
+        level: after.thinkingLevel,
+      }),
+    );
+  if (after.clampedFrom)
+    changes.push(t("model.thinking-clamped", { from: after.clampedFrom, to: after.thinkingLevel }));
+  if (!changes.length) return undefined;
+  if (!layout) return changes.join(" · ");
+  const lines: string[] = [];
+  let line = "";
+  for (const [index, change] of changes.entries()) {
+    const part = index ? `· ${change}` : change;
+    if (line && layout.measure(`${line} ${part}`) <= layout.columns) line += ` ${part}`;
+    else {
+      if (line) lines.push(line);
+      line = "";
+      for (const { segment } of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(
+        part,
+      )) {
+        if (line && layout.measure(line + segment) > layout.columns) {
+          lines.push(line.trimEnd());
+          line = "";
+        }
+        line += segment;
+      }
+    }
+  }
+  if (line) lines.push(line.trimEnd());
+  return lines.join("\n");
 }

@@ -1,4 +1,5 @@
 import { HintLine, ListItem, ThemedBox, ThemedText } from "../../../ink/index.ts";
+import type { ThinkingLevel } from "@rukie/shared";
 import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../../../view/i18n";
 import { modelRowText, type ModelProviderTab } from "../../../view/model-picker";
@@ -6,6 +7,8 @@ import { modelRowText, type ModelProviderTab } from "../../../view/model-picker"
 /** Provider-local, focus-centered rows; the screen owns synchronous cursor state. */
 export function ModelPicker({
   tabs,
+  thinkingLevel,
+  onThinking,
   tab,
   focus,
   current,
@@ -19,6 +22,8 @@ export function ModelPicker({
   onTab,
 }: {
   tabs: readonly ModelProviderTab[];
+  thinkingLevel: ThinkingLevel;
+  onThinking(level: ThinkingLevel): void;
   tab: number;
   focus: number;
   current: string;
@@ -34,7 +39,7 @@ export function ModelPicker({
   const t = createTuiI18n(locale);
   const models = tabs[tab]?.models ?? [];
   const capabilities = maxHeight >= 10;
-  const count = Math.max(1, Math.floor((maxHeight - 6) / (capabilities ? 2 : 1)));
+  const count = Math.max(1, Math.floor((maxHeight - 7) / (capabilities ? 2 : 1)));
   const start = Math.max(0, Math.min(models.length - count, focus - Math.floor(count / 2)));
   return (
     <ThemedBox
@@ -107,6 +112,24 @@ export function ModelPicker({
               </ListItem>
             );
           })}
+          {maxHeight >= 3 &&
+            (models[focus]?.reasoning ? (
+              <ThemedBox flexDirection="row" height={1} flexShrink={0}>
+                {models[focus]!.thinkingLevels.map((level) => (
+                  <ThemedBox key={level} onClick={() => onThinking(level)} flexShrink={1}>
+                    <ThemedText
+                      color={level === thinkingLevel ? "suggestion" : "subtle"}
+                      bold={level === thinkingLevel}
+                      wrap="truncate"
+                    >
+                      {`${level === thinkingLevel ? "[" : " "}${level}${level === thinkingLevel ? "]" : " "} `}
+                    </ThemedText>
+                  </ThemedBox>
+                ))}
+              </ThemedBox>
+            ) : (
+              <ThemedText color="inactive">{t("model.thinking-disabled")}</ThemedText>
+            ))}
           <HintLine>{notice ?? t("model.providers-note")}</HintLine>
         </>
       )}

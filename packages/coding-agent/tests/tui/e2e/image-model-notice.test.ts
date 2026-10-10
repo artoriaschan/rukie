@@ -192,7 +192,9 @@ test("switching a Session with transcript images to a text model warns once and 
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("/model img/vision\r");
-    await app.waitFor(() => app.screen().join("\n").includes("Model changed to img/vision"));
+    await app.waitFor(() =>
+      app.screen().join("\n").includes("Model changed to vision (img/vision)"),
+    );
     expect(app.screen().join("\n")).not.toContain("does not accept images");
   } finally {
     await app.cleanup();
@@ -271,7 +273,7 @@ test("switching a Session without images to a text model does not warn", async (
   try {
     await app.waitFor(() => app.screen().includes("❯"));
     app.stdin.write("/model img/text\r");
-    await app.waitFor(() => app.screen().join("\n").includes("Model changed to img/text"));
+    await app.waitFor(() => app.screen().join("\n").includes("Model changed to text (img/text)"));
     expect(app.screen().join("\n")).not.toContain("does not accept images");
   } finally {
     await app.cleanup();

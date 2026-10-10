@@ -183,7 +183,9 @@ export function StatusLine(props: StatusLineProps) {
     ...(props.planMode ? [{ id: "plan" as const, content: planLabel }] : []),
     { id: "model", content: props.model },
     { id: "tps", content: speedView },
-    ...(props.thinking ? [{ id: "effort" as const, content: props.thinking }] : []),
+    ...(props.thinking && props.thinking !== "off"
+      ? [{ id: "effort" as const, content: props.thinking }]
+      : []),
     ...(cacheRate !== undefined
       ? [
           {
