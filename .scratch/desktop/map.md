@@ -2,7 +2,7 @@
 
 ## Destination
 
-桌面端 MVP 的 `spec.md` 与实现工单：架构、包边界、wire 协议、sidecar 生命周期、UI 选型与主界面布局全部锁定，可直接按工单开工。
+桌面端 MVP 的 `spec.md` 与实现工单：架构、包边界、wire 协议、sidecar 生命周期、UI 选型与主界面布局全部锁定，可直接按工单开工。MVP 只支持 macOS arm64，在本地编译出 ad-hoc 签名的 `.app`，不接入 GitHub Actions。
 
 ## Notes
 
@@ -16,7 +16,7 @@
 
 - [01: 包结构与 Effect 边界](issues/01-packages-and-effect-boundary.md#answer): 新建 `ui`/`server`/`desktop` 三包，`coding-agent/src/view/` 不抽取；Hono 做接入层，Effect 只在 server 内做业务运行层。
 - [02: 连接与进程语义](issues/02-connection-and-process-semantics.md#answer): 单 sidecar 多 Session，token + Origin/Host 校验，断连不结算 Interaction，随机端口握手与崩溃重启一次。
-- [03: MVP 范围与产品约束](issues/03-mvp-scope.md#answer): 目的地是 spec；浏览器仅作开发模式；最小闭环功能；沿用 Electron 选型；beUI 默认风格（shadcn 补位，见 07 的 2026-10-10 调整）+ Pencil 视觉稿布局；从一开始接 zh/en。
+- [03: MVP 范围与产品约束](issues/03-mvp-scope.md#answer): 目的地是 spec；浏览器仅作开发模式；最小闭环功能；只支持 macOS arm64，本地编译 ad-hoc 签名 `.app`，不接入 GitHub Actions（2026-10-10 调整）；沿用 Electron 选型；beUI 默认风格（shadcn 补位，见 07 的 2026-10-10 调整）+ Pencil 视觉稿布局；从一开始接 zh/en。
 - [08: 确定 Pencil 视觉稿来源](issues/08-task-pencil-design-source.md#answer): `~/Desktop/rukie.pen`，MVP 参照外壳、会话侧栏、新会话、输入框与权限模式、Turn 指示器画板；工具调用块与权限审批卡片无画板，由粗稿补齐。
 - [07: shadcn/beui 组件库](issues/07-research-beui.md#answer): beUI（`@beui` registry，MIT）经 shadcn CLI 安装，替代 ai-elements；2026-10-10 改为 beUI 优先、shadcn 补位；覆盖 MVP 主要组件，缺 Markdown 渲染与 i18n，Vite 8 构建未实测。
 - [04: Effect 版本与 Bun、Hono 集成](issues/04-research-effect-on-bun.md#answer): 锁定 `effect` 4.0.2，暂不用 platform-bun；进程级 ManagedRuntime + Layer，Run 存于 server 级 FiberMap，中断经 AbortSignal 传给 Agent Core；TypeBox 校验后以 Static 类型进入 Effect。
@@ -37,4 +37,6 @@
 
 - Web 产品（远程访问、部署、多用户认证）：以后另开 effort 复用 `packages/ui`。
 - Agent Core 迁移到 Effect：与 ADR-0024 大面积交叉，另开 effort。
+- Windows、Linux、macOS x64 与 universal 构建，Developer ID 签名、公证与 Windows 签名：MVP 只在本地构建 macOS arm64 的 ad-hoc 签名 `.app`（[03](issues/03-mvp-scope.md#comments) 2026-10-10）。
+- 桌面端接入 GitHub Actions（构建、测试分片、打包与发布）：MVP 只在本地编译与验证（[03](issues/03-mvp-scope.md#comments) 2026-10-10）。
 - MVP 之外的 TUI 对等能力（Plan Mode、Rewind、Background Jobs 视图、MCP 面板、Goal、slash commands 等）与桌面设置界面。

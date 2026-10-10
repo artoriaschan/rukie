@@ -2,7 +2,7 @@ Status: needs-triage
 
 # Spec: 桌面端 MVP
 
-术语见 `CONTEXT.md` 的 Session、Run、Turn、Transcript、Interaction、Permission Mode。规划过程与各项决定见 [地图](map.md)。本稿目前只写主窗口布局，来源是 [09: 主界面粗稿](issues/09-prototype-main-window.md#answer)，与 [10: wire 协议消息清单](issues/10-wire-protocol-messages.md#answer) 冲突处按 10 改写；架构、wire 协议、sidecar 生命周期与实现工单在 13–20 结题后经 `/to-spec` 补写。
+术语见 `CONTEXT.md` 的 Session、Run、Turn、Transcript、Interaction、Permission Mode。规划过程与各项决定见 [地图](map.md)。MVP 只支持 macOS arm64，本地编译 ad-hoc 签名的 `.app`，不接入 GitHub Actions（[03](issues/03-mvp-scope.md#comments) 2026-10-10），因此下文的快捷键、交通灯与 Finder 只按 macOS 设计。本稿目前只写主窗口布局，来源是 [09: 主界面粗稿](issues/09-prototype-main-window.md#answer)，与 [10: wire 协议消息清单](issues/10-wire-protocol-messages.md#answer) 冲突处按 10 改写；架构、wire 协议、sidecar 生命周期与实现工单在 13–20 结题后经 `/to-spec` 补写。
 
 ## 主窗口布局
 
