@@ -31,7 +31,7 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 
 - [0001 Agent 运行在 Bun sidecar 进程，而不是 Electron main](0001-agent-runs-in-bun-sidecar.md) — `accepted`
 - [0002 复用 pi-agent-core 的 harness 组件，不用 pi-coding-agent，也不完全自研](0002-reuse-pi-agent-core-harness.md) — `superseded`
-- [0003 Session Store：headless 用 JSONL，桌面端用 SQLite，两者共用一个接口](0003-dual-session-store.md) — `accepted`
+- [0003 Session Store：headless 用 JSONL，桌面端用 SQLite，两者共用一个接口](0003-dual-session-store.md) — `superseded`
 - [0004 测试跑在生产代码所在的运行时上：Bun 代码用 bun:test，Electron 和渲染进程用 Vitest](0004-test-runner-per-runtime.md) — `accepted`
 - [0005 TUI 渲染器自研：React reconciler → 纯 TS Yoga → cell 网格 → 帧差分 → ANSI](0005-own-tui-renderer.md) — `superseded`
 - [0006 TUI 使用全屏消息区与底部输入区](0006-fullscreen-tui.md) — `accepted`
@@ -57,5 +57,9 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0026 Tool Search 独立于原生追加能力，按模型 compat 选择工具声明格式](0026-protocol-independent-tool-search.md) — `accepted`
 - [0027 原生工具追加能力通过独立请求探测，失败时使用普通工具声明](0027-native-tool-capability-probing.md) — `accepted`
 - [0028 Session extension 是原生 Generation 与 Tool hook 的唯一入口](0028-single-session-harness-hook-entry.md) — `accepted`
+- [0029 桌面端拆成 ui、server、desktop 三个包，GUI 不复用终端的 view 层](0029-desktop-package-structure.md) — `accepted`
+- [0030 桌面端 server 用 Hono 接入，Effect 只在 server 内部](0030-desktop-server-hono-and-effect.md) — `accepted`
+- [0031 桌面端 wire 协议：单条 WebSocket 复用多个 Session，token 与 Origin 双重校验](0031-desktop-wire-protocol-and-local-auth.md) — `accepted`
+- [0032 桌面端与 TUI 共用 JSONL Session store，项目与置顶由桌面端注册表维护](0032-desktop-shares-jsonl-store.md) — `accepted`
 
 <!-- ADR_INDEX_END -->

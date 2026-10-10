@@ -34,16 +34,11 @@
 - [15: beUI 安装实测](issues/15-research-beui-install.md#answer): shadcn CLI 4.21.4 安装 23 个 beUI 组件可构建（需修一处自引用）；点击菜单用 shadcn `dropdown-menu` 补位；主题以 beUI `theme.css` 换 DESIGN.md 值，`text-ui-*` 在 `@theme inline` 定义且 `cn` 必须 `extendTailwindMerge`；拷入后约 100 处字号、90 条文案需改写，正则 lint 可禁非 `text-ui-*` 字号。
 
 - [19: `packages/ui` 分层](issues/19-ui-package-layering.md#answer): `app`/`components`/`store`/`client`/`host` 五层单向依赖，oxlint `no-restricted-imports` 强制；ui 只 `import type` Agent Core 类型；SessionEvent 归约、diff 行与 Markdown 在 ui 重写，不复用 `coding-agent/src/view/`；字典在 `packages/ui/src/i18n/`；host 只有连接、选文件夹、在 Finder 显示、在终端打开四项。
-- [20: ADR 清单](issues/20-adr-list.md#answer): 新增四个 ADR（桌面端包结构、server 技术栈、wire 协议与本机鉴权、桌面端存储），部分替代 ADR-0012、整份替代 ADR-0003；ADR-0001、ADR-0004 只更新事实；平台范围、孤儿 Job、签名、专用库不写 ADR。正文在 21 与 spec 一起起草。
+- [20: ADR 清单](issues/20-adr-list.md#answer): 新增四个 ADR（桌面端包结构、server 技术栈、wire 协议与本机鉴权、桌面端存储），部分替代 ADR-0012、整份替代 ADR-0003；ADR-0001、ADR-0004 只更新事实；平台范围、孤儿 Job、签名、专用库不写 ADR。正文在 `/to-spec` 阶段与 spec 一起起草。
 
 ## Not yet specified
 
-- DESIGN.md 与 tech-stack 的落地修订（15、14、13）：记录 shadcn `dropdown-menu` 补位并统一其浮层表面；重写“glass 表面保留”一句（实装组件未用 glass 类）；beUI 的 alpha 填充（`bg-foreground/[0.05]` 等 36 处）是否违反禁用临时 alpha；68 处硬编码 `emerald/rose/blue/amber` 到状态或 `diff-*` token 的映射；补 `ansi-*` 颜色 token；`text-[11px]`/`text-[13px]` 与行高进字号表；lucide-react 1.48.0 → 1.55.0、vitest 5.0.1 → 5.0.3；字号 lint 选 oxlint jsPlugins（alpha）还是 `scripts/check-*.ts`。
-- beUI 组件改造（14）：`agent-code` 改用共享高亮器并限制 token 缓存；`tool-result` 的输出区换 ANSI 渲染；`file-diff` 改 `diff-*` token、按行高亮、流式不经 aria-live 播报。
-- 本地测试与交付规则（13）：Playwright 浏览器的缓存位置与安装时机（避免 postinstall 让 CI 下载）；CI 的 `check:dev` 是否也排除 ui/desktop 的静态检查；AGENTS.md 与 `docs/testing.md` 要求 ui/desktop PR 附本地 `test:desktop` 证据；是否为打包 `.app` 加 Playwright `_electron` 冒烟。
-- 打包遗留（16、17）：electron-builder 26.15.3 是否自动写入 `ElectronAsarIntegrity`（缺失则完整性 fuse 不校验）；sidecar 编译注入 `RUKIE_COMPILED=true` 并与 `scripts/release/build.ts` 共用设置；编译版缺 ripgrep 的报错提到 npm optionalDependencies，需改为桌面端适用的文案；ad-hoc 签名 `.app` 启动时的 “Keychain lookup failed” 日志。
-- 浏览器与 Electron 中待实测（14、15、16）：真实 Vite + beUI/motion 产物的 CSP `style-src` 是否需 `'unsafe-inline'` 或 nonce；beUI 渲染、Light/Dark 对比度与 popover goo 滤镜性能；TanStack 流式末行增高、Turn 展开与 `scrollToIndex`；高亮跳过或移入 Worker 的输入阈值。归入第一批 UI 实现工单的验收。
-- 虚拟列表的无障碍与会话内搜索（14）：屏幕外 Turn 对读屏与 findInPage 不可见，`role="feed"` 方案与 spec 是否加入会话内搜索。
+<!-- 目的地已到达：[spec.md](spec.md) 与实现工单 21–30 已切出（2026-10-10）。原 fog 全部归入 spec：DESIGN.md 与 tech-stack 修订、beUI 组件改造进 27 与 29，本地测试与交付规则进 23，打包遗留进 30，待实测项进 27–29 的 GUI 浏览器验证，虚拟列表无障碍记为 spec 已知限制，会话内搜索移出 MVP。 -->
 
 ## Out of scope
 

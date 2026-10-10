@@ -1,10 +1,10 @@
 ---
-status: accepted
+status: superseded
 ---
 
 # Session Store：headless 用 JSONL，桌面端用 SQLite，两者共用一个接口
 
-本决定的旧 session repo 接口、单文件 JSONL 格式与关闭边界由新决定部分替代；JSONL 后端选型与未来 SQLite 方向继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。下文记录被部分替代的历史决定；当前契约见 [Agent README](../../packages/agent/README.md#session-store)，整体交付验收见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
+本决定已被整份替代：旧 session repo 接口、单文件 JSONL 格式与关闭边界由 [ADR-0024](0024-adopt-pi-durable-harness.md) 替代，JSONL 选型由它保留；桌面端 SQLite 方向由 [ADR-0032](0032-desktop-shares-jsonl-store.md) 推翻，桌面端与 TUI 共用 JSONL store。下文只作历史记录；当前契约见 [Agent README](../../packages/agent/README.md#session-store)，整体交付验收见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
 
 ## 问题
 
@@ -22,4 +22,4 @@ Headless CLI 需要便于查看和脚本处理的存储；桌面端的存储实�
 
 ## 影响
 
-JSONL 保持可查看性；未来 SQLite 实现需要履行相同 repo 义务。桌面端存储是目标设计，不能据本决定推断其已经实现。
+JSONL 保持可查看性。桌面端不再实现 SQLite store，见 ADR-0032。
