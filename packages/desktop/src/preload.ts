@@ -7,6 +7,8 @@ const host: DesktopHost = {
   revealPath: (path) => ipcRenderer.invoke("rukie:revealPath", path),
   openInTerminal: (path) => ipcRenderer.invoke("rukie:openInTerminal", path),
   modelServices: {
+    templates: () => ipcRenderer.invoke("rukie:modelServices:templates"),
+    test: (id, modelId) => ipcRenderer.invoke("rukie:modelServices:test", id, modelId),
     list: () => ipcRenderer.invoke("rukie:modelServices:list"),
     save: (input) => ipcRenderer.invoke("rukie:modelServices:save", input),
     delete: (id) => ipcRenderer.invoke("rukie:modelServices:delete", id),

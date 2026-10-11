@@ -8,6 +8,7 @@ import { Context, Effect, FiberMap, Layer, ManagedRuntime } from "effect";
 import {
   createSession,
   createApplicationModels,
+  applicationModelTemplates,
   listSessions,
   discoverSqliteSessions,
   readSessionSnapshot,
@@ -637,6 +638,51 @@ export async function startServer(options: ServerOptions) {
             },
             { additionalProperties: false },
           );
+          const Templates = Type.Object(
+            { type: Type.Literal("templates") },
+            { additionalProperties: false },
+          );
+          const Test = Type.Object(
+            {
+              type: Type.Literal("test"),
+              id: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
+              modelId: Type.String({ minLength: 1, maxLength: 256 }),
+            },
+            { additionalProperties: false },
+          );
+          if (Value.Check(Templates, input)) return c.json(applicationModelTemplates());
+          if (Value.Check(Test, input)) {
+            const providers = await database.providers();
+            const provider = providers.find((p) => p.id === input.id);
+            const model = provider?.models.find((m) => m.id === input.modelId);
+            if (!provider || !model) return c.json({ error: "unavailable-model" }, 409);
+            const models =
+              options.sessionOptions?.models ??
+              createApplicationModels({
+                providers: [{ ...provider, models: [{ ...model, enabled: true }] }],
+                homeDir: options.homeDir,
+                hasCredential: async (id) =>
+                  (await database.credential(`provider:${id}`)) !== undefined,
+                credential: (id) => vault.read(`provider:${id}`),
+                capabilityStore: {
+                  read: (key) => database.capability(key),
+                  save: (key, value) => database.saveCapability(key, value),
+                },
+              });
+            const selected = models.getModel(input.id, input.modelId);
+            if (!selected) return c.json({ error: "unavailable-model" }, 409);
+            const result = await models.completeSimple(
+              selected,
+              { messages: [{ role: "user", content: "Reply OK.", timestamp: Date.now() }] },
+              {
+                maxTokens: 8,
+                signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(8000)]),
+              },
+            );
+            if (result.stopReason === "error" || result.stopReason === "aborted")
+              return c.json({ error: "connection-failed" }, 409);
+            return c.json({});
+          }
           if (Value.Check(List, input)) return c.json(await database.providers());
           if (Value.Check(Delete, input)) {
             await database.deleteProvider(input.id);

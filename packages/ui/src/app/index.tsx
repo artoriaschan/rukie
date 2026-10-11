@@ -17,6 +17,7 @@ import {
   Ellipsis,
   WifiOff,
   LoaderCircle,
+  Settings,
 } from "lucide-react";
 import type { Locale } from "@rukie/i18n";
 import type { PermissionMode, WirePreferences } from "@rukie/shared";
@@ -34,6 +35,7 @@ import * as Menu from "../components/ui/dropdown-menu";
 import { UiLocaleProvider, useAppText } from "../lib/i18n";
 import { cn } from "../lib/utils";
 import type { PermissionDecision } from "../lib/transcript";
+import { ModelServices } from "./model-services";
 import { AppConversation } from "./conversation";
 import { useErrorText } from "./error";
 
@@ -79,6 +81,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [store] = useState(createDesktopStore);
   const [client] = useState(() => createWireClient(host));
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebar, setSidebar] = useState(() => matchMedia("(min-width: 768px)").matches);
   const [ctrl, setCtrl] = useState(false);
   const [search, setSearch] = useState(false);
@@ -217,6 +220,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       setCtrl(event.ctrlKey);
+      if (settingsOpen) return;
       if (
         Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).some(
           (element) => !element.closest("[inert]"),
@@ -250,7 +254,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       window.removeEventListener("keyup", keyup);
       window.removeEventListener("blur", blur);
     };
-  }, [recent, state.selected, state.pinned, summary]);
+  }, [recent, state.selected, state.pinned, summary, settingsOpen]);
   const send = async () => {
     if (!connected || sending || !draft.trim()) return;
     setSending(true);
@@ -513,7 +517,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           : "bg-background-win-alt",
       )}
     >
-      <header className="flex h-11 shrink-0 select-none bg-header items-center [-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag]">
+      <header
+        inert={settingsOpen}
+        className="flex h-11 shrink-0 select-none bg-header items-center [-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag]"
+      >
         <div className={cn("flex h-full shrink-0 items-center gap-1 px-3", sidebar && "md:w-76")}>
           <span aria-hidden="true" className="w-16" />
           <Tooltip content={t("app.toggle-sidebar")}>
@@ -626,7 +633,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           ) : null}
         </div>
       </header>
-      <div className="flex min-h-0 flex-1">
+      <div inert={settingsOpen} className="flex min-h-0 flex-1">
         <nav
           aria-label={t("app.home")}
           className="flex w-12 shrink-0 flex-col items-center bg-sidebar p-2"
@@ -643,6 +650,17 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               <Home className="size-4 fill-current" />
             </Button>
           </Tooltip>
+          {host.modelServices ? (
+            <Button
+              className="mt-auto"
+              size="icon"
+              variant="ghost"
+              aria-label={t("services.title")}
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Settings className="size-4" />
+            </Button>
+          ) : null}
         </nav>
         <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-tl-xl border-l border-t border-border bg-panel">
           {sidebar ? (
@@ -732,6 +750,15 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           </main>
         </div>
       </div>
+      {settingsOpen && host.modelServices ? (
+        <ModelServices
+          services={host.modelServices}
+          onClose={() => setSettingsOpen(false)}
+          onChanged={async () => {
+            store.setModels(await client.request({ type: "models.list" }));
+          }}
+        />
+      ) : null}
       <CommandPalette
         open={search}
         onOpenChange={changeSearch}

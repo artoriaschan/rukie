@@ -178,17 +178,23 @@ export function Select({
 }
 
 export interface SelectTriggerProps {
+  "aria-label"?: string;
   className?: string;
   children: ReactNode;
 }
 
-export function SelectTrigger({ className, children }: SelectTriggerProps) {
+export function SelectTrigger({
+  className,
+  children,
+  "aria-label": ariaLabel,
+}: SelectTriggerProps) {
   const ctx = useSelectContext("SelectTrigger");
   return (
     <motion.button
       type="button"
       id={ctx.triggerId}
       disabled={ctx.disabled}
+      aria-label={ariaLabel}
       aria-haspopup="listbox"
       aria-expanded={ctx.open}
       aria-controls={ctx.listId}

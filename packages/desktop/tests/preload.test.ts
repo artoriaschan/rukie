@@ -23,7 +23,15 @@ test("preload exposes fixed native methods and write-only model services with fi
   await host.pickProjectFolder();
   await host.revealPath("/tmp");
   await host.openInTerminal("/tmp");
-  expect(Object.keys(host.modelServices!).sort()).toEqual(["delete", "list", "save"]);
+  expect(Object.keys(host.modelServices!).sort()).toEqual([
+    "delete",
+    "list",
+    "save",
+    "templates",
+    "test",
+  ]);
+  await host.modelServices!.templates!();
+  await host.modelServices!.test!("local", "m");
   await host.modelServices!.list();
   await host.modelServices!.delete("local");
   expect(electron.ipcRenderer.invoke.mock.calls).toEqual([
@@ -31,6 +39,8 @@ test("preload exposes fixed native methods and write-only model services with fi
     ["rukie:pickProjectFolder"],
     ["rukie:revealPath", "/tmp"],
     ["rukie:openInTerminal", "/tmp"],
+    ["rukie:modelServices:templates"],
+    ["rukie:modelServices:test", "local", "m"],
     ["rukie:modelServices:list"],
     ["rukie:modelServices:delete", "local"],
   ]);

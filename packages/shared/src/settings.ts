@@ -110,6 +110,20 @@ export const CustomModelSchema = Type.Object({
     Type.Array(Type.Enum(["text", "image"]), { minItems: 1, contains: Type.Literal("text") }),
   ),
   reasoning: Type.Optional(Type.Boolean()),
+  thinkingLevelMap: Type.Optional(
+    Type.Object(
+      {
+        off: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        minimal: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        low: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        medium: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        high: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        xhigh: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        max: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+      },
+      { additionalProperties: false },
+    ),
+  ),
   contextWindow: Type.Optional(Type.Integer({ minimum: 1 })),
   maxTokens: Type.Optional(Type.Integer({ minimum: 1 })),
   compat: Type.Optional(ModelCompatSchema),

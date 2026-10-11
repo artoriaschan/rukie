@@ -9,6 +9,8 @@ export interface DesktopHost {
     list(): Promise<ModelServiceSummary[]>;
     save(input: ModelServiceSave): Promise<void>;
     delete(id: string): Promise<void>;
+    test?(id: string, modelId: string): Promise<void>;
+    templates?(): Promise<import("@rukie/shared").ModelService[]>;
   };
 }
 

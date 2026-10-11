@@ -76,6 +76,13 @@ test("private provider management persists a redacted catalog without reading te
     });
   try {
     expect((await manage({ type: "list" }, server.token)).status).toBe(403);
+    const templates = await (await manage({ type: "templates" })).json();
+    expect(templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ api: "anthropic-messages", models: expect.any(Array) }),
+      ]),
+    );
+    expect(JSON.stringify(templates)).not.toContain("apiKey");
     expect((await manage({ type: "list" }, managementToken, "app://rukie")).status).toBe(403);
     expect(
       (
@@ -115,6 +122,7 @@ test("private provider management persists a redacted catalog without reading te
 test("encrypted desktop model requests use selected configuration and deletion preserves read-only history", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-services-execution-"));
   const captured: { authorization: string | null; model: unknown }[] = [];
+  const efforts: unknown[] = [];
   const provider = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -123,6 +131,7 @@ test("encrypted desktop model requests use selected configuration and deletion p
       if (typeof body !== "object" || body === null || !("model" in body))
         throw new Error("Missing request model");
       captured.push({ authorization: request.headers.get("authorization"), model: body.model });
+      efforts.push("reasoning_effort" in body ? body.reasoning_effort : undefined);
       return new Response(
         'data: {"id":"test","choices":[{"index":0,"delta":{"role":"assistant","content":"desktop answer"},"finish_reason":null}]}\n\ndata: {"id":"test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
         { headers: { "content-type": "text/event-stream" } },
@@ -160,7 +169,13 @@ test("encrypted desktop model requests use selected configuration and deletion p
             name: "Local",
             api: "openai-completions",
             baseUrl: `http://127.0.0.1:${provider.port}/v1`,
-            models: [{ id: "desktop-model" }],
+            models: [
+              {
+                id: "desktop-model",
+                reasoning: true,
+                thinkingLevelMap: { off: "none", low: "light", high: "deep" },
+              },
+            ],
           },
           credential: { type: "replace", ciphertext: "opaque" },
         })
@@ -170,10 +185,17 @@ test("encrypted desktop model requests use selected configuration and deletion p
       expect.objectContaining({ authenticated: true }),
     ]);
     expect(decryptions).toBe(0);
+    expect((await manage({ type: "test", id: "local", modelId: "desktop-model" })).status).toBe(
+      200,
+    );
+    expect(captured).toEqual([
+      { authorization: "Bearer desktop-fixture-key", model: "desktop-model" },
+    ]);
+    captured.length = 0;
     const created = await client.command("session.create", {
       project: null,
       text: "hello",
-      modelSelection: { provider: "local", modelId: "desktop-model", thinkingLevel: "off" },
+      modelSelection: { provider: "local", modelId: "desktop-model", thinkingLevel: "high" },
     });
     expect(created.error).toBeUndefined();
     const sessionId = (created.result as { sessionId: string }).sessionId;
@@ -183,6 +205,7 @@ test("encrypted desktop model requests use selected configuration and deletion p
       { authorization: "Bearer desktop-fixture-key", model: "desktop-model" },
       { authorization: "Bearer desktop-fixture-key", model: "desktop-model" },
     ]);
+    expect(efforts).toContain("deep");
     expect(JSON.stringify(client.messages)).not.toContain("desktop-fixture-key");
     expect((await manage({ type: "delete", id: "local" })).status).toBe(200);
     expect((await client.command("prompt", { sessionId, text: "again" })).error).toEqual({

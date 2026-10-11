@@ -244,6 +244,7 @@ function modelRegistry(settings: Settings) {
           input: m.input ?? ["text"],
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           reasoning: m.reasoning ?? false,
+          ...(m.thinkingLevelMap === undefined ? {} : { thinkingLevelMap: m.thinkingLevelMap }),
           // ponytail: generic defaults; per-model limits come from settings when they matter
           contextWindow: m.contextWindow ?? 128_000,
           maxTokens: m.maxTokens ?? 16_384,

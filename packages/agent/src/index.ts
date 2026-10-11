@@ -75,4 +75,4 @@ export { readSessionSnapshot } from "./session/read-only.ts";
 
 export { openBunSqliteDatabase } from "./store/sqlite-database.ts";
 export { parseOAuthState } from "./mcp/credentials.ts";
-export { createApplicationModels } from "./config/application-models.ts";
+export { createApplicationModels, applicationModelTemplates } from "./config/application-models.ts";

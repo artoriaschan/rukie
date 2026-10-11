@@ -110,6 +110,22 @@ export async function startDesktop(options: DesktopOptions) {
         throw new Error("Model service operation failed. Retry or reconfigure credentials.");
       return response.json();
     };
+    ipcMain.handle("rukie:modelServices:templates", async (event) => {
+      authorize(event);
+      return manage({ type: "templates" });
+    });
+    ipcMain.handle("rukie:modelServices:test", async (event, id: unknown, modelId: unknown) => {
+      authorize(event);
+      if (
+        typeof id !== "string" ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(id) ||
+        typeof modelId !== "string" ||
+        !modelId ||
+        modelId.length > 256
+      )
+        throw new Error("Invalid model service");
+      await manage({ type: "test", id, modelId });
+    });
     ipcMain.handle("rukie:modelServices:list", async (event) => {
       authorize(event);
       return manage({ type: "list" });
