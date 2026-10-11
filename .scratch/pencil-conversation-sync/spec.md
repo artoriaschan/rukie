@@ -59,3 +59,14 @@ Status: resolved
 ### 用户请求本地验证
 
 用户明确要求本地验证；对提交 f34de7d0 执行一次完整 desktop 包级验收，补齐上次失败后尚未重新取得的完整通过结果。当前工作区无产品改动；复用最新静态和 GUI 明暗/窄屏证据。`env -u NO_COLOR bun run test:desktop` 通过：28文件、122用例全部通过，17.04s，日志 /tmp/rukie-pencil-local-desktop.log。此次是对 f34de7d0 的完整本地 desktop 通过证据；保留前次失败与增量修复历史。后续仅文档记录提交不使该证据失效。
+
+### 开发配置共享（本地启动反馈）
+
+用户确认供应商、凭证和设置共用，会话按工作区隔离。延续当前桌面交付分支；新增配置根接线、公共 SQLite preferences 与工作区项目/Session 分离。旧 5bcc 的 DeepSeek 数据由本次显式操作恢复，不在启动器加入扫描或迁移。配置存储与启动接线证据失效，UI 布局与浏览器证据继续有效。待运行 server 公共 wire 回归、启动器路径和 desktop main 用例、静态检查。
+
+- 共享配置公开 wire 回归通过，64.94ms；加强跨工作区偏好补丁保留后 server 整文件25用例通过，2.03s。启动器与 AppDatabase 11用例通过，504ms；desktop main/development 13用例通过，693ms。最初 desktop 命令使用错误相对 Vitest 路径，未执行测试；改用根安装的 Node Vitest 后通过。check:dev 全部通过（格式/lint/types/Knip/文档/tracker/边界/test-policy/字阶）。
+- 新增 main 到真实测试子进程的双根传递用例；共享配置影响 server 生命周期、事务与 desktop 启动边界，最终执行一次本地 aggregate check 验证跨包风险，保留日志。原 UI 浏览器呈现未改变，复用已有 GUI 验收证据。ADR Coverage：ADR-0036 部分替代 ADR-0035 的开发 checkout 配置隔离规则，正式应用与终端隔离沿用 ADR-0035。
+
+- 双轴审查发现公共配置父目录链接会被 recursive mkdir 提前触碰；改为逐级检查/创建路径，新增父目录链接拒绝且目标 sentinel 不变的回归。启动器10用例通过，450ms；增量格式/lint/tsc通过，双轴只读复核均无新发现。main双根真实子进程接线11用例通过，848ms，development3用例证据有效。
+- `env -u NO_COLOR bun run check` 实际失败：静态通过；Bun 3453通过/25失败，333文件，177.10s，随后 desktop 未执行。19项发布/恢复失败来自本机npm11.19.1低于要求11.21.0；发布单例独立复现同一版本错误（6.78s）。4项既有Core/TUI模型用例分别涉及旧document版本、旧toolState期望和供应商切换断言；安装版MCP OAuth PTY超时及依赖其验收的下载原件用例失败。MCP PTY单例独立复现（19.57s）。这些文件及运行路径未被本次修改，不扩大修复范围；不得将本次完整check称为通过。日志 `/tmp/rukie-shared-config-check.log`，最小复现日志 `/tmp/rukie-shared-config-unrelated.log`、`/tmp/rukie-shared-config-pty.log`、`/tmp/rukie-shared-config-baseline-failures.log`。
+- 本地显式恢复：从已知旧5bcc SQLite一致读取供应商、模型和凭证密文，将配置与当前工作区偏好写入空公共库；源保持原样、不解密、不进入仓库。公共库含1供应商/2模型。已授权原生开发应用重启，模型服务页面实际可见DeepSeek、两个模型及已保存密钥状态；未发送真实模型请求或显示密钥。launcher日志 `/tmp/rukie-shared-config-start.log`。应用为用户保留运行，临时测试资源已清理。

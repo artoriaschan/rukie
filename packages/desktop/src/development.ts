@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { startDesktop } from "./main/desktop.ts";
 
 declare const RUKIE_DESKTOP_DEVELOPMENT_ROOT: string;
+declare const RUKIE_DESKTOP_DEVELOPMENT_CONFIGURATION_ROOT: string;
 const root = RUKIE_DESKTOP_DEVELOPMENT_ROOT;
 const local = join(root, ".desktop-dev");
 // Electron 41 configures macOS OSCrypt service/account from Browser::GetName after main runs.
@@ -20,6 +21,7 @@ void startDesktop({
   preload: join(local, "build/preload.cjs"),
   userDataDirectory: join(local, "electron"),
   dataRoot: join(local, "data"),
+  configurationRoot: RUKIE_DESKTOP_DEVELOPMENT_CONFIGURATION_ROOT,
   sidecar: { command: join(local, "build/rukie-server"), args: [], cwd: root },
 })
   .then(({ window }) => window?.webContents.openDevTools({ mode: "detach" }))

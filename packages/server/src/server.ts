@@ -43,6 +43,8 @@ export interface ServerOptions {
   homeDir: string;
   /** Application-owned root, distinct from tool/permission home. No shared-path fallback. */
   dataRoot: string;
+  /** Optional shared configuration; Sessions and project registry stay in dataRoot. */
+  configurationRoot?: string;
   development?: boolean;
   /** Private main/sidecar channel; never included in the renderer handshake. */
   managementToken?: string;
@@ -76,12 +78,18 @@ const Runs = Context.Service<FiberMap.FiberMap<string, unknown, unknown>>("serve
 export async function startServer(options: ServerOptions) {
   const warning = options.onWarning ?? console.warn;
   if (!isAbsolute(options.dataRoot)) throw new Error("Desktop dataRoot must be absolute.");
+  if (options.configurationRoot && !isAbsolute(options.configurationRoot))
+    throw new Error("Desktop configurationRoot must be absolute.");
   const directory = options.dataRoot;
   const workspace = join(directory, "workspace");
   await mkdir(workspace, { recursive: true });
-  const database = await AppDatabase.open(directory);
+  const database = await AppDatabase.open(options.configurationRoot ?? directory);
+  let localDatabase = database;
+  const sharedConfiguration =
+    options.configurationRoot !== undefined && options.configurationRoot !== directory;
   let closeListener: (() => Promise<unknown>) | undefined;
   try {
+    if (sharedConfiguration) localDatabase = await AppDatabase.open(directory);
     const vault = secretVault(database, options.encryption);
     const configuration = applicationConfiguration(database, vault, options.encryption);
     const presentationSettings = async (cwd: string) =>
@@ -94,7 +102,8 @@ export async function startServer(options: ServerOptions) {
           userSettings: await database.settings(),
         })
       ).settings;
-    const registry = await database.registry();
+    const registry = await localDatabase.registry();
+    if (sharedConfiguration) registry.preferences = await database.preferences();
     const configuredModels = async () =>
       createApplicationModels({
         providers: await database.providers(),
@@ -119,9 +128,12 @@ export async function startServer(options: ServerOptions) {
     };
     const save = async () => {
       try {
-        await database.saveRegistry(registry);
+        await localDatabase.saveRegistry(
+          sharedConfiguration ? { ...registry, preferences: {} } : registry,
+        );
       } catch (error) {
-        Object.assign(registry, await database.registry());
+        Object.assign(registry, await localDatabase.registry());
+        if (sharedConfiguration) registry.preferences = await database.preferences();
         throw error;
       }
     };
@@ -324,7 +336,7 @@ export async function startServer(options: ServerOptions) {
         running: sessions.get(summary.id)?.running ?? false,
         waitingPermission: [...pending.values()].some((item) => item.sessionId === summary.id),
       }));
-      await database.reconcileSessions(committed);
+      await localDatabase.reconcileSessions(committed);
       return committed;
     };
     const find = async (id: string, selection?: SessionOptions["resumeModelSelection"]) => {
@@ -342,6 +354,7 @@ export async function startServer(options: ServerOptions) {
     const changed = (closedSessionId?: string): Promise<void> => {
       if (shuttingDown) return Promise.resolve();
       const work = (async () => {
+        if (sharedConfiguration) registry.preferences = await database.preferences();
         const committed = await summaries();
         if (active && !shuttingDown)
           send(active, {
@@ -638,8 +651,12 @@ export async function startServer(options: ServerOptions) {
           return {};
         }
         case "preferences.set":
-          registry.preferences = { ...registry.preferences, ...command.preferences };
-          await save();
+          if (sharedConfiguration)
+            registry.preferences = await database.updatePreferences(command.preferences);
+          else {
+            registry.preferences = { ...registry.preferences, ...command.preferences };
+            await save();
+          }
           await changed();
           return registry.preferences;
       }
@@ -907,6 +924,7 @@ export async function startServer(options: ServerOptions) {
           await releaseResource(async () => {
             await Promise.all(changes);
           });
+          if (localDatabase !== database) await releaseResource(() => localDatabase.close());
           await releaseResource(() => database.close());
           await releaseResource(() => server.stop(true));
           if (failure !== undefined) throw failure;
@@ -914,6 +932,7 @@ export async function startServer(options: ServerOptions) {
     };
   } catch (error) {
     await closeListener?.();
+    if (localDatabase !== database) await localDatabase.close();
     await database.close();
     throw error;
   }

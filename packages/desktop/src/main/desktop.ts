@@ -26,6 +26,7 @@ export interface DesktopOptions {
   userDataDirectory?: string;
   /** Required for development and tests; production defaults to userData/data. */
   dataRoot?: string;
+  configurationRoot?: string;
 }
 
 /** Electron owns native operations and child lifetime; Agent Core stays in the sidecar. */
@@ -35,6 +36,8 @@ export async function startDesktop(options: DesktopOptions) {
     throw new Error("Development desktop requires an explicit isolated dataRoot.");
   const dataRoot = options.dataRoot ?? join(app.getPath("userData"), "data");
   if (!isAbsolute(dataRoot)) throw new Error("Desktop dataRoot must be absolute.");
+  if (options.configurationRoot && !isAbsolute(options.configurationRoot))
+    throw new Error("Desktop configurationRoot must be absolute.");
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return { window: null, async stop() {} };
@@ -82,6 +85,7 @@ export async function startDesktop(options: DesktopOptions) {
         ...(options.sidecarEnvironment ? await options.sidecarEnvironment : process.env),
         ...options.sidecar.env,
         RUKIE_DESKTOP_DATA_ROOT: dataRoot,
+        RUKIE_DESKTOP_CONFIGURATION_ROOT: options.configurationRoot,
         RUKIE_DESKTOP_HOME_DIR: userInfo().homedir,
         RUKIE_DESKTOP_SECRET_URL: secrets.url,
         RUKIE_DESKTOP_SECRET_TOKEN: secrets.token,

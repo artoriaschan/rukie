@@ -25,6 +25,7 @@ afterEach(() => {
 });
 test("development boot sets a distinct pre-ready identity, private native storage and current compiled sidecar", async () => {
   vi.stubGlobal("RUKIE_DESKTOP_DEVELOPMENT_ROOT", "/checkout");
+  vi.stubGlobal("RUKIE_DESKTOP_DEVELOPMENT_CONFIGURATION_ROOT", "/shared/configuration");
   await import("../src/development.ts");
   expect(native.setName).toHaveBeenCalledWith("rukie-desktop-development");
   expect(native.setPath).toHaveBeenCalledWith("sessionData", "/checkout/.desktop-dev/session");
@@ -39,6 +40,7 @@ test("development boot sets a distinct pre-ready identity, private native storag
     preload: "/checkout/.desktop-dev/build/preload.cjs",
     userDataDirectory: "/checkout/.desktop-dev/electron",
     dataRoot: "/checkout/.desktop-dev/data",
+    configurationRoot: "/shared/configuration",
     sidecar: { command: "/checkout/.desktop-dev/build/rukie-server", args: [], cwd: "/checkout" },
   });
   expect(native.openDevTools).toHaveBeenCalledWith({ mode: "detach" });
@@ -47,6 +49,7 @@ test("development boot sets a distinct pre-ready identity, private native storag
 test("failed development boot exits with failure after the desktop owner has cleaned up", async () => {
   vi.resetModules();
   vi.stubGlobal("RUKIE_DESKTOP_DEVELOPMENT_ROOT", "/checkout");
+  vi.stubGlobal("RUKIE_DESKTOP_DEVELOPMENT_CONFIGURATION_ROOT", "/shared/configuration");
   start.mockRejectedValueOnce(new Error("boot failed"));
   const output = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
@@ -60,6 +63,7 @@ test("failed development boot exits with failure after the desktop owner has cle
 test("development termination signals request graceful app quit before owned sidecar shutdown", async () => {
   vi.resetModules();
   vi.stubGlobal("RUKIE_DESKTOP_DEVELOPMENT_ROOT", "/checkout");
+  vi.stubGlobal("RUKIE_DESKTOP_DEVELOPMENT_CONFIGURATION_ROOT", "/shared/configuration");
   await import("../src/development.ts");
   native.quit.mockClear();
   process.emit("SIGTERM");

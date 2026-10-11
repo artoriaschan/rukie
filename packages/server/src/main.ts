@@ -17,6 +17,7 @@ for (const name of [
 await runServer({
   homeDir: process.env.RUKIE_DESKTOP_HOME_DIR ?? homedir(),
   dataRoot,
+  configurationRoot: process.env.RUKIE_DESKTOP_CONFIGURATION_ROOT,
   managementToken,
   encryption:
     secretUrl && secretToken ? privateSecretEncryption(secretUrl, secretToken) : undefined,

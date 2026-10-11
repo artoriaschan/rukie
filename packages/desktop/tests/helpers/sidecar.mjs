@@ -13,6 +13,7 @@ if (!process.argv.includes("--no-handshake"))
       token: process.argv.includes("--data-root-token")
         ? JSON.stringify({
             dataRoot: process.env.RUKIE_DESKTOP_DATA_ROOT,
+            configurationRoot: process.env.RUKIE_DESKTOP_CONFIGURATION_ROOT,
             homeDir: process.env.RUKIE_DESKTOP_HOME_DIR,
           })
         : process.argv.includes("--env-token")
