@@ -99,6 +99,7 @@ function Group({
           id,
           type: "trace",
           kind: "thinking",
+          collapsible: true,
           label: t("conversation.thinking"),
           content: <Markdown text={block.thinking} streaming={group.status === "running"} />,
         });
@@ -134,6 +135,7 @@ function Group({
                 : tool.callView?.kind === "edit"
                   ? "write"
                   : (tool.callView?.kind ?? "other"),
+            icon: null,
             label: <ToolRow tool={tool} />,
           });
       }

@@ -24,7 +24,7 @@ wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `
 
 ## 对话呈现
 
-Transcript 呈现按用户输入分组（`PromptGroup`），组内保留多次 Turn，不改变 Agent Core 的 Turn 定义。消息正文使用 beUI Streaming Response；推理、中间消息与工具步骤在 Agent Activity 的 Agent Trace 中按原顺序展示。Run 进行中标题显示「已处理」时长，结束后显示「已用时」时长；分割线始终紧接标题。展开活动区展示完整内容，不限制高度，也不使用内部滚动或滑动视窗。组内标题与箭头直接控制活动区展开和收起，支持鼠标、Enter 与 Space；正文始终可见，没有独立的步骤按钮。正在执行的组默认展开，允许手动收起；完成后默认收起，中止与失败默认展开并保留状态，原生 provider 错误作为回复组的警告展示。TanStack 按组测量虚拟行，容器为 `role="feed"`；在底部时跟随追加和行高增长，上翻停止跟随，左缘刻度跳转并预览问题与回复。当前回答组（运行中的组，否则最后一组）的长刻度独立于点击跳转；预览复用 Tooltip portal，hover 或键盘聚焦可读，Esc 关闭，并在 viewport 内定位，不受轨道滚动裁切。屏幕外的组不在 DOM 中，读屏与页内查找只覆盖已渲染部分。
+Transcript 呈现按用户输入分组（`PromptGroup`），组内保留多次 Turn，不改变 Agent Core 的 Turn 定义。消息正文使用 beUI Streaming Response；推理、中间消息与工具步骤在 Agent Activity 的 Agent Trace 中按原顺序展示。Run 进行中标题显示「已处理」时长，结束后显示「已用时」时长；分割线始终紧接标题。展开活动区展示完整内容，不限制高度，也不使用内部滚动或滑动视窗。组内标题与箭头直接控制活动区展开和收起，支持鼠标、Enter 与 Space；正文始终可见，没有独立的步骤按钮。推理默认收起，点击推理标题或使用 Enter／Space 展开；工具调用仅由工具卡展示一个类型图标。正在执行的组默认展开，允许手动收起；完成后默认收起，中止与失败默认展开并保留状态，原生 provider 错误作为回复组的警告展示。TanStack 按组测量虚拟行，容器为 `role="feed"`；在底部时跟随追加和行高增长，上翻停止跟随，左缘刻度跳转并预览问题与回复。当前回答组（运行中的组，否则最后一组）的长刻度独立于点击跳转；预览复用 Tooltip portal，hover 或键盘聚焦可读，Esc 关闭，并在 viewport 内定位，不受轨道滚动裁切。屏幕外的组不在 DOM 中，读屏与页内查找只覆盖已渲染部分。
 
 工具以提交的 assistant entry ID 与 call ID 组合归约，实时事件通过当前调用索引关联，复用 provider ID 不覆盖历史；默认折叠，失败展开。ANSI 输出通过 anser 解析标准、256 色与 RGB SGR 并剔除 OSC/光标控制；diff 按 unified hunk 分行，旧文与新文分别高亮，流式工具/diff 输出不使用 aria-live。Markdown 解析成 React 文本节点，不执行 HTML 或链接导航。所有代码块按需加载并共用 GitHub Light/Dark Shiki 高亮器；完整块缓存最多 64 条，超过 12,000 个字符或 200 行显示纯文本。未闭合代码块使用 ShikiStreamTokenizer，仅重算不稳定尾部。
 

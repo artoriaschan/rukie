@@ -50,7 +50,10 @@ export interface AgentActivityTrace {
   kind: AgentTraceKind;
   label: ReactNode;
   detail?: ReactNode;
+  /** Null omits the trace icon when the label already owns its icon. */
   icon?: ReactNode;
+  /** Let the label toggle rich content, initially collapsed. */
+  collapsible?: boolean;
   /** Rich message content below the trace label; tool details can remain in the label. */
   content?: ReactNode;
 }

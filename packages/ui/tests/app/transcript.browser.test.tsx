@@ -89,6 +89,9 @@ test("App shows committed and streaming replies, with failed tool output expande
     await send({ type: "message_start", message: result });
     await send({ type: "message_end", entryId: "r", messages: [result] });
     await expect.element(screen.getByText("Parser failed", { exact: true })).toBeVisible();
+    const tool = screen.getByRole("button", { name: /check Ran command/ }).element();
+    const traceRow = tool.closest('[role="listitem"]')!;
+    expect(traceRow.querySelectorAll(".lucide-square-terminal")).toHaveLength(1);
     expect(
       getComputedStyle(screen.getByText("Parser failed", { exact: true }).element()).color,
     ).toBe("rgb(7, 14, 21)");
@@ -163,6 +166,16 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
     const response = screen.getByRole("article", { name: "Response 1", exact: true });
     const running = response.getByRole("button", { name: /^Processed for/ });
     await expect.element(running).toHaveAttribute("aria-expanded", "true");
+    const reasoning = response.getByRole("button", { name: "Reasoning", exact: true });
+    await expect.element(reasoning).toHaveAttribute("aria-expanded", "false");
+    const reasoningContent = document.getElementById(
+      reasoning.element().getAttribute("aria-controls")!,
+    )!;
+    expect(reasoningContent.inert).toBe(true);
+    expect(reasoningContent.getBoundingClientRect().height).toBe(0);
+    await reasoning.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(reasoning).toHaveAttribute("aria-expanded", "true");
     await expect.element(screen.getByText("Inspecting the parser", { exact: true })).toBeVisible();
     expect(response.element().querySelector('[data-state="streaming"]')).not.toBeNull();
     const trace = response.element().querySelector('[data-content="trace"]')!;
@@ -207,6 +220,10 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
     await title.element().focus();
     await userEvent.keyboard(" ");
     await expect.element(title).toHaveAttribute("aria-expanded", "true");
+    await expect
+      .element(response.getByRole("button", { name: "Reasoning", exact: true }))
+      .toHaveAttribute("aria-expanded", "false");
+    await response.getByRole("button", { name: "Reasoning", exact: true }).click();
     await expect.element(screen.getByText("Inspecting the parser", { exact: true })).toBeVisible();
     await expect.poll(() => region.getBoundingClientRect().height).toBeGreaterThan(208);
     expect(divider.nextElementSibling).toBe(region);
@@ -263,6 +280,9 @@ test.each(["aborted", "error"])(
         exact: true,
       });
       await expect.element(title).toHaveAttribute("aria-expanded", "true");
+      const reasoning = screen.getByRole("button", { name: "推理", exact: true });
+      await expect.element(reasoning).toHaveAttribute("aria-expanded", "false");
+      await reasoning.click();
       await expect.element(screen.getByText("历史推理", { exact: true })).toBeVisible();
       await title.click();
       await expect.element(title).toHaveAttribute("aria-expanded", "false");

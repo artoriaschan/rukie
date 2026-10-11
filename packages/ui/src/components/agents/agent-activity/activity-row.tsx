@@ -1,6 +1,9 @@
+import { useId, useState } from "react";
+import { AgentDisclosure } from "../agent-disclosure";
 import { useComponentText } from "@/lib/i18n";
 import {
   Check,
+  ChevronDown,
   Circle,
   FileText,
   Globe2,
@@ -204,13 +207,44 @@ function TraceIcon({ kind }: { kind: AgentActivityTrace["kind"] }) {
 }
 
 function TraceRow({ item }: { item: AgentActivityTrace }) {
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
+  const triggerId = useId();
+  const showIcon = item.icon !== null;
   return (
-    <div className="grid min-h-8 grid-cols-[1rem_auto_minmax(0,1fr)] items-center gap-2.5 rounded-md px-1.5 py-0.5">
-      <span aria-hidden="true" className="grid size-4 place-items-center text-muted-foreground/70">
-        {item.icon ?? <TraceIcon kind={item.kind} />}
-      </span>
+    <div
+      className={cn(
+        "grid min-h-8 items-center gap-2.5 rounded-md px-1.5 py-0.5",
+        showIcon ? "grid-cols-[1rem_auto_minmax(0,1fr)]" : "grid-cols-[auto_minmax(0,1fr)]",
+      )}
+    >
+      {showIcon ? (
+        <span
+          aria-hidden="true"
+          className="grid size-4 place-items-center text-muted-foreground/70"
+        >
+          {item.icon ?? <TraceIcon kind={item.kind} />}
+        </span>
+      ) : null}
       <div className={cn("min-w-0 font-medium text-foreground/90", !item.detail && "col-span-2")}>
-        {item.label}
+        {item.collapsible ? (
+          <button
+            id={triggerId}
+            type="button"
+            aria-expanded={open}
+            aria-controls={contentId}
+            onClick={() => setOpen(!open)}
+            className="flex items-center gap-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            {item.label}
+            <ChevronDown
+              aria-hidden="true"
+              className={cn("size-3.5 text-muted-foreground", !open && "-rotate-90")}
+            />
+          </button>
+        ) : (
+          item.label
+        )}
       </div>
       {item.detail ? (
         <span className="min-w-0 truncate rounded-lg bg-muted/80 px-2.5 py-1 font-mono text-ui-sm text-muted-foreground/70">
@@ -218,7 +252,18 @@ function TraceRow({ item }: { item: AgentActivityTrace }) {
         </span>
       ) : null}
       {item.content ? (
-        <div className="col-span-2 col-start-2 min-w-0 text-muted-foreground">{item.content}</div>
+        <AgentDisclosure
+          id={contentId}
+          role={item.collapsible ? "region" : undefined}
+          aria-labelledby={item.collapsible ? triggerId : undefined}
+          open={!item.collapsible || open}
+          className={cn(
+            "col-span-2 min-w-0 text-muted-foreground",
+            showIcon ? "col-start-2" : "col-start-1",
+          )}
+        >
+          {item.content}
+        </AgentDisclosure>
       ) : null}
     </div>
   );
