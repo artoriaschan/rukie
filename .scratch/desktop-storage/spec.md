@@ -1,4 +1,4 @@
-Status: resolved
+Status: claimed
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -139,3 +139,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 [09](issues/09-model-advanced-pencil-fields.md) 在 `817c3bbf` 移除设计源不存在的智能配置、额外能力/兼容、JSON 映射和重置入口，并同步高级设置标题、摘要和卡片几何。设计中的自动压缩、运行参数和价格九项字段保留；编辑保存沿用原模型的 compat/thinkingLevelMap，不改变宿主、持久化 schema 或凭据合同。最新用户要求覆盖历史 05 中这些额外表单的呈现要求。
 
 受影响 ModelServices 文件 13 pass（10.79s），之后几何和推理开关修正只补跑单例 1 pass（1.27s）；静态检查通过，实际 Chromium/mock Light/Dark/420px 的高级区域验证完成。最终仅更新 4px 宽度修正影响的截图，根集成复用证据，不再重复整套测试、静态或完整浏览器流程，未启动 Electron。独立 Standards/Spec 的唯一过时文档发现已删除；父代理核对最终差异、断言与截图关闭发现。ADR Coverage 沿用 ADR-0029/0035，局部表单和冗余 UI 状态清理无需新 ADR。09/spec 同步 resolved，以本地结果交付，不等待 CI，PR 等待用户评审，未授权合并 main。
+
+## 模型默认推理等级
+
+用户确认补齐默认等级选择、保存和采用模型时生效，由 [10](issues/10-model-default-reasoning.md) 的新实施代理完成；模型设置使用既有 beUI Select，桌面模型默认值不替换会话已明确选择或恢复的推理等级。09 历史关闭证据保留，spec 为本票重新 claimed。验证遵守更新后的 docs/testing.md：由实施代理记录，父代理复用；未涉及原生合同，不启动 Electron。
