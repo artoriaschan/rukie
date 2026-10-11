@@ -77,3 +77,10 @@ Status: resolved
 
 - 公开回归先复现首次详情可见（15.73s失败边界）；去除初始化预览后，仅列表初开/重开、hover与键盘预览通过。审查进一步发现窄屏以及不同高度模型会使列表跳动：隐藏详情保留实际布局、aria-hidden/inert/visibility禁止访问和命中，C07固定184px设计高度，长内容使用已有ScrollArea。新增窄屏有/无推理往返及短窗口18px字号几何断言。最终Composer5用例通过（2.06s），tsc/lint/docs/test-policy与格式增量通过，双轴复核无新发现。先前尝试不支持的Radix focus props被类型检查发现并移除，未保留类型断言。
 - agent-browser实际Composer假catalog验收明暗1280×900与420×900：初开无可见详情、hover显示、移入High芯片选择正常；默认截图几何保持。最终ModelPicker假catalog补验420×900的first→second无推理→first布局：列表始终x48/y566/332×74，详情184px，无横向溢出。新会话console仅Vite/React提示，无页面错误；前一开发会话记录过临时QA入口HMR重复createRoot警告及删除入口的reload错误，来源为临时harness，最终新会话已排除。截图list-only-light.png、hover-detail-light.png、hover-detail-dark.png、hover-detail-narrow.png位于原证据目录。临时入口/浏览器/Vite清理；原生开发app按最终代码重启，用户配置保持不变。复用未失效的包级/其它静态证据，不重复此前失败的全量检查。
+
+### H14 模型选择定位
+
+用户要求参考 H14 更新模型交互。已读取 Pencil H14/L-H14 实际节点：C06 332×312，C07 280×184，水平间隔4，顶部对齐；完整列表底部距入口顶部42px，列表右边比入口右边向左76px，详情向右延伸。沿用现有菜单、ScrollArea和hover/键盘交互，只改变模型浮层定位；视口碰撞与窄屏仍优先保证可达。先增加公开 Composer 几何回归复现，再验证受影响5用例及明暗/窄屏。复用之前其它静态与desktop证据。
+
+- 新增H14公开回归复现原4px间距（预期42px）；将模型专用Radix sideOffset设42、alignOffset设-208后，Composer6用例通过，2.15s，日志 `/tmp/rukie-h14-red.log`、`/tmp/rukie-h14-green.log`。测试最初在根目录未收集、随后因打开菜单使背景入口inert而查询不到，改在打开前保存入口几何；最终红绿复现覆盖真实位置。增量tsc/lint/docs通过，双轴只读审查无发现。
+- agent-browser真实Composer假catalog验收1887×1346明暗及420×900窄屏：初开详情hidden；hover列表位置不变，列表332×312、详情280×184、间距4、顶部相同；选择High更新入口并关闭；窄屏同宽上下排列、无横向溢出。页面无错误，console只有Vite/React提示，网络200。截图h14-list-light.png、h14-hover-light.png、h14-hover-dark.png、h14-narrow.png在原外部证据目录。浏览器/Vite退出，临时入口已删除；复用其余有效证据，不重复既有失败的全量check。ADR coverage仍沿用ADR-0029，纯定位无架构变化。

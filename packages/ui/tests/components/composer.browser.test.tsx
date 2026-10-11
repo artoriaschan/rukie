@@ -322,6 +322,40 @@ test("model panels stack at narrow width, scroll long catalogs and reflow enlarg
   }
 });
 
+test("H14 anchors the model list above the trigger with the detail extending to its right", async () => {
+  await page.viewport(1887, 1346);
+  const catalog = Array.from({ length: 9 }, (_, index) => ({
+    ...models[0]!,
+    spec: index === 0 ? models[0]!.spec : `openai/model-${index}`,
+    id: index === 0 ? models[0]!.id : `model-${index}`,
+    name: index === 0 ? models[0]!.name : `Model ${index}`,
+  }));
+  const screen = await render(fixture(vi.fn(), catalog));
+  try {
+    const trigger = screen.getByRole("button", { name: "Choose model", exact: true });
+    const anchor = trigger.element().getBoundingClientRect();
+    await trigger.click();
+    const first = screen.getByRole("menuitem", { name: /First model/ });
+    await expect.element(first).toBeVisible();
+    const list = first.element().closest("[data-model-list]")!.getBoundingClientRect();
+    expect(list.height).toBe(312);
+    expect(anchor.top - list.bottom).toBe(42);
+    expect(anchor.right - list.right).toBe(76);
+    await first.hover();
+    const detail = screen
+      .getByRole("region", { name: "First model", exact: true })
+      .element()
+      .getBoundingClientRect();
+    expect(detail.left - list.right).toBe(4);
+    expect(detail.top).toBe(list.top);
+    expect(detail.right - anchor.right).toBe(208);
+    await userEvent.keyboard("{Escape}");
+  } finally {
+    await screen.unmount();
+    await page.viewport(1280, 900);
+  }
+});
+
 test("empty catalogs and disabled triggers cannot select models", async () => {
   const onModel = vi.fn();
   const screen = await render(fixture(onModel, []));

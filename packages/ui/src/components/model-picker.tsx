@@ -63,6 +63,8 @@ export function ModelPicker({
         ref={content}
         side="top"
         align="end"
+        sideOffset={42}
+        alignOffset={-208}
         collisionPadding={16}
         className="conversation-model-menu conversation-pencil space-y-0"
         aria-label={t("app.model")}
