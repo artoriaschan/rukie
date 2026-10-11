@@ -77,6 +77,7 @@ test("model services creates a provider and preserves input when encrypted save 
       .toHaveTextContent(
         "Video, PDF, structured output and native web search are unavailable in the current request adapter.",
       );
+    await screen.getByRole("button", { name: /Advanced configuration/ }).click();
     await expect
       .element(screen.getByRole("checkbox", { name: "Structured output" }))
       .toBeDisabled();
@@ -223,6 +224,7 @@ test("intelligent configuration uses explicit templates and leaves unknown IDs e
   );
   try {
     await screen.getByRole("button", { name: "Add model", exact: true }).click();
+    await screen.getByRole("button", { name: /Advanced configuration/ }).click();
     await expect
       .element(screen.getByRole("switch", { name: "Intelligent configuration" }))
       .toHaveAttribute("aria-checked", "true");
@@ -335,7 +337,7 @@ test("settings returns keyboard focus and preserves chat geometry and draft", as
   }
 });
 
-test("Pencil settings geometry uses compact workspace and stacked model form", async () => {
+test("Pencil settings geometry uses current compact workspace and grouped model form", async () => {
   await page.viewport(1887, 1210);
   const services = {
     list: async () => [
@@ -368,12 +370,12 @@ test("Pencil settings geometry uses compact workspace and stacked model form", a
       .getByRole("textbox", { name: "Base URL" })
       .element()
       .parentElement!.getBoundingClientRect();
-    expect(url.left).toBe(908);
-    expect(url.top).toBe(294);
-    expect(url.width).toBe(608);
-    expect(url.height).toBe(32);
+    expect(url.left).toBe(900);
+    expect(url.top).toBe(258);
+    expect(url.width).toBe(624);
+    expect(url.height).toBe(30);
     const nav = document
-      .querySelector<HTMLElement>(".model-services-navigation")!
+      .querySelector<HTMLElement>(".model-services-navigation-scroll")!
       .getBoundingClientRect();
     expect(nav.left).toBe(52);
     expect(nav.width).toBe(268);
@@ -381,8 +383,8 @@ test("Pencil settings geometry uses compact workspace and stacked model form", a
     await screen.getByRole("button", { name: "API 格式", exact: true }).click();
     const apiMenu = document.querySelector<HTMLElement>(".model-services-api-menu")!;
     await expect.poll(() => Math.round(apiMenu.getBoundingClientRect().height)).toBe(108);
-    expect(apiMenu.getBoundingClientRect().top).toBe(366);
-    expect(apiMenu.getBoundingClientRect().width).toBe(608);
+    expect(apiMenu.getBoundingClientRect().top).toBe(322);
+    expect(apiMenu.getBoundingClientRect().width).toBe(624);
     await screen
       .getByRole("option", { name: "Anthropic Messages (/v1/messages)", exact: true })
       .click();
@@ -394,12 +396,18 @@ test("Pencil settings geometry uses compact workspace and stacked model form", a
       .getByRole("spinbutton", { name: "上下文窗口" })
       .element()
       .getBoundingClientRect();
+    await expect
+      .element(screen.getByRole("button", { name: /高级配置/ }))
+      .toHaveAttribute("aria-expanded", "false");
+    await screen.getByRole("button", { name: /高级配置/ }).click();
     const tokens = screen
       .getByRole("spinbutton", { name: "最大输出 Token" })
       .element()
       .getBoundingClientRect();
-    expect(context.left).toBe(tokens.left);
-    expect(tokens.top - context.top).toBe(80);
+    expect(context.left).toBeGreaterThan(
+      screen.getByRole("textbox", { name: "显示名称" }).element().getBoundingClientRect().left,
+    );
+    expect(tokens.top).toBeGreaterThan(context.top);
     await screen.getByRole("button", { name: "关闭", exact: true }).click();
     await screen.getByRole("button", { name: "供应商操作", exact: true }).click();
     await screen.getByRole("menuitem", { name: "删除供应商", exact: true }).click();
@@ -462,6 +470,7 @@ test("saved overview stays compact; dirty credentials and invalid mapping remain
     await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
     await expect.poll(() => providers[0]!.models[0]!.enabled).toBe(false);
     await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await screen.getByRole("button", { name: /Advanced configuration/ }).click();
     const mapping = screen.getByRole("textbox", {
       name: "Provider reasoning parameter",
       exact: true,
@@ -545,7 +554,7 @@ test("keyboard Cancel preserves provider and credential while confirmation delet
   }
 });
 
-test("provider directory offers every returned template and preserves the custom path", async () => {
+test("provider directory offers only the custom path even when templates exist", async () => {
   const templates = ["Anthropic", "OpenAI"].map((name) => ({
     id: name.toLowerCase(),
     name,
@@ -574,13 +583,139 @@ test("provider directory offers every returned template and preserves the custom
       .toBeVisible();
     await expect
       .element(screen.getByRole("button", { name: "Anthropic", exact: true }))
-      .toBeVisible();
-    await screen.getByRole("button", { name: "OpenAI", exact: true }).click();
+      .not.toBeInTheDocument();
     await expect
-      .element(screen.getByRole("textbox", { name: "Base URL" }))
-      .toHaveValue("https://api.example.com/v1");
-    await expect.element(screen.getByRole("heading", { name: "OpenAI" })).toBeVisible();
+      .element(screen.getByRole("button", { name: "OpenAI", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: "BigModel", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: "Z.ai Coding Plan", exact: true }))
+      .not.toBeInTheDocument();
+    await screen.getByRole("button", { name: "Create custom provider" }).click();
+    await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("");
+    await expect.element(screen.getByRole("heading", { name: "New provider" })).toBeVisible();
   } finally {
     await screen.unmount();
+  }
+});
+
+test("Pencil overlay scrollbars appear only for overflow and map keyboard and wheel endpoints", async () => {
+  await page.viewport(1280, 900);
+  const providers: ModelServiceSummary[] = Array.from({ length: 80 }, (_, index) => ({
+    id: `custom-${index}`,
+    name: `Custom ${index}`,
+    api: "openai-completions",
+    baseUrl: "https://api.example.com/v1",
+    hasCredential: true,
+    models: [],
+  }));
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{ list: async () => providers, save: async () => {}, delete: async () => {} }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    await expect.element(screen.getByRole("heading", { name: "Custom 0" })).toBeVisible();
+    const track = screen.getByRole("scrollbar", { name: "Custom providers" });
+    await expect.element(track).toBeVisible();
+    const rail = track.element();
+    const thumb = rail.firstElementChild!;
+    const feed = document.getElementById(rail.getAttribute("aria-controls")!)!;
+    expect(rail.getBoundingClientRect().width).toBe(8);
+    expect(thumb.getBoundingClientRect().width).toBe(4);
+    expect(thumb.getBoundingClientRect().height).toBeGreaterThanOrEqual(24);
+    expect(getComputedStyle(feed).scrollbarWidth).toBe("none");
+    expect(getComputedStyle(rail).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    rail.focus();
+    await userEvent.keyboard("{End}");
+    await expect.poll(() => feed.scrollTop + feed.clientHeight).toBe(feed.scrollHeight);
+    await expect
+      .poll(() =>
+        Math.abs(thumb.getBoundingClientRect().bottom - rail.getBoundingClientRect().bottom),
+      )
+      .toBeLessThanOrEqual(1);
+    await userEvent.keyboard("{Home}");
+    await expect.poll(() => feed.scrollTop).toBe(0);
+    await screen
+      .getByRole("button", { name: "Custom 0", exact: true })
+      .wheel({ delta: { y: 240, x: 0 } });
+    await expect.poll(() => feed.scrollTop).toBeGreaterThan(0);
+    rail.focus();
+    await userEvent.keyboard("{Home}");
+    await expect.poll(() => feed.scrollTop).toBe(0);
+    await track.click({ position: { x: 4, y: rail.clientHeight - 4 } });
+    await expect.poll(() => feed.scrollTop + feed.clientHeight).toBe(feed.scrollHeight);
+    expect(
+      getComputedStyle(
+        document.querySelector<HTMLElement>(".model-services-details-scroll [role=scrollbar]")!,
+      ).visibility,
+    ).toBe("hidden");
+  } finally {
+    await screen.unmount();
+    await page.viewport(1280, 900);
+  }
+});
+
+test("model form and long parameter mapping use custom scrollbars at narrow widths", async () => {
+  await page.viewport(1280, 900);
+  const providers: ModelServiceSummary[] = [
+    {
+      id: "local",
+      name: "Local",
+      api: "openai-completions",
+      baseUrl: "https://api.example.com/v1",
+      hasCredential: true,
+      models: [],
+    },
+  ];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{ list: async () => providers, save: async () => {}, delete: async () => {} }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    await screen.getByRole("button", { name: "Add model", exact: true }).click();
+
+    await screen.getByRole("button", { name: /Advanced configuration/ }).click();
+    await expect
+      .element(screen.getByRole("scrollbar", { name: "Model configuration" }))
+      .toBeVisible();
+    await screen
+      .getByRole("textbox", { name: "Provider reasoning parameter", exact: true })
+      .fill(Array.from({ length: 100 }, (_, index) => `line ${index}`).join("\n"));
+    const mappingTrack = screen.getByRole("scrollbar", { name: "Provider reasoning parameter" });
+    await expect.element(mappingTrack).toBeVisible();
+    const mappingRail = mappingTrack.element();
+    const mappingThumb = mappingRail.firstElementChild!;
+    expect(mappingThumb.getBoundingClientRect().height).toBe(24);
+    mappingRail.focus();
+    await userEvent.keyboard("{End}");
+    await expect
+      .poll(() =>
+        Math.abs(
+          mappingThumb.getBoundingClientRect().bottom - mappingRail.getBoundingClientRect().bottom,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+    await page.viewport(420, 900);
+    await expect
+      .poll(() => document.querySelector<HTMLElement>(".model-services")!.scrollWidth)
+      .toBeLessThanOrEqual(420);
+    expect(screen.getByRole("dialog").element().getBoundingClientRect().right).toBeLessThanOrEqual(
+      420,
+    );
+  } finally {
+    await screen.unmount();
+    await page.viewport(1280, 900);
   }
 });

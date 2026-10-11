@@ -1,8 +1,17 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { cn } from "../lib/utils";
 import { useAppText } from "../lib/i18n";
 
 /** Maps a Transcript viewport onto the entire conversation edge, including its fixed dock. */
-export function TranscriptScrollbar({ viewport }: { viewport: RefObject<HTMLDivElement | null> }) {
+export function TranscriptScrollbar({
+  viewport,
+  label,
+  className,
+}: {
+  viewport: RefObject<HTMLDivElement | null>;
+  label?: string;
+  className?: string;
+}) {
   const t = useAppText();
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<{ pointer: number; offset: number } | null>(null);
@@ -69,14 +78,17 @@ export function TranscriptScrollbar({ viewport }: { viewport: RefObject<HTMLDivE
     <div
       ref={track}
       role="scrollbar"
-      aria-label={t("conversation.scrollbar")}
+      aria-label={label ?? t("conversation.scrollbar")}
       aria-controls={geometry.id || undefined}
       aria-orientation="vertical"
       aria-valuemin={0}
       aria-valuemax={Math.round(geometry.max)}
       aria-valuenow={Math.round(geometry.scroll)}
       tabIndex={geometry.max > 0 ? 0 : -1}
-      className="absolute inset-y-0 right-0 z-30 w-3 touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className={cn(
+        "absolute inset-y-0 right-0 z-30 w-3 touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        className,
+      )}
       style={{ visibility: geometry.max > 0 ? "visible" : "hidden" }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;

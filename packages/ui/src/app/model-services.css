@@ -102,19 +102,19 @@
   margin: auto;
 }
 .model-services-header {
-  height: 104px;
+  height: 88px;
   position: relative;
 }
 .model-services-header > p {
   position: absolute;
-  top: 62px;
+  top: 48px;
   left: 0;
   max-width: 672px;
 }
 .model-services-toolbar {
   position: absolute;
   right: 0;
-  top: 56px;
+  top: 44px;
   display: flex;
   gap: 8px;
 }
@@ -122,7 +122,7 @@
   width: 144px;
 }
 .model-services-panel {
-  height: 580px;
+  height: 560px;
   display: flex;
   overflow: hidden;
   border: 0;
@@ -153,12 +153,12 @@
   flex: 1;
   min-width: 0;
   overflow: auto;
-  padding: 24px;
+  padding: 16px;
 }
 .model-services-provider-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 6px;
   position: relative;
 }
 .model-services-provider-heading {
@@ -197,7 +197,7 @@
 .model-services-empty {
   border: 1px solid var(--border);
   border-radius: 8px;
-  min-height: 52px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -207,13 +207,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 42px;
+  min-height: 36px;
   border: 1px solid var(--border);
   padding: 0 8px 0 12px;
   border-radius: 0;
 }
 .model-services-model-row + .model-services-model-row {
-  margin-top: -14px;
+  margin-top: -6px;
   border-top: 0;
 }
 .model-services-model-row > div:first-child {
@@ -262,7 +262,7 @@
 }
 .model-services-model-modal {
   max-width: 672px;
-  height: 804px;
+  height: 704px;
   margin-top: 10px;
 }
 .model-services-confirm-modal {
@@ -493,7 +493,7 @@
 }
 .model-services-model-heading h3 {
   position: absolute;
-  top: 10px;
+  top: 6px;
   left: 0;
   font-weight: 400;
   color: var(--muted-foreground);
@@ -638,7 +638,7 @@
   margin-bottom: 10px;
 }
 .model-services-catalog > .model-services-custom-tile {
-  height: 56px;
+  height: 44px;
   width: 298px;
   max-width: 100%;
   border: 1px solid var(--border);
@@ -772,13 +772,6 @@
   background: var(--secondary);
   border-color: transparent;
 }
-.model-services-model-fields::-webkit-scrollbar {
-  width: 4px;
-}
-.model-services-model-fields::-webkit-scrollbar-thumb {
-  background: var(--secondary);
-  border-radius: 2px;
-}
 
 .model-services-delete > h2 {
   font-size: var(--text-ui-lg);
@@ -801,11 +794,6 @@
   min-height: 32px;
 }
 
-.model-services-catalog > .model-services-template-tile {
-  margin-top: 8px;
-  flex-shrink: 0;
-}
-
 .model-services-help-label .model-services-capability-help {
   width: 14px;
   height: 14px;
@@ -817,4 +805,345 @@
 .model-services-capability-help > svg {
   width: 14px;
   height: 14px;
+}
+
+/* Pencil C10-C16 and A13: each settings region owns an overlay ScrollArea. */
+.model-services-navigation-scroll {
+  width: 268px;
+  flex-shrink: 0;
+  border-radius: 12px 0 0 12px;
+  background: var(--sidebar);
+}
+.model-services-navigation {
+  width: 100%;
+  min-height: 100%;
+  overflow: visible;
+}
+.model-services-content-scroll {
+  flex: 1;
+  min-width: 0;
+}
+.model-services-content {
+  overflow: visible;
+}
+.model-services-providers-scroll {
+  width: 224px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+}
+.model-services-providers {
+  width: 100%;
+  overflow: visible;
+  border: 0;
+  padding: 12px 6px;
+  gap: 6px;
+}
+.model-services-providers > button {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px;
+}
+.model-services-details-scroll {
+  flex: 1;
+  min-width: 0;
+}
+.model-services-details {
+  overflow: visible;
+}
+.model-services [data-slot="scroll-area-viewport"] > div,
+.model-services-modal [data-slot="scroll-area-viewport"] > div {
+  display: block !important;
+  min-width: 100%;
+}
+.model-services-toolbar > button {
+  height: 28px;
+  min-height: 28px;
+}
+.model-services-provider-form > div:has(> label[for]) {
+  height: 58px;
+}
+.model-services-provider-form input {
+  height: 28px;
+}
+.model-services-provider-form [data-state] {
+  min-height: 30px;
+}
+.model-services-provider-form > .relative > p {
+  margin-bottom: 1px;
+}
+.model-services-provider-form > div:has(> label[for]) {
+  gap: 1px;
+}
+.model-services-model-heading {
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+.model-services-model-heading > button {
+  height: 28px;
+  min-height: 28px;
+}
+.model-services-catalog-heading {
+  margin-bottom: 16px;
+}
+.model-services-catalog > p {
+  margin-bottom: 6px;
+}
+.model-services-model-modal > div {
+  padding: 0;
+}
+.model-services-model-form {
+  gap: 0;
+}
+.model-services-model-header {
+  padding: 16px 20px;
+  min-height: 82px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.model-services-model-header h2 {
+  padding-right: 32px;
+  line-height: 27px;
+}
+.model-services-close {
+  right: 16px;
+  top: 12px;
+}
+.model-services-fields-scroll {
+  flex: 1;
+  min-height: 0;
+}
+.model-services-model-fields {
+  overflow: visible;
+  display: flex;
+  padding: 20px;
+  gap: 16px;
+}
+.model-services-model-fields > section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.model-services-model-fields h3 {
+  font-weight: 400;
+}
+.model-services-model-fields input {
+  height: 34px;
+}
+.model-services-model-fields [data-state="idle"],
+.model-services-model-fields [data-state="focused"] {
+  min-height: 36px;
+}
+.model-services-model-fields label {
+  font-size: var(--text-ui-sm);
+  line-height: 18px;
+}
+.model-services-basic-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.model-services-reasoning-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 2.3fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+.model-services-reasoning-columns > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.model-services-reasoning [role="radiogroup"] {
+  gap: 6px;
+}
+.model-services-reasoning [role="radiogroup"] > label {
+  gap: 4px;
+}
+.model-services-reasoning [role="radiogroup"] > label > span {
+  font-size: var(--text-ui-sm);
+}
+.model-services-chips {
+  gap: 6px;
+}
+.model-services-chips > label {
+  padding: 0 8px;
+  height: 28px;
+  gap: 4px;
+  min-width: 0 !important;
+  width: auto !important;
+}
+.model-services-chips > label > span {
+  font-size: var(--text-ui-sm);
+}
+.model-services-chips [role="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+.model-services-multimodal > .model-services-help-label {
+  font-size: var(--text-ui-sm);
+  color: var(--muted-foreground);
+  margin-bottom: -6px;
+}
+.model-services-advanced-shell {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+.model-services-advanced-toggle {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0;
+  min-height: 40px;
+}
+.model-services-advanced-toggle > span {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+.model-services-advanced {
+  gap: 12px;
+  margin-top: 16px;
+}
+.model-services-advanced[hidden] {
+  display: none;
+}
+.model-services-mapping {
+  margin-top: 0;
+}
+.model-services-modal-footer {
+  padding: 12px 20px;
+  gap: 8px;
+  min-height: 60px;
+}
+.model-services-modal-footer > button:first-child {
+  margin-right: auto;
+}
+.model-services-modal-footer > button:nth-child(2) {
+  width: 68px;
+}
+.model-services-modal-footer > button:last-child {
+  min-width: 128px;
+}
+.model-services-modal-footer > button {
+  height: 36px;
+  min-height: 36px;
+}
+.model-services-provider-form [role="switch"] {
+  order: 6;
+}
+@media (max-width: 1000px) {
+  .model-services-navigation-scroll {
+    width: 200px;
+  }
+  .model-services-providers-scroll {
+    width: 180px;
+  }
+  .model-services-header {
+    height: 136px;
+  }
+}
+@media (max-width: 640px) {
+  .model-services-navigation-scroll {
+    width: 52px;
+  }
+  .model-services-providers-scroll {
+    width: 100%;
+    height: 120px;
+    max-height: 120px;
+    flex-shrink: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .model-services-providers {
+    max-height: none;
+    border: 0;
+  }
+  .model-services-details-scroll {
+    flex: none;
+    overflow: visible;
+  }
+  .model-services-details-scroll [data-slot="scroll-area-viewport"] {
+    overflow: visible !important;
+  }
+  .model-services-basic-columns,
+  .model-services-reasoning-columns {
+    grid-template-columns: 1fr;
+  }
+  .model-services-model-fields {
+    padding: 16px;
+  }
+  .model-services-modal-footer {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+}
+
+.model-services-reasoning [role="radiogroup"] > label {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.model-services-reasoning [role="radiogroup"] > label:has([aria-checked="true"]) {
+  background: var(--secondary);
+}
+.model-services-multimodal > .model-services-help-label {
+  line-height: 18px;
+}
+.model-services-mapping-scroll {
+  height: 64px;
+}
+.model-services-mapping-scroll textarea {
+  height: auto;
+  min-height: 64px;
+  overflow: hidden;
+}
+
+.model-services-advanced-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.model-services-option-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.model-services-price-columns {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 640px) {
+  .model-services-advanced-columns,
+  .model-services-price-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.model-services-model-fields div:has(> label[for]) {
+  gap: 6px;
+}
+.model-services-modal-footer {
+  justify-content: flex-end;
+}
+.model-services-modal-footer > .model-services-model-cancel {
+  margin-right: 0;
+  width: 68px;
+  padding: 0 12px;
+  color: var(--foreground);
+  background: var(--secondary);
+}
+.model-services-modal-footer > .model-services-model-save {
+  width: 128px;
+  color: var(--primary-foreground);
+  background: var(--primary);
 }
