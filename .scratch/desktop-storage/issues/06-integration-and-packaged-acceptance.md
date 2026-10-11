@@ -4,7 +4,7 @@
 
 Blocked by: 02, 03, 04, 05
 
-Status: claimed
+Status: resolved
 
 - [x] 集成 01–05，附件原生消息块与外置文件适配不丢图片，文件历史与分支引用、失败写入/清理同步 owning modules
 - [x] 隔离 HOME/TUI 配置和 appData，验证双端同项目独立 Session、信任/凭证/skills/MCP，桌面不写旧用户目录
@@ -38,3 +38,11 @@ Final genuine packaged acceptance (2026-10-11 after human unlock): clean signed 
 ## Corrective follow-up
 
 2026-10-11 用户报告每次启动出现钥匙串/密码授权窗口，以及设置页未严格还原 Pencil。重新打开 03、05、06 与 spec，分别由新的子代理诊断启动凭证访问并对照实际画板修正设置布局/样式；历史验收记录保留，最终关闭需完成本轮回归与原生/浏览器验收。
+
+纠正本地验收 `bf1c434f`：root check:dev 通过；server/资源清理 24 pass（3.55s）；desktop 首次 96 pass/1 fail（10.77s）及因果诊断按 spec 原样记录。七行就绪修复后相关 25 pass（9.10s），一次有因的根 desktop 复验 25 文件/97 pass（10.49s）。两轮新的独立 Standards/Spec 评审通过。运行包来自 clean `6c34274c`，与当前根版本仅测试差异、生产/构建输入相同；初步打包因主代理过早放行在布局诊断前完成并短暂隔离启动，随后正常退出，未保存任何凭据，不计最终验收。布局门禁与新复评现已通过，此阶段真实最终原生验收仍在进行，保持 claimed。
+
+纠正复验关闭（2026-10-11）：运行代码 clean `6c34274c`、最终测试修复 `bf1c434f`，两者仅七行测试差异，生产/构建输入相同。最终独立 Standards/Spec 及测试修复增量复评均通过，根 check:dev 和 desktop 97 pass（10.49s）通过；原 96/1 与更早 Bun aggregate 环境失败保持各自记录。真实签名 arm64 包两次保存四种密文目的后正常启动，历史/目录/输出分页无 OS 授权提示、配置 guard 请求为 0；显式执行后真实解密的配置请求增至 3，保存供应商认证成功。历史同一 Session 两次真实继续发送完成，显式选择高推理后请求及持久化 delta 为 high；重选模型的默认等级与历史恢复区别记录。Cancel Enter/Space 保留供应商和凭据，Confirm Enter 删除；模板/能力 Tooltip、离线字体、Light/Dark/窄屏与最终 clean console 通过。应用/第二实例正常退出、测试 API/guard 退出、无遗留监听、SQLite 完整性 ok、零凭据、隔离数据与 helper 密文清理完成。
+
+验收限制如实保留：没有出现 OS 授权提示，不声称验收其取消或锁定钥匙串；OAuth 密文保存及只读启动已验证，未执行 OAuth 刷新。初次 helper 缺少 userData 隔离可能初始化默认 Chromium 缓存，无法确认具体写入；未打开业务配置/Session、未读取真实凭据，已有 profile 保留，后续 helper 与所有生产验收均显式隔离。外部 corrective-native-accepted.md、settings-fix/design-qa.md、review-fix/verification.md 与独立评审/诊断报告保留实际证据。
+
+ADR Coverage 对照最终代码/规格与独立评审复核完成：ADR-0035 的展示/执行解密边界、只读 mutex 观察与资源归属已同步，ADR-0024/0019/0034/0029 及原输出/文件决定继续有效；局部设置样式和测试就绪修复不引入新架构决定。03/05/06 与 spec 在同一变更中 resolved；最终推送后的 CI 待观察，不表示已合并。

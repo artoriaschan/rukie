@@ -4,7 +4,7 @@
 
 Blocked by: 01
 
-Status: claimed
+Status: resolved
 
 - [x] app.sqlite 事务管理项目/置顶/偏好/配置/供应商/模型/能力缓存；Session 索引可从已提交元数据核对，建库后登记，异常协调不恢复执行
 - [x] main safeStorage + 受限 preload 和私有 sidecar 通道；API Key、完整敏感 OAuth state/client_secret 与 MCP 认证 header 均加密，SQLite 只存密文，脱敏列表，保留/替换/删除凭证，认证不读取环境 Key
@@ -40,3 +40,7 @@ Final closure: integrated implementation, independent review and applicable loca
 ## Corrective follow-up
 
 2026-10-11 用户报告每次启动出现钥匙串/密码授权窗口，以及设置页未严格还原 Pencil。重新打开 03、05、06 与 spec，分别由新的子代理诊断启动凭证访问并对照实际画板修正设置布局/样式；历史验收记录保留，最终关闭需完成本轮回归与原生/浏览器验收。
+
+纠正实现 `402fbe5a`：非敏感展示设置用于模型目录，未加载历史通过已提交 snapshot 读取；显式执行才加载需解密的配置。只读 busy 探测立即回滚，不打开 Harness、不写 Session、不取得 lease。公开 server 回归先复现目录读取触发秘密解密，再验证目录/历史零解密及显式执行仍使用真实配置；thinking 与当前默认 permission 展示保持。ADR-0035 已同步此边界，Core/server 与 UI 消费者一起更新。新独立 Standards/Spec 复评通过；最终原生证明归 06，完成该验收前保持 claimed。
+
+本轮实现、独立评审与适用本地验证完成；真实签名包纠正验收及限制见 [06](06-integration-and-packaged-acceptance.md)。ADR Coverage 对照最终实现和 spec 复核完成，与 06/spec 在同一变更中 resolved；最终推送后的 CI 待观察，PR 等待用户评审，未合并。

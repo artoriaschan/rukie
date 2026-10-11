@@ -4,7 +4,7 @@
 
 Blocked by: 03
 
-Status: claimed
+Status: resolved
 
 - [x] 读取 rukie.pen M17、C10–C17、P01–P08，记录流程和字段映射；先核对智能配置、高级输入/能力、推理等级与映射合同，缺口显式提出不假装支持
 - [x] 按原画板实现总览/目录/新供应商/地址与协议/密钥/添加编辑模型/模型行连接验证、删除与启用/重命名/删除确认；遵守当前 DESIGN.md 和组件来源，保持聊天布局
@@ -33,3 +33,7 @@ Final closure: integrated implementation, independent review and applicable loca
 ## Corrective follow-up
 
 2026-10-11 用户报告每次启动出现钥匙串/密码授权窗口，以及设置页未严格还原 Pencil。重新打开 03、05、06 与 spec，分别由新的子代理诊断启动凭证访问并对照实际画板修正设置布局/样式；历史验收记录保留，最终关闭需完成本轮回归与原生/浏览器验收。
+
+纠正实现 `03fe8f40` 与统一评审修复 `6c34274c`：P01–P08 对照源画板恢复 880px 面板、224px rail、32px 控件、672×804 模型弹窗与 448×180 删除弹窗，设置范围使用源色板/Noto Sans SC/JetBrains Mono，离线字体含许可证；不改变聊天布局/字体。全部受支持模板重新可选，unsupported 能力关联说明并通过可聚焦 beUI Tooltip 查看；取消 Enter/Space 保留配置与凭据，确认 Enter 仍删除。真实浏览器逐图、Light/Dark、420px、keyboard/save/cancel、console/network 通过；最终 UI browser 文件 9 pass，新 Standards/Spec 独立复评通过。最终根 desktop 97 pass，真实签名包的当前运行代码验收归 06，完成该验收前保持 claimed。
+
+本轮实现、独立评审与适用本地验证完成；真实签名包纠正验收及限制见 [06](06-integration-and-packaged-acceptance.md)。ADR Coverage 对照最终实现和 spec 复核完成，与 06/spec 在同一变更中 resolved；最终推送后的 CI 待观察，PR 等待用户评审，未合并。
