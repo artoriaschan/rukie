@@ -144,9 +144,23 @@ export function createDesktopStore() {
             )
             .reduce((total, category) => total + category.tokens, 0),
       };
-    else if (message.type === "snapshot")
-      next = { ...previous, snapshot: message, running: Boolean(message.run) };
-    else
+    else if (message.type === "snapshot") {
+      // Persisted thinking is independent of an execution owner. Desktop history also
+      // supplies the current nonsecret permission default, not a historical permission fact.
+      const thinkingLevel = THINKING_LEVELS.find(
+        (level) => record(message.agent) && level === message.agent.thinkingLevel,
+      );
+      const permissionMode = PERMISSION_MODES.find(
+        (mode) => record(input) && mode === input.permissionMode,
+      );
+      next = {
+        ...previous,
+        snapshot: message,
+        running: Boolean(message.run),
+        ...(thinkingLevel !== undefined && { thinkingLevel }),
+        ...(permissionMode !== undefined && { permissionMode }),
+      };
+    } else
       next = {
         ...previous,
         ...(message.type === "run_start"

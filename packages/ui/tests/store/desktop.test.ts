@@ -110,6 +110,29 @@ test("model and permission presentation follow server facts, including reconnect
   });
 });
 
+test("cold history reads validated thinking and permission presentation without a live Session", () => {
+  const store = createDesktopStore();
+  const snapshot = {
+    type: "snapshot",
+    sessionId: "cold",
+    messages: [],
+    compactions: [],
+    model: "test/script",
+    agent: { thinkingLevel: "high" },
+    permissionMode: "full-access",
+  };
+  store.receive(snapshot);
+  expect(store.getState().views.cold).toMatchObject({
+    thinkingLevel: "high",
+    permissionMode: "full-access",
+  });
+  store.receive({ ...snapshot, agent: { thinkingLevel: "invalid" }, permissionMode: "invalid" });
+  expect(store.getState().views.cold).toMatchObject({
+    thinkingLevel: "high",
+    permissionMode: "full-access",
+  });
+});
+
 test("model catalogs reject malformed capabilities at the wire boundary", () => {
   const store = createDesktopStore();
   expect(() => store.setModels([{ spec: "test/script", authenticated: true }])).toThrow(

@@ -30,7 +30,7 @@ Electron main 确定应用专属数据根，生产使用 `app.getPath("userData"
 
 Bun sidecar 是业务数据库的唯一写入进程，Electron main 拥有应用启动与 safeStorage，renderer 只调用受限接口。Core 保留执行与存储能力，server 组合桌面配置及 SQLite adapters；不在 server 重写 Harness。使用锁定的 pi-durable 便携 SqliteDatabase 接口适配 `bun:sqlite`，验证事务排队、回滚和关闭；不能假定 Node adapter 在 Bun 中具备相同契约。
 
-同一 Session 保留跨进程单写者保证，sidecar 重启或第二实例不能重复取得执行权；WAL 本身不代表执行者独占。create、resume、list、busy 时的只读 snapshot、子代理、恢复和清理均走选定存储实现。只读路径仅观察已提交一致状态，不取得执行 lease、不修复存储、不启动任务、不执行 schema migration；不能直接用会迁移数据库的 Storage.open 作为只读入口。现有 JSONL 专用读入口必须一起调整。
+同一 Session 保留跨进程单写者保证，sidecar 重启或第二实例不能重复取得执行权；WAL 本身不代表执行者独占。create、resume、list、busy 时的只读 snapshot、子代理、恢复和清理均走选定存储实现。启动时的模型目录和历史订阅只读取展示所需的非敏感配置与已提交快照，不解密 Hooks、MCP 或供应商凭证；已打开 Session 保持实时订阅，用户明确执行命令才打开未加载的 Session。历史展示的 busy 状态通过独立 host mutex 的即时事务探测并立即回滚，不写数据库或创建 Session；这是当时的占用观察，执行命令仍须重新获得 lease。只读路径仅观察已提交一致状态，不取得执行 lease、不修复存储、不启动任务、不执行 schema migration；不能直接用会迁移数据库的 Storage.open 作为只读入口。现有 JSONL 专用读入口必须一起调整。
 
 ### 配置与凭证
 
