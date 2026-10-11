@@ -1179,3 +1179,123 @@ test("model default reasoning is selectable, saved and restricted to supported l
     await screen.unmount();
   }
 });
+
+test("API Key reveals saved credentials only on request and toggles compact masking without hover effects", async () => {
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  let reads = 0;
+  const services = {
+    list: async () => [
+      {
+        id: "local",
+        name: "Local",
+        api: "openai-completions" as const,
+        baseUrl: "https://example.com",
+        models: [],
+        hasCredential: true,
+      },
+    ],
+    save: async (input: import("@rukie/shared").ModelServiceSave) => {
+      saved.push(input);
+    },
+    delete: async () => {},
+    revealKey: async () => {
+      reads++;
+      return "fixture-key-only";
+    },
+  };
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+    </UiLocaleProvider>,
+  );
+  try {
+    const input = screen.getByLabelText("API Key");
+    await expect.element(input).toBeVisible();
+    expect(reads).toBe(0);
+    await screen.getByRole("button", { name: "Show API Key", exact: true }).click();
+    await expect.element(input).toHaveValue("fixture-key-only");
+    expect(reads).toBe(1);
+    const hide = screen.getByRole("button", { name: "Hide API Key", exact: true });
+    expect(getComputedStyle(hide.element()).cursor).toBe("pointer");
+    expect(getComputedStyle(hide.element()).transitionDuration).toBe("0s");
+    await hide.click();
+    await expect.element(input).toHaveValue("");
+    expect(input.element().getAttribute("placeholder")).toBe("••••••••");
+    await input.fill("replacement-fixture");
+    await screen.getByRole("button", { name: "Show API Key", exact: true }).click();
+    await expect.element(input).toHaveAttribute("type", "text");
+    expect(reads).toBe(1);
+    await screen.getByRole("button", { name: "Hide API Key", exact: true }).click();
+    await expect.element(input).toHaveAttribute("type", "password");
+    await input.fill("");
+    await screen.getByRole("textbox", { name: "Base URL" }).fill("https://changed.example.com");
+    await screen.getByRole("button", { name: "Show API Key", exact: true }).click();
+    await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+    await expect.poll(() => saved.length).toBe(1);
+    expect(saved[0]!.credential).toEqual({ type: "keep" });
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("API Key ignores cancelled and stale reveals and retries a safe failure", async () => {
+  let resolve: (value: string) => void = () => {};
+  let failure = false;
+  const providers: ModelServiceSummary[] = ["first", "second"].map((id) => ({
+    id,
+    name: id,
+    api: "openai-completions",
+    baseUrl: "https://example.com",
+    models: [],
+    hasCredential: true,
+  }));
+  const services = {
+    list: async () => providers,
+    save: async () => {},
+    delete: async () => {},
+    revealKey: async () => {
+      if (failure) throw new Error("private fixture failure");
+      return new Promise<string>((done) => {
+        resolve = done;
+      });
+    },
+  };
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+    </UiLocaleProvider>,
+  );
+  try {
+    const input = screen.getByLabelText("API Key");
+    await expect.element(input).toBeVisible();
+    const show = () => screen.getByRole("button", { name: "Show API Key", exact: true });
+    await show().click();
+    await screen.getByRole("button", { name: "Hide API Key", exact: true }).click();
+    resolve("cancelled-fixture");
+    await show().click();
+    await screen.getByRole("button", { name: /second/ }).click();
+    resolve("stale-fixture");
+    await expect
+      .element(screen.getByRole("heading", { name: "second", exact: true }))
+      .toBeVisible();
+    await expect.element(input).toHaveValue("");
+    failure = true;
+    await show().click();
+    await expect
+      .element(
+        screen.getByText("Could not reveal the saved key. Retry or reconfigure credentials."),
+      )
+      .toBeVisible();
+    expect(document.body.textContent).not.toContain("private fixture failure");
+    failure = false;
+    await show().click();
+    resolve("retry-fixture");
+    await expect.element(input).toHaveValue("retry-fixture");
+    const hide = screen.getByRole("button", { name: "Hide API Key", exact: true });
+    (hide.element() as HTMLButtonElement).focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(input).toHaveValue("");
+  } finally {
+    await screen.unmount();
+  }
+});

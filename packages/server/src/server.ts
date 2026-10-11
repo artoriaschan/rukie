@@ -668,6 +668,13 @@ export async function startServer(options: ServerOptions) {
             },
             { additionalProperties: false },
           );
+          const RevealKey = Type.Object(
+            {
+              type: Type.Literal("revealKey"),
+              id: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
+            },
+            { additionalProperties: false },
+          );
           const Save = Type.Object(
             {
               type: Type.Literal("save"),
@@ -727,6 +734,11 @@ export async function startServer(options: ServerOptions) {
             if (result.stopReason === "error" || result.stopReason === "aborted")
               return c.json({ error: "connection-failed" }, 409);
             return c.json({});
+          }
+          if (Value.Check(RevealKey, input)) {
+            const provider = (await database.providers()).find((item) => item.id === input.id);
+            if (!provider) return c.json({ error: "unavailable-provider" }, 409);
+            return c.json({ value: (await vault.read(`provider:${input.id}`)) ?? null });
           }
           if (Value.Check(List, input)) return c.json(await database.providers());
           if (Value.Check(Delete, input)) {

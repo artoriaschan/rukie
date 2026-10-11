@@ -6,6 +6,8 @@ export interface DesktopHost {
   revealPath(path: string): Promise<void>;
   openInTerminal(path: string): Promise<void>;
   modelServices?: {
+    /** Explicit user reveal only; never persist or log the returned key. */
+    revealKey?(id: string): Promise<string | undefined>;
     list(): Promise<ModelServiceSummary[]>;
     save(input: ModelServiceSave): Promise<void>;
     delete(id: string): Promise<void>;

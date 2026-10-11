@@ -36,7 +36,7 @@ Bun sidecar 是业务数据库的唯一写入进程，Electron main 拥有应用
 
 供应商认证只读取桌面凭证库，不自动读取终端 API Key 环境变量。工具子进程保留正常系统环境，不自动注入桌面凭证；这不承诺工具无法访问其权限允许的本机环境或文件。桌面环境变量认证与工具进程环境是两项不同的契约。
 
-API Key、OAuth token、OAuth client_secret 及持久化的授权临时秘密（如 codeVerifier），以及 MCP 配置中的 Authorization/header 认证秘密均经 Electron main 的 safeStorage 加密，sidecar 只持久化密文。认证需要明文时通过私有、受限的 main/sidecar 通道按凭证身份提供给指定执行用途，不暴露任意解密接口给 renderer，不通过会话 WebSocket、日志或模型上下文传递凭证。renderer 录入的新密钥经受信任 preload IPC 交给 main；列表仅返回脱敏状态，编辑可保留原密钥或替换，不能读取原密钥明文。
+API Key、OAuth token、OAuth client_secret 及持久化的授权临时秘密（如 codeVerifier），以及 MCP 配置中的 Authorization/header 认证秘密均经 Electron main 的 safeStorage 加密，sidecar 只持久化密文。认证需要明文时通过私有、受限的 main/sidecar 通道按凭证身份提供给指定执行用途，不暴露任意解密接口给 renderer，不通过会话 WebSocket、日志或模型上下文传递凭证。renderer 录入的新密钥经受信任 preload IPC 交给 main；列表仅返回脱敏状态，编辑可保留原密钥或替换。用户在供应商详情主动点击显示时，renderer 经受信任主 frame IPC 请求该供应商的 API Key；main 验证精确供应商身份后，经独立 management token 通道读取 vault。该受限展示不开放任意凭证解密，不读取 OAuth/MCP/hook 秘密；普通启动和列表不解密。明文仅在当前详情的临时内存中展示，隐藏、切换供应商、保存或退出时清除，并丢弃已取消或过期请求的返回值；展示值不自动转为替换凭证。
 
 加密不可用、系统授权被取消或解密失败时，不明文落盘，也不回退到终端凭证。保留现有密文，失败返回可重试/重新配置的状态；删除与替换在数据库事务中保持配置和凭证一致。macOS 的 safeStorage 可能显式访问钥匙串，不把 mock keychain 作为生产验收。跨机器复制后凭证可能需要重新录入。
 

@@ -136,6 +136,21 @@ export async function startDesktop(options: DesktopOptions) {
         throw new Error("Invalid model service");
       await manage({ type: "test", id, modelId });
     });
+    ipcMain.handle("rukie:modelServices:revealKey", async (event, id: unknown) => {
+      authorize(event);
+      if (typeof id !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(id))
+        throw new Error("Invalid provider identity");
+      const result: unknown = await manage({ type: "revealKey", id });
+      if (
+        typeof result !== "object" ||
+        result === null ||
+        !("value" in result) ||
+        (result.value !== null && typeof result.value !== "string")
+      )
+        throw new Error("Invalid credential response");
+      authorize(event);
+      return result.value ?? undefined;
+    });
     ipcMain.handle("rukie:modelServices:list", async (event) => {
       authorize(event);
       return manage({ type: "list" });

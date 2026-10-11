@@ -1,6 +1,6 @@
 # 19: API Key 遮罩与显示切换
 
-Status: ready-for-agent
+Status: claimed
 
 Blocked by: 18
 
@@ -13,3 +13,11 @@ Blocked by: 18
 - [ ] 新 Spec/Standards 两轴复核、fresh merger 集成，ticket/spec 同步关闭
 
 不启动真实 Electron/Keychain，不跑包级/全量/CI。若触及 IPC/已保存秘密读取，应先查既有 credential 边界并遵守生产授权/来源验证，不建立明文持久副本或直接绕过 sidecar/main。
+
+## 实施与验证
+
+用户确认已保存的 Key 也可主动显示；同步 ADR-0035 的原只写合同，展示仅限指定供应商 API Key 的受信任 IPC/私有 management/vault 通道。普通启动和列表不解密，OAuth/MCP/hook 秘密不可读取。列表遮罩压缩到 8 点并仅 password 使用现有 monospace 字体；右侧 beUI 按钮不响应 hover 颜色/背景/动画，保留 pointer、焦点和键盘切换。显示状态与输入草稿分开，隐藏、切换、保存、退出及过期请求清除，不自动写回明文。
+
+公开 Chromium 回归先复现保存 Key 展示为空，修复后 2 个 focused 案例通过（1.57s）；Node/mock main/preload 2 案例通过（343ms），私有管理 HTTP 1 案例通过（18.77ms / 246ms），ui/desktop/server 类型、修改文件 lint、文档与测试策略通过。一次 agent-browser Light/Dark/420px 验收，假 Key 展示/隐藏、无 hover 动效、pointer 光标和无溢出通过；最终 8 点宽 67.43px、字段高 30px 保持。浏览器、Vite 和临时 fixture 均清理。未启动 Electron/Keychain，未跑包级、全量或 CI。证据由本票单一 owner 保存，审查和集成复用。
+
+两轴 fresh review：Spec 仅原规格只写句子矛盾，已同步；Standards 仅新增 server fixture setup 的资源归属，已使用 ownResources acquire 与幂等关闭。ADR coverage：精确显示范围由用户确认并同步既有 ADR-0035，无其他架构决定变更。

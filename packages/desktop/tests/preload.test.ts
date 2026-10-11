@@ -6,7 +6,7 @@ const electron = vi.hoisted(() => ({
 vi.mock("electron", () => electron);
 
 import type { DesktopHost } from "@rukie/ui";
-test("preload exposes fixed native methods and write-only model services with fixed IPC channels", async () => {
+test("preload exposes fixed native methods and explicit credential reveal with fixed IPC channels", async () => {
   await import("../src/preload.ts");
   expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledTimes(1);
   const call = electron.contextBridge.exposeInMainWorld.mock.calls[0]!;
@@ -26,6 +26,7 @@ test("preload exposes fixed native methods and write-only model services with fi
   expect(Object.keys(host.modelServices!).sort()).toEqual([
     "delete",
     "list",
+    "revealKey",
     "save",
     "templates",
     "test",
@@ -33,6 +34,7 @@ test("preload exposes fixed native methods and write-only model services with fi
   await host.modelServices!.templates!();
   await host.modelServices!.test!("local", "m");
   await host.modelServices!.list();
+  await host.modelServices!.revealKey!("local");
   await host.modelServices!.delete("local");
   expect(electron.ipcRenderer.invoke.mock.calls).toEqual([
     ["rukie:getConnection"],
@@ -42,6 +44,7 @@ test("preload exposes fixed native methods and write-only model services with fi
     ["rukie:modelServices:templates"],
     ["rukie:modelServices:test", "local", "m"],
     ["rukie:modelServices:list"],
+    ["rukie:modelServices:revealKey", "local"],
     ["rukie:modelServices:delete", "local"],
   ]);
 });

@@ -1248,3 +1248,28 @@
 .model-services-navigation {
   border-right-color: var(--layout-divider);
 }
+
+/* Credential visibility keeps its icon steady; keyboard focus remains visible. */
+.model-services-key-toggle,
+.model-services-key-toggle:hover {
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted-foreground);
+  transition: none;
+}
+.model-services-key-toggle:disabled {
+  cursor: not-allowed;
+  pointer-events: auto;
+}
+
+.model-services-key-input {
+  cursor: text;
+  letter-spacing: normal;
+}
+.model-services-key-input:disabled {
+  cursor: not-allowed;
+}
+
+.model-services-key-input[type="password"] {
+  font-family: var(--font-mono);
+}

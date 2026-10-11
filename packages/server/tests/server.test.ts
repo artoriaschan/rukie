@@ -1429,3 +1429,74 @@ test("desktop output wire reads committed bytes after server restart without ope
     await rm(homeDir, { recursive: true, force: true });
   }
 });
+
+test("explicit private credential reveal is provider scoped and catalog access never decrypts", async () => {
+  const owner = ownResources();
+  const homeDir = await owner.acquire(
+    () => mkdtemp(join(tmpdir(), "rukie-reveal-wire-")),
+    (directory) => rm(directory, { recursive: true, force: true }),
+  );
+  let reads = 0;
+  let fail = false;
+  const server = await owner.acquire(
+    () =>
+      startServer({
+        homeDir,
+        managementToken: "fixture-management",
+        onHandshake: () => {},
+        encryption: {
+          encrypt: async (_id, value) => value,
+          decrypt: async (id, value) => {
+            reads++;
+            expect(id).toBe("provider:local");
+            if (fail) throw new Error("sensitive failure");
+            return value === "ciphertext-fixture" ? "fixture-key-only" : "";
+          },
+        },
+      }),
+    (resource) => resource.close(),
+  );
+  const manage = (input: unknown, token = "fixture-management", origin?: string) =>
+    fetch(`http://127.0.0.1:${server.port}/private/model-services`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, ...(origin ? { origin } : {}) },
+      body: JSON.stringify(input),
+    });
+  try {
+    await manage({
+      type: "save",
+      provider: {
+        id: "local",
+        name: "Local",
+        api: "openai-completions",
+        baseUrl: "https://example.com",
+        models: [],
+      },
+      credential: { type: "replace", ciphertext: "ciphertext-fixture" },
+    });
+    const list = await (await manage({ type: "list" })).text();
+    expect(list).not.toContain("ciphertext-fixture");
+    expect(reads).toBe(0);
+    expect((await manage({ type: "revealKey", id: "local" }, server.token)).status).toBe(403);
+    expect(
+      (await manage({ type: "revealKey", id: "local" }, "fixture-management", "app://rukie"))
+        .status,
+    ).toBe(403);
+    expect((await manage({ type: "revealKey", id: "oauth:other" })).status).toBe(400);
+    expect((await manage({ type: "revealKey", id: "missing" })).status).toBe(409);
+    expect(reads).toBe(0);
+    expect(await (await manage({ type: "revealKey", id: "local" })).json()).toEqual({
+      value: "fixture-key-only",
+    });
+    fail = true;
+    const failed = await manage({ type: "revealKey", id: "local" });
+    expect(failed.status).toBe(409);
+    expect(await failed.text()).not.toContain("sensitive failure");
+    fail = false;
+    expect(await (await manage({ type: "revealKey", id: "local" })).json()).toEqual({
+      value: "fixture-key-only",
+    });
+  } finally {
+    await owner.close();
+  }
+});

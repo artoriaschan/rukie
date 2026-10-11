@@ -122,6 +122,21 @@ export function ModelServices({
   const [advanced, setAdvanced] = useState(false);
   const [defaultReasoningOpen, setDefaultReasoningOpen] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [revealedKey, setRevealedKey] = useState("");
+  const [revealing, setRevealing] = useState(false);
+  const revealRequest = useRef(0);
+  const clearRevealedKey = () => {
+    revealRequest.current++;
+    setRevealedKey("");
+    setShowKey(false);
+    setRevealing(false);
+  };
+  useEffect(
+    () => () => {
+      revealRequest.current++;
+    },
+    [],
+  );
   const [rename, setRename] = useState("");
   const supportedLevels = modelServiceThinkingLevels(model);
   const selected = providers.find((provider) => provider.id === draft?.id);
@@ -137,6 +152,7 @@ export function ModelServices({
       JSON.stringify(draft.models) !== JSON.stringify(selected.models)),
   );
   const choose = (provider: ModelService) => {
+    clearRevealedKey();
     setDraft(
       structuredClone({
         id: provider.id,
@@ -151,6 +167,35 @@ export function ModelServices({
     setError("");
     setStatus("");
     setCatalog(false);
+  };
+  const toggleKey = async () => {
+    if (showKey || revealing) {
+      clearRevealedKey();
+      return;
+    }
+    if (key || removeKey || !selected?.hasCredential) {
+      setShowKey(true);
+      return;
+    }
+    const request = ++revealRequest.current;
+    setRevealing(true);
+    setError("");
+    try {
+      if (!services.revealKey) throw new Error("Unavailable host capability");
+      const value = await services.revealKey(selected.id);
+      if (request !== revealRequest.current) return;
+      if (!value) throw new Error("Credential unavailable");
+      setRevealedKey(value);
+      setShowKey(true);
+    } catch {
+      if (request === revealRequest.current) {
+        setRevealedKey("");
+        setShowKey(false);
+        setError(t("services.keyRevealFailure"));
+      }
+    } finally {
+      if (request === revealRequest.current) setRevealing(false);
+    }
   };
   const load = async () => {
     try {
@@ -167,6 +212,7 @@ export function ModelServices({
   }, [services]);
   const persist = async (provider: ModelService) => {
     if (pending) return false;
+    clearRevealedKey();
     const credential = removeKey
       ? { type: "delete" as const }
       : key.trim()
@@ -219,6 +265,7 @@ export function ModelServices({
           models: provider.models,
         }),
       );
+      clearRevealedKey();
       setKey("");
       setRemoveKey(false);
       try {
@@ -560,7 +607,10 @@ export function ModelServices({
                               {selected?.hasCredential ? (
                                 <Menu.DropdownMenuCheckboxItem
                                   checked={removeKey}
-                                  onCheckedChange={setRemoveKey}
+                                  onCheckedChange={(checked) => {
+                                    clearRevealedKey();
+                                    setRemoveKey(checked);
+                                  }}
                                 >
                                   {t("services.keyDelete")}
                                 </Menu.DropdownMenuCheckboxItem>
@@ -618,25 +668,34 @@ export function ModelServices({
                       <Input
                         disabled={pending}
                         label={t("services.key")}
+                        classNames={{ input: "model-services-key-input" }}
                         type={showKey ? "text" : "password"}
                         autoComplete="off"
-                        value={key}
+                        value={showKey && revealedKey ? revealedKey : key}
                         placeholder={
-                          selected?.hasCredential
-                            ? "••••••••••••••••••••••••••••••••"
-                            : t("services.keyPlaceholder")
+                          selected?.hasCredential ? "••••••••" : t("services.keyPlaceholder")
                         }
                         rightIcon={
                           <Button
                             variant="ghost"
                             size="icon"
-                            aria-label={t("services.showKey")}
-                            onClick={() => setShowKey(!showKey)}
+                            className="model-services-key-toggle"
+                            disabled={pending}
+                            aria-label={t(
+                              showKey || revealing ? "services.hideKey" : "services.showKey",
+                            )}
+                            aria-pressed={showKey}
+                            onClick={() => void toggleKey()}
                           >
                             {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                           </Button>
                         }
-                        onChange={setKey}
+                        onChange={(value) => {
+                          revealRequest.current++;
+                          setRevealedKey("");
+                          setRevealing(false);
+                          setKey(value);
+                        }}
                       />
                       {selected?.hasCredential ? (
                         <>
@@ -1122,6 +1181,7 @@ export function ModelServices({
                       } catch {
                         setError(t("services.refreshFailure"));
                       }
+                      clearRevealedKey();
                       setKey("");
                     })
                     .catch(() => setError(t("services.saveFailure")))

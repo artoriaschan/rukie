@@ -119,6 +119,43 @@ test("trusted credential save passes only ciphertext privately and cancellation 
   }
 });
 
+test("credential reveal authorizes exact provider and rejects untrusted frames before transport", async () => {
+  const owner = await startDesktop({
+    dataRoot: "/tmp/rukie-desktop-test-data",
+    rendererDirectory: "/tmp",
+    preload: "/tmp/preload.cjs",
+    sidecar: {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./helpers/sidecar.mjs", import.meta.url))],
+    },
+  });
+  const fetching = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValue(new Response(JSON.stringify({ value: "fixture-only" }), { status: 200 }));
+  const event = {
+    sender: electron.window.webContents,
+    senderFrame: electron.window.webContents.mainFrame,
+  };
+  try {
+    const reveal = electron.handlers.get("rukie:modelServices:revealKey")!;
+    await expect(
+      reveal({ ...event, senderFrame: { url: "app://rukie/" } }, "local"),
+    ).rejects.toThrow("Untrusted");
+    await expect(reveal(event, "oauth:other")).rejects.toThrow("Invalid provider");
+    expect(fetching).not.toHaveBeenCalled();
+    expect(await reveal(event, "local")).toBe("fixture-only");
+    expect(JSON.parse(String(fetching.mock.calls[0]![1]?.body))).toEqual({
+      type: "revealKey",
+      id: "local",
+    });
+    fetching.mockResolvedValueOnce(new Response("sensitive backend body", { status: 409 }));
+    await expect(reveal(event, "local")).rejects.toThrow("Retry or reconfigure");
+  } finally {
+    fetching.mockRestore();
+    await owner.stop();
+  }
+});
+
 test("startup failure closes native resources", async () => {
   electron.window.loadURL.mockRejectedValueOnce(new Error("cannot load renderer"));
   await expect(
