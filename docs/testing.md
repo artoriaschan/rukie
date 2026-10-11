@@ -56,4 +56,14 @@ Bun 的文件 worker、CI 的四个 shard 和独立测试进程可能并行。�
 
 `packages/ui` 和 `packages/desktop` 用 Vitest，由 Node 执行。ui 的 React DOM 测试使用 Playwright Chromium browser mode，纯 store/client 测试使用 Node；desktop main/preload 使用 Node 环境。ui 的浏览器测试命名为 `*.browser.test.ts(x)`，Node 测试为其他 `*.test.ts`，各自的 include/exclude 由包内 `vitest.config.ts` 定义。Bun 包继续使用 `bun:test`；`check:test-policy` 拒绝跨 runner 导入，根 `bunfig.toml` 排除 ui/desktop，普通、parallel 和 shard 收集都遵循该边界。
 
-本地先执行 `bunx --no -- playwright install --only-shell chromium`，再执行 `bun run test:desktop`；浏览器不在 postinstall 自动下载。PATH 上需要支持 Vitest 的 Node，禁止 `--bun`。缺失浏览器会令测试失败，安装后再运行。`test:desktop` 接入本地 `check`，不接入 `check:dev` 或 GitHub Actions；涉及 ui/desktop 的 PR 交付证据必须附本地结果。Chromium browser mode 验证浏览器 DOM 行为，不能替代打包后 Electron 的冒烟验证。
+本地先执行 `bunx --no -- playwright install --only-shell chromium`，再执行 `bun run test:desktop`；浏览器不在 postinstall 自动下载。PATH 上需要支持 Vitest 的 Node，禁止 `--bun`。缺失浏览器会令测试失败，安装后再运行。`test:desktop` 接入本地 `check`，不接入 `check:dev` 或 GitHub Actions；涉及 ui/desktop 的 PR 交付证据必须附本地结果。Chromium browser mode 验证浏览器 DOM 行为；样式与普通前端交互以浏览器结果验收，原生验收按下文独立授权。
+
+## 原生验收授权边界
+
+样式、布局、字体、主题、响应式和普通前端交互使用 Chromium browser mode 与模拟 DesktopHost 验证，包括 Light/Dark、窄屏、键盘和焦点行为；这些变更不启动真实 Electron、打包应用或原生凭据辅助程序。桌面端适用的本地检查通过即可输出交付结果，无需等待 CI；合并仍遵循根规则的授权和分支检查要求。
+
+普通 `test:desktop` 测试保持 Electron/safeStorage mock 边界，不访问系统钥匙串，不启动真实 Electron。原生验收使用独立的手动入口，不接入默认测试、`check` 或自动代理验收流程；mock 缺少行为时补充显式模拟或报错，不回退到真实加密实现。
+
+只有涉及窗口管理、preload IPC、系统凭据、打包启动等 Electron 原生合同，且现有模拟或浏览器证据无法验证该合同时，才提出真实应用验收。在启动任何真实 Electron 或调用系统钥匙串前，说明待验证合同、应用身份、数据范围、可能的系统授权交互和清理方式，并取得用户对此范围的明确授权；一般实现、修复、跑测试或完成工单的请求不构成原生验收授权。已获得同范围授权时不重复询问；未获授权则交付已完成的本地验证并注明原生合同未验证。
+
+获准后使用正式应用和隔离的 userData/业务数据目录，真实凭据仅由用户明确授权的输入提供。userData 隔离不隔离系统钥匙串；凭据辅助程序不得复用正式应用的钥匙串身份。代理不修改钥匙串 ACL、不删除用户条目，也不要求用户通过“始终允许”消除测试提示。结束后等待应用与所属子进程退出，只清理本次拥有的临时数据；分别记录浏览器、mock 和真实原生结果。
