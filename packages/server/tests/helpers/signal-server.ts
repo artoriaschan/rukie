@@ -6,6 +6,7 @@ const homeDir = process.argv[2]!;
 // Reads a FIFO indefinitely; parent cleanup signals the actual process group, without fixed sleeps.
 await runServer({
   homeDir,
+  dataRoot: `${homeDir}/desktop-data`,
   sessionOptions: {
     ...fakeModel([
       fauxAssistantMessage(

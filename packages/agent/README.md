@@ -8,6 +8,12 @@
 
 `SessionOptions.initializationSignal` 可取消 SessionStart Hook 与打开过程，失败时关闭 observation、撤销注册读者并释放 Hook／连接／存储租约。这个信号只约束初始化，Session 返回后不会取消 Run；原生 Harness 的上下文独立于它。已打开宿主通过 `await session.close()` 保存 pending work 并等待释放；`abort()` 取消当前普通 ownership，`interruptSubagent()` 取消选中的 child。Frontend 的进程信号及输出边界见 [Headless README](../coding-agent/src/headless/README.md) 与 [TUI README](../coding-agent/src/tui/README.md)。
 
+# 用户来源与工具 home
+
+`SessionOptions.dataRoot` 与 `loadSettings`、`listSkills`、`listSessions`、`readSessionSnapshot` 的同名参数选择显式绝对路径的应用数据根；省略时保留终端现有 home 来源。`homeDir` 始终是工具、权限规则和 Hook 工具的 `~/` 展开基准。应用来源不会扫描 home 中 `.rukie`、`.claude`、`.agents`，也不会导入或回退旧文件；项目来源和原有项目信任规则继续生效，信任只从选中用户来源读取。
+
+应用根中的 `settings.json` 拥有权限、hooks、信任与偏好，`mcp.json` 拥有用户 MCP；用户规则位于 `rules/AGENTS.md`，技能和代理定义位于 `skills/`、`agents/`，文件备份位于 `file-history/`；应用根的备份不执行仅按年龄删除的终端清理，以保留持久化历史引用。默认 JSONL store 在所选根的 `durable-sessions/` 下，所有只读与恢复入口使用同一根。应用模型须由调用方显式提供 `model/models`；默认模型解析拒绝终端环境认证，未提供模型来源的桌面目录为空。应用 MCP OAuth 不读取终端凭证，未安装加密凭证存储时保存明确失败，绝不临时写明文文件。后端架构约束见 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)。
+
 # Pending interactions
 
 Permission、Question 和 Plan Review 的 Frontend 请求包含 `identity`：原生 task／conversation 身份和按交互种类区分的稳定 request id，以及当前 callback 的 epoch。OAuth 由原生工具发起时也包含该身份；管理面板发起的登录使用管理操作自身的生命周期。回调必须观察 request signal，及时撤回 UI；Core 自身也限制等待并检查取消，旧回调晚到不能授权恢复后的任务。

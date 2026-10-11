@@ -9,7 +9,8 @@ import {
 } from "electron";
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { userInfo } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { Sidecar, type SidecarOptions } from "./sidecar.ts";
 import { serveAppFile } from "./protocol.ts";
 
@@ -19,14 +20,20 @@ export interface DesktopOptions {
   sidecar: SidecarOptions;
   sidecarEnvironment?: Promise<NodeJS.ProcessEnv>;
   userDataDirectory?: string;
+  /** Required for development and tests; production defaults to userData/data. */
+  dataRoot?: string;
 }
 
 /** Electron owns native operations and child lifetime; Agent Core stays in the sidecar. */
 export async function startDesktop(options: DesktopOptions) {
+  if (options.userDataDirectory) app.setPath("userData", options.userDataDirectory);
+  if (!app.isPackaged && options.dataRoot === undefined)
+    throw new Error("Development desktop requires an explicit isolated dataRoot.");
+  const dataRoot = options.dataRoot ?? join(app.getPath("userData"), "data");
+  if (!isAbsolute(dataRoot)) throw new Error("Desktop dataRoot must be absolute.");
   protocol.registerSchemesAsPrivileged([
     { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } },
   ]);
-  if (options.userDataDirectory) app.setPath("userData", options.userDataDirectory);
   await app.whenReady();
   const window = new BrowserWindow({
     width: 1200,
@@ -51,9 +58,12 @@ export async function startDesktop(options: DesktopOptions) {
   });
   const sidecar = new Sidecar({
     ...options.sidecar,
-    ...(options.sidecarEnvironment && {
-      env: { ...(await options.sidecarEnvironment), ...options.sidecar.env },
-    }),
+    env: {
+      ...(options.sidecarEnvironment ? await options.sidecarEnvironment : process.env),
+      ...options.sidecar.env,
+      RUKIE_DESKTOP_DATA_ROOT: dataRoot,
+      RUKIE_DESKTOP_HOME_DIR: userInfo().homedir,
+    },
     onChange: (state) => {
       options.sidecar.onChange?.(state);
       if (!window.isDestroyed()) window.webContents.send("rukie:connection-change", state);

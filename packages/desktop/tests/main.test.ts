@@ -29,6 +29,7 @@ const electron = vi.hoisted(() => {
       on: vi.fn(),
       quit: vi.fn(),
       getAppPath: vi.fn(() => "/tmp"),
+      getPath: vi.fn(() => "/tmp/electron-user-data"),
       setPath: vi.fn(),
     },
     BrowserWindow: vi.fn(function () {
@@ -45,14 +46,17 @@ const electron = vi.hoisted(() => {
 });
 vi.mock("electron", () => electron);
 import { startDesktop } from "../src/main/desktop.ts";
+import { userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
 beforeEach(() => {
+  electron.app.isPackaged = false;
   electron.handlers.clear();
   electron.events.clear();
   vi.clearAllMocks();
 });
 test("Electron installs app scheme before load and authenticates every native IPC sender", async () => {
   const owner = await startDesktop({
+    dataRoot: "/tmp/rukie-desktop-test-data",
     rendererDirectory: "/tmp",
     preload: "/tmp/preload.cjs",
     sidecar: {
@@ -101,6 +105,7 @@ test("Electron installs app scheme before load and authenticates every native IP
 
 test("closing the window waits for real sidecar exit and rejects further host calls", async () => {
   const owner = await startDesktop({
+    dataRoot: "/tmp/rukie-desktop-test-data",
     rendererDirectory: "/tmp",
     preload: "/tmp/preload.cjs",
     sidecar: {
@@ -128,6 +133,7 @@ test("closing the window waits for real sidecar exit and rejects further host ca
 test("desktop waits for acquired environment before starting the sidecar", async () => {
   const environment = Promise.withResolvers<NodeJS.ProcessEnv>();
   const starting = startDesktop({
+    dataRoot: "/tmp/rukie-desktop-test-data",
     rendererDirectory: "/tmp",
     preload: "/tmp/preload.cjs",
     sidecarEnvironment: environment.promise,
@@ -147,6 +153,52 @@ test("desktop waits for acquired environment before starting the sidecar", async
         senderFrame: electron.window.webContents.mainFrame,
       }),
     ).toEqual({ port: 32123, token: "local-test-value" });
+  } finally {
+    await owner.stop();
+  }
+});
+
+test("development startup requires an explicit isolated application data root", async () => {
+  await expect(
+    startDesktop({
+      rendererDirectory: "/tmp",
+      preload: "/tmp/preload.cjs",
+      sidecar: { command: process.execPath, args: [] },
+    }),
+  ).rejects.toThrow("explicit");
+});
+
+test("packaged startup privately sends userData/data and real home to its sidecar", async () => {
+  electron.app.isPackaged = true;
+  const owner = await startDesktop({
+    rendererDirectory: "/tmp",
+    preload: "/tmp/preload.cjs",
+    sidecar: {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./helpers/sidecar.mjs", import.meta.url)), "--data-root-token"],
+      env: {
+        ...process.env,
+        RUKIE_DESKTOP_DATA_ROOT: "/untrusted-override",
+        RUKIE_DESKTOP_HOME_DIR: "/fake-home",
+      },
+    },
+  });
+  try {
+    const connection = await electron.handlers.get("rukie:getConnection")!({
+      sender: electron.window.webContents,
+      senderFrame: electron.window.webContents.mainFrame,
+    });
+    if (
+      typeof connection !== "object" ||
+      connection === null ||
+      !("token" in connection) ||
+      typeof connection.token !== "string"
+    )
+      throw new Error("Invalid connection");
+    expect(JSON.parse(connection.token)).toEqual({
+      dataRoot: "/tmp/electron-user-data/data",
+      homeDir: userInfo().homedir,
+    });
   } finally {
     await owner.stop();
   }

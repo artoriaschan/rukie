@@ -1,3 +1,4 @@
+import { userDataDirectory } from "../config/paths.ts";
 import type { TranscriptMessage } from "../session/messages.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -53,12 +54,13 @@ export async function collectReminders(options: {
   messages: TranscriptMessage[];
   cwd: string;
   homeDir: string;
+  dataRoot?: string;
   now: Date;
   sources: ReminderSource[];
   /** Environment is a one-time snapshot, never part of compaction reinjection. */
   includeEnvironment?: boolean;
 }): Promise<SystemReminder[]> {
-  const { messages, cwd, homeDir, now } = options;
+  const { messages, cwd, now } = options;
   const latest = latestReminderContents(messages);
   const sources: ReminderSource[] = [];
   const firstRun = !messages.some((message) => message.role === "user");
@@ -74,7 +76,11 @@ export async function collectReminders(options: {
   }
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   sources.push({ source: "date", currentContent: () => `Current date: ${date}` });
-  const userPath = join(homeDir, ".rukie/AGENTS.md");
+  const userPath = join(
+    userDataDirectory(options),
+    ...(options.dataRoot === undefined ? [] : ["rules"]),
+    "AGENTS.md",
+  );
   sources.push({
     source: "user-instructions",
     currentContent: async () => {

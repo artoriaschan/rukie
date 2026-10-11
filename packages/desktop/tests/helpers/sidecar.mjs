@@ -10,11 +10,16 @@ if (!process.argv.includes("--no-handshake"))
   console.log(
     JSON.stringify({
       port: 32123,
-      token: process.argv.includes("--env-token")
-        ? process.env.RUKIE_TEST_PROVIDER_KEY
-        : process.argv.includes("--pid-token")
-          ? String(process.pid)
-          : "test-token",
+      token: process.argv.includes("--data-root-token")
+        ? JSON.stringify({
+            dataRoot: process.env.RUKIE_DESKTOP_DATA_ROOT,
+            homeDir: process.env.RUKIE_DESKTOP_HOME_DIR,
+          })
+        : process.argv.includes("--env-token")
+          ? process.env.RUKIE_TEST_PROVIDER_KEY
+          : process.argv.includes("--pid-token")
+            ? String(process.pid)
+            : "test-token",
     }),
   );
 process.stdin.resume();

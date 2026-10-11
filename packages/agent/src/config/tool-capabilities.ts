@@ -1,3 +1,4 @@
+import { userDataDirectory } from "./paths.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -64,10 +65,10 @@ class CapabilityCache {
   private saving = Promise.resolve();
   private readonly pending = new Map<string, Promise<ProbeRecord>>();
   constructor(
-    homeDir: string,
+    directory: string,
     private readonly warn: (message: string) => void,
   ) {
-    this.path = join(homeDir, ".rukie/model-capabilities.json");
+    this.path = join(directory, "model-capabilities.json");
     this.loaded = this.read();
   }
   private async read() {
@@ -125,11 +126,11 @@ class CapabilityCache {
   }
 }
 const caches = new Map<string, CapabilityCache>();
-function cacheFor(homeDir: string, warn: (message: string) => void) {
-  let cache = caches.get(homeDir);
+function cacheFor(directory: string, warn: (message: string) => void) {
+  let cache = caches.get(directory);
   if (!cache) {
-    cache = new CapabilityCache(homeDir, warn);
-    caches.set(homeDir, cache);
+    cache = new CapabilityCache(directory, warn);
+    caches.set(directory, cache);
   }
   return cache;
 }
@@ -354,6 +355,7 @@ export function withToolCapabilityDetection(
   provider: Provider,
   homeDir: string,
   warn: (message: string) => void,
+  ownership: { dataRoot?: string } = {},
 ): Provider {
   function stream(
     model: Model<Api>,
@@ -375,7 +377,7 @@ export function withToolCapabilityDetection(
     const output = createAssistantMessageEventStream();
     void (async () => {
       try {
-        const cache = cacheFor(homeDir, warn);
+        const cache = cacheFor(userDataDirectory({ homeDir, ...ownership }), warn);
         // Credential fingerprints prevent sharing availability across accounts; neither key nor URL is persisted.
         const key = createHash("sha256")
           .update(

@@ -1,3 +1,4 @@
+import { userDataDirectory } from "../config/paths.ts";
 import { createHash } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -55,12 +56,14 @@ export const checkpointState: ToolStateDefinition = defineToolState({
 
 export function createCheckpoints({
   homeDir,
+  dataRoot,
   sessionId,
   getState,
   persist,
   getPrompt,
 }: {
   homeDir: string;
+  dataRoot?: string;
   sessionId: string;
   getState(): unknown;
   persist(state: CheckpointState): Promise<void>;
@@ -99,7 +102,7 @@ export function createCheckpoints({
         }
         if (bytes !== undefined) {
           const hash = createHash("sha256").update(bytes).digest("hex");
-          backup = join(homeDir, ".rukie", "file-history", sessionId, hash);
+          backup = join(userDataDirectory({ homeDir, dataRoot }), "file-history", sessionId, hash);
           if (!(await Bun.file(backup).exists())) await Bun.write(backup, bytes);
         }
         current.files.push({ path, backup });

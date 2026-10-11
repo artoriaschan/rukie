@@ -1,3 +1,4 @@
+import { userDataDirectory, type UserDataOptions } from "../config/paths.ts";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, stat } from "node:fs/promises";
@@ -134,10 +135,10 @@ function validId(id: string) {
     });
 }
 
-export function createJsonlStore(options: { cwd: string; homeDir: string }): SessionStore {
+export function createJsonlStore(options: UserDataOptions & { cwd: string }): SessionStore {
   const cwd = resolve(options.cwd);
   const project = createHash("sha256").update(cwd).digest("hex");
-  const root = join(options.homeDir, ".rukie", "durable-sessions", project);
+  const root = join(userDataDirectory(options), "durable-sessions", project);
   const key = (id: string) => join(root, id);
   return {
     key,
@@ -253,7 +254,7 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
 }
 /** Observe committed storage without acquiring a writer lease, recovery or repair. The callback must only read. */
 export async function readSessionStorage<T>(
-  options: { cwd: string; homeDir: string; id: string },
+  options: UserDataOptions & { cwd: string; id: string },
   read: (storage: Storage) => Promise<T>,
 ): Promise<T> {
   validId(options.id);
@@ -280,12 +281,18 @@ export async function readSessionStorage<T>(
 export async function listSessions(options: {
   cwd: string;
   homeDir?: string;
+  dataRoot?: string;
   store?: SessionStore;
   settings?: Settings;
   /** Receives failures for individual Session indexes; root directory failures still reject. */
   onWarning?: (warning: string) => void;
 }): Promise<SessionSummary[]> {
   const store =
-    options.store ?? createJsonlStore({ cwd: options.cwd, homeDir: options.homeDir ?? homedir() });
+    options.store ??
+    createJsonlStore({
+      cwd: options.cwd,
+      homeDir: options.homeDir ?? homedir(),
+      dataRoot: options.dataRoot,
+    });
   return store.list(BACKGROUND_CONTEXT, options.onWarning);
 }

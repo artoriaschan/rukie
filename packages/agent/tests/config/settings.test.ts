@@ -509,3 +509,45 @@ test("model catalog detects built-in credentials from the current environment", 
     else process.env[key] = previous;
   }
 });
+
+test("desktop settings and project trust are independent of terminal settings", async () => {
+  dirs = await tempDirs();
+  const dataRoot = join(dirs.homeDir, "desktop-data");
+  await Bun.write(
+    join(dirs.homeDir, ".rukie/settings.json"),
+    JSON.stringify({
+      model: "terminal/sentinel",
+      trustedProjects: [dirs.cwd],
+      permissions: { allow: ["bash"] },
+    }),
+  );
+  await Bun.write(
+    join(dirs.cwd, ".rukie/settings.json"),
+    JSON.stringify({ permissions: { allow: ["write"], deny: ["edit"] } }),
+  );
+  const desktop = await loadSettings({ ...dirs, dataRoot });
+  expect(desktop.settings).toEqual({ permissions: { deny: ["edit"] } });
+  expect((await loadSettings(dirs)).settings.permissions?.allow).toEqual(["bash", "write"]);
+  await Bun.write(join(dataRoot, "settings.json"), JSON.stringify({ trustedProjects: [dirs.cwd] }));
+  expect((await loadSettings({ ...dirs, dataRoot })).settings.permissions?.allow).toEqual([
+    "write",
+  ]);
+});
+
+test("desktop model resolution never authenticates using terminal environment keys", async () => {
+  dirs = await tempDirs();
+  const dataRoot = join(dirs.homeDir, "desktop-data");
+  const previous = process.env.RUKIE_TEST_KEY;
+  process.env.RUKIE_TEST_KEY = "terminal-sentinel";
+  try {
+    const settings = { model: "local/m", providers: [provider("local")] };
+    await expect(createSession({ ...dirs, dataRoot, settings })).rejects.toMatchObject({
+      code: "no-api-key",
+      params: { provider: "local", env: "" },
+    });
+    expect(await listModelCatalog(settings, undefined, { dataRoot })).toEqual([]);
+  } finally {
+    if (previous === undefined) delete process.env.RUKIE_TEST_KEY;
+    else process.env.RUKIE_TEST_KEY = previous;
+  }
+});

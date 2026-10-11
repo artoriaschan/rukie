@@ -1,3 +1,4 @@
+import { userDataDirectory } from "../config/paths.ts";
 import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -5,16 +6,21 @@ const retentionMs = 30 * 24 * 60 * 60 * 1000;
 
 export async function cleanupExpiredBackups({
   homeDir,
+  dataRoot,
   sessionId,
   now,
   onWarning,
 }: {
   homeDir: string;
+  dataRoot?: string;
   sessionId: string;
   now: Date;
   onWarning(warning: string): void;
 }): Promise<void> {
-  const history = join(homeDir, ".rukie", "file-history");
+  // Desktop history can remain referenced by persisted branches in another Session.
+  // Age alone cannot authorize deletion; its storage owner must check references.
+  if (dataRoot !== undefined) return;
+  const history = join(userDataDirectory({ homeDir }), "file-history");
   let entries;
   try {
     entries = await readdir(history, { withFileTypes: true });

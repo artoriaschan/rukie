@@ -70,12 +70,25 @@ export function credentialKey(
 
 export function credentialStore(options: {
   homeDir: string;
+  dataRoot?: string;
   key: string;
   serverName: string;
   serverUrl: string;
   warning: () => void;
   signal?: AbortSignal;
 }): McpOAuthStateStore & { clear(): Promise<void> } {
+  // Desktop persistence must be supplied by the encrypted credential adapter.
+  // Fail closed until it is installed; never write a temporary plaintext store.
+  if (options.dataRoot !== undefined)
+    return {
+      async load() {
+        return undefined;
+      },
+      async save() {
+        throw new Error("Desktop encrypted MCP credential storage is unavailable.");
+      },
+      async clear() {},
+    };
   const directory = join(options.homeDir, ".rukie");
   const path = join(directory, "credentials.json");
   const read = async () => {

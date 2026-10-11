@@ -38,6 +38,8 @@ const RegistrySchema = Type.Object({
 type Registry = Static<typeof RegistrySchema>;
 export interface ServerOptions {
   homeDir: string;
+  /** Application-owned root, distinct from tool/permission home. No shared-path fallback. */
+  dataRoot: string;
   development?: boolean;
   /** Model network boundary overrides for isolated frontend acceptance. */
   sessionOptions?: Pick<SessionOptions, "model" | "models" | "settings">;
@@ -67,7 +69,8 @@ const Runs = Context.Service<FiberMap.FiberMap<string, unknown, unknown>>("serve
 /** Owns the loopback listener and all Sessions; disconnect only releases socket subscriptions. */
 export async function startServer(options: ServerOptions) {
   const warning = options.onWarning ?? console.warn;
-  const directory = join(options.homeDir, ".rukie", "desktop");
+  if (!isAbsolute(options.dataRoot)) throw new Error("Desktop dataRoot must be absolute.");
+  const directory = options.dataRoot;
   const workspace = join(directory, "workspace");
   await mkdir(workspace, { recursive: true });
   const file = join(directory, "registry.json");
@@ -156,7 +159,8 @@ export async function startServer(options: ServerOptions) {
     const opening = (async () => {
       const settings =
         options.sessionOptions?.settings ??
-        (await loadSettings({ cwd, homeDir: options.homeDir })).settings;
+        (await loadSettings({ cwd, homeDir: options.homeDir, dataRoot: options.dataRoot }))
+          .settings;
       return createSession({
         ...options.sessionOptions,
         settings: initial?.modelSelection
@@ -175,6 +179,7 @@ export async function startServer(options: ServerOptions) {
         permissionMode: initial?.permissionMode,
         cwd,
         homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
         resumeId,
         onWarning: warning,
         onPermissionAsk: (request) =>
@@ -242,16 +247,21 @@ export async function startServer(options: ServerOptions) {
       await Promise.all(
         [workspace, ...registry.projects.map((p) => p.path)].map(async (cwd) => {
           try {
-            return (await listSessions({ cwd, homeDir: options.homeDir, onWarning: warning })).map(
-              (summary) => ({
-                ...summary,
+            return (
+              await listSessions({
                 cwd,
-                running: sessions.get(summary.id)?.running ?? false,
-                waitingPermission: [...pending.values()].some(
-                  (item) => item.sessionId === summary.id,
-                ),
-              }),
-            );
+                homeDir: options.homeDir,
+                dataRoot: options.dataRoot,
+                onWarning: warning,
+              })
+            ).map((summary) => ({
+              ...summary,
+              cwd,
+              running: sessions.get(summary.id)?.running ?? false,
+              waitingPermission: [...pending.values()].some(
+                (item) => item.sessionId === summary.id,
+              ),
+            }));
           } catch (error) {
             warning(String(error));
             return [];
@@ -423,6 +433,7 @@ export async function startServer(options: ServerOptions) {
               await readSessionSnapshot({
                 cwd: summary.cwd,
                 homeDir: options.homeDir,
+                dataRoot: options.dataRoot,
                 id: summary.id,
               }),
             );
@@ -470,8 +481,16 @@ export async function startServer(options: ServerOptions) {
       case "models.list": {
         const settings =
           options.sessionOptions?.settings ??
-          (await loadSettings({ cwd: workspace, homeDir: options.homeDir })).settings;
-        return listModelCatalog(settings, options.sessionOptions?.models);
+          (
+            await loadSettings({
+              cwd: workspace,
+              homeDir: options.homeDir,
+              dataRoot: options.dataRoot,
+            })
+          ).settings;
+        return listModelCatalog(settings, options.sessionOptions?.models, {
+          dataRoot: options.dataRoot,
+        });
       }
       case "session.set_model": {
         const session = await find(command.sessionId);

@@ -19,7 +19,12 @@ import { transcriptMessages } from "./messages.ts";
 import { committedSnapshot, projectCommittedOutcomeFacts } from "./observation.ts";
 
 /** One committed, lease-free view. Never recovers tasks, runs hooks, or modifies storage. */
-export async function readSessionSnapshot(options: { cwd: string; homeDir: string; id: string }) {
+export async function readSessionSnapshot(options: {
+  cwd: string;
+  homeDir: string;
+  dataRoot?: string;
+  id: string;
+}) {
   options = { ...options, cwd: resolve(options.cwd) };
   // JsonlStorage.open recovers once into private MemoryStorage. Its reads never
   // refresh from disk, so transcript and document reads share that committed frame.

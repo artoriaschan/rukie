@@ -6,9 +6,9 @@ Electron host 启动 Bun sidecar，通过受来源校验的 preload 向 renderer
 
 [main.ts](src/main.ts) 是 Electron 入口；构建时把 [preload.ts](src/preload.ts) 打成入口旁的 `preload.cjs`，因为 sandbox preload 使用 CommonJS。开发态用 Bun 执行 `packages/server/src/main.ts`，renderer 从 `packages/ui/dist` 加载；打包态从 `app.getAppPath()/dist` 读 renderer，从 `process.resourcesPath/sidecar/rukie-server` 启动 sidecar。两种模式都加载 `app://rukie/`。
 
-`RUKIE_DESKTOP_BUN` 可指定开发态 Bun 可执行文件；`RUKIE_DESKTOP_USER_DATA` 可指定 Electron user-data 目录。测试和 smoke 应同时设置独立 `HOME` 和 user-data 目录：sidecar 从继承的 HOME 定位用户配置，user-data 只隔离 Electron 状态。
+`RUKIE_DESKTOP_BUN` 可指定开发态 Bun 可执行文件；`RUKIE_DESKTOP_USER_DATA` 可指定 Electron user-data 目录。业务数据根由 main 决定：生产默认为 `app.getPath("userData")/data`，开发与测试必须显式设置绝对路径 `RUKIE_DESKTOP_DATA_ROOT`，否则启动失败。main 通过私有 sidecar 启动环境传递数据根与真实 OS home；工具和权限的 `~/` 展开使用真实 home，用户配置不从 OS home 发现，也不导入旧目录。user-data 仍隔离 Electron 状态。
 
-macOS 启动时通过用户的登录交互 shell 读取环境变量，使 Finder 双击启动也能使用 shell 配置导出的 provider 凭据。优先使用继承的绝对 `SHELL` 路径，否则使用系统账户 shell；读取最多等待 5 秒，失败或超时沿用继承环境，并等待读取进程退出。继承变量优先于 shell 导出值，显式 `HOME` 与 user-data 隔离设置保持有效。环境值仅在内存中交给 sidecar，不写入配置或日志；sidecar 仍移除 Bun、Node 和动态库注入变量。此行为仅属于桌面启动，Headless CLI 与 TUI 的环境来源不变。
+macOS 启动时通过用户的登录交互 shell 读取环境变量，使 Finder 双击启动的工具子进程保留正常系统环境。供应商认证使用独立桌面来源，不读取终端环境 API Key，也不向工具环境注入桌面凭证。优先使用继承的绝对 `SHELL` 路径，否则使用系统账户 shell；读取最多等待 5 秒，失败或超时沿用继承环境，并等待读取进程退出。继承变量优先于 shell 导出值，显式 `HOME` 与 user-data 隔离设置保持有效。环境值仅在内存中交给 sidecar，不写入配置或日志；sidecar 仍移除 Bun、Node 和动态库注入变量。此行为仅属于桌面启动，Headless CLI 与 TUI 的环境来源不变。
 
 ## 行为与限制
 
@@ -36,4 +36,4 @@ macOS 应用图标直接使用 [brand/rukie-app-icon.icns](../../brand/rukie-app
 
 构建验收针对最终 app：Cookie Encryption fuse 读回必须为关闭、strict deep codesign、runtime flags、sidecar/rg entitlement、实际 rg 版本和 `BUN_BE_BUN=1` DFG JIT 探针。JIT 不可用时构建失败，不按耗时猜测。此命令不调用 spctl，也不证明 Developer ID 签名、公证或分发成功。
 
-打包 smoke 同时隔离 HOME 与 Electron user-data，并仅使用已有 fakeModel 经外部 loopback 传输桥接，不改生产 sidecar。当前打包 smoke 使用普通启动参数，禁止以 `--use-mock-keychain` 代替启动验收。此前开启 Cookie Encryption 的产物曾依赖该测试参数；历史验收详细证据见 [issue 30](../../.scratch/desktop/issues/30-local-macos-build.md)。
+打包 smoke 显式隔离应用数据根与 Electron user-data，保留真实工具 home，并仅使用已有 fakeModel 经外部 loopback 传输桥接，不改生产 sidecar。当前打包 smoke 使用普通启动参数，禁止以 `--use-mock-keychain` 代替启动验收。此前开启 Cookie Encryption 的产物曾依赖该测试参数；历史验收详细证据见 [issue 30](../../.scratch/desktop/issues/30-local-macos-build.md)。

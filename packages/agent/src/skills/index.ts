@@ -1,3 +1,4 @@
+import { contentDirectories, type UserDataOptions } from "../config/paths.ts";
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -16,13 +17,11 @@ export function formatSkillInvocation(skill: Skill): string {
   return `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${dirname(skill.filePath)}.\n\n${skill.content}\n</skill>`;
 }
 
-export async function discoverSkills(cwd: string, homeDir: string) {
+export async function discoverSkills(cwd: string, homeDir: string, dataRoot?: string) {
   const warnings: string[] = [];
   const skills = new Map<string, Skill>();
   const invocable = new Map<string, { name: string; description: string }>();
-  const paths = [homeDir, cwd].flatMap((root) =>
-    [".rukie", ".claude", ".agents"].map((namespace) => join(root, namespace, "skills")),
-  );
+  const paths = contentDirectories(cwd, { homeDir, dataRoot }, "skills");
   for (const root of paths) {
     const visited = new Set<string>();
     const matcher = ignore();
@@ -110,8 +109,8 @@ export async function discoverSkills(cwd: string, homeDir: string) {
 }
 
 /** Discover the skill names a frontend may offer for explicit user invocation. */
-export async function listSkills(options: { cwd: string; homeDir: string }) {
-  return (await discoverSkills(options.cwd, options.homeDir)).invocable;
+export async function listSkills(options: UserDataOptions & { cwd: string }) {
+  return (await discoverSkills(options.cwd, options.homeDir, options.dataRoot)).invocable;
 }
 
 /** Compare only model-visible catalogs; publish a complete replacement when entries change. */

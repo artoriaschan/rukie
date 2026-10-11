@@ -1,3 +1,4 @@
+import { userDataDirectory } from "../config/paths.ts";
 import { awaitWithContext } from "@earendil-works/chord/context";
 import type { PreflightTool } from "../tools/support/preflight.ts";
 import type { PresentedTool } from "../tools/support/presentation.ts";
@@ -376,6 +377,7 @@ export function createMcpConnections(
     async connect(options: {
       cwd: string;
       homeDir: string;
+      dataRoot?: string;
       settings: Settings;
       trustProjectMcp?: boolean;
       signal?: AbortSignal;
@@ -398,7 +400,7 @@ export function createMcpConnections(
         closePromise = undefined;
         lifetime = new AbortController();
       }
-      const userPath = join(options.homeDir, ".rukie/mcp.json");
+      const userPath = join(userDataDirectory(options), "mcp.json");
       const projectPath = join(options.cwd, ".mcp.json");
       const servers = new Map<
         string,
@@ -555,6 +557,7 @@ export function createMcpConnections(
               key && "url" in entry
                 ? credentialStore({
                     homeDir: options.homeDir,
+                    dataRoot: options.dataRoot,
                     key,
                     serverName: server,
                     serverUrl: entry.url,

@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
 import { join } from "node:path";
 import { createSession, createJsonlStore } from "@rukie/agent";
-import { startServer } from "../src/index.ts";
+import { startServer as startServerImpl, type ServerOptions } from "../src/index.ts";
+
+const startServer = (options: Omit<ServerOptions, "dataRoot">) =>
+  startServerImpl({ ...options, dataRoot: join(options.homeDir, "desktop-data") });
 
 test("authenticated clients use the public registry over a real WebSocket", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-server-"));
@@ -274,21 +277,24 @@ test("project registration survives restart and a removed project cannot hide ot
   }
 }, 5000);
 
-test("a TUI-owned Session is listed but cannot be opened by desktop", async () => {
+test("an application-root Session held by another owner permits only a read-only desktop snapshot", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-busy-"));
   const fake = fakeModel([fauxAssistantMessage("held writer reply")]);
   const server = await startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} });
   const owned = await createSession({
     ...fake,
     homeDir,
-    cwd: join(homeDir, ".rukie", "desktop", "workspace"),
+    dataRoot: join(homeDir, "desktop-data"),
+    cwd: join(homeDir, "desktop-data", "workspace"),
   });
   await owned.run("held writer prompt");
   const log = Bun.file(
     join(
-      createJsonlStore({ homeDir, cwd: join(homeDir, ".rukie", "desktop", "workspace") }).key(
-        owned.id,
-      ),
+      createJsonlStore({
+        homeDir,
+        dataRoot: join(homeDir, "desktop-data"),
+        cwd: join(homeDir, "desktop-data", "workspace"),
+      }).key(owned.id),
       "main.jsonl",
     ),
   );
@@ -464,16 +470,28 @@ test("idle unsubscribed Session releases its lease exactly at ten minutes", asyn
     await client.next((message) => message.type === "result");
     clock = FakeTimers.install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout"] });
     await client.command("session.unsubscribe", { sessionId });
-    const cwd = join(homeDir, ".rukie", "desktop", "workspace");
+    const cwd = join(homeDir, "desktop-data", "workspace");
     await clock.tickAsync(600000 - 1);
     await expect(
-      createSession({ ...fake, homeDir, cwd, resumeId: sessionId }),
+      createSession({
+        ...fake,
+        homeDir,
+        dataRoot: join(homeDir, "desktop-data"),
+        cwd,
+        resumeId: sessionId,
+      }),
     ).rejects.toMatchObject({ code: "session-busy" });
     clock.tick(1);
     await client.next(
       (message) => message.type === "sessions_changed" && message.closedSessionId === sessionId,
     );
-    const reopened = await createSession({ ...fake, homeDir, cwd, resumeId: sessionId });
+    const reopened = await createSession({
+      ...fake,
+      homeDir,
+      dataRoot: join(homeDir, "desktop-data"),
+      cwd,
+      resumeId: sessionId,
+    });
     await reopened.close();
   } finally {
     clock?.uninstall();
@@ -501,13 +519,19 @@ test("SIGTERM awaits Session shutdown and kills running Background Job process g
     const created = await client.command("session.create", { project: null, text: "start job" });
     const sessionId = (created.result as { sessionId: string }).sessionId;
     await client.next((message) => message.type === "result");
-    const cwd = join(homeDir, ".rukie", "desktop", "workspace");
+    const cwd = join(homeDir, "desktop-data", "workspace");
     const pid = await waitForPidFile(join(cwd, "pid"));
     expect(() => process.kill(pid, 0)).not.toThrow();
     child.kill("SIGTERM");
     expect(await child.exited).toBe(0);
     expect(() => process.kill(pid, 0)).toThrow();
-    const resumed = await createSession({ ...fakeModel([]), homeDir, cwd, resumeId: sessionId });
+    const resumed = await createSession({
+      ...fakeModel([]),
+      homeDir,
+      dataRoot: join(homeDir, "desktop-data"),
+      cwd,
+      resumeId: sessionId,
+    });
     expect(resumed.jobs()).toEqual([]);
     await resumed.close();
   } finally {
@@ -577,7 +601,8 @@ test("Run, pending Interaction and Queued Input prevent idle reclamation", async
       createSession({
         ...fake,
         homeDir,
-        cwd: join(homeDir, ".rukie", "desktop", "workspace"),
+        dataRoot: join(homeDir, "desktop-data"),
+        cwd: join(homeDir, "desktop-data", "workspace"),
         resumeId: sessionId,
       }),
     ).rejects.toMatchObject({ code: "session-busy" });
@@ -616,13 +641,19 @@ test("a running Background Job holds an unsubscribed idle Session", async () => 
     const created = await client.command("session.create", { project: null, text: "job" });
     const sessionId = (created.result as { sessionId: string }).sessionId;
     await client.next((message) => message.type === "result");
-    const cwd = join(homeDir, ".rukie", "desktop", "workspace");
+    const cwd = join(homeDir, "desktop-data", "workspace");
     const pid = await waitForPidFile(join(cwd, "pid"));
     clock = FakeTimers.install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout"] });
     await client.command("session.unsubscribe", { sessionId });
     await clock.tickAsync(600001);
     await expect(
-      createSession({ ...fake, homeDir, cwd, resumeId: sessionId }),
+      createSession({
+        ...fake,
+        homeDir,
+        dataRoot: join(homeDir, "desktop-data"),
+        cwd,
+        resumeId: sessionId,
+      }),
     ).rejects.toMatchObject({ code: "session-busy" });
     expect(() => process.kill(pid, 0)).not.toThrow();
   } finally {
@@ -679,7 +710,8 @@ test("a native background Subagent holds a parent Session after its Run ends", a
       createSession({
         ...fake,
         homeDir,
-        cwd: join(homeDir, ".rukie", "desktop", "workspace"),
+        dataRoot: join(homeDir, "desktop-data"),
+        cwd: join(homeDir, "desktop-data", "workspace"),
         resumeId: sessionId,
       }),
     ).rejects.toMatchObject({ code: "session-busy" });
@@ -786,6 +818,40 @@ test("unsubscribed Sessions publish permission creation, reconnect state and can
   } finally {
     reply.resolve(fauxAssistantMessage("cleanup"));
     first.socket.close();
+    await server.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+}, 5000);
+
+test("desktop neither lists nor contends with a terminal Session in the same project", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-isolated-frontends-"));
+  const fake = fakeModel([fauxAssistantMessage("desktop answer")]);
+  const server = await startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} });
+  const cwd = join(homeDir, "desktop-data", "workspace");
+  const terminal = await createSession({
+    homeDir,
+    cwd,
+    ...fakeModel([fauxAssistantMessage("terminal answer")]),
+  });
+  const client = await connect(server);
+  try {
+    await terminal.run("terminal prompt");
+    expect((await client.command("sessions.list")).result).toEqual([]);
+    expect((await client.command("session.subscribe", { sessionId: terminal.id })).error).toEqual({
+      code: "session_not_found",
+    });
+    const created = await client.command("session.create", {
+      project: null,
+      text: "desktop prompt",
+    });
+    expect(created.error).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(JSON.stringify((await client.command("sessions.list")).result)).not.toContain(
+      terminal.id,
+    );
+  } finally {
+    client.socket.close();
+    await terminal.close();
     await server.close();
     await rm(homeDir, { recursive: true, force: true });
   }

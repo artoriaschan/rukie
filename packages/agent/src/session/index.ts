@@ -149,8 +149,10 @@ export interface SessionOptions {
   webFetch?: WebFetchOptions;
   /** Project directory the session works in. */
   cwd: string;
-  /** User home; `~/.rukie` lives under it. Injectable for tests. */
+  /** Real home used by tools and permission path expansion. Injectable for tests. */
   homeDir: string;
+  /** Explicit isolated application data root; terminal callers omit it. */
+  dataRoot?: string;
   /** Merged settings, see `loadSettings`. */
   settings?: Settings;
   /** Model call; defaults to pi-ai's `streamSimple` for the resolved model. Tests inject a fake. */
@@ -403,7 +405,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const resolved =
     options.model && options.models
       ? { model: options.model, models: options.models }
-      : await resolveModel(settings, options.homeDir, warn);
+      : await resolveModel(settings, options.homeDir, warn, { dataRoot: options.dataRoot });
   let model = resolved.model;
   let thinkingLevel = supportedThinkingLevel(model, settings.thinking ?? "off");
   const models = resolved.models;
@@ -413,7 +415,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     if (!selected) throw new Error(`Unknown model: ${spec}`);
     return selected;
   };
-  const store = options.store ?? createJsonlStore({ cwd, homeDir: options.homeDir });
+  const store =
+    options.store ??
+    createJsonlStore({ cwd, homeDir: options.homeDir, dataRoot: options.dataRoot });
   const lease = await store.open({ id: options.resumeId }, context);
   const failedCleanup: (() => Promise<void>)[] = [lease.release];
   try {
@@ -787,6 +791,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     runSummaries = readRunSummaries(initialHistory);
     const checkpoints = createCheckpoints({
       homeDir: options.homeDir,
+      dataRoot: options.dataRoot,
       sessionId: lease.id,
       getState: () => state.get("checkpoint"),
       persist: async (value) => {
@@ -869,6 +874,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       connectOptions: () => ({
         cwd,
         homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
         settings,
         trustProjectMcp: options.trustProjectMcp,
         interactive: !!options.onMcpAuth,
@@ -960,7 +966,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     const reportedSkillWarnings = new Set<string>();
     const loadSkills = async () => {
-      const discovered = await discoverSkills(cwd, options.homeDir);
+      const discovered = await discoverSkills(cwd, options.homeDir, options.dataRoot);
       for (const warning of discovered.warnings) {
         if (reportedSkillWarnings.has(warning)) continue;
         reportedSkillWarnings.add(warning);
@@ -1387,6 +1393,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           messages: transcriptMessages(beforeInput.entries),
           cwd,
           homeDir: options.homeDir,
+          dataRoot: options.dataRoot,
           now: options.now?.() ?? new Date(),
           sources: [
             ...childState.reminderSources,
@@ -1472,6 +1479,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   ),
                   cwd,
                   homeDir: options.homeDir,
+                  dataRoot: options.dataRoot,
                   now: options.now?.() ?? new Date(),
                   sources: [
                     ...childState.reminderSources,
@@ -1875,6 +1883,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         includeEnvironment: afterCompactionId === undefined,
         cwd,
         homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
         now: options.now?.() ?? new Date(),
         sources,
       });
@@ -1930,6 +1939,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       const connectionOptions: Parameters<typeof mcp.connect>[0] = {
         cwd,
         homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
         settings,
         trustProjectMcp: options.trustProjectMcp,
         interactive: !!options.onMcpAuth,
@@ -2002,6 +2012,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       discovery: {
         cwd,
         homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
         trusted: isTrustedProject(cwd, settings),
         report: async (discovery) => {
           for (const warning of discovery.warnings) warn(warning);
@@ -3499,6 +3510,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     };
     await cleanupExpiredBackups({
       homeDir: options.homeDir,
+      dataRoot: options.dataRoot,
       sessionId: lease.id,
       now: options.now?.() ?? new Date(),
       onWarning: warn,

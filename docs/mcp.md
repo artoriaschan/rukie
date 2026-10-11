@@ -117,7 +117,7 @@ Headless CLI 不提供授权交互，也不向模型暴露 `authenticate` 工具
 
 ## MCP Credential
 
-MCP Credential 存在 Session 的 `homeDir` 下的 `.rukie/credentials.json`，文件权限为 0600，新建目录权限为 0700。按 server 名、URL 与展开后的 headers 区分，所有 Session 和子代理共用；同名但 URL 或 headers 不同的 server 不能借用。Provider 凭据继续来自环境变量。
+终端 MCP Credential 存在 Session 的 `homeDir` 下的 `.rukie/credentials.json`，文件权限为 0600，新建目录权限为 0700。按 server 名、URL 与展开后的 headers 区分，所有 Session 和子代理共用；同名但 URL 或 headers 不同的 server 不能借用。终端 Provider 凭据继续来自环境变量。桌面指定独立 `dataRoot`，不读取终端配置、凭证或环境 API Key；MCP OAuth 在加密凭证 adapter 未安装时保存失败，不写入临时明文存储。应用来源与真实工具 home 的契约见 [Agent README](../packages/agent/README.md#用户来源与工具-home)。
 
 写入使用临时文件和 rename。损坏 JSON 被视为空并告警，直到下一次成功写入前保留原文件。pi-mcp 负责 token 刷新；授权失效或需要额外 scopes 时重新回到 `needs-auth`。登出删除本地凭据，不向授权服务器撤销 token。
 
