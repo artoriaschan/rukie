@@ -7,6 +7,8 @@ import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import {
   copyDevelopmentRuntime,
+  writeDevelopmentEntry,
+  validateDevelopmentEntry,
   developmentPaths,
   developmentEnvironment,
   runDevelopmentProcess,
@@ -192,4 +194,49 @@ test("development runtime keeps framework links inside its independent app copy"
   expect(await readFile(join(copy, framework, "Electron Framework"), "utf8")).toBe(
     "source runtime",
   );
+});
+
+test("development entry loads the current external ESM main before bootstrap completes", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-entry 空格#%-")));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const app = join(root, "Rukie Development.app/Contents/Resources/app");
+  const build = join(root, ".desktop-dev/build");
+  const cwd = join(root, "unrelated");
+  await mkdir(app, { recursive: true });
+  await mkdir(build, { recursive: true });
+  await mkdir(cwd);
+  await writeFile(join(build, "package.json"), JSON.stringify({ type: "module" }));
+  await writeFile(
+    join(build, "main.js"),
+    `await Promise.resolve(); globalThis.loadedMain = "current-source";`,
+  );
+  await writeDevelopmentEntry(app, build);
+  await validateDevelopmentEntry(app, build);
+  const loader = `import { readFileSync } from "node:fs"; import { join } from "node:path"; import { pathToFileURL } from "node:url"; const app = process.argv[1]; const manifest = JSON.parse(readFileSync(join(app, "package.json"))); await import(pathToFileURL(join(app, manifest.main)).href); if (globalThis.loadedMain !== process.argv[2]) throw new Error("main was not awaited");`;
+  // Node exercises Electron 41 init.ts package-path joining and awaited ESM loading, without native launch.
+  await runDevelopmentProcess(
+    "node",
+    ["--input-type=module", "-e", loader, app, "current-source"],
+    { cwd, env: developmentEnvironment({ ...process.env }) },
+  );
+  const manifest = JSON.parse(await readFile(join(app, "package.json"), "utf8"));
+  expect(manifest.main).toBe("bootstrap.mjs");
+  const bootstrap = await readFile(join(app, "bootstrap.mjs"), "utf8");
+  await writeFile(join(build, "main.js"), `globalThis.loadedMain = "next-build";`);
+  await runDevelopmentProcess("node", ["--input-type=module", "-e", loader, app, "next-build"], {
+    cwd,
+    env: developmentEnvironment({ ...process.env }),
+  });
+  expect(await readFile(join(app, "bootstrap.mjs"), "utf8")).toBe(bootstrap);
+  await writeFile(
+    join(app, "package.json"),
+    JSON.stringify({ ...manifest, main: join(build, "main.js") }),
+  );
+  await expect(validateDevelopmentEntry(app, build)).rejects.toThrow("entry");
+  await writeDevelopmentEntry(app, build);
+  await writeFile(join(app, "bootstrap.mjs"), 'await import("file:///unexpected/main.js");');
+  await expect(validateDevelopmentEntry(app, build)).rejects.toThrow("entry");
+  await rm(join(app, "bootstrap.mjs"));
+  await symlink(join(build, "main.js"), join(app, "bootstrap.mjs"));
+  await expect(validateDevelopmentEntry(app, build)).rejects.toThrow("symbolic link");
 });

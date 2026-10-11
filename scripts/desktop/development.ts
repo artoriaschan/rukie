@@ -15,6 +15,7 @@ import {
   readlink,
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   flipFuses,
   FuseV1Options,
@@ -273,6 +274,60 @@ export async function copyDevelopmentRuntime(sourceApp: string, app: string) {
   await cp(sourceApp, app, { recursive: true, verbatimSymlinks: true });
 }
 
+const developmentEntry = "bootstrap.mjs";
+
+function developmentBootstrap(build: string) {
+  // Electron 41 joins manifest.main to its app directory. Keep the entry relative and await
+  // external ESM evaluation so development main configures identity and paths before app ready.
+  return `await import(${JSON.stringify(pathToFileURL(join(build, "main.js")).href)});\n`;
+}
+
+/** Write the stable signed entry while current source builds remain outside the app bundle. */
+export async function writeDevelopmentEntry(packageDirectory: string, build: string) {
+  await writeFile(
+    join(packageDirectory, "package.json"),
+    JSON.stringify({
+      name: developmentIdentity.name,
+      productName: developmentIdentity.product,
+      version: "0.0.0",
+      type: "module",
+      main: developmentEntry,
+    }),
+  );
+  await writeFile(join(packageDirectory, developmentEntry), developmentBootstrap(build));
+}
+
+/** Reject a redirected or altered cached entry before starting the runtime. */
+export async function validateDevelopmentEntry(packageDirectory: string, build: string) {
+  for (const directory of [
+    dirname(dirname(packageDirectory)),
+    dirname(packageDirectory),
+    packageDirectory,
+  ])
+    await checkedFile(directory, true);
+  const packagePath = join(packageDirectory, "package.json");
+  const entryPath = join(packageDirectory, developmentEntry);
+  await checkedFile(packagePath);
+  await checkedFile(entryPath);
+  const manifest: unknown = JSON.parse(await readFile(packagePath, "utf8"));
+  if (
+    !manifest ||
+    typeof manifest !== "object" ||
+    !("name" in manifest) ||
+    manifest.name !== developmentIdentity.name ||
+    !("productName" in manifest) ||
+    manifest.productName !== developmentIdentity.product ||
+    !("version" in manifest) ||
+    manifest.version !== "0.0.0" ||
+    !("type" in manifest) ||
+    manifest.type !== "module" ||
+    !("main" in manifest) ||
+    manifest.main !== developmentEntry ||
+    (await readFile(entryPath, "utf8")) !== developmentBootstrap(build)
+  )
+    throw new Error("Unexpected development package identity or entry");
+}
+
 export async function developmentBundle(
   paths: Awaited<ReturnType<typeof developmentPaths>>,
   env: NodeJS.ProcessEnv,
@@ -283,8 +338,10 @@ export async function developmentBundle(
   const identity = JSON.stringify({
     electron: "41.0.3",
     runtimeCopyFormat: 1,
+    entryFormat: 1,
     ...developmentIdentity,
-    main: join(paths.build, "main.js"),
+    main: developmentEntry,
+    externalMain: pathToFileURL(join(paths.build, "main.js")).href,
     cookieEncryption: false,
   });
   await checkedFile(app, true);
@@ -327,16 +384,7 @@ export async function developmentBundle(
     const contents = join(app, "Contents");
     const packageDirectory = join(contents, "Resources/app");
     await mkdir(packageDirectory, { recursive: true });
-    await writeFile(
-      join(packageDirectory, "package.json"),
-      JSON.stringify({
-        name: developmentIdentity.name,
-        productName: developmentIdentity.product,
-        version: "0.0.0",
-        type: "module",
-        main: join(paths.build, "main.js"),
-      }),
-    );
+    await writeDevelopmentEntry(packageDirectory, paths.build);
     const plist = join(contents, "Info.plist");
     for (const [key, value] of [
       ["CFBundleIdentifier", developmentIdentity.appId],
@@ -361,22 +409,9 @@ export async function developmentBundle(
     signal.throwIfAborted();
     await writeFile(marker, identity);
   }
-  const packagePath = join(app, "Contents/Resources/app/package.json");
+  await validateDevelopmentEntry(join(app, "Contents/Resources/app"), paths.build);
   const plistPath = join(app, "Contents/Info.plist");
-  await checkedFile(packagePath);
   await checkedFile(plistPath);
-  const packageManifest: unknown = JSON.parse(await readFile(packagePath, "utf8"));
-  if (
-    !packageManifest ||
-    typeof packageManifest !== "object" ||
-    !("name" in packageManifest) ||
-    packageManifest.name !== developmentIdentity.name ||
-    !("productName" in packageManifest) ||
-    packageManifest.productName !== developmentIdentity.product ||
-    !("main" in packageManifest) ||
-    packageManifest.main !== join(paths.build, "main.js")
-  )
-    throw new Error("Unexpected development package identity");
   const plistContent = await readFile(plistPath, "utf8");
   for (const [key, value] of [
     ["CFBundleIdentifier", developmentIdentity.appId],
