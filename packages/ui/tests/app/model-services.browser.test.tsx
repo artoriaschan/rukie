@@ -7,6 +7,101 @@ import { UiLocaleProvider } from "../../src/lib/i18n";
 import type { ModelServiceSummary } from "@rukie/shared";
 import "../../src/theme.css";
 
+test("Pencil P01-E empty provider state preserves shell and opens the custom catalog", async () => {
+  const originalClass = document.documentElement.className;
+  onTestFinished(async () => {
+    document.documentElement.className = originalClass;
+    await page.viewport(1280, 900);
+  });
+  await page.viewport(1887, 1210);
+  const screen = await render(
+    <UiLocaleProvider locale="zh">
+      <ModelServices
+        services={{ list: async () => [], save: async () => {}, delete: async () => {} }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    const panel = document.querySelector<HTMLElement>(".model-services-panel")!;
+    const workspace = document.querySelector<HTMLElement>(".model-services-workspace")!;
+    const nav = document.querySelector<HTMLElement>(".model-services-navigation-scroll")!;
+    console.log(
+      "P01-E layout baseline",
+      JSON.stringify({
+        panel: panel.getBoundingClientRect().toJSON(),
+        workspace: workspace.getBoundingClientRect().toJSON(),
+        navigation: nav.getBoundingClientRect().toJSON(),
+      }),
+    );
+    await expect.element(screen.getByRole("heading", { name: "暂无模型供应商" })).toBeVisible();
+    expect(workspace.getBoundingClientRect().width).toBe(880);
+    expect(workspace.getBoundingClientRect().top).toBe(100);
+    expect(Math.abs(workspace.getBoundingClientRect().left - 660)).toBeLessThanOrEqual(1);
+    expect(nav.getBoundingClientRect().left).toBe(52);
+    expect(nav.getBoundingClientRect().width).toBe(268);
+    expect(panel.getBoundingClientRect().height).toBe(560);
+    expect(panel.getBoundingClientRect().top).toBe(188);
+    expect(screen.getByRole("button", { name: "刷新供应商" }).query()).toBeNull();
+    expect(document.querySelector(".model-services-providers-scroll")).toBeNull();
+    expect(document.querySelector(".model-services-details-scroll")).toBeNull();
+    const title = screen.getByRole("heading", { name: "暂无模型供应商" }).element();
+    const description = screen.getByText("添加供应商后，即可配置模型并在聊天中使用。").element();
+    const action = screen.getByRole("button", { name: "添加供应商", exact: true });
+    const icon = panel.querySelector("svg")!;
+    for (const dark of [true, false]) {
+      document.documentElement.classList.toggle("dark", dark);
+      await expect
+        .poll(() => getComputedStyle(panel).backgroundColor)
+        .toBe(dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)");
+      expect(getComputedStyle(title).color).toBe(dark ? "rgb(212, 212, 212)" : "rgb(38, 38, 38)");
+      expect(getComputedStyle(description).fontSize).toBe("14px");
+      expect(getComputedStyle(title).fontSize).toBe("16px");
+      expect(getComputedStyle(icon).color).toBe(
+        dark
+          ? "color(srgb 0.831373 0.831373 0.831373 / 0.3)"
+          : "color(srgb 0.14902 0.14902 0.14902 / 0.4)",
+      );
+      await expect
+        .poll(() => getComputedStyle(action.element()).backgroundColor)
+        .toBe(dark ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)");
+      await expect
+        .poll(() => getComputedStyle(action.element()).color)
+        .toBe(dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)");
+      for (const [node, top, width, height] of [
+        [icon, 180, 32, 32],
+        [title, 232, 560, 24],
+        [description, 268, 560, 21],
+        [action.element(), 312, 144, 28],
+      ] as const) {
+        const box = node.getBoundingClientRect();
+        expect(box.top - panel.getBoundingClientRect().top).toBe(top);
+        expect(box.width).toBe(width);
+        expect(box.height).toBe(height);
+        expect(
+          Math.abs(box.left + box.width / 2 - (panel.getBoundingClientRect().left + 440)),
+        ).toBeLessThanOrEqual(1);
+      }
+    }
+    await page.viewport(420, 800);
+    expect(document.documentElement.scrollWidth).toBe(420);
+    expect(panel.getBoundingClientRect().width).toBeLessThan(420);
+    expect(description.getBoundingClientRect().right).toBeLessThanOrEqual(
+      panel.getBoundingClientRect().right,
+    );
+    action.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("button", { name: "创建自定义供应商" })).toBeVisible();
+    await screen.getByRole("button", { name: "返回供应商" }).click();
+    await expect.element(screen.getByRole("heading", { name: "暂无模型供应商" })).toBeVisible();
+  } finally {
+    await screen.unmount();
+    document.documentElement.className = originalClass;
+    await page.viewport(1280, 900);
+  }
+});
+
 test("Pencil model footer keeps cancel surface and primary save colors in both themes", async () => {
   const originalClass = document.documentElement.className;
   onTestFinished(() => {

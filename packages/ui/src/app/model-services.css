@@ -1182,3 +1182,56 @@
   margin-top: 0 !important;
   margin-bottom: 4px !important;
 }
+
+/* P01-E / C26: a single panel replaces the populated rail and details. */
+.model-services-provider-empty {
+  --provider-empty-action-foreground: #000;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 180px 24px 24px;
+  text-align: center;
+}
+.model-services-provider-empty-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--foreground) 30%, transparent);
+  margin-bottom: 20px;
+}
+:root:not(.dark) .model-services-provider-empty-icon {
+  color: color-mix(in srgb, var(--foreground) 40%, transparent);
+}
+.model-services-provider-empty h2,
+.model-services-provider-empty > p:not([role="alert"]) {
+  width: 560px;
+  max-width: 100%;
+  font-weight: 400;
+}
+.model-services-provider-empty h2 {
+  font-size: 16px;
+  line-height: 24px;
+  margin-bottom: 12px;
+}
+.model-services-provider-empty > p:not([role="alert"]) {
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--muted-foreground);
+  margin-bottom: 23px;
+}
+.model-services-provider-empty > button {
+  width: 144px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--provider-empty-action-foreground);
+  font-weight: 400;
+}
+:root:not(.dark) .model-services-provider-empty {
+  --provider-empty-action-foreground: #fff;
+}
+.model-services-provider-empty-error {
+  margin-top: 16px;
+}

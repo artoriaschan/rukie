@@ -115,6 +115,7 @@ export function ModelServices({
   const [rename, setRename] = useState("");
   const supportedLevels = modelServiceThinkingLevels(model);
   const selected = providers.find((provider) => provider.id === draft?.id);
+  const empty = providers.length === 0 && !draft && !catalog;
   const dirty = Boolean(
     draft &&
     (!selected ||
@@ -367,337 +368,372 @@ export function ModelServices({
           <header className="model-services-header">
             <h1 className="text-ui-xl font-medium">{t("services.title")}</h1>
             <p className="text-ui-base text-muted-foreground">{t("services.description")}</p>
-            <div className="model-services-toolbar">
-              <Button
-                variant="secondary"
-                size="icon"
-                aria-label={t("services.refresh")}
-                onClick={() => void load()}
-              >
-                <RefreshCw className="size-4" />
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setCatalog(true);
-                  setError("");
-                }}
-              >
-                <Plus className="size-4" />
-                {t("services.addProvider")}
-              </Button>
-            </div>
-          </header>
-          <div className="model-services-panel">
-            <ScrollArea
-              viewportLabel={t("services.custom")}
-              className="model-services-providers-scroll"
-              viewportClassName="model-services-providers"
-            >
-              <p className="text-ui-sm text-muted-foreground">{t("services.custom")}</p>
-              {[
-                ...providers,
-                ...(draft && !selected ? [{ ...draft, hasCredential: false }] : []),
-              ].map((provider) => (
+            {!empty ? (
+              <div className="model-services-toolbar">
                 <Button
-                  key={provider.id}
-                  variant={!catalog && draft?.id === provider.id ? "secondary" : "ghost"}
-                  size="sm"
-                  className="justify-start truncate"
-                  aria-label={provider.name}
-                  aria-pressed={!catalog && draft?.id === provider.id}
-                  disabled={pending}
-                  onClick={() => choose(provider)}
+                  variant="secondary"
+                  size="icon"
+                  aria-label={t("services.refresh")}
+                  onClick={() => void load()}
                 >
-                  <Box className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{provider.name}</span>
-                  <Circle
-                    aria-label={t(
-                      provider.hasCredential
-                        ? "services.credentialReady"
-                        : "services.credentialMissing",
-                    )}
-                    className={
-                      provider.hasCredential
-                        ? "model-services-credential ready"
-                        : "model-services-credential missing"
-                    }
-                  />
+                  <RefreshCw className="size-4" />
                 </Button>
-              ))}
-            </ScrollArea>
-            <ScrollArea
-              className="model-services-details-scroll"
-              viewportClassName="model-services-details"
-              viewportLabel={t("services.providerDetails")}
-            >
-              {error ? (
-                <div className="mb-3 text-ui-sm text-danger">
-                  <p role="alert">{error}</p>
-                  {error === t("services.loadFailure") ? (
-                    <Button variant="ghost" size="sm" onClick={() => void load()}>
-                      {t("services.retry")}
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-              {status ? (
-                <p role="status" className="mb-3 text-ui-sm">
-                  {status}
-                </p>
-              ) : null}
-              {catalog ? (
-                <div className="model-services-catalog">
-                  <div className="model-services-catalog-heading">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t("services.returnDetail")}
-                      onClick={() => setCatalog(false)}
-                    >
-                      <ArrowLeft className="size-4" />
-                    </Button>
-                    <h2 className="text-ui-lg">{t("services.addProvider")}</h2>
-                  </div>
-                  <p className="text-ui-sm text-muted-foreground">{t("services.catalog")}</p>
-                  <Button
-                    variant="secondary"
-                    className="model-services-custom-tile"
-                    onClick={() => create()}
-                  >
-                    <Plus className="size-6" />
-                    {t("services.create")}
-                    <ChevronRight className="ml-auto size-3.5" />
-                  </Button>
-                </div>
-              ) : draft ? (
-                <div className="model-services-provider-form">
-                  <div className="model-services-provider-heading flex items-center justify-between gap-2">
-                    <h2 className="flex items-center gap-2 truncate text-ui-lg font-medium">
-                      <Box className="size-5 text-muted-foreground" />
-                      {draft.name}
-                    </h2>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        ariaLabel={t("services.providerEnabled")}
-                        disabled={pending || !draft.models.length}
-                        checked={draft.models.some((item) => item.enabled !== false)}
-                        onCheckedChange={(enabled) =>
-                          void persist({
-                            ...draft,
-                            models: draft.models.map((item) => ({ ...item, enabled })),
-                          })
-                        }
-                      />
-                      <Menu.DropdownMenu>
-                        <Menu.DropdownMenuTrigger asChild>
-                          <Button
-                            disabled={pending}
-                            aria-label={t("services.actions")}
-                            variant="ghost"
-                            size="icon"
-                          >
-                            <Ellipsis className="size-4" />
-                          </Button>
-                        </Menu.DropdownMenuTrigger>
-                        <Menu.DropdownMenuContent
-                          align="end"
-                          className="model-services-menu model-services-provider-menu"
-                        >
-                          <Menu.DropdownMenuItem
-                            onSelect={() => {
-                              setRename(draft.name);
-                              setDialog("rename");
-                            }}
-                          >
-                            <Pencil className="size-4" />
-                            {t("services.rename")}
-                          </Menu.DropdownMenuItem>
-                          {selected?.hasCredential ? (
-                            <Menu.DropdownMenuCheckboxItem
-                              checked={removeKey}
-                              onCheckedChange={setRemoveKey}
-                            >
-                              {t("services.keyDelete")}
-                            </Menu.DropdownMenuCheckboxItem>
-                          ) : null}
-                          <Menu.DropdownMenuItem
-                            aria-label={t("services.deleteProvider")}
-                            className="text-danger"
-                            onSelect={() => setDialog("delete")}
-                          >
-                            <Trash2 className="size-4" />
-                            {t("services.delete")}
-                          </Menu.DropdownMenuItem>
-                        </Menu.DropdownMenuContent>
-                      </Menu.DropdownMenu>
-                    </div>
-                  </div>
-                  <Input
-                    disabled={pending}
-                    label={t("services.url")}
-                    value={draft.baseUrl}
-                    placeholder="https://api.example.com/v1"
-                    onChange={(baseUrl) => setDraft({ ...draft, baseUrl })}
-                  />
-                  <div className="relative">
-                    <p className="mb-1 font-medium">{t("services.api")}</p>
-                    <Select
-                      value={draft.api}
-                      disabled={pending}
-                      onValueChange={(api) => {
-                        if (
-                          api === "anthropic-messages" ||
-                          api === "openai-completions" ||
-                          api === "openai-responses"
-                        )
-                          setDraft({ ...draft, api });
-                      }}
-                    >
-                      <SelectTrigger
-                        aria-label={t("services.api")}
-                      >{`${protocols[draft.api]} (${routes[draft.api]})`}</SelectTrigger>
-                      <SelectContent className="model-services-menu model-services-api-menu">
-                        {Object.entries(protocols).map(([api, label]) => (
-                          <SelectItem
-                            key={api}
-                            value={api}
-                          >{`${label} (${routes[api as keyof typeof routes]})`}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p className="sr-only">
-                    {t("services.route")}: {draft.baseUrl.replace(/\/$/, "")}
-                    {routes[draft.api]}
-                  </p>
-                  <Input
-                    disabled={pending}
-                    label={t("services.key")}
-                    type={showKey ? "text" : "password"}
-                    autoComplete="off"
-                    value={key}
-                    placeholder={
-                      selected?.hasCredential
-                        ? "••••••••••••••••••••••••••••••••"
-                        : t("services.keyPlaceholder")
-                    }
-                    rightIcon={
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t("services.showKey")}
-                        onClick={() => setShowKey(!showKey)}
-                      >
-                        {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                      </Button>
-                    }
-                    onChange={setKey}
-                  />
-                  {selected?.hasCredential ? (
-                    <>
-                      <p className="sr-only">{t("services.keyKeep")}</p>
-                    </>
-                  ) : null}
-                  <div className="model-services-model-heading flex items-center justify-between gap-2">
-                    <h3 className="font-medium">{t("services.models")}</h3>
-                    <Button variant="secondary" size="sm" onClick={() => openModel()}>
-                      <Plus className="size-4" />
-                      {t("services.addModel")}
-                    </Button>
-                  </div>
-                  {!draft.models.length ? (
-                    <p className="model-services-empty text-ui-base text-muted-foreground">
-                      <Info className="size-4 shrink-0" />
-                      {t("services.empty")}
-                    </p>
-                  ) : (
-                    draft.models.map((item, index) => (
-                      <div key={item.id} className="model-services-model-row">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-mono">{item.id}</p>
-                          <p className="model-services-model-metadata text-ui-xs text-muted-foreground">
-                            <span>
-                              {new Intl.NumberFormat("en", {
-                                notation: "compact",
-                                maximumFractionDigits: 1,
-                              }).format(item.contextWindow ?? 128000)}
-                            </span>
-                            {item.input?.includes("image") ? (
-                              <span>{t("services.vision")}</span>
-                            ) : null}
-                            {item.reasoning ? ` · ${t("services.reasoning")}` : ""}
-                          </p>
-                        </div>
-                        <Switch
-                          ariaLabel={t("services.enabled")}
-                          checked={item.enabled !== false}
-                          disabled={pending}
-                          onCheckedChange={(enabled) =>
-                            void persist({
-                              ...draft,
-                              models: draft.models.map((m, i) =>
-                                i === index ? { ...m, enabled } : m,
-                              ),
-                            })
-                          }
-                        />
-                        <Button
-                          size="icon"
-                          aria-label={t("services.test")}
-                          variant="ghost"
-                          disabled={!services.test || pending}
-                          onClick={() => void testConnection(item.id)}
-                        >
-                          <Unplug className="size-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          aria-label={t("services.edit")}
-                          onClick={() => openModel(index)}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          aria-label={t("services.deleteModel")}
-                          variant="ghost"
-                          disabled={pending}
-                          onClick={() =>
-                            void persist({
-                              ...draft,
-                              models: draft.models.filter((_, i) => i !== index),
-                            })
-                          }
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    ))
-                  )}
-                  {dirty ? (
-                    <div className="model-services-save flex gap-2">
-                      <Button size="sm" disabled={pending} onClick={() => void persist(draft)}>
-                        {t("services.saveProvider")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={pending}
-                        onClick={() => (selected ? choose(selected) : setDraft(undefined))}
-                      >
-                        {t("services.cancel")}
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <Button variant="secondary" onClick={() => setCatalog(true)}>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCatalog(true);
+                    setError("");
+                  }}
+                >
+                  <Plus className="size-4" />
                   {t("services.addProvider")}
                 </Button>
-              )}
-            </ScrollArea>
+              </div>
+            ) : null}
+          </header>
+          <div className="model-services-panel">
+            {empty ? (
+              <section
+                className="model-services-provider-empty"
+                aria-labelledby="provider-empty-title"
+              >
+                <Box aria-hidden="true" className="model-services-provider-empty-icon" />
+                <h2 id="provider-empty-title">{t("services.providerEmptyTitle")}</h2>
+                <p>{t("services.providerEmptyDescription")}</p>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCatalog(true);
+                    setError("");
+                  }}
+                >
+                  <Plus className="size-4" />
+                  {t("services.addProvider")}
+                </Button>
+                {error ? (
+                  <div className="model-services-provider-empty-error text-ui-sm text-danger">
+                    <p role="alert">{error}</p>
+                    {error === t("services.loadFailure") ? (
+                      <Button variant="ghost" size="sm" onClick={() => void load()}>
+                        {t("services.retry")}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : (
+              <>
+                <ScrollArea
+                  viewportLabel={t("services.custom")}
+                  className="model-services-providers-scroll"
+                  viewportClassName="model-services-providers"
+                >
+                  <p className="text-ui-sm text-muted-foreground">{t("services.custom")}</p>
+                  {[
+                    ...providers,
+                    ...(draft && !selected ? [{ ...draft, hasCredential: false }] : []),
+                  ].map((provider) => (
+                    <Button
+                      key={provider.id}
+                      variant={!catalog && draft?.id === provider.id ? "secondary" : "ghost"}
+                      size="sm"
+                      className="justify-start truncate"
+                      aria-label={provider.name}
+                      aria-pressed={!catalog && draft?.id === provider.id}
+                      disabled={pending}
+                      onClick={() => choose(provider)}
+                    >
+                      <Box className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{provider.name}</span>
+                      <Circle
+                        aria-label={t(
+                          provider.hasCredential
+                            ? "services.credentialReady"
+                            : "services.credentialMissing",
+                        )}
+                        className={
+                          provider.hasCredential
+                            ? "model-services-credential ready"
+                            : "model-services-credential missing"
+                        }
+                      />
+                    </Button>
+                  ))}
+                </ScrollArea>
+                <ScrollArea
+                  className="model-services-details-scroll"
+                  viewportClassName="model-services-details"
+                  viewportLabel={t("services.providerDetails")}
+                >
+                  {error ? (
+                    <div className="mb-3 text-ui-sm text-danger">
+                      <p role="alert">{error}</p>
+                      {error === t("services.loadFailure") ? (
+                        <Button variant="ghost" size="sm" onClick={() => void load()}>
+                          {t("services.retry")}
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {status ? (
+                    <p role="status" className="mb-3 text-ui-sm">
+                      {status}
+                    </p>
+                  ) : null}
+                  {catalog ? (
+                    <div className="model-services-catalog">
+                      <div className="model-services-catalog-heading">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t("services.returnDetail")}
+                          onClick={() => setCatalog(false)}
+                        >
+                          <ArrowLeft className="size-4" />
+                        </Button>
+                        <h2 className="text-ui-lg">{t("services.addProvider")}</h2>
+                      </div>
+                      <p className="text-ui-sm text-muted-foreground">{t("services.catalog")}</p>
+                      <Button
+                        variant="secondary"
+                        className="model-services-custom-tile"
+                        onClick={() => create()}
+                      >
+                        <Plus className="size-6" />
+                        {t("services.create")}
+                        <ChevronRight className="ml-auto size-3.5" />
+                      </Button>
+                    </div>
+                  ) : draft ? (
+                    <div className="model-services-provider-form">
+                      <div className="model-services-provider-heading flex items-center justify-between gap-2">
+                        <h2 className="flex items-center gap-2 truncate text-ui-lg font-medium">
+                          <Box className="size-5 text-muted-foreground" />
+                          {draft.name}
+                        </h2>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            ariaLabel={t("services.providerEnabled")}
+                            disabled={pending || !draft.models.length}
+                            checked={draft.models.some((item) => item.enabled !== false)}
+                            onCheckedChange={(enabled) =>
+                              void persist({
+                                ...draft,
+                                models: draft.models.map((item) => ({ ...item, enabled })),
+                              })
+                            }
+                          />
+                          <Menu.DropdownMenu>
+                            <Menu.DropdownMenuTrigger asChild>
+                              <Button
+                                disabled={pending}
+                                aria-label={t("services.actions")}
+                                variant="ghost"
+                                size="icon"
+                              >
+                                <Ellipsis className="size-4" />
+                              </Button>
+                            </Menu.DropdownMenuTrigger>
+                            <Menu.DropdownMenuContent
+                              align="end"
+                              className="model-services-menu model-services-provider-menu"
+                            >
+                              <Menu.DropdownMenuItem
+                                onSelect={() => {
+                                  setRename(draft.name);
+                                  setDialog("rename");
+                                }}
+                              >
+                                <Pencil className="size-4" />
+                                {t("services.rename")}
+                              </Menu.DropdownMenuItem>
+                              {selected?.hasCredential ? (
+                                <Menu.DropdownMenuCheckboxItem
+                                  checked={removeKey}
+                                  onCheckedChange={setRemoveKey}
+                                >
+                                  {t("services.keyDelete")}
+                                </Menu.DropdownMenuCheckboxItem>
+                              ) : null}
+                              <Menu.DropdownMenuItem
+                                aria-label={t("services.deleteProvider")}
+                                className="text-danger"
+                                onSelect={() => setDialog("delete")}
+                              >
+                                <Trash2 className="size-4" />
+                                {t("services.delete")}
+                              </Menu.DropdownMenuItem>
+                            </Menu.DropdownMenuContent>
+                          </Menu.DropdownMenu>
+                        </div>
+                      </div>
+                      <Input
+                        disabled={pending}
+                        label={t("services.url")}
+                        value={draft.baseUrl}
+                        placeholder="https://api.example.com/v1"
+                        onChange={(baseUrl) => setDraft({ ...draft, baseUrl })}
+                      />
+                      <div className="relative">
+                        <p className="mb-1 font-medium">{t("services.api")}</p>
+                        <Select
+                          value={draft.api}
+                          disabled={pending}
+                          onValueChange={(api) => {
+                            if (
+                              api === "anthropic-messages" ||
+                              api === "openai-completions" ||
+                              api === "openai-responses"
+                            )
+                              setDraft({ ...draft, api });
+                          }}
+                        >
+                          <SelectTrigger
+                            aria-label={t("services.api")}
+                          >{`${protocols[draft.api]} (${routes[draft.api]})`}</SelectTrigger>
+                          <SelectContent className="model-services-menu model-services-api-menu">
+                            {Object.entries(protocols).map(([api, label]) => (
+                              <SelectItem
+                                key={api}
+                                value={api}
+                              >{`${label} (${routes[api as keyof typeof routes]})`}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="sr-only">
+                        {t("services.route")}: {draft.baseUrl.replace(/\/$/, "")}
+                        {routes[draft.api]}
+                      </p>
+                      <Input
+                        disabled={pending}
+                        label={t("services.key")}
+                        type={showKey ? "text" : "password"}
+                        autoComplete="off"
+                        value={key}
+                        placeholder={
+                          selected?.hasCredential
+                            ? "••••••••••••••••••••••••••••••••"
+                            : t("services.keyPlaceholder")
+                        }
+                        rightIcon={
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t("services.showKey")}
+                            onClick={() => setShowKey(!showKey)}
+                          >
+                            {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                          </Button>
+                        }
+                        onChange={setKey}
+                      />
+                      {selected?.hasCredential ? (
+                        <>
+                          <p className="sr-only">{t("services.keyKeep")}</p>
+                        </>
+                      ) : null}
+                      <div className="model-services-model-heading flex items-center justify-between gap-2">
+                        <h3 className="font-medium">{t("services.models")}</h3>
+                        <Button variant="secondary" size="sm" onClick={() => openModel()}>
+                          <Plus className="size-4" />
+                          {t("services.addModel")}
+                        </Button>
+                      </div>
+                      {!draft.models.length ? (
+                        <p className="model-services-empty text-ui-base text-muted-foreground">
+                          <Info className="size-4 shrink-0" />
+                          {t("services.empty")}
+                        </p>
+                      ) : (
+                        draft.models.map((item, index) => (
+                          <div key={item.id} className="model-services-model-row">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-mono">{item.id}</p>
+                              <p className="model-services-model-metadata text-ui-xs text-muted-foreground">
+                                <span>
+                                  {new Intl.NumberFormat("en", {
+                                    notation: "compact",
+                                    maximumFractionDigits: 1,
+                                  }).format(item.contextWindow ?? 128000)}
+                                </span>
+                                {item.input?.includes("image") ? (
+                                  <span>{t("services.vision")}</span>
+                                ) : null}
+                                {item.reasoning ? ` · ${t("services.reasoning")}` : ""}
+                              </p>
+                            </div>
+                            <Switch
+                              ariaLabel={t("services.enabled")}
+                              checked={item.enabled !== false}
+                              disabled={pending}
+                              onCheckedChange={(enabled) =>
+                                void persist({
+                                  ...draft,
+                                  models: draft.models.map((m, i) =>
+                                    i === index ? { ...m, enabled } : m,
+                                  ),
+                                })
+                              }
+                            />
+                            <Button
+                              size="icon"
+                              aria-label={t("services.test")}
+                              variant="ghost"
+                              disabled={!services.test || pending}
+                              onClick={() => void testConnection(item.id)}
+                            >
+                              <Unplug className="size-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label={t("services.edit")}
+                              onClick={() => openModel(index)}
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              aria-label={t("services.deleteModel")}
+                              variant="ghost"
+                              disabled={pending}
+                              onClick={() =>
+                                void persist({
+                                  ...draft,
+                                  models: draft.models.filter((_, i) => i !== index),
+                                })
+                              }
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                      {dirty ? (
+                        <div className="model-services-save flex gap-2">
+                          <Button size="sm" disabled={pending} onClick={() => void persist(draft)}>
+                            {t("services.saveProvider")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={pending}
+                            onClick={() => (selected ? choose(selected) : setDraft(undefined))}
+                          >
+                            {t("services.cancel")}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <Button variant="secondary" onClick={() => setCatalog(true)}>
+                      {t("services.addProvider")}
+                    </Button>
+                  )}
+                </ScrollArea>
+              </>
+            )}
           </div>
         </div>
       </ScrollArea>
