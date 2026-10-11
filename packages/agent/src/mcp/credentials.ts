@@ -54,6 +54,10 @@ const Credentials = Type.Object({
     Type.Object({ serverName: Type.String(), serverUrl: Type.String(), state: State }),
   ),
 });
+export function parseOAuthState(value: unknown): Static<typeof State> {
+  if (!Value.Check(State, value)) throw new Error("Invalid encrypted OAuth state");
+  return value;
+}
 
 // Providers have separate queues; the file has one queue shared by all Sessions in this process.
 const writes = new Map<string, Promise<void>>();
@@ -70,12 +74,25 @@ export function credentialKey(
 
 export function credentialStore(options: {
   homeDir: string;
+  dataRoot?: string;
   key: string;
   serverName: string;
   serverUrl: string;
   warning: () => void;
   signal?: AbortSignal;
 }): McpOAuthStateStore & { clear(): Promise<void> } {
+  // Desktop persistence must be supplied by the encrypted credential adapter.
+  // Fail closed until it is installed; never write a temporary plaintext store.
+  if (options.dataRoot !== undefined)
+    return {
+      async load() {
+        return undefined;
+      },
+      async save() {
+        throw new Error("Desktop encrypted MCP credential storage is unavailable.");
+      },
+      async clear() {},
+    };
   const directory = join(options.homeDir, ".rukie");
   const path = join(directory, "credentials.json");
   const read = async () => {

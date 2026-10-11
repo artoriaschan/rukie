@@ -82,3 +82,9 @@ export function truncateHead(text: string) {
     truncatedBy: truncated ? (kept.length === DEFAULT_MAX_LINES ? "lines" : "bytes") : null,
   };
 }
+
+/** Desktop adapters retain text before a tool's own model truncation; other hosts keep their existing strategy. */
+export function captureFullOutput(api: object, text: string) {
+  if ("captureFullOutput" in api && typeof api.captureFullOutput === "function")
+    api.captureFullOutput(text);
+}

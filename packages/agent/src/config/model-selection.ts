@@ -3,6 +3,7 @@ import { THINKING_LEVELS, type ThinkingLevel } from "@rukie/shared";
 
 /** Choose the highest supported level no higher than requested, falling back to the minimum. */
 export function supportedThinkingLevel(model: Model<Api>, requested: ThinkingLevel): ThinkingLevel {
+  if (requested === "automatic") return requested;
   const supported = getSupportedThinkingLevels(model);
   const maximum = THINKING_LEVELS.indexOf(requested);
   return (
@@ -10,4 +11,9 @@ export function supportedThinkingLevel(model: Model<Api>, requested: ThinkingLev
     supported[0] ??
     "off"
   );
+}
+
+/** Preserve native Harness type while the product document owns automatic omission. */
+export function nativeThinkingLevel(level: ThinkingLevel) {
+  return level === "automatic" ? "off" : level;
 }

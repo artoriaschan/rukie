@@ -25,6 +25,7 @@
     "release:publish": "bun scripts/release/publication.ts",
     "test:desktop": "env -u NO_COLOR vitest run",
     "check:ui-typography": "bun scripts/check-ui-typography.ts",
+    "dev:desktop": "bun scripts/desktop/development.ts",
     "desktop:build": "bun scripts/desktop/build.ts"
   },
   "devDependencies": {

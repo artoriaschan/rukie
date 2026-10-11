@@ -30,13 +30,13 @@ Electron main 确定应用专属数据根，生产使用 `app.getPath("userData"
 
 Bun sidecar 是业务数据库的唯一写入进程，Electron main 拥有应用启动与 safeStorage，renderer 只调用受限接口。Core 保留执行与存储能力，server 组合桌面配置及 SQLite adapters；不在 server 重写 Harness。使用锁定的 pi-durable 便携 SqliteDatabase 接口适配 `bun:sqlite`，验证事务排队、回滚和关闭；不能假定 Node adapter 在 Bun 中具备相同契约。
 
-同一 Session 保留跨进程单写者保证，sidecar 重启或第二实例不能重复取得执行权；WAL 本身不代表执行者独占。create、resume、list、busy 时的只读 snapshot、子代理、恢复和清理均走选定存储实现。只读路径仅观察已提交一致状态，不取得执行 lease、不修复存储、不启动任务、不执行 schema migration；不能直接用会迁移数据库的 Storage.open 作为只读入口。现有 JSONL 专用读入口必须一起调整。
+同一 Session 保留跨进程单写者保证，sidecar 重启或第二实例不能重复取得执行权；WAL 本身不代表执行者独占。create、resume、list、busy 时的只读 snapshot、子代理、恢复和清理均走选定存储实现。启动时的模型目录和历史订阅只读取展示所需的非敏感配置与已提交快照，不解密 Hooks、MCP 或供应商凭证；已打开 Session 保持实时订阅，用户明确执行命令才打开未加载的 Session。历史展示的 busy 状态通过独立 host mutex 的即时事务探测并立即回滚，不写数据库或创建 Session；这是当时的占用观察，执行命令仍须重新获得 lease。只读路径仅观察已提交一致状态，不取得执行 lease、不修复存储、不启动任务、不执行 schema migration；不能直接用会迁移数据库的 Storage.open 作为只读入口。现有 JSONL 专用读入口必须一起调整。
 
 ### 配置与凭证
 
 供应商认证只读取桌面凭证库，不自动读取终端 API Key 环境变量。工具子进程保留正常系统环境，不自动注入桌面凭证；这不承诺工具无法访问其权限允许的本机环境或文件。桌面环境变量认证与工具进程环境是两项不同的契约。
 
-API Key、OAuth token、OAuth client_secret 及持久化的授权临时秘密（如 codeVerifier），以及 MCP 配置中的 Authorization/header 认证秘密均经 Electron main 的 safeStorage 加密，sidecar 只持久化密文。认证需要明文时通过私有、受限的 main/sidecar 通道按凭证身份提供给指定执行用途，不暴露任意解密接口给 renderer，不通过会话 WebSocket、日志或模型上下文传递凭证。renderer 录入的新密钥经受信任 preload IPC 交给 main；列表仅返回脱敏状态，编辑可保留原密钥或替换，不能读取原密钥明文。
+API Key、OAuth token、OAuth client_secret 及持久化的授权临时秘密（如 codeVerifier），以及 MCP 配置中的 Authorization/header 认证秘密均经 Electron main 的 safeStorage 加密，sidecar 只持久化密文。认证需要明文时通过私有、受限的 main/sidecar 通道按凭证身份提供给指定执行用途，不暴露任意解密接口给 renderer，不通过会话 WebSocket、日志或模型上下文传递凭证。renderer 录入的新密钥经受信任 preload IPC 交给 main；列表仅返回脱敏状态，编辑可保留原密钥或替换。用户在供应商详情主动点击显示时，renderer 经受信任主 frame IPC 请求该供应商的 API Key；main 验证精确供应商身份后，经独立 management token 通道读取 vault。该受限展示不开放任意凭证解密，不读取 OAuth/MCP/hook 秘密；普通启动和列表不解密。明文仅在当前详情的临时内存中展示，隐藏、切换供应商、保存或退出时清除，并丢弃已取消或过期请求的返回值；展示值不自动转为替换凭证。
 
 加密不可用、系统授权被取消或解密失败时，不明文落盘，也不回退到终端凭证。保留现有密文，失败返回可重试/重新配置的状态；删除与替换在数据库事务中保持配置和凭证一致。macOS 的 safeStorage 可能显式访问钥匙串，不把 mock keychain 作为生产验收。跨机器复制后凭证可能需要重新录入。
 
@@ -55,4 +55,22 @@ API Key、OAuth token、OAuth client_secret 及持久化的授权临时秘密（
 
 桌面端与终端不能直接接力同一个 Session；两者在同一项目工作也各自拥有会话、信任与配置。Core 的 Frontend 无关执行接口保留，增加实际存储与配置来源的接缝。模型录入成为桌面首次使用的必要能力，已配置供应商和模型在重启后保留；删除配置不能破坏历史 Transcript，后续执行缺少有效模型时要求重新选择。
 
-这是已接受但尚未实施的决定。当前发布代码仍采用共享 JSONL；实施、测试与验收归[存储调整规格及工单](../../.scratch/desktop-storage/spec.md)，当前使用参考不能提前描述为 SQLite 已上线。
+当前源码已实现上述 SQLite、独立配置与输出、系统加密通道和模型服务流程。逐项验证、真实系统加密和打包验收状态归[存储调整规格及工单](../../.scratch/desktop-storage/spec.md)；源码实现不代表已发布或生产验收完成。
+
+### 开发环境隔离
+
+`dev:desktop` 固定使用 checkout 内 `.desktop-dev` 的独立业务数据、Electron userData、session/cache 与构建路径，并保留真实工具 home。开发名称为 `rukie-desktop-development`，bundle identity 为 `dev.rukie.desktop.development`，在 ready 前设置名称与路径；单实例锁使用独立 userData，开发不会驱动正式应用的现有窗口。当前源码每次重新构建，稳定缓存的开发 bundle 与正式打包产物分开，Cookie Encryption 继续关闭，不以 mock keychain 代替实际凭证行为。
+
+[Electron 41.0.3 的 macOS 初始化实现](https://github.com/electron/electron/blob/v41.0.3/shell/browser/electron_browser_main_parts.cc#L469-L510) 在 main 执行后将 Keychain service 设置为 `Browser::GetName() + " Safe Storage"`，account 为同一 app name。因此开发的 manifest、pre-ready name 与 bundle identity 都与正式版分离；仅设置不同 userData 不能达到这个目的。显式开发凭证操作使用自己的系统身份，失败或取消继续遵守现有凭证合同；此源代码证据不代替独立授权的真实系统钥匙串验收。使用和退出流程由[桌面 README](../../packages/desktop/README.md#桌面开发调试)维护。
+
+### 模型名称与自动推理选择
+
+模型 ID 是请求与配置身份，显示名称是独立的可选展示元数据，保存和修改互不回填。桌面默认推理选择包含 `automatic`，会话明确选择优先；恢复已有会话保持其已提交选择。`automatic` 表示请求不指定推理等级、开关或预算，让供应商采用自己的默认行为，与明确关闭不同。
+
+锁定 Harness 的原生 AgentDoc 仍保持七种等级；`automatic` 由会话的可回退、按分支复制的模型选择 document 保存，原生 `off` 仅承担 Harness 类型载体。Core 的模型请求边界通过原生 ProviderDoc 的独立会话身份读取已提交产品选择，在 pi-ai 的 `onPayload` 中移除推理参数；Generation 的流式调用与 Compaction 的完整调用共用该边界。明确等级仍走原有协议映射，回退和恢复不把自动选择改成关闭或全局默认；不替换原生执行、任务或提交机制。标题等独立辅助请求维持自己的模型合同。
+
+### 模型高级配置
+
+桌面模型的高级字段作为可选配置保存；留空使用现有默认行为。自动压缩阈值为上下文占用百分比（1–100），根 Session 将其转换为原生 Harness 的 reserveTokens，并关闭提前后台压缩。原生摘要预算与 reserveTokens 耦合，Session 专用 completeSimple 请求边界保留原默认策略的独立摘要预算并受模型输出上限约束，避免 99–100% 阈值产生过小或为零的摘要预算；普通生成预算保持不变。原生压缩策略属于整个 Harness；子代理仍沿用根 Session 策略，不宣称其不同模型阈值独立生效。本轮不替换或扩展锁定 Harness 的压缩执行机制。
+
+Temperature 通过 pi-ai 请求选项传入，明确的辅助请求选项优先；四项价格为 USD/百万 Token，映射模型 cost 供原生 Usage 计算，价格来源只保存元数据。最大工具迭代按每次 Run 计数：一条已提交模型回复的整批工具算一轮，达到上限后下一次请求不提供工具，允许模型总结。计数从原生 Run 输入的最早提交 entry 起按当前 Conversation 的未投影 Transcript 重建，恢复不重复计轮，压缩不清零，子代理与父 Conversation 分开。供应商违反无工具请求继续返回工具时通过原生 abort 结束，不执行额外工具，也不伪称总结成功。

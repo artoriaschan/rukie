@@ -5,6 +5,8 @@ import {
   useContext,
   useId,
   useMemo,
+  useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -34,6 +36,8 @@ export interface RadioGroupProps {
   children: ReactNode;
   className?: string;
   orientation?: "vertical" | "horizontal";
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
 }
 
 export function RadioGroup({
@@ -43,7 +47,10 @@ export function RadioGroup({
   children,
   className,
   orientation = "vertical",
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledby,
 }: RadioGroupProps) {
+  const groupRef = useRef<HTMLDivElement>(null);
   const [internal, setInternal] = useState(defaultValue);
   const layoutId = useId();
   const reduce = useReducedMotion();
@@ -61,11 +68,42 @@ export function RadioGroup({
     [current, layoutId, setValue],
   );
 
+  useEffect(() => {
+    const items = Array.from(
+      groupRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)') ?? [],
+    );
+    const active = items.find((item) => item.getAttribute("aria-checked") === "true") ?? items[0];
+    for (const item of items) item.tabIndex = item === active ? 0 : -1;
+  }, [current, children]);
+
   return (
     <MotionConfig transition={reduce ? { duration: 0 } : { duration: 0.12, ease: EASE_OUT }}>
       <RadioCtx.Provider value={contextValue}>
         <div
+          ref={groupRef}
           role="radiogroup"
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabelledby}
+          aria-orientation={orientation}
+          onKeyDown={(event) => {
+            const direction = ["ArrowRight", "ArrowDown"].includes(event.key)
+              ? 1
+              : ["ArrowLeft", "ArrowUp"].includes(event.key)
+                ? -1
+                : 0;
+            if (!direction) return;
+            const items = Array.from(
+              event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                '[role="radio"]:not(:disabled)',
+              ),
+            );
+            const index = items.findIndex((item) => item === event.target);
+            if (index < 0 || !items.length) return;
+            event.preventDefault();
+            const next = items[(index + direction + items.length) % items.length]!;
+            next.focus();
+            next.click();
+          }}
           className={cn(
             "flex gap-2",
             orientation === "vertical" ? "flex-col" : "flex-row flex-wrap",
@@ -114,6 +152,7 @@ export function RadioGroupItem({
         type="button"
         role="radio"
         aria-checked={selected}
+        tabIndex={selected && !disabled ? 0 : -1}
         disabled={disabled}
         onClick={() => !disabled && setValue(value)}
         transition={{ duration: reduce ? 0 : 0.12, ease: EASE_OUT }}

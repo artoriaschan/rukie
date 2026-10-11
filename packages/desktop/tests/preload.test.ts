@@ -6,7 +6,7 @@ const electron = vi.hoisted(() => ({
 vi.mock("electron", () => electron);
 
 import type { DesktopHost } from "@rukie/ui";
-test("preload exposes precisely four native methods with fixed IPC channels", async () => {
+test("preload exposes fixed native methods and explicit credential reveal with fixed IPC channels", async () => {
   await import("../src/preload.ts");
   expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledTimes(1);
   const call = electron.contextBridge.exposeInMainWorld.mock.calls[0]!;
@@ -14,6 +14,7 @@ test("preload exposes precisely four native methods with fixed IPC channels", as
   const host: DesktopHost = call[1];
   expect(Object.keys(host).sort()).toEqual([
     "getConnection",
+    "modelServices",
     "openInTerminal",
     "pickProjectFolder",
     "revealPath",
@@ -22,10 +23,37 @@ test("preload exposes precisely four native methods with fixed IPC channels", as
   await host.pickProjectFolder();
   await host.revealPath("/tmp");
   await host.openInTerminal("/tmp");
+  expect(Object.keys(host.modelServices!).sort()).toEqual([
+    "delete",
+    "list",
+    "prices",
+    "revealKey",
+    "save",
+    "templates",
+    "test",
+  ]);
+  await host.modelServices!.prices!({
+    baseUrl: "https://api.deepseek.com",
+    modelId: "deepseek-chat",
+  });
+  await host.modelServices!.templates!();
+  await host.modelServices!.test!("local", "m");
+  await host.modelServices!.list();
+  await host.modelServices!.revealKey!("local");
+  await host.modelServices!.delete("local");
   expect(electron.ipcRenderer.invoke.mock.calls).toEqual([
     ["rukie:getConnection"],
     ["rukie:pickProjectFolder"],
     ["rukie:revealPath", "/tmp"],
     ["rukie:openInTerminal", "/tmp"],
+    [
+      "rukie:modelServices:prices",
+      { baseUrl: "https://api.deepseek.com", modelId: "deepseek-chat" },
+    ],
+    ["rukie:modelServices:templates"],
+    ["rukie:modelServices:test", "local", "m"],
+    ["rukie:modelServices:list"],
+    ["rukie:modelServices:revealKey", "local"],
+    ["rukie:modelServices:delete", "local"],
   ]);
 });

@@ -1,3 +1,5 @@
+import { Value } from "typebox/value";
+import { Type } from "typebox";
 import { useEffect, useRef, useState } from "react";
 import type { PresentedPermissionRequest } from "../lib/transcript";
 import type { ConversationProps } from "./index";
@@ -112,6 +114,23 @@ export function AppConversation({
             state={state}
             decisions={Object.values(view.permissionDecisions ?? {})}
             waiting={Object.keys(view.interactions).length > 0}
+            readOutput={async (outputRef, offset) => {
+              const result = await request({
+                type: "tool_output.read",
+                sessionId,
+                outputRef,
+                offset,
+                maxBytes: 65536,
+              });
+              const schema = Type.Object({
+                stdout: Type.String(),
+                stderr: Type.String(),
+                nextOffset: Type.Integer({ minimum: 0 }),
+                dropped: Type.Boolean(),
+              });
+              if (!Value.Check(schema, result)) throw new Error("Invalid output response");
+              return result;
+            }}
           />
         </div>
       ) : null}

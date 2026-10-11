@@ -2,7 +2,7 @@ import { Type, type Static } from "typebox";
 import { ModelCompatSchema } from "./model-compat.ts";
 
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
-export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number] | "automatic";
 
 export const PERMISSION_MODES = ["ask", "auto-review", "full-access"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
@@ -103,13 +103,27 @@ export type HooksSettings = Partial<
   Record<HookEvent, { matcher?: string; hooks: HookHandler[] }[]>
 >;
 
-const CustomModel = Type.Object({
+export const CustomModelSchema = Type.Object({
   id: Type.String(),
   /** Accepted modalities; omitted input means text only. Text must always be included. */
   input: Type.Optional(
     Type.Array(Type.Enum(["text", "image"]), { minItems: 1, contains: Type.Literal("text") }),
   ),
   reasoning: Type.Optional(Type.Boolean()),
+  thinkingLevelMap: Type.Optional(
+    Type.Object(
+      {
+        off: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        minimal: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        low: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        medium: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        high: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        xhigh: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+        max: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+      },
+      { additionalProperties: false },
+    ),
+  ),
   contextWindow: Type.Optional(Type.Integer({ minimum: 1 })),
   maxTokens: Type.Optional(Type.Integer({ minimum: 1 })),
   compat: Type.Optional(ModelCompatSchema),
@@ -121,7 +135,7 @@ const CustomProvider = Type.Object({
   baseUrl: Type.String(),
   /** Name of the env var holding the key; settings never contain the key itself. */
   apiKeyEnv: Type.String({ minLength: 1 }),
-  models: Type.Array(CustomModel),
+  models: Type.Array(CustomModelSchema),
 });
 
 /** `~/.rukie/settings.json` and `<project>/.rukie/settings.json`. */
@@ -138,7 +152,7 @@ export const SettingsSchema = Type.Object({
   /** Collapse multiline terminal tool titles to the first source line; defaults to true. */
   foldTerminalCommand: Type.Optional(Type.Boolean()),
   toolSearch: Type.Optional(Type.Enum(["auto", "on", "off"])),
-  thinking: Type.Optional(Type.Enum([...THINKING_LEVELS])),
+  thinking: Type.Optional(Type.Enum(["automatic", ...THINKING_LEVELS])),
   /** Frontend diff presentation; omitted means auto. */
   diffLayout: Type.Optional(Type.Enum(["auto", "unified", "split"])),
   providers: Type.Optional(Type.Array(CustomProvider)),

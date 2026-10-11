@@ -17,6 +17,9 @@ import {
   Ellipsis,
   WifiOff,
   LoaderCircle,
+  Settings,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import type { Locale } from "@rukie/i18n";
 import type { PermissionMode, WirePreferences } from "@rukie/shared";
@@ -34,6 +37,7 @@ import * as Menu from "../components/ui/dropdown-menu";
 import { UiLocaleProvider, useAppText } from "../lib/i18n";
 import { cn } from "../lib/utils";
 import type { PermissionDecision } from "../lib/transcript";
+import { ModelServices } from "./model-services";
 import { AppConversation } from "./conversation";
 import { useErrorText } from "./error";
 
@@ -59,6 +63,12 @@ export interface AppProps {
   Conversation?: ComponentType<ConversationProps>;
 }
 const emptyView: SessionViewState = { interactions: {}, busy: false };
+interface NavigationEntry {
+  settings: boolean;
+  session: string | null;
+  target: string | null;
+  draft: string;
+}
 interface InputDraft {
   text: string;
   images: PromptImages;
@@ -79,6 +89,11 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [store] = useState(createDesktopStore);
   const [client] = useState(() => createWireClient(host));
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpener = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!settingsOpen) settingsOpener.current?.focus();
+  }, [settingsOpen]);
   const [sidebar, setSidebar] = useState(() => matchMedia("(min-width: 768px)").matches);
   const [ctrl, setCtrl] = useState(false);
   const [search, setSearch] = useState(false);
@@ -89,6 +104,35 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [drafts, setDrafts] = useState<Record<string, InputDraft>>({});
   const newDraftSequence = useRef(0);
   const [newDraftKey, setNewDraftKey] = useState("new-0");
+  const [navigation, setNavigation] = useState<{ entries: NavigationEntry[]; index: number }>({
+    entries: [{ settings: false, session: null, target: null, draft: "new-0" }],
+    index: 0,
+  });
+  const restoringNavigation = useRef(false);
+  useEffect(() => {
+    if (restoringNavigation.current) {
+      restoringNavigation.current = false;
+      return;
+    }
+    const entry = {
+      settings: settingsOpen,
+      session: state.selected,
+      target: state.target,
+      draft: newDraftKey,
+    };
+    setNavigation((previous) => {
+      const current = previous.entries[previous.index]!;
+      if (
+        current.settings === entry.settings &&
+        current.session === entry.session &&
+        current.target === entry.target &&
+        current.draft === entry.draft
+      )
+        return previous;
+      const entries = [...previous.entries.slice(0, previous.index + 1), entry];
+      return { entries, index: entries.length - 1 };
+    });
+  }, [settingsOpen, state.selected, state.target, newDraftKey]);
   const draftKey = state.selected ?? newDraftKey;
   const inputDraft = drafts[draftKey] ?? emptyDraft;
   const draft = inputDraft.text;
@@ -120,6 +164,12 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     });
   const [permission, setPermission] = useState<PermissionMode>("ask");
   const [model, setModel] = useState<ModelSelection>();
+  const catalogDefault = state.models.find((item) => item.authenticated);
+  const newSessionModel =
+    model ??
+    (catalogDefault
+      ? { provider: catalogDefault.providerId, modelId: catalogDefault.id }
+      : undefined);
   const [sending, setSending] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
   const recent = useMemo(() => recentSessions(state), [state.sessions, state.preferences]);
@@ -156,6 +206,26 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     setError("");
     setSummary(false);
     if (!matchMedia("(min-width: 768px)").matches) setSidebar(false);
+  };
+  const navigate = (offset: number) => {
+    const index = navigation.index + offset;
+    const entry = navigation.entries[index];
+    if (!entry) return;
+    if (entry.session && !state.sessions.some((session) => session.id === entry.session)) {
+      setError(t("app.error", { message: errorText(new WireError("session_not_found")) }));
+      return;
+    }
+    restoringNavigation.current = true;
+    setNavigation({ ...navigation, index });
+    setSettingsOpen(entry.settings);
+    setNewDraftKey(entry.draft);
+    if (entry.session) safe(() => select(entry.session!));
+    else {
+      const previous = store.getState().selected;
+      if (previous) safe(() => client.unsubscribe(previous));
+      store.select(null, entry.target);
+      setSummary(false);
+    }
   };
   const pin = (id: string, pinned: boolean) =>
     safe(() => client.request({ type: pinned ? "session.pin" : "session.unpin", sessionId: id }));
@@ -217,6 +287,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       setCtrl(event.ctrlKey);
+      if (settingsOpen) return;
       if (
         Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).some(
           (element) => !element.closest("[inert]"),
@@ -250,7 +321,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       window.removeEventListener("keyup", keyup);
       window.removeEventListener("blur", blur);
     };
-  }, [recent, state.selected, state.pinned, summary]);
+  }, [recent, state.selected, state.pinned, summary, settingsOpen]);
   const send = async () => {
     if (!connected || sending || !draft.trim()) return;
     setSending(true);
@@ -272,7 +343,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           project: state.target,
           text,
           images: attachments,
-          modelSelection: model,
+          modelSelection: newSessionModel,
           permissionMode: permission,
         });
         if (
@@ -487,9 +558,9 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             model={
               state.selected
                 ? view.snapshot?.model
-                : model
-                  ? `${model.provider}/${model.modelId}`
-                  : state.models.find((model) => model.authenticated)?.spec
+                : newSessionModel
+                  ? `${newSessionModel.provider}/${newSessionModel.modelId}`
+                  : undefined
             }
             thinkingLevel={view.thinkingLevel ?? model?.thinkingLevel}
             contextReport={view.contextReport}
@@ -504,37 +575,56 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   );
 
   return (
-    <div
-      data-workspace-shell
-      className={cn(
-        "flex h-dvh min-h-0 flex-col text-ui-base text-foreground",
-        /Electron\//.test(navigator.userAgent) && /Mac/.test(navigator.platform)
-          ? "bg-background-alt"
-          : "bg-background-win-alt",
-      )}
-    >
-      <header className="flex h-11 shrink-0 select-none bg-header items-center [-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag]">
-        <div className={cn("flex h-full shrink-0 items-center gap-1 px-3", sidebar && "md:w-76")}>
-          <span aria-hidden="true" className="w-16" />
-          <Tooltip content={t("app.toggle-sidebar")}>
+    <div data-workspace-shell className="flex h-dvh min-h-0 flex-col text-ui-base text-foreground">
+      <header className="app-titlebar flex h-11 shrink-0 select-none items-center [-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag]">
+        <div
+          className="app-titlebar-navigation relative flex h-full shrink-0 items-center"
+          data-sidebar-open={!settingsOpen && sidebar}
+        >
+          <span aria-hidden="true" />
+          <Tooltip content={t("app.back")}>
             <Button
               size="icon"
               variant="ghost"
-              aria-label={t("app.toggle-sidebar")}
-              aria-pressed={sidebar}
-              onClick={() => setSidebar(!sidebar)}
+              aria-label={t("app.back")}
+              disabled={navigation.index === 0}
+              onClick={() => navigate(-1)}
             >
-              <PanelLeft className="size-4" />
+              <ArrowLeft />
             </Button>
           </Tooltip>
+          <Tooltip content={t("app.forward")}>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={t("app.forward")}
+              disabled={navigation.index === navigation.entries.length - 1}
+              onClick={() => navigate(1)}
+            >
+              <ArrowRight />
+            </Button>
+          </Tooltip>
+          {!settingsOpen ? (
+            <Tooltip content={t("app.toggle-sidebar")}>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label={t("app.toggle-sidebar")}
+                aria-pressed={sidebar}
+                onClick={() => setSidebar(!sidebar)}
+              >
+                <PanelLeft className="size-4" />
+              </Button>
+            </Tooltip>
+          ) : null}
         </div>
         <div
           className={cn(
-            "flex h-full min-w-0 flex-1 items-center gap-2 px-3",
-            sidebar && "md:border-l md:border-border",
+            "app-titlebar-content flex h-full min-w-0 flex-1 items-center gap-2 px-3",
+            !settingsOpen && sidebar && "md:border-l md:border-border",
           )}
         >
-          {current ? (
+          {!settingsOpen && current ? (
             <>
               <Tooltip content={currentProject?.name ?? t("app.conversations")}>
                 <span
@@ -626,10 +716,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           ) : null}
         </div>
       </header>
-      <div className="flex min-h-0 flex-1">
+      <div inert={settingsOpen} className="flex min-h-0 flex-1">
         <nav
           aria-label={t("app.home")}
-          className="flex w-12 shrink-0 flex-col items-center bg-sidebar p-2"
+          className="app-navigation flex shrink-0 flex-col items-center p-2"
         >
           <Tooltip content={t("app.home")} side="right">
             <Button
@@ -643,8 +733,22 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               <Home className="size-4 fill-current" />
             </Button>
           </Tooltip>
+          {host.modelServices ? (
+            <Button
+              className="mt-auto"
+              size="icon"
+              variant="ghost"
+              aria-label={t("services.title")}
+              onClick={(event) => {
+                settingsOpener.current = event.currentTarget;
+                setSettingsOpen(true);
+              }}
+            >
+              <Settings className="size-4" />
+            </Button>
+          ) : null}
         </nav>
-        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-tl-xl border-l border-t border-border bg-panel">
+        <div className="app-workspace relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
           {sidebar ? (
             <>
               <button
@@ -732,6 +836,15 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           </main>
         </div>
       </div>
+      {settingsOpen && host.modelServices ? (
+        <ModelServices
+          services={host.modelServices}
+          onClose={() => setSettingsOpen(false)}
+          onChanged={async () => {
+            store.setModels(await client.request({ type: "models.list" }));
+          }}
+        />
+      ) : null}
       <CommandPalette
         open={search}
         onOpenChange={changeSearch}

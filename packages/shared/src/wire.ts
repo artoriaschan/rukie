@@ -51,7 +51,7 @@ export const WireCommandSchema = Type.Union([
         {
           provider: id,
           modelId: id,
-          thinkingLevel: Type.Optional(Type.Enum([...THINKING_LEVELS])),
+          thinkingLevel: Type.Optional(Type.Enum(["automatic", ...THINKING_LEVELS])),
         },
         { additionalProperties: false },
       ),
@@ -60,6 +60,12 @@ export const WireCommandSchema = Type.Union([
   }),
   command("session.subscribe", session),
   command("session.unsubscribe", session),
+  command("tool_output.read", {
+    ...session,
+    outputRef: Type.Object({ id }, { additionalProperties: false }),
+    offset: Type.Integer({ minimum: 0 }),
+    maxBytes: Type.Optional(Type.Integer({ minimum: 1, maximum: 4 * 1024 * 1024 })),
+  }),
   command("prompt", { ...session, ...prompt }),
   command("steer_now", { ...session, requestId: id }),
   command("withdraw", { ...session, requestId: id }),
@@ -71,7 +77,7 @@ export const WireCommandSchema = Type.Union([
     ...session,
     provider: id,
     modelId: id,
-    thinkingLevel: Type.Optional(Type.Enum([...THINKING_LEVELS])),
+    thinkingLevel: Type.Optional(Type.Enum(["automatic", ...THINKING_LEVELS])),
   }),
   command("session.set_permission_mode", {
     ...session,
@@ -88,6 +94,7 @@ export const WireCommandSchema = Type.Union([
 export type WireCommand = Static<typeof WireCommandSchema>;
 
 export type WireErrorCode =
+  | "model_unavailable"
   | "session_busy"
   | "session_not_found"
   | "project_not_found"

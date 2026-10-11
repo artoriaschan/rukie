@@ -45,12 +45,19 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
           : {}),
         ...("signal" in facts && typeof facts.signal === "string" ? { signal: facts.signal } : {}),
         ...("truncation" in facts ? { outputUnavailable: true } : {}),
+        ...("outputRef" in facts &&
+        typeof facts.outputRef === "object" &&
+        facts.outputRef !== null &&
+        "id" in facts.outputRef &&
+        typeof facts.outputRef.id === "string"
+          ? { outputRef: { id: facts.outputRef.id } }
+          : {}),
         ...("fullOutputPath" in facts && typeof facts.fullOutputPath === "string"
           ? { fullOutputPath: facts.fullOutputPath }
           : {}),
       };
     },
-    description: `Execute a bash command. Returns combined stdout and stderr, truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. If truncated, full output is saved to a temp file. Timeout defaults to 120 seconds (maximum: 600); commands still running at the timeout move to background jobs. Set run_in_background to start a job without a timeout; use job_output, job_list, and job_kill to manage it.`,
+    description: `Execute a bash command. Returns combined stdout and stderr, truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. ${jobs.persistentOutput ? "Full output is retained by the Session database and supports byte cursor reads." : "If truncated, full output is saved to a temp file."} Timeout defaults to 120 seconds (maximum: 600); commands still running at the timeout move to background jobs. Set run_in_background to start a job without a timeout; use job_output, job_list, and job_kill to manage it.`,
     parameters: schema,
     // The owned capture bounds process output; reserve room for its spill receipt.
     outputLimits: {
@@ -78,10 +85,14 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
           label: description,
           cwd: resolve(cwd, workdir ?? "."),
           background: true,
+          outputId: `task-${api.taskId}-stream`,
         });
         return {
           content: [{ type: "text", text: `started background job ${job.view.id}` }],
-          details: { jobId: job.view.id },
+          details: {
+            jobId: job.view.id,
+            ...(job.view.outputRef ? { outputRef: job.view.outputRef } : {}),
+          },
         };
       }
       let job: ReturnType<Jobs["start"]> | undefined;
@@ -95,15 +106,26 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
         label: description,
         cwd: resolve(cwd, workdir ?? "."),
         background: false,
+        outputId: `task-${api.taskId}-stream`,
         onOutput(chunk) {
           api.output(chunk);
           capture.push(chunk);
           if (capture.truncated) {
             const fullOutputPath = job!.view.spillPath!;
-            capture.setSpillPath(fullOutputPath);
+            if (fullOutputPath) capture.setSpillPath(fullOutputPath);
             const { truncation } = capture.snapshot();
             progress = progress
-              .then(() => api.details({ truncation, fullOutputPath }, context))
+              .then(async () => {
+                await job!.flushOutput();
+                return api.details(
+                  {
+                    truncation,
+                    ...(fullOutputPath ? { fullOutputPath } : {}),
+                    ...(job!.view.outputRef ? { outputRef: job!.view.outputRef } : {}),
+                  },
+                  context,
+                );
+              })
               .catch((error: unknown) => {
                 failure ??= error;
                 terminate();
@@ -128,29 +150,35 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
         }, timeout * 1000);
       });
       try {
+        if (job.view.outputRef) await api.details({ outputRef: job.view.outputRef }, context);
         signal?.addEventListener("abort", abort, { once: true });
         if (signal?.aborted) abort();
         const code = await Promise.race([job.completed, deadline]);
         // The promotion result hands over output already shown by foreground capture.
         if (promoted) await job.collect(false, 0);
         await progress;
+        await job.flushOutput();
         failure ??= job.failure;
         capture.finish();
-        if (capture.truncated) capture.setSpillPath(job.view.spillPath!);
+        if (capture.truncated && job.view.spillPath) capture.setSpillPath(job.view.spillPath);
         const output = capture.snapshot();
         let text = output.text;
         let details;
         if (output.truncation.truncated) {
           if (text.endsWith("\n")) text = text.slice(0, -1);
-          details = { truncation: output.truncation, fullOutputPath: output.spillPath };
+          details = {
+            truncation: output.truncation,
+            ...(output.spillPath ? { fullOutputPath: output.spillPath } : {}),
+            ...(job.view.outputRef ? { outputRef: job.view.outputRef } : {}),
+          };
           const start = output.truncation.totalLines - output.truncation.outputLines + 1;
           const end = output.truncation.totalLines;
           if (output.truncation.lastLinePartial)
-            text += `\n\n[Showing last ${formatSize(output.truncation.outputBytes)} of line ${end} (line is ${formatSize(output.lastLineBytes ?? output.truncation.outputBytes)}). Full output: ${output.spillPath}]`;
+            text += `\n\n[Showing last ${formatSize(output.truncation.outputBytes)} of line ${end} (line is ${formatSize(output.lastLineBytes ?? output.truncation.outputBytes)}). Full output: ${output.spillPath ?? `output reference ${job.view.outputRef?.id}`}]`;
           else if (output.truncation.truncatedBy === "lines")
-            text += `\n\n[Showing lines ${start}-${end} of ${end}. Full output: ${output.spillPath}]`;
+            text += `\n\n[Showing lines ${start}-${end} of ${end}. Full output: ${output.spillPath ?? `output reference ${job.view.outputRef?.id}`}]`;
           else
-            text += `\n\n[Showing lines ${start}-${end} of ${end} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${output.spillPath}]`;
+            text += `\n\n[Showing lines ${start}-${end} of ${end} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${output.spillPath ?? `output reference ${job.view.outputRef?.id}`}]`;
         }
         if (promoted) {
           text += `${text ? "\n" : ""}[still running after ${timeout}s; moved to background job ${job.view.id}]\nThe command keeps running in the background. You will be notified when it finishes; read newer output with job_output, stop it with job_kill.`;
@@ -164,6 +192,7 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
         status ??= code !== 0 ? `Command exited with code ${code}` : undefined;
         const facts = {
           ...details,
+          ...(job.view.outputRef ? { outputRef: job.view.outputRef } : {}),
           ...(code !== undefined && { exitCode: code }),
           ...(job.view.signal ? { signal: job.view.signal } : {}),
         };

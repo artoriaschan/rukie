@@ -1,5 +1,19 @@
 // Runtime-agnostic types and schemas shared across packages.
-export type { JobView, JobOutput, JobEvent } from "./jobs.ts";
+export {
+  ModelPriceRequestSchema,
+  parseModelPriceRequest,
+  type ModelPriceRequest,
+  type ModelPriceResult,
+  ModelServiceSchema,
+  ModelServiceSaveSchema,
+  parseModelServiceSave,
+  modelServiceThinkingLevels,
+  MODEL_SERVICE_THINKING_LEVELS,
+  type ModelService,
+  type ModelServiceSummary,
+  type ModelServiceSave,
+} from "./model-services.ts";
+export type { JobView, JobOutput, JobEvent, ToolOutputRef } from "./jobs.ts";
 export { isUnknownToolOutcome } from "./tool-outcome.ts";
 export {
   THINKING_LEVELS,

@@ -5,6 +5,8 @@
   "exports": "./src/index.ts",
   "dependencies": {
     "@floating-ui/dom": "1.8.0",
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
+    "@fontsource-variable/noto-sans-sc": "5.3.1",
     "@rukie/i18n": "workspace:*",
     "@rukie/shared": "workspace:*",
     "@shikijs/langs-precompiled": "4.5.0",

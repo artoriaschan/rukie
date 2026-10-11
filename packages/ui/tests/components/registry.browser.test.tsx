@@ -1,4 +1,6 @@
 import { expect, test, vi } from "vitest";
+import { userEvent } from "vitest/browser";
+import { RadioGroup, RadioGroupItem } from "../../src/components/motion/radio";
 import { UiLocaleProvider } from "../../src/lib/i18n";
 import { render } from "vitest-browser-react";
 import { Popover, PopoverTrigger, PopoverContent } from "../../src/components/motion/popover";
@@ -91,6 +93,46 @@ test("registry message, citation and progress accessible names use the injected 
     await expect.element(screen.getByRole("article", { name: "助手消息" })).toBeVisible();
     await expect.element(screen.getByRole("link", { name: "查看引用 2" })).toBeVisible();
     await expect.element(screen.getByRole("status", { name: "检查代码，进行中" })).toBeVisible();
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("radio group exposes one tab stop and keyboard selection skips unavailable options", async () => {
+  const screen = await render(
+    <>
+      <button>Before</button>
+      <RadioGroup aria-label="Choice">
+        <RadioGroupItem value="disabled" label="Unavailable" disabled />
+        <RadioGroupItem value="first" label="First" />
+        <RadioGroupItem value="second" label="Second" />
+      </RadioGroup>
+      <button>After</button>
+    </>,
+  );
+  try {
+    await expect.element(screen.getByRole("radiogroup", { name: "Choice" })).toBeVisible();
+    const first = screen.getByRole("radio", { name: "First" });
+    const second = screen.getByRole("radio", { name: "Second" });
+    screen.getByRole("button", { name: "Before" }).element().focus();
+    await userEvent.keyboard("{Tab}");
+    await expect.element(first).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}");
+    await expect.element(second).toHaveFocus();
+    await expect.element(second).toHaveAttribute("aria-checked", "true");
+    await userEvent.keyboard("{Tab}");
+    await expect.element(screen.getByRole("button", { name: "After" })).toHaveFocus();
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    await expect.element(second).toHaveFocus();
+    first.element().focus();
+    await userEvent.keyboard(" ");
+    await expect.element(first).toHaveAttribute("aria-checked", "true");
+    second.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(second).toHaveAttribute("aria-checked", "true");
+    await expect
+      .element(screen.getByRole("radio", { name: "Unavailable" }))
+      .toHaveAttribute("aria-checked", "false");
   } finally {
     await screen.unmount();
   }

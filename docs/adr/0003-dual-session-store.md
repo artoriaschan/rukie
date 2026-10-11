@@ -4,7 +4,7 @@ status: superseded
 
 # Session Store：headless 用 JSONL，桌面端用 SQLite，两者共用一个接口
 
-本决定已被整份替代：旧 session repo 接口、单文件 JSONL 格式与关闭边界由 [ADR-0024](0024-adopt-pi-durable-harness.md) 替代，JSONL 选型由它保留；桌面端 SQLite 方向由 [ADR-0032](0032-desktop-shares-jsonl-store.md) 推翻，桌面端与 TUI 共用 JSONL store。下文只作历史记录；当前契约见 [Agent README](../../packages/agent/README.md#session-store)，整体交付验收见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
+本决定已被整份替代：旧 session repo 接口、单文件 JSONL 格式与关闭边界由 [ADR-0024](0024-adopt-pi-durable-harness.md) 替代，JSONL 选型由它保留；桌面端 SQLite 方向先由 [ADR-0032](0032-desktop-shares-jsonl-store.md) 改为与 TUI 共用 JSONL store，随后 [ADR-0035](0035-desktop-isolated-sqlite-storage.md) 整份替代 ADR-0032，改为应用专属 SQLite 存储并与终端隔离。下文只作历史记录；当前契约见 [Agent README](../../packages/agent/README.md#session-store)，原生 Harness 迁移验收见[规格与票据](../../.scratch/pi-durable-migration/spec.md)，桌面存储验收见[存储调整规格](../../.scratch/desktop-storage/spec.md)。
 
 ## 问题
 

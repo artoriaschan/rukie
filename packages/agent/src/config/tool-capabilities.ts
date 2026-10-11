@@ -1,3 +1,4 @@
+import { userDataDirectory } from "./paths.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -52,6 +53,10 @@ const RecordSchema = Type.Object({
   ),
 });
 type ProbeRecord = Static<typeof RecordSchema>;
+export interface ToolCapabilityStore {
+  read(key: string): Promise<unknown>;
+  save(key: string, record: ProbeRecord): Promise<void>;
+}
 const CacheSchema = Type.Object({
   version: Type.Literal(1),
   entries: Type.Record(Type.String(), RecordSchema),
@@ -64,11 +69,12 @@ class CapabilityCache {
   private saving = Promise.resolve();
   private readonly pending = new Map<string, Promise<ProbeRecord>>();
   constructor(
-    homeDir: string,
+    directory: string,
     private readonly warn: (message: string) => void,
+    private readonly store?: ToolCapabilityStore,
   ) {
-    this.path = join(homeDir, ".rukie/model-capabilities.json");
-    this.loaded = this.read();
+    this.path = join(directory, "model-capabilities.json");
+    this.loaded = store ? Promise.resolve() : this.read();
   }
   private async read() {
     try {
@@ -83,6 +89,10 @@ class CapabilityCache {
   }
   async resolve(key: string, probe: () => Promise<ProbeRecord>): Promise<ProbeRecord> {
     await this.loaded;
+    if (this.store) {
+      const stored = await this.store.read(key);
+      if (Value.Check(RecordSchema, stored)) this.entries[key] = stored;
+    }
     const record = this.entries[key];
     if (record && record.expiresAt > Date.now()) return record;
     const running = this.pending.get(key);
@@ -106,6 +116,11 @@ class CapabilityCache {
   }
   async set(key: string, record: ProbeRecord) {
     await this.loaded;
+    if (this.store) {
+      await this.store.save(key, record);
+      this.entries[key] = record;
+      return;
+    }
     this.entries[key] = record;
     this.saving = this.saving.then(async () => {
       const temporary = `${this.path}.${randomUUID()}.tmp`;
@@ -125,11 +140,11 @@ class CapabilityCache {
   }
 }
 const caches = new Map<string, CapabilityCache>();
-function cacheFor(homeDir: string, warn: (message: string) => void) {
-  let cache = caches.get(homeDir);
+function cacheFor(directory: string, warn: (message: string) => void) {
+  let cache = caches.get(directory);
   if (!cache) {
-    cache = new CapabilityCache(homeDir, warn);
-    caches.set(homeDir, cache);
+    cache = new CapabilityCache(directory, warn);
+    caches.set(directory, cache);
   }
   return cache;
 }
@@ -354,7 +369,11 @@ export function withToolCapabilityDetection(
   provider: Provider,
   homeDir: string,
   warn: (message: string) => void,
+  ownership: { dataRoot?: string; capabilityStore?: ToolCapabilityStore } = {},
 ): Provider {
+  const applicationCache = ownership.capabilityStore
+    ? new CapabilityCache("", warn, ownership.capabilityStore)
+    : undefined;
   function stream(
     model: Model<Api>,
     context: TranscriptContext,
@@ -375,7 +394,8 @@ export function withToolCapabilityDetection(
     const output = createAssistantMessageEventStream();
     void (async () => {
       try {
-        const cache = cacheFor(homeDir, warn);
+        const cache =
+          applicationCache ?? cacheFor(userDataDirectory({ homeDir, ...ownership }), warn);
         // Credential fingerprints prevent sharing availability across accounts; neither key nor URL is persisted.
         const key = createHash("sha256")
           .update(

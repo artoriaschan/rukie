@@ -3,7 +3,7 @@ import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import { createReadTool } from "@earendil-works/pi-durable/tools";
 import { detectReadImageMimeType, validateImageBytes } from "../images/index.ts";
-import { normalizeFileTool } from "./support/runtime.ts";
+import { normalizeFileTool, captureFullOutput } from "./support/runtime.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { PresentedTool } from "./support/presentation.ts";
@@ -81,6 +81,14 @@ export function createImageReadTool(cwd: string, homeDir: string) {
             { type: "image", mimeType, data: Buffer.from(bytes.value).toString("base64") },
           ],
         };
+      }
+      if ("captureFullOutput" in api) {
+        const lines = new TextDecoder().decode(bytes.value).split("\n");
+        const start = Math.max(0, (args.offset ?? 1) - 1);
+        captureFullOutput(
+          api,
+          lines.slice(start, args.limit === undefined ? undefined : start + args.limit).join("\n"),
+        );
       }
       return text.execute(args, api, context);
     },

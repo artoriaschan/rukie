@@ -1,9 +1,25 @@
 /** Native capabilities are injected by the Electron or browser entry. */
+import type {
+  ModelServiceSave,
+  ModelServiceSummary,
+  ModelPriceRequest,
+  ModelPriceResult,
+} from "@rukie/shared";
 export interface DesktopHost {
   getConnection(): Promise<{ port: number; token: string }>;
   pickProjectFolder(): Promise<string | null>;
   revealPath(path: string): Promise<void>;
   openInTerminal(path: string): Promise<void>;
+  modelServices?: {
+    prices?(input: ModelPriceRequest): Promise<ModelPriceResult>;
+    /** Explicit user reveal only; never persist or log the returned key. */
+    revealKey?(id: string): Promise<string | undefined>;
+    list(): Promise<ModelServiceSummary[]>;
+    save(input: ModelServiceSave): Promise<void>;
+    delete(id: string): Promise<void>;
+    test?(id: string, modelId: string): Promise<void>;
+    templates?(): Promise<import("@rukie/shared").ModelService[]>;
+  };
 }
 
 export function browserHost(): Pick<DesktopHost, "getConnection"> {

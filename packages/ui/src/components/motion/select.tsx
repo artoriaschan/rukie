@@ -178,17 +178,23 @@ export function Select({
 }
 
 export interface SelectTriggerProps {
+  "aria-label"?: string;
   className?: string;
   children: ReactNode;
 }
 
-export function SelectTrigger({ className, children }: SelectTriggerProps) {
+export function SelectTrigger({
+  className,
+  children,
+  "aria-label": ariaLabel,
+}: SelectTriggerProps) {
   const ctx = useSelectContext("SelectTrigger");
   return (
     <motion.button
       type="button"
       id={ctx.triggerId}
       disabled={ctx.disabled}
+      aria-label={ariaLabel}
       aria-haspopup="listbox"
       aria-expanded={ctx.open}
       aria-controls={ctx.listId}
@@ -237,7 +243,7 @@ export interface SelectContentProps {
 
 export function SelectContent({ className, children }: SelectContentProps) {
   const ctx = useSelectContext("SelectContent");
-  const innerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLUListElement>(null);
   const [height, setHeight] = useState(0);
   const [availableHeight, setAvailableHeight] = useState(320);
   const open = ctx.open;
@@ -308,13 +314,13 @@ export function SelectContent({ className, children }: SelectContentProps) {
         className,
       )}
     >
-      <div
+      <ul
         ref={innerRef}
         style={{ maxHeight: availableHeight }}
-        className="overflow-y-auto space-y-0.5 p-1"
+        className="m-0 list-none overflow-y-auto space-y-0.5 p-1"
       >
         {children}
-      </div>
+      </ul>
     </motion.div>
   );
 }

@@ -1,3 +1,5 @@
+import { ToolResultViewSchema } from "@rukie/shared";
+import { Value } from "typebox/value";
 import { resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -19,10 +21,15 @@ import { transcriptMessages } from "./messages.ts";
 import { committedSnapshot, projectCommittedOutcomeFacts } from "./observation.ts";
 
 /** One committed, lease-free view. Never recovers tasks, runs hooks, or modifies storage. */
-export async function readSessionSnapshot(options: { cwd: string; homeDir: string; id: string }) {
+export async function readSessionSnapshot(options: {
+  cwd: string;
+  homeDir: string;
+  dataRoot?: string;
+  id: string;
+}) {
   options = { ...options, cwd: resolve(options.cwd) };
-  // JsonlStorage.open recovers once into private MemoryStorage. Its reads never
-  // refresh from disk, so transcript and document reads share that committed frame.
+  // Both backends pin one committed frame: JSONL materializes private MemoryStorage,
+  // SQLite holds a read transaction. Neither executes Harness recovery.
   return readSessionStorage(options, async (storage) => {
     const kernel = createKernel(storage);
     try {
@@ -72,7 +79,26 @@ export async function readSessionSnapshot(options: { cwd: string; homeDir: strin
             ...(pending && { "rukie.pending-input-facts": pending }),
           },
         },
-        messages,
+        messages.map((message) => {
+          if (message.role !== "toolResult") return message;
+          const details = message.details;
+          const outputRef =
+            typeof details === "object" && details !== null && "outputRef" in details
+              ? details.outputRef
+              : undefined;
+          // History has no tool registry or execution owner. Persisted output references still expose the read capability.
+          const view = {
+            card: "generic" as const,
+            kind: "other" as const,
+            text: message.content
+              .flatMap((item) => (item.type === "text" ? [item.text] : []))
+              .join("\n"),
+            outputRef,
+          };
+          return outputRef && Value.Check(ToolResultViewSchema, view)
+            ? { ...message, view }
+            : message;
+        }),
         {
           toolStates,
           runSummaries: readRunSummaries(entries),

@@ -25,6 +25,9 @@ import {
 } from "@earendil-works/pi-ai";
 import {
   Harness,
+  ProviderDoc,
+  type Cursor,
+  type ConversationId,
   configure,
   createRegistry,
   defineDoc,
@@ -52,6 +55,7 @@ import {
   type McpSnapshot,
   type JobView,
   type JobOutput,
+  type ToolOutputRef,
 } from "@rukie/shared";
 import type { SessionEvent } from "./events.ts";
 import {
@@ -72,9 +76,11 @@ import {
   isTrustedProject,
   modelState,
   supportedThinkingLevel,
+  nativeThinkingLevel,
+  withAutomaticReasoning,
 } from "../config/index.ts";
 import {
-  createJsonlStore,
+  createSessionStore,
   registerSessionReader,
   SessionMetadataDoc,
   parseSessionMetadata,
@@ -149,8 +155,12 @@ export interface SessionOptions {
   webFetch?: WebFetchOptions;
   /** Project directory the session works in. */
   cwd: string;
-  /** User home; `~/.rukie` lives under it. Injectable for tests. */
+  /** Real home used by tools and permission path expansion. Injectable for tests. */
   homeDir: string;
+  /** Explicit isolated application data root; terminal callers omit it. */
+  dataRoot?: string;
+  /** Host-owned encrypted MCP persistence; never used by terminal defaults. */
+  mcpPersistence?: import("../mcp/index.ts").McpPersistence;
   /** Merged settings, see `loadSettings`. */
   settings?: Settings;
   /** Model call; defaults to pi-ai's `streamSimple` for the resolved model. Tests inject a fake. */
@@ -161,6 +171,8 @@ export interface SessionOptions {
   store?: SessionStore;
   /** Continue an existing Session in this project; never silently creates a new one. */
   resumeId?: string;
+  /** Explicit user selection while reopening an idle Session whose former model is unavailable. */
+  resumeModelSelection?: { model: string; thinkingLevel?: ThinkingLevel };
   /** Session allow rules in settings syntax, supplied by --allow-tools. */
   allowRules?: string[];
   /** Optional shared memory collection; never loaded from or written to Transcript. */
@@ -210,6 +222,7 @@ export interface Session {
   jobs(): JobView[];
   /** Read from an absolute UTF-8 byte offset without moving the model's job_output cursor. */
   readJob(id: string, offset: number): JobOutput;
+  readToolOutput(ref: ToolOutputRef, offset?: number, maxBytes?: number): Promise<JobOutput>;
   /** Stop a job; inform the active Run or queue input for the next human prompt while idle. */
   killJob(id: string): Promise<void>;
   readonly currentRequestId: string | undefined;
@@ -403,7 +416,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const resolved =
     options.model && options.models
       ? { model: options.model, models: options.models }
-      : await resolveModel(settings, options.homeDir, warn);
+      : await resolveModel(settings, options.homeDir, warn, { dataRoot: options.dataRoot });
   let model = resolved.model;
   let thinkingLevel = supportedThinkingLevel(model, settings.thinking ?? "off");
   const models = resolved.models;
@@ -413,7 +426,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     if (!selected) throw new Error(`Unknown model: ${spec}`);
     return selected;
   };
-  const store = options.store ?? createJsonlStore({ cwd, homeDir: options.homeDir });
+  const store =
+    options.store ??
+    createSessionStore({ cwd, homeDir: options.homeDir, dataRoot: options.dataRoot });
   const lease = await store.open({ id: options.resumeId }, context);
   const failedCleanup: (() => Promise<void>)[] = [lease.release];
   try {
@@ -466,6 +481,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     // even though no durable submission receipt can be fabricated for that failure.
     const observedStorage = new Proxy(lease.storage, {
       get(target, key) {
+        // Native shutdown stops scheduling first. The root lease keeps its connection
+        // alive until owned background pipes drain, then release closes the storage.
+        if (key === "close" && lease.outputs) return async () => {};
         if (key === "document")
           return async (...args: Parameters<Storage["document"]>) => {
             const document = await target.document(...args);
@@ -492,21 +510,126 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    const harness = await Harness.open(
+    const providerConversations = new Map<string, ConversationId>();
+    // Reconstruct rounds from native committed entries, including history preceding compaction.
+    const toolRounds = async (id: ConversationId, ctx: Context) => {
+      const choice = await harness.snapshot(modelState.document, id, ctx);
+      const selected =
+        choice?.value &&
+        typeof choice.value === "object" &&
+        !Array.isArray(choice.value) &&
+        typeof choice.value.model === "string"
+          ? selectedModel(choice.value.model)
+          : model;
+      const configured: unknown = Reflect.get(selected, "maxToolIterations");
+      if (typeof configured !== "number") return undefined;
+      const live = await harness.snapshot(LiveDoc, id, ctx);
+      if (!live?.run) return undefined;
+      const inputs = await Promise.all(
+        live.run.inputs.map((input) => lease.storage.submission(input, ctx)),
+      );
+      const anchors = inputs.flatMap((input) => (input?.entry === undefined ? [] : [input.entry]));
+      const start = anchors.reduce<(typeof anchors)[number] | undefined>(
+        (oldest, entry) =>
+          oldest === undefined || Number(entry) < Number(oldest) ? entry : oldest,
+        undefined,
+      );
+      if (start === undefined) return undefined;
+      let count = 0;
+      let cursor: Cursor | undefined;
+      do {
+        const page = await lease.storage.scanEntries(
+          { conversationId: id, minEntryId: start },
+          256,
+          cursor,
+          ctx,
+        );
+        count += page.items.filter(
+          (entry) =>
+            Number(entry.id) > Number(start) &&
+            entry.model?.some(
+              (message) =>
+                message.role === "assistant" &&
+                message.stopReason === "toolUse" &&
+                message.content.some((part) => part.type === "toolCall"),
+            ),
+        ).length;
+        cursor = page.next;
+      } while (cursor !== undefined && count <= configured);
+      return { count, limit: configured };
+    };
+    const providerConversation = async (sessionId: string) => {
+      const known = providerConversations.get(sessionId);
+      if (known !== undefined) return known;
+      let cursor: Cursor | undefined;
+      do {
+        const page = await lease.storage.scanConversations({}, 100, cursor, context);
+        for (const row of page.items) {
+          const identity = await harness.snapshot(ProviderDoc, row.id, context);
+          if (identity) providerConversations.set(identity.sessionId, row.id);
+          if (identity?.sessionId === sessionId) return row.id;
+        }
+        cursor = page.next;
+      } while (cursor !== undefined);
+      return undefined;
+    };
+    const guardToolResponse = async (message: Message, id: ConversationId, ctx: Context) => {
+      if (message.role !== "assistant" || !message.content.some((part) => part.type === "toolCall"))
+        return false;
+      const rounds = await toolRounds(id, ctx);
+      return Boolean(rounds && rounds.count >= rounds.limit);
+    };
+
+    const harness: Harness = await Harness.open(
       observedStorage,
       {
-        models,
+        models: withAutomaticReasoning(
+          models,
+          async (sessionId) => {
+            const id = await providerConversation(sessionId);
+            if (id === undefined) return false;
+            const choice = await harness.snapshot(modelState.document, id, context);
+            return Boolean(
+              choice?.value &&
+              typeof choice.value === "object" &&
+              !Array.isArray(choice.value) &&
+              choice.value.thinkingLevel === "automatic",
+            );
+          },
+          async (sessionId) => {
+            const id = await providerConversation(sessionId);
+            const rounds = id === undefined ? undefined : await toolRounds(id, context);
+            return Boolean(rounds && rounds.count >= rounds.limit);
+          },
+          (selected) =>
+            typeof Reflect.get(selected, "compressionThreshold") === "number"
+              ? Math.max(
+                  1,
+                  Math.min(
+                    Math.floor(0.8 * Math.min(16384, Math.floor(selected.contextWindow * 0.2))),
+                    selected.maxTokens,
+                  ),
+                )
+              : undefined,
+        ),
         registry,
         env: () => env,
         settings: {
           retry: { enabled: false },
           progress: { partialIntervalMs: 0, outputIntervalMs: 0 },
           get compaction() {
+            const threshold: unknown = Reflect.get(model, "compressionThreshold");
             return {
               enabled: true,
               keepRecentTokens: Math.min(16000, Math.floor(model.contextWindow * 0.4)),
-              reserveTokens: Math.min(16384, Math.floor(model.contextWindow * 0.2)),
-              backgroundTokens: Math.min(32768, Math.floor(model.contextWindow * 0.25)),
+              reserveTokens:
+                typeof threshold === "number"
+                  ? Math.floor(model.contextWindow * (1 - threshold / 100))
+                  : Math.min(16384, Math.floor(model.contextWindow * 0.2)),
+              backgroundTokens:
+                typeof threshold === "number"
+                  ? 0
+                  : Math.min(32768, Math.floor(model.contextWindow * 0.25)),
             };
           },
         },
@@ -516,6 +639,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     );
     const permissionBatch = createPermissionBatch(harness);
     const runtime = createConversationRuntime({
+      outputs: lease.outputs,
       lifetime: auxiliaryLifetime.signal,
       isClosed: () => closed,
     });
@@ -531,10 +655,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         model: { provider: model.provider, modelId: model.id },
         cwd,
         instructions: SYSTEM_PROMPT,
-        thinkingLevel,
+        thinkingLevel: nativeThinkingLevel(thinkingLevel),
       },
       init: async (tx, id) => {
         await tx.appendEntry(id, { kind: "rukie.initial" });
+        (await tx.doc(modelState.document, id)).value = {
+          model: `${model.provider}/${model.id}`,
+          thinkingLevel,
+        };
       },
     });
     let metadata = await harness.snapshot(SessionMetadataDoc, context);
@@ -549,6 +677,33 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       if (!found) throw new Error("Active conversation is missing.");
       conversation = (await harness.conversation(found.id, context))!;
     }
+    if (options.resumeModelSelection) {
+      if (!options.resumeId) throw new Error("Resume Model Selection requires an existing Session");
+      const inspection = await harness.inspect(context);
+      if (inspection.tasks.length || inspection.submissions.length)
+        throw createUserVisibleError(
+          "Session has pending execution; restore its model before changing selection.",
+          { code: "session-run-active", params: {} },
+        );
+      const next = selectedModel(options.resumeModelSelection.model);
+      if (!(await models.checkAuth(next.provider)))
+        throw createUserVisibleError("Selected model has no desktop credential.", {
+          code: "no-api-key",
+          params: { provider: next.provider, env: "" },
+        });
+      await conversation.configure(
+        {
+          model: { provider: next.provider, modelId: next.id },
+          thinkingLevel: nativeThinkingLevel(
+            supportedThinkingLevel(
+              next,
+              options.resumeModelSelection.thinkingLevel ?? thinkingLevel,
+            ),
+          ),
+        },
+        context,
+      );
+    }
     const savedAgent = await conversation.agent(context);
     const savedModel = savedAgent.model;
     if (savedModel) {
@@ -557,9 +712,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         throw new Error(`Unknown restored model: ${savedModel.provider}/${savedModel.modelId}`);
       model = restored;
     }
-    thinkingLevel = supportedThinkingLevel(model, savedAgent.thinkingLevel);
-    if (thinkingLevel !== savedAgent.thinkingLevel)
-      await conversation.configure({ thinkingLevel }, context);
+    const productModel = await harness.snapshot(modelState.document, conversation.id, context);
+    const savedAutomatic =
+      productModel?.value &&
+      typeof productModel.value === "object" &&
+      !Array.isArray(productModel.value) &&
+      productModel.value.thinkingLevel === "automatic";
+    thinkingLevel = supportedThinkingLevel(
+      model,
+      options.resumeModelSelection?.thinkingLevel ??
+        (savedAutomatic ? "automatic" : savedAgent.thinkingLevel),
+    );
+    if (nativeThinkingLevel(thinkingLevel) !== savedAgent.thinkingLevel)
+      await conversation.configure({ thinkingLevel: nativeThinkingLevel(thinkingLevel) }, context);
     modelFact = `${model.provider}/${model.id}`;
     const subagentsDefinition = subagentsState(lease.id);
     const definitions = [
@@ -787,6 +952,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     runSummaries = readRunSummaries(initialHistory);
     const checkpoints = createCheckpoints({
       homeDir: options.homeDir,
+      dataRoot: options.dataRoot,
       sessionId: lease.id,
       getState: () => state.get("checkpoint"),
       persist: async (value) => {
@@ -869,6 +1035,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       connectOptions: () => ({
         cwd,
         homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
+        persistence: options.mcpPersistence,
         settings,
         trustProjectMcp: options.trustProjectMcp,
         interactive: !!options.onMcpAuth,
@@ -960,7 +1128,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     const reportedSkillWarnings = new Set<string>();
     const loadSkills = async () => {
-      const discovered = await discoverSkills(cwd, options.homeDir);
+      const discovered = await discoverSkills(cwd, options.homeDir, options.dataRoot);
       for (const warning of discovered.warnings) {
         if (reportedSkillWarnings.has(warning)) continue;
         reportedSkillWarnings.add(warning);
@@ -1064,6 +1232,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
     });
     const childRuntimes = createConversationRuntimePool({
+      outputs: lease.outputs,
       lifetime: auxiliaryLifetime.signal,
       isClosed: () => closed,
     });
@@ -1247,7 +1416,47 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           await applyChildHook(result, "hook:Notification");
         };
         const childState = await createToolState(definitions, harness, child, context);
+        const childRecord = await lease.storage.conversation(child.id, context);
+        const parentChoice = childRecord?.owner
+          ? await harness.snapshot(modelState.document, childRecord.owner.conversationId, context)
+          : undefined;
+        const inheritedAutomatic =
+          parentChoice?.value &&
+          typeof parentChoice.value === "object" &&
+          !Array.isArray(parentChoice.value) &&
+          parentChoice.value.thinkingLevel === "automatic";
+        const parentConversation = childRecord?.owner
+          ? await harness.conversation(childRecord.owner.conversationId, context)
+          : undefined;
+        const parentLevel = parentConversation
+          ? (await parentConversation.agent(context)).thinkingLevel
+          : "off";
+        const currentChoice = childState.get("model");
+        const retainedAutomatic =
+          currentChoice &&
+          typeof currentChoice === "object" &&
+          "thinkingLevel" in currentChoice &&
+          currentChoice.thinkingLevel === "automatic";
+        const currentNativeLevel = (await child.agent(context)).thinkingLevel;
+        const childThinking = supportedThinkingLevel(
+          selected,
+          selection.retained
+            ? retainedAutomatic
+              ? "automatic"
+              : currentNativeLevel
+            : type.name === "fork"
+              ? (settings.thinking ?? (inheritedAutomatic ? "automatic" : parentLevel))
+              : !type.model && !settings.subagentModel
+                ? inheritedAutomatic
+                  ? "automatic"
+                  : parentLevel
+                : (settings.thinking ?? "off"),
+        );
         await child.commit(async (tx) => {
+          (await tx.doc(modelState.document, child.id)).value = {
+            model: `${selected.provider}/${selected.id}`,
+            thinkingLevel: childThinking,
+          };
           const facts = await tx.doc(ChildFactsDoc, child.id);
           facts.title ||= description;
           facts.description = description;
@@ -1387,6 +1596,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           messages: transcriptMessages(beforeInput.entries),
           cwd,
           homeDir: options.homeDir,
+          dataRoot: options.dataRoot,
           now: options.now?.() ?? new Date(),
           sources: [
             ...childState.reminderSources,
@@ -1441,7 +1651,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           tools: childLoadout.registrations,
           hooks: [
             hook(ToolTask, {
-              beforeTool: childRuntime.beforeTool,
+              beforeTool: async (call, api, ctx) => {
+                const rounds = await toolRounds(api.conversationId, ctx);
+                if (rounds && rounds.count > rounds.limit)
+                  return { block: "Tool iteration limit reached" };
+                return childRuntime.beforeTool(call, api, ctx);
+              },
               afterTool: childRuntime.afterTool,
             }),
             hook(GenerationTask, {
@@ -1472,6 +1687,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   ),
                   cwd,
                   homeDir: options.homeDir,
+                  dataRoot: options.dataRoot,
                   now: options.now?.() ?? new Date(),
                   sources: [
                     ...childState.reminderSources,
@@ -1504,8 +1720,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     );
                 return { messages: modelContextMessages(await child.context(ctx)) };
               },
-              afterResponse: async () => {
+              afterResponse: async (message, _api, ctx) => {
                 childTracking.finishRequest();
+                if (await guardToolResponse(message, child.id, ctx)) {
+                  warn("Model exceeded the configured tool iteration limit");
+                  await child.abort(ctx);
+                  return;
+                }
               },
               onYield: async (answer, api, ctx) => {
                 if (answer.stopReason !== "stop") return undefined;
@@ -1682,11 +1903,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }
         return {
           model: { provider: selected.provider, modelId: selected.id },
-          ...(type.name === "fork"
-            ? settings.thinking
-              ? { thinkingLevel: settings.thinking }
-              : {}
-            : { thinkingLevel: supportedThinkingLevel(selected, settings.thinking ?? "off") }),
+          thinkingLevel: nativeThinkingLevel(childThinking),
           cwd,
           instructions: SYSTEM_PROMPT,
           extensions: [extension],
@@ -1875,6 +2092,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         includeEnvironment: afterCompactionId === undefined,
         cwd,
         homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
         now: options.now?.() ?? new Date(),
         sources,
       });
@@ -1930,6 +2148,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       const connectionOptions: Parameters<typeof mcp.connect>[0] = {
         cwd,
         homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
+        persistence: options.mcpPersistence,
         settings,
         trustProjectMcp: options.trustProjectMcp,
         interactive: !!options.onMcpAuth,
@@ -2002,6 +2222,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       discovery: {
         cwd,
         homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
         trusted: isTrustedProject(cwd, settings),
         report: async (discovery) => {
           for (const warning of discovery.warnings) warn(warning);
@@ -2060,7 +2281,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return undefined;
               },
             }),
-            hook(ToolTask, { beforeTool: runtime.beforeTool, afterTool: runtime.afterTool }),
+            hook(ToolTask, {
+              beforeTool: async (call, api, ctx) => {
+                const rounds = await toolRounds(api.conversationId, ctx);
+                if (rounds && rounds.count > rounds.limit)
+                  return { block: "Tool iteration limit reached" };
+                return runtime.beforeTool(call, api, ctx);
+              },
+              afterTool: runtime.afterTool,
+            }),
             hook(GenerationTask, {
               beforeRequest: async (_request, api, ctx) => {
                 const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
@@ -2201,6 +2430,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               },
               afterResponse: async (message, api, ctx) => {
                 tracking.finishRequest();
+                if (await guardToolResponse(message, conversation.id, ctx)) {
+                  warn("Model exceeded the configured tool iteration limit");
+                  await conversation.abort(ctx);
+                  return;
+                }
                 const inputTokens =
                   message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
                 // Stop hooks can remain pending before the native assistant entry is appended.
@@ -2852,7 +3086,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           await conversation.commit(async (tx) => {
             await configure(tx, conversation.id, {
               model: { provider: next.provider, modelId: next.id },
-              thinkingLevel: nextThinkingLevel,
+              thinkingLevel: nativeThinkingLevel(nextThinkingLevel),
             });
             (await tx.doc(modelState.document, conversation.id)).value = {
               model: spec,
@@ -2962,6 +3196,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         })();
       },
       jobs: () => jobs.list(),
+      async readToolOutput(ref, offset = 0, maxBytes = 256 * 1024) {
+        if (!lease.outputs) throw new Error("Tool output references require SQLite storage");
+        return lease.outputs.read(ref, offset, maxBytes);
+      },
       readJob(id, offset) {
         const job = jobs.get(id);
         if (!job) throw new Error(`Unknown job: ${id}`);
@@ -3096,7 +3334,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           const restoredAgent = await conversation.agent(context);
           if (restoredAgent.model)
             model = selectedModel(`${restoredAgent.model.provider}/${restoredAgent.model.modelId}`);
-          thinkingLevel = restoredAgent.thinkingLevel;
+          const rewoundModel = await harness.snapshot(
+            modelState.document,
+            conversation.id,
+            context,
+          );
+          const rewoundAutomatic =
+            rewoundModel?.value &&
+            typeof rewoundModel.value === "object" &&
+            !Array.isArray(rewoundModel.value) &&
+            rewoundModel.value.thinkingLevel === "automatic";
+          thinkingLevel = rewoundAutomatic ? "automatic" : restoredAgent.thinkingLevel;
           modelFact = `${model.provider}/${model.id}`;
           runSummaries = readRunSummaries(await fullHistory());
           await writeMetadata();
@@ -3499,6 +3747,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     };
     await cleanupExpiredBackups({
       homeDir: options.homeDir,
+      dataRoot: options.dataRoot,
       sessionId: lease.id,
       now: options.now?.() ?? new Date(),
       onWarning: warn,

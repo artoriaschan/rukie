@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useId } from "react";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
 import { ActionSwapRollText } from "@/components/motion/action-swap-roll";
 import { Button } from "@/components/motion/button";
@@ -95,6 +95,7 @@ function QuestionOptions({
   const componentText = useComponentText();
 
   const custom = answer.custom ?? "";
+  const groupLabelId = useId();
 
   return (
     <div className="mt-3">
@@ -121,6 +122,7 @@ function QuestionOptions({
           </div>
         ) : (
           <RadioGroup
+            aria-labelledby={groupLabelId}
             value={answer.selected[0] ?? ""}
             onValueChange={(value) => {
               onChange({ selected: [value], custom: "" });
@@ -128,6 +130,9 @@ function QuestionOptions({
             }}
             className="gap-0.5"
           >
+            <span id={groupLabelId} className="sr-only">
+              {question.title}
+            </span>
             {question.options.map((option) => (
               <RadioGroupItem
                 key={option.value}

@@ -1,3 +1,4 @@
+import type { SqliteOutputs } from "../../store/output.ts";
 import { spawn } from "node:child_process";
 import { closeSync, mkdtempSync, openSync, rmSync, writeSync } from "node:fs";
 import { constants, tmpdir } from "node:os";
@@ -33,6 +34,7 @@ export function jobStatus(job: JobView) {
 /** Session-owned processes. Foreground entries become visible only when promoted. */
 export function createJobs(
   options: {
+    outputs?: SqliteOutputs;
     initialSequence?: number;
     onNotify?(job: JobView): void;
     onEvent?(event: JobEvent): void;
@@ -49,6 +51,7 @@ export function createJobs(
     label: string;
     cwd: string;
     background: boolean;
+    outputId?: string;
     onOutput?(bytes: Buffer): void;
   }) {
     if (disposed) throw new Error("Background jobs have been disposed.");
@@ -63,7 +66,7 @@ export function createJobs(
           params: { limit: 10 },
         },
       );
-    spillDir ??= mkdtempSync(join(tmpdir(), "rukie-jobs-"));
+    if (!options.outputs) spillDir ??= mkdtempSync(join(tmpdir(), "rukie-jobs-"));
     const id = `bash-${++sequence}`;
     const view: JobView = {
       id,
@@ -72,14 +75,16 @@ export function createJobs(
       command: input.command,
       status: "running",
       startedAt: Date.now(),
-      spillPath: join(spillDir, `${id}.log`),
+      ...(spillDir ? { spillPath: join(spillDir, `${id}.log`) } : {}),
     };
-    const fd = openSync(view.spillPath!, "wx", 0o600);
+    const output = options.outputs?.writer({ id: input.outputId ?? `job-${crypto.randomUUID()}` });
+    if (output) view.outputRef = output.ref;
+    const fd = view.spillPath ? openSync(view.spillPath, "wx", 0o600) : undefined;
     let fdClosed = false;
     const closeSpill = () => {
       if (!fdClosed) {
         fdClosed = true;
-        closeSync(fd);
+        if (fd !== undefined) closeSync(fd);
       }
     };
     const decoders = { stdout: new StringDecoder("utf8"), stderr: new StringDecoder("utf8") };
@@ -136,9 +141,10 @@ export function createJobs(
       }
     }
     const retain = (stream: OutputChunk["stream"], text: string) => {
-      if (silenced) return;
       const bytes = Buffer.from(text);
       if (!bytes.length) return;
+      output?.append(stream, bytes);
+      if (silenced) return;
       rings[stream].push({ stream, bytes, offset });
       offset += bytes.length;
       retained += bytes.length;
@@ -155,10 +161,23 @@ export function createJobs(
     const receive = (stream: OutputChunk["stream"], bytes: Buffer) => {
       try {
         let written = 0;
-        while (written < bytes.length)
-          written += writeSync(fd, bytes, written, bytes.length - written);
+        if (fd !== undefined)
+          while (written < bytes.length)
+            written += writeSync(fd, bytes, written, bytes.length - written);
         retain(stream, decoders[stream].write(bytes));
         onOutput?.(bytes);
+        if (output) {
+          // Bound pending FULL writes by backpressuring each owned pipe until its chunks commit.
+          proc[stream].pause();
+          void output.flush().then(
+            () => proc[stream].resume(),
+            (error) => {
+              failure ??= error;
+              kill("teardown");
+              proc[stream].resume();
+            },
+          );
+        }
       } catch (error) {
         failure ??= error;
         kill("teardown");
@@ -173,7 +192,14 @@ export function createJobs(
       if (killTimer !== undefined && proc.pid !== undefined) signalGroup(proc.pid, "SIGTERM");
     });
     const completed = new Promise<number>((done) => {
-      proc.once("close", (code, signal) => {
+      proc.once("close", async (code, signal) => {
+        retain("stdout", decoders.stdout.end());
+        retain("stderr", decoders.stderr.end());
+        try {
+          if (output) await output.flush();
+        } catch (error) {
+          failure ??= error;
+        }
         const exitCode = code ?? (signal ? 128 + (constants.signals[signal] ?? 0) : 1);
         view.exitCode = exitCode;
         if (signal) view.signal = signal;
@@ -184,8 +210,6 @@ export function createJobs(
             : failure || exitCode !== 0
               ? "failed"
               : "completed";
-        retain("stdout", decoders.stdout.end());
-        retain("stderr", decoders.stderr.end());
         closeSpill();
         trim(16 * 1024);
         if (proc.pid !== undefined) {
@@ -274,10 +298,14 @@ export function createJobs(
         });
       }
       signal?.throwIfAborted();
-      const output = read(modelOffset);
-      modelOffset = output.nextOffset;
+      if (output) {
+        if (["running", "stopping"].includes(view.status)) await output.flush();
+        else if (failure) throw failure;
+      }
+      const collected = read(modelOffset);
+      modelOffset = collected.nextOffset;
       if (wait && !["running", "stopping"].includes(view.status)) suppressed = true;
-      return output;
+      return collected;
     }
     const job = {
       get view() {
@@ -293,6 +321,9 @@ export function createJobs(
         return failure;
       },
       completed,
+      async flushOutput() {
+        await output?.flush();
+      },
       read,
       collect,
       kill,
@@ -326,6 +357,7 @@ export function createJobs(
           ]);
         } finally {
           clearTimeout(timer);
+          if (output) await output.flush();
         }
       },
       promote() {
@@ -400,6 +432,7 @@ export function createJobs(
     spillDir = undefined;
   }
   return {
+    persistentOutput: options.outputs !== undefined,
     start,
     list,
     get,

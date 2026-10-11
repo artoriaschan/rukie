@@ -21,7 +21,8 @@ export const modelState: ToolStateDefinition = defineToolState({
       typeof value.model === "string" &&
       /^[^/]+\/.+$/.test(value.model) &&
       "thinkingLevel" in value &&
-      THINKING_LEVELS.some((level) => level === value.thinkingLevel)
+      (value.thinkingLevel === "automatic" ||
+        THINKING_LEVELS.some((level) => level === value.thinkingLevel))
     )
       return { model: value.model, thinkingLevel: String(value.thinkingLevel) };
     throw new Error("Invalid model selection snapshot.");

@@ -75,6 +75,7 @@ function createSubagentTools(input: {
 async function refreshSubagentTypes(input: {
   cwd: string;
   homeDir: string;
+  dataRoot?: string;
   trusted: boolean;
   tools: readonly ToolRegistration[];
   controller: Parameters<typeof createSubagentCapabilityTools>[0];
@@ -85,7 +86,7 @@ async function refreshSubagentTypes(input: {
     input.cwd,
     input.homeDir,
     input.tools.map((tool) => tool.name),
-    { trusted: input.trusted },
+    { trusted: input.trusted, dataRoot: input.dataRoot },
   );
   input.controller.setTypes(discovered.types);
   await input.report?.(discovered);

@@ -1,11 +1,466 @@
+import { ownResources } from "./helpers/owned-resources.ts";
 import FakeTimers from "@sinonjs/fake-timers";
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
 import { join } from "node:path";
-import { createSession, createJsonlStore } from "@rukie/agent";
-import { startServer } from "../src/index.ts";
+import { createSession, createSessionStore } from "@rukie/agent";
+import { startServer as startServerImpl, AppDatabase, type ServerOptions } from "../src/index.ts";
+
+const startServer = (options: Omit<ServerOptions, "dataRoot">) =>
+  startServerImpl({ ...options, dataRoot: join(options.homeDir, "desktop-data") });
+
+test("startup catalog and history never unlock encrypted execution configuration", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-startup-keychain-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const history = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+          ...fakeModel([fauxAssistantMessage("stored history")], { model: { reasoning: true } }),
+          settings: { thinking: "high" },
+        }),
+      (resource) => resource.close(),
+    );
+    await history.run("history");
+    await history.close();
+    const mutex = Bun.file(
+      join(homeDir, "desktop-data", "sessions", history.id, "host-lease.sqlite"),
+    );
+    const mutexBytes = await mutex.bytes();
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (resource) => resource.close(),
+    );
+    await database.saveSettings({ permissionMode: "full-access" });
+    for (const identity of [
+      "configuration:hooks",
+      "configuration:mcp",
+      "oauth:fixture",
+      "provider:fixture",
+    ])
+      await database.saveCredential(identity, { type: "replace", ciphertext: "opaque" });
+    await database.close();
+    let decryptions = 0;
+    let authorized = false;
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("continued history")], {
+            model: { reasoning: true },
+          }),
+          encryption: {
+            async encrypt() {
+              throw new Error("unexpected encryption");
+            },
+            async decrypt() {
+              decryptions++;
+              if (!authorized) throw new Error("system authorization required");
+              return "{}";
+            },
+          },
+          onHandshake: () => {},
+        }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect((await client.command("models.list")).error).toBeUndefined();
+    expect((await client.command("sessions.list")).result).toEqual([
+      expect.objectContaining({ id: history.id }),
+    ]);
+    expect(
+      (await client.command("session.subscribe", { sessionId: history.id })).result,
+    ).toMatchObject({ readonly: true });
+    const snapshot = await client.next((message) => message.type === "snapshot");
+    expect(JSON.stringify(snapshot)).toContain("stored history");
+    expect(snapshot).toMatchObject({
+      permissionMode: "full-access",
+      agent: { thinkingLevel: "high" },
+    });
+    expect(decryptions).toBe(0);
+    expect(await mutex.bytes()).toEqual(mutexBytes);
+    const writer = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+          resumeId: history.id,
+          ...fakeModel([]),
+        }),
+      (resource) => resource.close(),
+    );
+    await writer.close();
+    // Starting execution still requires the encrypted configuration and fails closed on denial.
+    expect((await client.command("session.create", { project: null, text: "run" })).error).toEqual({
+      code: "internal",
+    });
+    expect(decryptions).toBe(1);
+    authorized = true;
+    client.messages.length = 0;
+    expect(
+      (await client.command("prompt", { sessionId: history.id, text: "continue" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(JSON.stringify(client.messages)).toContain("continued history");
+    expect(client.messages.some((message) => message.type === "session_state")).toBe(true);
+    expect(decryptions).toBeGreaterThan(1);
+  } finally {
+    await owner.close();
+  }
+});
+test("failed server startup closes its acquired listener and application database", async () => {
+  const owner = ownResources();
+  const homeDir = await owner.acquire(
+    () => mkdtemp(join(tmpdir(), "rukie-startup-failure-")),
+    (directory) => rm(directory, { recursive: true, force: true }),
+  );
+  let port = 0;
+  try {
+    await expect(
+      startServer({
+        homeDir,
+        onHandshake(connection) {
+          port = connection.port;
+          throw new Error("handshake failed");
+        },
+      }),
+    ).rejects.toThrow("handshake failed");
+    await expect(fetch(`http://127.0.0.1:${port}/private/model-services`)).rejects.toThrow();
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (resource) => resource.close(),
+    );
+    try {
+      expect(await database.registry()).toEqual({ projects: [], pinned: [], preferences: {} });
+    } finally {
+      await database.close();
+    }
+  } finally {
+    await owner.close();
+  }
+});
+
+test("committed orphan Session metadata rebuilds the application index without recovery", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-orphan-index-"));
+  const dataRoot = join(homeDir, "desktop-data");
+  const cwd = join(homeDir, "unregistered-project");
+  await Bun.write(join(cwd, "seed"), "project");
+  const fake = fakeModel([fauxAssistantMessage("committed orphan")]);
+  const orphan = await createSession({ homeDir, dataRoot, cwd, ...fake });
+  await orphan.run("history");
+  await orphan.close();
+  const server = await startServer({ homeDir, onHandshake: () => {} });
+  const client = await connect(server);
+  let database: AppDatabase | undefined;
+  try {
+    const response = await client.command("sessions.list");
+    expect(response.result).toEqual([expect.objectContaining({ id: orphan.id, cwd })]);
+    expect((await client.command("projects.list")).result).toEqual([]);
+    client.socket.close();
+    await server.close();
+    database = await AppDatabase.open(dataRoot);
+    expect(await database.sessions()).toEqual([expect.objectContaining({ id: orphan.id, cwd })]);
+  } finally {
+    client.socket.close();
+    await server.close();
+    await database?.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("private provider management persists a redacted catalog without reading terminal authentication", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-services-wire-"));
+  const managementToken = "main-only-management-token";
+  let server = await startServer({ homeDir, managementToken, onHandshake: () => {} });
+  let client = await connect(server);
+  const manage = (input: unknown, token = managementToken, origin?: string) =>
+    fetch(`http://127.0.0.1:${server.port}/private/model-services`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, ...(origin ? { origin } : {}) },
+      body: JSON.stringify(input),
+    });
+  try {
+    expect((await manage({ type: "list" }, server.token)).status).toBe(403);
+    const templates = await (await manage({ type: "templates" })).json();
+    expect(templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ api: "anthropic-messages", models: expect.any(Array) }),
+      ]),
+    );
+    expect(JSON.stringify(templates)).not.toContain("apiKey");
+    expect((await manage({ type: "list" }, managementToken, "app://rukie")).status).toBe(403);
+    expect(
+      (
+        await manage({
+          type: "save",
+          provider: {
+            id: "local",
+            name: "Local",
+            api: "openai-completions",
+            baseUrl: "http://localhost/v1",
+            models: [{ id: "m", name: "Independent label" }],
+          },
+          credential: { type: "replace", ciphertext: "opaque-ciphertext" },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await client.command("models.list")).result).toEqual([
+      expect.objectContaining({
+        providerId: "local",
+        id: "m",
+        name: "Independent label",
+        authenticated: true,
+      }),
+    ]);
+    expect(JSON.stringify(client.messages)).not.toContain("opaque-ciphertext");
+    client.socket.close();
+    await server.close();
+    server = await startServer({ homeDir, managementToken, onHandshake: () => {} });
+    client = await connect(server);
+    expect((await client.command("models.list")).result).toEqual([
+      expect.objectContaining({
+        providerId: "local",
+        id: "m",
+        name: "Independent label",
+        authenticated: true,
+      }),
+    ]);
+    expect((await manage({ type: "delete", id: "local" })).status).toBe(200);
+    expect((await client.command("models.list")).result).toEqual([]);
+  } finally {
+    client.socket.close();
+    await server.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("encrypted desktop model requests use selected configuration and deletion preserves read-only history", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-services-execution-"));
+  const captured: { authorization: string | null; model: unknown }[] = [];
+  const efforts: unknown[] = [];
+  const provider = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      const body: unknown = await request.json();
+      if (typeof body !== "object" || body === null || !("model" in body))
+        throw new Error("Missing request model");
+      captured.push({ authorization: request.headers.get("authorization"), model: body.model });
+      efforts.push("reasoning_effort" in body ? body.reasoning_effort : undefined);
+      return new Response(
+        'data: {"id":"test","choices":[{"index":0,"delta":{"role":"assistant","content":"desktop answer"},"finish_reason":null}]}\n\ndata: {"id":"test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    },
+  });
+  let decryptions = 0;
+  const managementToken = "main-only-test-token";
+  const encryption = {
+    async encrypt() {
+      return "cipher";
+    },
+    async decrypt(identity: string, ciphertext: string) {
+      expect(identity).toBe("provider:local");
+      expect(ciphertext).toBe("opaque");
+      decryptions++;
+      return "desktop-fixture-key";
+    },
+  };
+  let server = await startServer({ homeDir, managementToken, encryption, onHandshake: () => {} });
+  let client = await connect(server);
+  const manage = (input: unknown) =>
+    fetch(`http://127.0.0.1:${server.port}/private/model-services`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${managementToken}` },
+      body: JSON.stringify(input),
+    });
+  try {
+    expect(
+      (
+        await manage({
+          type: "save",
+          provider: {
+            id: "local",
+            name: "Local",
+            api: "openai-completions",
+            baseUrl: `http://127.0.0.1:${provider.port}/v1`,
+            models: [
+              {
+                id: "desktop-model",
+                reasoning: true,
+                defaultThinkingLevel: "high",
+                thinkingLevelMap: { off: "none", low: "light", high: "deep" },
+              },
+            ],
+          },
+          credential: { type: "replace", ciphertext: "opaque" },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await client.command("models.list")).result).toEqual([
+      expect.objectContaining({ authenticated: true }),
+    ]);
+    expect(decryptions).toBe(0);
+    expect((await manage({ type: "test", id: "local", modelId: "desktop-model" })).status).toBe(
+      200,
+    );
+    expect(captured).toEqual([
+      { authorization: "Bearer desktop-fixture-key", model: "desktop-model" },
+    ]);
+    captured.length = 0;
+    const created = await client.command("session.create", {
+      project: null,
+      text: "hello",
+      modelSelection: { provider: "local", modelId: "desktop-model" },
+    });
+    expect(created.error).toBeUndefined();
+    const sessionId = (created.result as { sessionId: string }).sessionId;
+    await client.next((message) => message.type === "result");
+    // The Session Run and its title generation both use the explicit desktop provider.
+    expect(captured).toEqual([
+      { authorization: "Bearer desktop-fixture-key", model: "desktop-model" },
+      { authorization: "Bearer desktop-fixture-key", model: "desktop-model" },
+    ]);
+    expect(efforts).toContain("deep");
+    expect(
+      (
+        await client.command("session.set_model", {
+          sessionId,
+          provider: "local",
+          modelId: "desktop-model",
+        })
+      ).result,
+    ).toMatchObject({ thinkingLevel: "high" });
+    expect(
+      (
+        await client.command("session.set_model", {
+          sessionId,
+          provider: "local",
+          modelId: "desktop-model",
+          thinkingLevel: "low",
+        })
+      ).result,
+    ).toMatchObject({ thinkingLevel: "low" });
+    client.socket.close();
+    await server.close();
+    server = await startServer({ homeDir, managementToken, encryption, onHandshake: () => {} });
+    client = await connect(server);
+    expect((await manage({ type: "list" })).status).toBe(200);
+    expect(
+      (await client.command("prompt", { sessionId, text: "resume saved choice" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(efforts.at(-1)).toBe("light");
+    expect(
+      (
+        await client.command("session.set_model", {
+          sessionId,
+          provider: "local",
+          modelId: "desktop-model",
+          thinkingLevel: "automatic",
+        })
+      ).result,
+    ).toMatchObject({ thinkingLevel: "automatic" });
+    client.messages.length = 0;
+    expect(
+      (await client.command("prompt", { sessionId, text: "provider decides" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(efforts.at(-1)).toBeUndefined();
+    client.socket.close();
+    await server.close();
+    server = await startServer({ homeDir, managementToken, encryption, onHandshake: () => {} });
+    client = await connect(server);
+    expect(
+      (await client.command("prompt", { sessionId, text: "resume automatic" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(efforts.at(-1)).toBeUndefined();
+    expect(
+      (
+        await client.command("session.set_model", {
+          sessionId,
+          provider: "local",
+          modelId: "desktop-model",
+          thinkingLevel: "off",
+        })
+      ).result,
+    ).toMatchObject({ thinkingLevel: "off" });
+    client.messages.length = 0;
+    expect(
+      (await client.command("prompt", { sessionId, text: "explicitly disabled" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(efforts.at(-1)).toBe("none");
+    expect(JSON.stringify(client.messages)).not.toContain("desktop-fixture-key");
+    expect((await manage({ type: "delete", id: "local" })).status).toBe(200);
+    expect((await client.command("prompt", { sessionId, text: "again" })).error).toEqual({
+      code: "model_unavailable",
+    });
+    client.socket.close();
+    await server.close();
+    server = await startServer({ homeDir, managementToken, encryption, onHandshake: () => {} });
+    client = await connect(server);
+    expect((await client.command("session.subscribe", { sessionId })).result).toMatchObject({
+      readonly: true,
+      modelUnavailable: true,
+    });
+    expect(
+      client.messages.some(
+        (message) =>
+          message.type === "snapshot" && JSON.stringify(message).includes("desktop answer"),
+      ),
+    ).toBe(true);
+    expect(captured).toHaveLength(6);
+    expect(
+      (
+        await manage({
+          type: "save",
+          provider: {
+            id: "local",
+            name: "Local",
+            api: "openai-completions",
+            baseUrl: `http://127.0.0.1:${provider.port}/v1`,
+            models: [{ id: "replacement-model" }],
+          },
+          credential: { type: "replace", ciphertext: "opaque" },
+        })
+      ).status,
+    ).toBe(200);
+    const selected = await client.command("session.set_model", {
+      sessionId,
+      provider: "local",
+      modelId: "replacement-model",
+      thinkingLevel: "off",
+    });
+    expect(selected.result).toMatchObject({ model: "local/replacement-model" });
+    const before = captured.length;
+    expect(
+      (await client.command("prompt", { sessionId, text: "continue explicitly" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    // Server close drains the accepted Run before observing the external request count.
+    client.socket.close();
+    await server.close();
+    expect(captured.slice(before)).toEqual([
+      expect.objectContaining({ model: "replacement-model" }),
+    ]);
+  } finally {
+    client.socket.close();
+    await server.close();
+    await provider.stop(true);
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
 
 test("authenticated clients use the public registry over a real WebSocket", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-server-"));
@@ -44,11 +499,23 @@ test("authenticated clients use the public registry over a real WebSocket", asyn
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { fakeModel } from "../../agent/tests/helpers/fake-model.ts";
 
-async function connect(server: { port: number; token: string }, origin = "app://rukie") {
+async function connect(
+  server: { port: number; token: string },
+  origin = "app://rukie",
+  owner?: ReturnType<typeof ownResources>,
+) {
   const socket = new WebSocket(`ws://127.0.0.1:${server.port}/ws`, {
     protocols: ["rukie.v1", `rukie.auth.${server.token}`],
     headers: { Origin: origin },
   });
+  owner?.add(
+    () =>
+      new Promise<void>((resolve) => {
+        if (socket.readyState === WebSocket.CLOSED) return resolve();
+        socket.addEventListener("close", () => resolve(), { once: true });
+        socket.close();
+      }),
+  );
   const messages: Record<string, unknown>[] = [];
   const waits = new Set<() => void>();
   socket.addEventListener("message", (event) => {
@@ -90,7 +557,7 @@ async function connect(server: { port: number; token: string }, origin = "app://
   };
 }
 
-test("a new Session streams and can be reopened from the shared JSONL store", async () => {
+test("a new Session streams and can be reopened from the isolated SQLite store", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-stream-"));
   const fake = fakeModel(
     [fauxAssistantMessage("first reply"), fauxAssistantMessage("second reply")],
@@ -274,44 +741,95 @@ test("project registration survives restart and a removed project cannot hide ot
   }
 }, 5000);
 
-test("a TUI-owned Session is listed but cannot be opened by desktop", async () => {
-  const homeDir = await mkdtemp(join(tmpdir(), "rukie-busy-"));
-  const fake = fakeModel([fauxAssistantMessage("held writer reply")]);
-  const server = await startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} });
-  const owned = await createSession({
-    ...fake,
-    homeDir,
-    cwd: join(homeDir, ".rukie", "desktop", "workspace"),
-  });
-  await owned.run("held writer prompt");
-  const log = Bun.file(
-    join(
-      createJsonlStore({ homeDir, cwd: join(homeDir, ".rukie", "desktop", "workspace") }).key(
-        owned.id,
-      ),
-      "main.jsonl",
-    ),
-  );
-  const committed = await log.text();
-  const client = await connect(server);
+test("an application-root Session held by another owner permits only a read-only desktop snapshot", async () => {
+  const owner = ownResources();
   try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-busy-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const fake = fakeModel([fauxAssistantMessage("held writer reply")]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const owned = await owner.acquire(
+      () =>
+        createSession({
+          ...fake,
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+        }),
+      (resource) => resource.close(),
+    );
+    await owned.run("held writer prompt");
+    await owned.close();
+    // The child holds a real cross-process kernel mutex; parent virtual clocks cannot model it.
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        join(import.meta.dir, "../../agent/tests/helpers/session-store-worker.ts"),
+        "hold",
+        join(homeDir, "desktop-data", "workspace"),
+        homeDir,
+        owned.id,
+        join(homeDir, "desktop-data"),
+      ],
+      { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+    );
+    let releaseReader: (() => void) | undefined;
+    owner.add(async () => {
+      child.kill();
+      await child.exited;
+      releaseReader?.();
+    });
+    const reader = child.stdout.getReader();
+    releaseReader = () => reader.releaseLock();
+    const log = Bun.file(
+      join(
+        createSessionStore({
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+        }).key(owned.id),
+        "session.sqlite",
+      ),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect(new TextDecoder().decode((await reader.read()).value)).toStartWith("READY ");
+    const committed = await log.bytes();
     expect((await client.command("session.subscribe", { sessionId: owned.id })).error).toEqual({
       code: "session_busy",
     });
     const snapshot = await client.next((message) => message.type === "snapshot");
     expect(JSON.stringify(snapshot)).toContain("held writer reply");
-    expect(await log.text()).toBe(committed);
+    expect(await log.bytes()).toEqual(committed);
     expect(
       (await client.command("prompt", { sessionId: owned.id, text: "must not write" })).error,
     ).toEqual({ code: "session_busy" });
+    child.stdin.end();
+    expect(await child.exited).toBe(0);
+    expect(
+      (await client.command("session.subscribe", { sessionId: owned.id })).result,
+    ).toMatchObject({ readonly: true });
+    // Successful observation immediately rolls back its probe, permitting a later writer.
+    const reopened = await owner.acquire(
+      () =>
+        createSession({
+          ...fakeModel([]),
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+          resumeId: owned.id,
+        }),
+      (resource) => resource.close(),
+    );
+    await reopened.close();
   } finally {
-    client.socket.close();
-    await owned.close();
-    await server.close();
-    await rm(homeDir, { recursive: true, force: true });
+    await owner.close();
   }
 }, 5000);
-
 test("permission epochs survive takeover and settle once, with session rules applying to later calls", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-permission-wire-"));
   const fake = fakeModel([
@@ -464,16 +982,28 @@ test("idle unsubscribed Session releases its lease exactly at ten minutes", asyn
     await client.next((message) => message.type === "result");
     clock = FakeTimers.install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout"] });
     await client.command("session.unsubscribe", { sessionId });
-    const cwd = join(homeDir, ".rukie", "desktop", "workspace");
+    const cwd = join(homeDir, "desktop-data", "workspace");
     await clock.tickAsync(600000 - 1);
     await expect(
-      createSession({ ...fake, homeDir, cwd, resumeId: sessionId }),
+      createSession({
+        ...fake,
+        homeDir,
+        dataRoot: join(homeDir, "desktop-data"),
+        cwd,
+        resumeId: sessionId,
+      }),
     ).rejects.toMatchObject({ code: "session-busy" });
     clock.tick(1);
     await client.next(
       (message) => message.type === "sessions_changed" && message.closedSessionId === sessionId,
     );
-    const reopened = await createSession({ ...fake, homeDir, cwd, resumeId: sessionId });
+    const reopened = await createSession({
+      ...fake,
+      homeDir,
+      dataRoot: join(homeDir, "desktop-data"),
+      cwd,
+      resumeId: sessionId,
+    });
     await reopened.close();
   } finally {
     clock?.uninstall();
@@ -501,13 +1031,19 @@ test("SIGTERM awaits Session shutdown and kills running Background Job process g
     const created = await client.command("session.create", { project: null, text: "start job" });
     const sessionId = (created.result as { sessionId: string }).sessionId;
     await client.next((message) => message.type === "result");
-    const cwd = join(homeDir, ".rukie", "desktop", "workspace");
+    const cwd = join(homeDir, "desktop-data", "workspace");
     const pid = await waitForPidFile(join(cwd, "pid"));
     expect(() => process.kill(pid, 0)).not.toThrow();
     child.kill("SIGTERM");
     expect(await child.exited).toBe(0);
     expect(() => process.kill(pid, 0)).toThrow();
-    const resumed = await createSession({ ...fakeModel([]), homeDir, cwd, resumeId: sessionId });
+    const resumed = await createSession({
+      ...fakeModel([]),
+      homeDir,
+      dataRoot: join(homeDir, "desktop-data"),
+      cwd,
+      resumeId: sessionId,
+    });
     expect(resumed.jobs()).toEqual([]);
     await resumed.close();
   } finally {
@@ -577,7 +1113,8 @@ test("Run, pending Interaction and Queued Input prevent idle reclamation", async
       createSession({
         ...fake,
         homeDir,
-        cwd: join(homeDir, ".rukie", "desktop", "workspace"),
+        dataRoot: join(homeDir, "desktop-data"),
+        cwd: join(homeDir, "desktop-data", "workspace"),
         resumeId: sessionId,
       }),
     ).rejects.toMatchObject({ code: "session-busy" });
@@ -616,13 +1153,19 @@ test("a running Background Job holds an unsubscribed idle Session", async () => 
     const created = await client.command("session.create", { project: null, text: "job" });
     const sessionId = (created.result as { sessionId: string }).sessionId;
     await client.next((message) => message.type === "result");
-    const cwd = join(homeDir, ".rukie", "desktop", "workspace");
+    const cwd = join(homeDir, "desktop-data", "workspace");
     const pid = await waitForPidFile(join(cwd, "pid"));
     clock = FakeTimers.install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout"] });
     await client.command("session.unsubscribe", { sessionId });
     await clock.tickAsync(600001);
     await expect(
-      createSession({ ...fake, homeDir, cwd, resumeId: sessionId }),
+      createSession({
+        ...fake,
+        homeDir,
+        dataRoot: join(homeDir, "desktop-data"),
+        cwd,
+        resumeId: sessionId,
+      }),
     ).rejects.toMatchObject({ code: "session-busy" });
     expect(() => process.kill(pid, 0)).not.toThrow();
   } finally {
@@ -679,7 +1222,8 @@ test("a native background Subagent holds a parent Session after its Run ends", a
       createSession({
         ...fake,
         homeDir,
-        cwd: join(homeDir, ".rukie", "desktop", "workspace"),
+        dataRoot: join(homeDir, "desktop-data"),
+        cwd: join(homeDir, "desktop-data", "workspace"),
         resumeId: sessionId,
       }),
     ).rejects.toMatchObject({ code: "session-busy" });
@@ -790,3 +1334,169 @@ test("unsubscribed Sessions publish permission creation, reconnect state and can
     await rm(homeDir, { recursive: true, force: true });
   }
 }, 5000);
+
+test("desktop neither lists nor contends with a terminal Session in the same project", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-isolated-frontends-"));
+  const fake = fakeModel([fauxAssistantMessage("desktop answer")]);
+  const server = await startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} });
+  const cwd = join(homeDir, "desktop-data", "workspace");
+  const terminal = await createSession({
+    homeDir,
+    cwd,
+    ...fakeModel([fauxAssistantMessage("terminal answer")]),
+  });
+  const client = await connect(server);
+  try {
+    await terminal.run("terminal prompt");
+    expect((await client.command("sessions.list")).result).toEqual([]);
+    expect((await client.command("session.subscribe", { sessionId: terminal.id })).error).toEqual({
+      code: "session_not_found",
+    });
+    const created = await client.command("session.create", {
+      project: null,
+      text: "desktop prompt",
+    });
+    expect(created.error).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(JSON.stringify((await client.command("sessions.list")).result)).not.toContain(
+      terminal.id,
+    );
+  } finally {
+    client.socket.close();
+    await terminal.close();
+    await server.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+}, 5000);
+
+test("desktop output wire reads committed bytes after server restart without opening execution", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-output-wire-"));
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("bash", {
+        command: "printf 'stored output'; printf diagnostic >&2",
+        description: "persistent output",
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("done"),
+  ]);
+  let server = await startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} });
+  let client = await connect(server);
+  try {
+    const created = await client.command("session.create", {
+      project: null,
+      text: "capture",
+      permissionMode: "full-access",
+    });
+    const sessionId = (created.result as { sessionId: string }).sessionId;
+    await client.next((message) => message.type === "result");
+    const ended = client.messages.find(
+      (message) => message.type === "tool_execution_end" && message.toolName === "bash",
+    );
+    const result = ended?.result as { details: { outputRef: { id: string } } };
+    const outputRef = result.details.outputRef;
+    expect(
+      (await client.command("tool_output.read", { sessionId, outputRef, offset: 0 })).result,
+    ).toMatchObject({ stdout: "stored output", stderr: "diagnostic", nextOffset: 23 });
+    client.socket.close();
+    await server.close();
+    server = await startServer({ homeDir, onHandshake: () => {} });
+    client = await connect(server);
+    expect(
+      (await client.command("prompt", { sessionId, text: "unconfigured model" })).error,
+    ).toMatchObject({ code: "model_unavailable" });
+    const owner = await createSession({
+      cwd: join(homeDir, "desktop-data", "workspace"),
+      homeDir,
+      dataRoot: join(homeDir, "desktop-data"),
+      resumeId: sessionId,
+      ...fakeModel([]),
+    });
+    try {
+      expect(
+        (await client.command("tool_output.read", { sessionId, outputRef, offset: 7 })).result,
+      ).toMatchObject({ stdout: "output", stderr: "diagnostic", nextOffset: 23 });
+    } finally {
+      await owner.close();
+    }
+    expect(
+      (await client.command("tool_output.read", { sessionId, outputRef, offset: -1 })).error,
+    ).toEqual({ code: "invalid_command" });
+  } finally {
+    client.socket.close();
+    await server.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("explicit private credential reveal is provider scoped and catalog access never decrypts", async () => {
+  const owner = ownResources();
+  const homeDir = await owner.acquire(
+    () => mkdtemp(join(tmpdir(), "rukie-reveal-wire-")),
+    (directory) => rm(directory, { recursive: true, force: true }),
+  );
+  let reads = 0;
+  let fail = false;
+  const server = await owner.acquire(
+    () =>
+      startServer({
+        homeDir,
+        managementToken: "fixture-management",
+        onHandshake: () => {},
+        encryption: {
+          encrypt: async (_id, value) => value,
+          decrypt: async (id, value) => {
+            reads++;
+            expect(id).toBe("provider:local");
+            if (fail) throw new Error("sensitive failure");
+            return value === "ciphertext-fixture" ? "fixture-key-only" : "";
+          },
+        },
+      }),
+    (resource) => resource.close(),
+  );
+  const manage = (input: unknown, token = "fixture-management", origin?: string) =>
+    fetch(`http://127.0.0.1:${server.port}/private/model-services`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, ...(origin ? { origin } : {}) },
+      body: JSON.stringify(input),
+    });
+  try {
+    await manage({
+      type: "save",
+      provider: {
+        id: "local",
+        name: "Local",
+        api: "openai-completions",
+        baseUrl: "https://example.com",
+        models: [],
+      },
+      credential: { type: "replace", ciphertext: "ciphertext-fixture" },
+    });
+    const list = await (await manage({ type: "list" })).text();
+    expect(list).not.toContain("ciphertext-fixture");
+    expect(reads).toBe(0);
+    expect((await manage({ type: "revealKey", id: "local" }, server.token)).status).toBe(403);
+    expect(
+      (await manage({ type: "revealKey", id: "local" }, "fixture-management", "app://rukie"))
+        .status,
+    ).toBe(403);
+    expect((await manage({ type: "revealKey", id: "oauth:other" })).status).toBe(400);
+    expect((await manage({ type: "revealKey", id: "missing" })).status).toBe(409);
+    expect(reads).toBe(0);
+    expect(await (await manage({ type: "revealKey", id: "local" })).json()).toEqual({
+      value: "fixture-key-only",
+    });
+    fail = true;
+    const failed = await manage({ type: "revealKey", id: "local" });
+    expect(failed.status).toBe(409);
+    expect(await failed.text()).not.toContain("sensitive failure");
+    fail = false;
+    expect(await (await manage({ type: "revealKey", id: "local" })).json()).toEqual({
+      value: "fixture-key-only",
+    });
+  } finally {
+    await owner.close();
+  }
+});

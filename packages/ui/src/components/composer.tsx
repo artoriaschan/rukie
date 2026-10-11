@@ -318,7 +318,7 @@ export function Composer(props: ComposerProps) {
                   className="max-w-44 min-w-0"
                 >
                   <span className="truncate">
-                    {selected?.name ?? props.model ?? t("app.model")}
+                    {selected?.name || props.model || t("app.model")}
                   </span>
                 </Button>
               </Menu.DropdownMenuTrigger>
@@ -329,10 +329,10 @@ export function Composer(props: ComposerProps) {
               >
                 {detail ? (
                   <section
-                    aria-label={detail.name}
+                    aria-label={detail.name || detail.id}
                     className="w-48 rounded-md bg-muted p-3 text-ui-sm"
                   >
-                    <h3 className="mb-2 text-ui-base font-medium">{detail.name}</h3>
+                    <h3 className="mb-2 text-ui-base font-medium">{detail.name || detail.id}</h3>
                     <p>
                       {t("app.input")}: {detail.input.join(", ")}
                     </p>
@@ -369,7 +369,7 @@ export function Composer(props: ComposerProps) {
                         onPointerMove={() => setDetail(model)}
                         onSelect={() => choose(model)}
                       >
-                        {model.name}
+                        {model.name || model.id}
                       </Menu.DropdownMenuItem>
                     ))
                   ) : (

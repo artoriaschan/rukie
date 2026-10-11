@@ -1,3 +1,4 @@
+import { userDataDirectory, type UserDataOptions } from "./paths.ts";
 import { join, resolve } from "node:path";
 import {
   createProvider,
@@ -76,7 +77,8 @@ function validate(
 }
 
 /**
- * Loads `~/.rukie/settings.json` merged with `<cwd>/.rukie/settings.json`.
+ * Loads injected application settings, or terminal `~/.rukie/settings.json`
+ * merged with `<cwd>/.rukie/settings.json`. An application root without injected settings has an empty user configuration.
  * The project file may override `model`, `reviewModel` and `subagentModel`.
  * Project deny/ask rules append to the user rules; allow rules append only for
  * the exact Trusted Project used by project MCP configuration.
@@ -84,11 +86,17 @@ function validate(
  * a project must not redirect credentials or grant itself broader permissions.
  * Language preferences belong to the user, not the project.
  */
-export async function loadSettings(options: { cwd: string; homeDir: string }) {
-  const userFile = join(options.homeDir, ".rukie/settings.json");
+export async function loadSettings(
+  options: UserDataOptions & { cwd: string; userSettings?: Settings },
+) {
+  const userFile = join(userDataDirectory(options), "settings.json");
   const projectFile = join(options.cwd, ".rukie/settings.json");
   const [userData, { providers, permissionMode, locale, ...projectData }] = await Promise.all([
-    readJson(userFile),
+    options.userSettings !== undefined
+      ? Promise.resolve(options.userSettings)
+      : options.dataRoot !== undefined
+        ? Promise.resolve({})
+        : readJson(userFile),
     readJson(projectFile),
   ]);
   const warnings: string[] = [];
@@ -175,17 +183,30 @@ export async function resolveModel(
   settings: Settings,
   homeDir: string,
   onWarning: (message: string) => void = console.warn,
+  options: { dataRoot?: string } = {},
 ): Promise<{ model: Model<Api>; models: Models }> {
   if (!settings.model) {
-    const settingsPath = join(homeDir, ".rukie/settings.json");
-    throw createUserVisibleError(noModelMessage(settingsPath), {
-      code: "no-model",
-      params: { settings: settingsPath },
+    const settingsPath = join(userDataDirectory({ homeDir, ...options }), "settings.json");
+    throw createUserVisibleError(
+      options.dataRoot === undefined
+        ? noModelMessage(settingsPath)
+        : `No desktop model configured. Configure a model service before sending.`,
+      {
+        code: "no-model",
+        params: { settings: settingsPath },
+      },
+    );
+  }
+  if (options.dataRoot !== undefined) {
+    const provider = settings.model.split("/")[0]!;
+    throw createUserVisibleError(`No desktop credential for provider "${provider}".`, {
+      code: "no-api-key",
+      params: { provider, env: "" },
     });
   }
   const models = modelRegistry(settings);
   for (const provider of models.getProviders())
-    models.setProvider(withToolCapabilityDetection(provider, homeDir, onWarning));
+    models.setProvider(withToolCapabilityDetection(provider, homeDir, onWarning, options));
   const slash = settings.model.indexOf("/");
   const providerId = settings.model.slice(0, slash);
   const model =
@@ -223,6 +244,7 @@ function modelRegistry(settings: Settings) {
           input: m.input ?? ["text"],
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           reasoning: m.reasoning ?? false,
+          ...(m.thinkingLevelMap === undefined ? {} : { thinkingLevelMap: m.thinkingLevelMap }),
           // ponytail: generic defaults; per-model limits come from settings when they matter
           contextWindow: m.contextWindow ?? 128_000,
           maxTokens: m.maxTokens ?? 16_384,
@@ -257,8 +279,11 @@ async function getAuthenticatedProviders(models: Models): Promise<Set<string>> {
  */
 export async function listModelCatalog(
   settings: Settings = {},
-  models: Models = modelRegistry(settings),
+  models: Models | undefined = undefined,
+  options: { dataRoot?: string } = {},
 ): Promise<ModelCatalogEntry[]> {
+  if (!models && options.dataRoot !== undefined) return [];
+  models ??= modelRegistry(settings);
   const authenticated = await getAuthenticatedProviders(models);
   const custom = new Set(settings.providers?.map((provider) => provider.id));
   return models
@@ -279,4 +304,6 @@ export async function listModelCatalog(
     .sort((a, b) => a.spec.localeCompare(b.spec));
 }
 
-export { supportedThinkingLevel } from "./model-selection.ts";
+export { supportedThinkingLevel, nativeThinkingLevel } from "./model-selection.ts";
+
+export { withAutomaticReasoning } from "./automatic-reasoning.ts";

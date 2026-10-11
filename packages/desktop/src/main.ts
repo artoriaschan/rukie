@@ -11,6 +11,7 @@ void startDesktop({
   rendererDirectory: app.isPackaged ? join(root, "dist") : resolve(here, "../../ui/dist"),
   preload: join(here, "preload.cjs"),
   userDataDirectory: process.env.RUKIE_DESKTOP_USER_DATA,
+  dataRoot: process.env.RUKIE_DESKTOP_DATA_ROOT,
   sidecar: app.isPackaged
     ? { command: join(process.resourcesPath, "sidecar/rukie-server"), args: [] }
     : {

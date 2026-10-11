@@ -2,10 +2,11 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession, listSessions } from "../../src/index.ts";
 import { fakeModel } from "./fake-model.ts";
 
-const [mode, cwd, homeDir, id] = process.argv.slice(2);
+const [mode, cwd, homeDir, id, dataRootArg] = process.argv.slice(2);
+const dataRoot = dataRootArg || undefined;
 if (!cwd || !homeDir) throw new Error("Missing isolated fixture directories");
 if (mode === "list") {
-  console.log(JSON.stringify(await listSessions({ cwd, homeDir })));
+  console.log(JSON.stringify(await listSessions({ cwd, homeDir, dataRoot })));
 } else {
   const input = Bun.stdin.stream().getReader();
   if (mode === "contend") {
@@ -15,7 +16,13 @@ if (mode === "list") {
   const fake = fakeModel(mode === "seed" ? [fauxAssistantMessage("Persisted lease fixture")] : []);
   let session;
   try {
-    session = await createSession({ cwd, homeDir, ...fake, ...(id ? { resumeId: id } : {}) });
+    session = await createSession({
+      cwd,
+      homeDir,
+      dataRoot,
+      ...fake,
+      ...(id ? { resumeId: id } : {}),
+    });
   } catch (error) {
     if (!(error instanceof Error) || !("code" in error) || error.code !== "session-busy")
       throw error;

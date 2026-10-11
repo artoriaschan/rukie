@@ -1,3 +1,5 @@
+import { readExternalFile, writeExternalFile } from "../store/external-files.ts";
+import { userDataDirectory } from "../config/paths.ts";
 import { createHash } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -55,12 +57,14 @@ export const checkpointState: ToolStateDefinition = defineToolState({
 
 export function createCheckpoints({
   homeDir,
+  dataRoot,
   sessionId,
   getState,
   persist,
   getPrompt,
 }: {
   homeDir: string;
+  dataRoot?: string;
   sessionId: string;
   getState(): unknown;
   persist(state: CheckpointState): Promise<void>;
@@ -99,8 +103,13 @@ export function createCheckpoints({
         }
         if (bytes !== undefined) {
           const hash = createHash("sha256").update(bytes).digest("hex");
-          backup = join(homeDir, ".rukie", "file-history", sessionId, hash);
-          if (!(await Bun.file(backup).exists())) await Bun.write(backup, bytes);
+          if (dataRoot) {
+            backup = `file-history/${sessionId}/${hash}`;
+            await writeExternalFile(dataRoot, backup, bytes);
+          } else {
+            backup = join(userDataDirectory({ homeDir }), "file-history", sessionId, hash);
+            if (!(await Bun.file(backup).exists())) await Bun.write(backup, bytes);
+          }
         }
         current.files.push({ path, backup });
         await persist(next);
@@ -142,7 +151,10 @@ export function createCheckpoints({
         [...files].map(async ([path, backup]) => {
           if (backup === null) return { path, bytes: null };
           try {
-            return { path, bytes: await readFile(backup) };
+            return {
+              path,
+              bytes: dataRoot ? await readExternalFile(dataRoot, backup) : await readFile(backup),
+            };
           } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "ENOENT")
               throw new Error(`Checkpoint backup missing: ${backup}`);

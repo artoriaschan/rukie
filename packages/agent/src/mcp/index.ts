@@ -1,3 +1,4 @@
+import { userDataDirectory } from "../config/paths.ts";
 import { awaitWithContext } from "@earendil-works/chord/context";
 import type { PreflightTool } from "../tools/support/preflight.ts";
 import type { PresentedTool } from "../tools/support/presentation.ts";
@@ -18,6 +19,7 @@ import {
   authorizeMcp,
   adaptOAuthProvider,
   type OAuthFlowOptions,
+  type McpOAuthStateStore,
 } from "@earendil-works/pi-mcp/oauth";
 import { join } from "node:path";
 import { Type } from "typebox";
@@ -39,6 +41,12 @@ import {
 import { preserveErrorDetails } from "../tools/support/runtime.ts";
 import { credentialKey, credentialStore } from "./credentials.ts";
 import { configureOAuthMetadata, createOAuthProvider } from "./oauth.ts";
+
+/** Application-owned configuration and OAuth persistence; project trust remains in Core. */
+export interface McpPersistence {
+  configuration(): Promise<Record<string, unknown>>;
+  credentials(identity: string): McpOAuthStateStore & { clear(): Promise<void> };
+}
 
 export interface McpAuthRequest {
   /** Present for an authentication initiated by a native tool; management operations have their own lifetime. */
@@ -376,6 +384,8 @@ export function createMcpConnections(
     async connect(options: {
       cwd: string;
       homeDir: string;
+      dataRoot?: string;
+      persistence?: McpPersistence;
       settings: Settings;
       trustProjectMcp?: boolean;
       signal?: AbortSignal;
@@ -398,7 +408,7 @@ export function createMcpConnections(
         closePromise = undefined;
         lifetime = new AbortController();
       }
-      const userPath = join(options.homeDir, ".rukie/mcp.json");
+      const userPath = join(userDataDirectory(options), "mcp.json");
       const projectPath = join(options.cwd, ".mcp.json");
       const servers = new Map<
         string,
@@ -410,7 +420,12 @@ export function createMcpConnections(
         for (let index = errors.length - 1; index >= 0; index--)
           if (errors[index]!.server === path) errors.splice(index, 1);
       }
-      for (const [name, value] of Object.entries(await readConfig(userPath, "user")))
+      const userConfiguration = options.persistence
+        ? await options.persistence.configuration()
+        : options.dataRoot !== undefined
+          ? {}
+          : await readConfig(userPath, "user");
+      for (const [name, value] of Object.entries(userConfiguration))
         servers.set(name, { value, scope: "user", configPath: userPath });
       if (options.trustProjectMcp || isTrustedProject(options.cwd, options.settings)) {
         for (const [name, value] of Object.entries(await readConfig(projectPath, "project")))
@@ -553,8 +568,10 @@ export function createMcpConnections(
             }
             const store =
               key && "url" in entry
-                ? credentialStore({
+                ? (options.persistence?.credentials(key) ??
+                  credentialStore({
                     homeDir: options.homeDir,
+                    dataRoot: options.dataRoot,
                     key,
                     serverName: server,
                     serverUrl: entry.url,
@@ -566,7 +583,7 @@ export function createMcpConnections(
                         "MCP credentials file is invalid; ignoring its contents.",
                       );
                     },
-                  })
+                  }))
                 : undefined;
             let rejectedToken = (await store?.load())?.tokens?.access_token;
             const recordAuthorizationChallenge = async (url: URL) => {

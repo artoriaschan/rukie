@@ -1,6 +1,11 @@
 export { loadSettings, listModelCatalog, type ModelCatalogEntry } from "./config/index.ts";
 export {
   createJsonlStore,
+  createSqliteStore,
+  createSessionStore,
+  discoverSqliteSessions,
+  isSqliteSessionBusy,
+  readSessionStorage,
   listSessions,
   type SessionStore,
   type SessionSummary,
@@ -68,3 +73,9 @@ export type { SessionEvent } from "./session/events.ts";
 export type { InteractionIdentity } from "./interaction/index.ts";
 
 export { readSessionSnapshot } from "./session/read-only.ts";
+
+export { openBunSqliteDatabase } from "./store/sqlite-database.ts";
+
+export { readSessionToolOutput } from "./store/index.ts";
+export { parseOAuthState } from "./mcp/credentials.ts";
+export { createApplicationModels, applicationModelTemplates } from "./config/application-models.ts";

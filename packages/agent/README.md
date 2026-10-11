@@ -1,12 +1,28 @@
 # Session Store
 
-`createSession` 默认使用原生 JSONL Storage，同一目录保存父子 Conversation、entries、documents 和 tasks。`SessionStore` 提供 `open`、`list` 与身份 `key`；自定义后端返回 Storage 和可重复调用的 `release`，Session 关闭时释放资源。默认路径由 [`store/`](src/store/index.ts)按解析后的工作目录生成，位于 `homeDir/.rukie/durable-sessions/`；`rukie.session` document 保存 id、名称、模型与选中对话等索引事实。旧 `.rukie/sessions/` 文件不枚举、不读取、不改写，旧 id 打开返回 `session-not-found`。
+`createSession` 在终端默认使用原生 JSONL Storage；传入显式 `dataRoot` 时使用原生 SQLite Storage，同一目录保存父子 Conversation、entries、documents 和 tasks。`SessionStore` 提供 `open`、`list` 与身份 `key`；自定义后端返回 Storage 和可重复调用的 `release`，Session 关闭时释放资源。默认路径由 [`store/`](src/store/index.ts)按解析后的工作目录生成，位于 `homeDir/.rukie/durable-sessions/`；`rukie.session` document 保存 id、名称、模型与选中对话等索引事实。旧 `.rukie/sessions/` 文件不枚举、不读取、不改写，旧 id 打开返回 `session-not-found`。
 
-一个宿主持有一个目录的写者租约。默认实现通过独立 SQLite 文件的 `BEGIN IMMEDIATE` 事务持有内核锁；该文件不存 Session 记录，也不删除或替换。另一个进程或宿主打开同一 id 立即失败，错误携带 `session-busy` 和 `{ id }`，同进程重复打开也使用该错误；正常关闭和进程死亡释放锁。恢复无需 PID 检查或清理旧租约。列表可以观察活跃目录：当前宿主借用已注册读者，独立查询仅打开原生存储内核读取索引，不启动模型或 Harness scheduler，也不执行任务恢复。`listSessions` 跳过索引读取失败的单个 Session，并经 `onWarning` 上报包含 id 与失败原因的警告；未提供回调时使用 `console.warn`，项目目录本身的读取失败仍向调用方传播。需要截断或修复的存储拒绝只读观察。
+一个宿主持有一个目录的写者租约。默认实现通过独立 SQLite 文件的 `BEGIN IMMEDIATE` 事务持有内核锁；该文件不存 Session 记录，也不删除或替换。另一个进程或宿主打开同一 id 立即失败，错误携带 `session-busy` 和 `{ id }`，同进程重复打开也使用该错误；正常关闭和进程死亡释放锁。恢复无需 PID 检查或清理旧租约。列表可以观察活跃目录：JSONL 当前宿主借用已注册读者，SQLite 与独立查询只打开原生存储内核读取索引，不启动模型或 Harness scheduler，也不执行任务恢复。`listSessions` 跳过索引读取失败的单个 Session，并经 `onWarning` 上报包含 id 与失败原因的警告；未提供回调时使用 `console.warn`，项目目录本身的读取失败仍向调用方传播。需要截断或修复的存储拒绝只读观察。
 
 原生 JSONL 启用 sidecar fsync，[存储文件适配器](src/store/files.ts)在成功追加后 flush 文件，包括 main 提交标记；提交确认后才采用状态和发布对应成功事实。写入或 flush 失败会向调用方传播；原生 Storage 进入 poisoned 状态时须 `await session.close()` 后重开。flush 发生在追加之后，拒绝确认不等于磁盘字节回滚，重新打开时以原生已提交事实为准。进程强制退出测试验证租约释放和恢复，不代表断电测试。
 
+应用 SQLite 使用 [`Bun database adapter`](src/store/sqlite-database.ts) 的 WAL/FULL，原生事务确认后发布已提交事实。异步事务排队隔离其他数据库调用；事务 handle 在 callback 结束后失效，关闭等待已接受事务和查询完成。执行租约独立于 WAL，子代理 Conversation 和 tasks 仍保存在根 Harness 内。`listSessions` 按 cwd 筛选根 Session；`discoverSqliteSessions` 只扫描应用根里的已提交 metadata，带 cwd 返回全部根 Session，供应用索引重建，项目未注册不隐藏已提交历史。恢复错误或损坏不自动导入、回退或修复旧存储。
+
+`readSessionStorage` 和 `readSessionSnapshot` 在 SQLite 上持有一个已提交 WAL 读取帧，可在另一个宿主执行时观察历史，不获取执行权，不执行迁移或 Harness 恢复。写入和 mintId 明确拒绝；缺失、不支持版本或结构不匹配的库读取失败。锁定 pi-durable 只有会迁移的 `SqliteStorage.open`，只读接缝在核对全部原生表/列及版本后调用其仅赋值的 constructor，并保留原生 document 与历史读取语义；升级依赖必须重新核对该 constructor 合同。只读 callback 不应关闭后继续使用 Storage；callback 返回或失败时连接关闭。
+
+SQLite Session 的完整工具文本输出和 Bash/Background Job 的 stdout/stderr 分块保存在同一个根 Harness 连接的 `session.sqlite` 中，使用原生数据库事务队列和 WAL/FULL。引用按原生 task 与 invocation 身份分隔，模型复用 call ID 不会覆盖其他输出；子代理仍写根 Harness 的同一库。工具自己的 read/grep/glob/web_fetch 模型截断前文本和 Harness 截断前的其他文本均保留，下载安全上限与用户指定 read 范围不改变。流式文本与显式最终结果分别存储，读取引用只选择一种，不重复拼接。
+
+`Session.readToolOutput(ref, offset?, maxBytes?)` 和 `readSessionToolOutput({ cwd, homeDir, dataRoot, id }, ref, offset?, maxBytes?)` 返回 `stdout`、`stderr`、跨两流的绝对 UTF-8 `nextOffset` 和 `dropped`。每页默认256KiB、最多4MiB；字符边界可缩短页或在页小于单个字符时前进一个完整字符。历史读取只持有已提交 WAL 帧，不迁移 schema、不启动恢复、不获取执行权。Frontend 可通过工具结果 `outputRef` 继续按页读取，桌面 wire 的 `tool_output.read` 复用历史入口；桌面卡片显示按需完整输出，不把截断误报为已不可用。
+
+输出块事务成功后才提交引用它们的最终工具事实；正常结束、abort 和关闭排空写入，写入失败成为工具失败或关闭错误，不能返回执行成功。崩溃只保证已提交块，恢复保留这些引用，unsafe Bash 不重放。Background Job 进程不恢复，但已提交输出仍可读。终端保留现有临时 spill、`fullOutputPath`、有限内存与 `job_output` 游标行为；桌面不创建临时日志权威引用。SQLite `job_output` 的模型文本仍有原内存边界，完整数据库引用独立于模型消费游标。
+
 `SessionOptions.initializationSignal` 可取消 SessionStart Hook 与打开过程，失败时关闭 observation、撤销注册读者并释放 Hook／连接／存储租约。这个信号只约束初始化，Session 返回后不会取消 Run；原生 Harness 的上下文独立于它。已打开宿主通过 `await session.close()` 保存 pending work 并等待释放；`abort()` 取消当前普通 ownership，`interruptSubagent()` 取消选中的 child。Frontend 的进程信号及输出边界见 [Headless README](../coding-agent/src/headless/README.md) 与 [TUI README](../coding-agent/src/tui/README.md)。
+
+# 用户来源与工具 home
+
+`SessionOptions.dataRoot` 与 `loadSettings`、`listSkills`、`listSessions`、`readSessionSnapshot` 的同名参数选择显式绝对路径的应用数据根；省略时保留终端现有 home 来源。`homeDir` 始终是工具、权限规则和 Hook 工具的 `~/` 展开基准。应用来源不会扫描 home 中 `.rukie`、`.claude`、`.agents`，也不会导入或回退旧文件；项目来源和原有项目信任规则继续生效，信任只从选中用户来源读取。
+
+应用调用方通过 `loadSettings({ userSettings })` 注入权限、hooks、信任与偏好，通过 `SessionOptions.mcpPersistence` 注入用户 MCP 配置和 OAuth 存储；应用模式不读取 `settings.json`、`mcp.json` 或终端配置。桌面 sidecar 的应用数据库和加密配置适配说明见 [server README](../server/README.md)。用户规则位于 `rules/AGENTS.md`，技能和代理定义位于 `skills/`、`agents/`，文件备份位于 `file-history/`；应用根的备份不按年龄删除。执行 lease 关闭时，检查所有原生 records 与 document revisions（包含未选中的历史分支），只清理该 Session 未引用的附件和历史文件；其他 Session 由各自 lease 清理。应用原生 SQLite store 位于 `sessions/<id>/session.sqlite`，所有新建、只读与恢复入口使用同一后端和根。应用模型须由调用方显式提供 `model/models`；默认模型解析拒绝终端环境认证，未提供模型来源的桌面目录为空。应用 MCP OAuth 不读取终端凭证，未安装加密凭证存储时保存明确失败，绝不临时写明文文件。后端架构约束见 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)。
 
 # Pending interactions
 
@@ -144,3 +160,5 @@ Frontend 创建 Session 时通过 `SessionOptions.applicationVersion` 注入自�
 `readSessionSnapshot({ cwd, homeDir, id })` 提供不取得写者 lease 的单次已提交快照，可显示其他进程占用的 Session。它复用原生只读 storage kernel 与 Transcript 投影，不启动 Harness 恢复、Hooks 或模型，不修复损坏文件；需要修复时返回错误。快照包括消息、原生 live/inbox 状态、Run Summaries 与 Todo/Plan/Goal/子代理目录，进程内 Job 和子代理活动不由只读访问重建；它不提供订阅或 Interaction 回复能力。
 
 `listSessions` 的 `createdAt` 是 Session store 目录的文件系统出生时间，与持久化元数据里的 `updatedAt` 独立；它支持桌面端按创建时间或更新时间排序，不新增 JSONL 元数据字段。复制或重建存储目录会改变这个时间。
+
+SQLite 存储在原生 Storage 边界外置图片字节，数据库保存 `attachments/<session-id>/<sha256>` 的相对引用，读取、只读观察与恢复均还原原生 image block 和附件名称，模型协议不接收文件路径。附件和代码历史先写文件、fsync 并原子替换，再提交引用；提交失败留下的孤立文件在 lease 关闭时清理，可重复执行。引用只能指向数据根，目录和文件不跟随越界符号链接，图片读取核对内容 hash；缺失或损坏明确失败，不静默丢图片。完整备份须包含一致的 app/Session SQLite 快照与 `attachments/`、`file-history/`、`rules/`、`skills/`、`agents/` 文件，不能仅复制活动数据库。

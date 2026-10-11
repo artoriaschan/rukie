@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { App } from "../../src/app";
@@ -25,14 +25,14 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
       expect(headerBounds.width).toBe(width);
       expect(headerBounds.height).toBe(44);
       const safeSpace = header.querySelector('[aria-hidden="true"]')!;
-      expect(safeSpace.getBoundingClientRect().width).toBe(64);
+      expect(safeSpace.getBoundingClientRect().width).toBe(76);
       for (const dark of [false, true]) {
         document.documentElement.classList.toggle("dark", dark);
         for (const fontSize of [14, 18]) {
           document.documentElement.style.setProperty("--ui-font-size", `${fontSize}px`);
           const main = screen.getByRole("main").element().getBoundingClientRect();
-          expect(main.top).toBe(45);
-          expect(main.bottom).toBe(800);
+          expect(main.top).toBe(44);
+          expect(main.bottom).toBe(796);
           expect(shell.scrollWidth).toBeLessThanOrEqual(shell.clientWidth);
           expect(header.getBoundingClientRect().height).toBe(44);
         }
@@ -43,20 +43,20 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
         .getByRole("button", { name: "Toggle sidebar", exact: true });
       expect(region(toggle.element())).toBe("no-drag");
       const toggleLeft = toggle.element().getBoundingClientRect().left;
-      expect(toggleLeft).toBe(80);
+      expect(toggleLeft).toBe(156);
       const sidebarBody = screen
         .getByRole("button", { name: "New chat", exact: true })
         .element()
         .closest("aside")!;
-      expect(sidebarBody.getBoundingClientRect().width).toBe(256);
+      expect(sidebarBody.getBoundingClientRect().width).toBe(268);
       expect(
         screen
           .getByRole("navigation", { name: "Home", exact: true })
           .element()
           .getBoundingClientRect().width,
-      ).toBe(48);
-      expect(sidebarBody.getBoundingClientRect().top).toBe(45);
-      expect(sidebarBody.getBoundingClientRect().bottom).toBe(800);
+      ).toBe(52);
+      expect(sidebarBody.getBoundingClientRect().top).toBe(44);
+      expect(sidebarBody.getBoundingClientRect().bottom).toBe(796);
       const previous = toggle.element().getAttribute("aria-pressed");
       await toggle.click();
       expect(toggle.element().getBoundingClientRect().left).toBe(toggleLeft);
@@ -129,6 +129,7 @@ test("sidebar searches projects, selects a welcome target and creates a Session 
         type: "session.create",
         project: "project",
         text: "Build a compiler",
+        modelSelection: { provider: "test", modelId: "script" },
       }),
     );
   } finally {
@@ -479,5 +480,125 @@ test("sidebar status follows fresh summaries across unselected permission waits 
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
+  }
+});
+
+test("missing model errors remain actionable and preserve the current draft", async () => {
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  try {
+    await expect.element(screen.getByRole("button", { name: "Choose model" })).toBeEnabled();
+    await fetch(`http://127.0.0.1:${connection.port}/error`, {
+      method: "POST",
+      body: JSON.stringify({ type: "session.create", code: "model_unavailable" }),
+    });
+    const input = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    await input.fill("Preserve this draft");
+    await userEvent.keyboard("{Enter}");
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("Action failed: Choose an available model service before sending.");
+    await expect.element(input).toHaveValue("Preserve this draft");
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("C01 navigation restores Session drafts and settings keeps a complete blank titlebar", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  onTestFinished(async () => {
+    try {
+      await commands.stopWire(connection.port);
+    } finally {
+      await page.viewport(1280, 900);
+    }
+  });
+  const screen = await render(
+    <App
+      host={{
+        getConnection: async () => connection,
+        modelServices: { list: async () => [], save: async () => {}, delete: async () => {} },
+      }}
+      locale="en"
+    />,
+  );
+  try {
+    const back = screen.getByRole("banner").getByRole("button", { name: "Back", exact: true });
+    const forward = screen
+      .getByRole("banner")
+      .getByRole("button", { name: "Forward", exact: true });
+    await expect.element(back).toBeDisabled();
+    await expect.element(forward).toBeDisabled();
+    await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
+    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Welcome draft");
+    await userEvent.keyboard("{Control>}1{/Control}");
+    await expect
+      .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
+      .toBeVisible();
+    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Session draft");
+    await back.click();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toHaveValue("Welcome draft");
+    await forward.click();
+    await expect
+      .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toHaveValue("Session draft");
+    await userEvent.keyboard("{Control>}2{/Control}");
+    await expect
+      .element(screen.getByRole("heading", { name: "Explore ideas", exact: true }))
+      .toBeVisible();
+    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Second Session draft");
+    await back.click();
+    await expect
+      .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toHaveValue("Session draft");
+    await forward.click();
+    await expect
+      .element(screen.getByRole("heading", { name: "Explore ideas", exact: true }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toHaveValue("Second Session draft");
+    await screen.getByRole("button", { name: "Model services", exact: true }).click();
+    await expect.element(screen.getByRole("heading", { name: "No model providers" })).toBeVisible();
+    const header = screen.getByRole("banner").element();
+    expect(header.querySelector("h1")).toBeNull();
+    expect(header.querySelector('[aria-label="Toggle sidebar"]')).toBeNull();
+    expect(header.getBoundingClientRect().width).toBe(1280);
+    expect(getComputedStyle(header.lastElementChild!).borderLeftWidth).toBe("0px");
+    expect(back.element().getBoundingClientRect().left).toBe(88);
+    expect(forward.element().getBoundingClientRect().left).toBe(122);
+    for (const button of [back, forward]) {
+      const bounds = button.element().getBoundingClientRect();
+      expect(bounds.top + bounds.height / 2).toBe(22);
+      expect(getComputedStyle(button.element()).getPropertyValue("-webkit-app-region")).toBe(
+        "no-drag",
+      );
+    }
+    await back.click();
+    await expect
+      .element(screen.getByRole("heading", { name: "Explore ideas", exact: true }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toHaveValue("Second Session draft");
+    await forward.click();
+    await expect.element(screen.getByRole("heading", { name: "No model providers" })).toBeVisible();
+    await screen.getByRole("button", { name: "Back to app", exact: true }).click();
+    await expect
+      .element(screen.getByRole("heading", { name: "Explore ideas", exact: true }))
+      .toBeVisible();
+    await expect.element(forward).toBeDisabled();
+  } finally {
+    await screen.unmount();
   }
 });

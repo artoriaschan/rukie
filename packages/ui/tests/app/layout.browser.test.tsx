@@ -20,7 +20,7 @@ function within(element: Element, container: Element) {
 }
 
 // These are the existing shell's measured region boundaries, not CSS class snapshots.
-// The narrow sidebar overlays the conversation; the desktop sidebar consumes 256px.
+// The narrow sidebar overlays the conversation; the desktop sidebar consumes 268px.
 test.each([
   { width: 1280, height: 900, dark: false, fontSize: 14 },
   { width: 420, height: 700, dark: true, fontSize: 18 },
@@ -45,6 +45,21 @@ test.each([
       const navigation = screen.getByRole("navigation", { name: "Home", exact: true }).element();
       const main = screen.getByRole("main").element();
       const toggle = screen.getByRole("button", { name: "Toggle sidebar", exact: true });
+      const shell = document.querySelector("[data-workspace-shell]")!;
+      expect(getComputedStyle(shell).backgroundColor).toBe(
+        dark ? "rgb(43, 40, 39)" : "rgb(233, 232, 232)",
+      );
+      expect(getComputedStyle(header).backgroundColor).toBe(
+        dark ? "rgb(40, 41, 40)" : "rgb(232, 233, 233)",
+      );
+      expect(getComputedStyle(shell).borderRadius).toBe("16px");
+      const workspace = main.parentElement!;
+      expect(getComputedStyle(workspace).borderLeftWidth).toBe("0px");
+      expect(getComputedStyle(workspace).borderTopWidth).toBe("0px");
+      expect(getComputedStyle(workspace).borderRadius).toBe("12px");
+      expect(getComputedStyle(main).backgroundColor).toBe(
+        dark ? "rgb(24, 24, 24)" : "rgb(255, 255, 255)",
+      );
       const input = screen.getByRole("textbox", { name: "Prompt", exact: true });
       const form = input.element().closest("form")!;
       const controls = ["Attach images", "Permission mode", "Choose model", "Send prompt"];
@@ -54,24 +69,24 @@ test.each([
         near(headerBox.top, 0);
         near(headerBox.width, width);
         near(headerBox.height, 44);
-        near(toggle.element().getBoundingClientRect().left, 80);
+        near(toggle.element().getBoundingClientRect().left, 156);
         const nav = navigation.getBoundingClientRect();
         near(nav.left, 0);
         near(nav.top, 44);
-        near(nav.width, 48);
+        near(nav.width, 52);
         near(nav.bottom, height);
         const conversation = main.getBoundingClientRect();
-        const left = width >= 768 && sidebarOpen ? 305 : 49;
+        const left = width >= 768 && sidebarOpen ? 320 : 52;
         near(conversation.left, left);
-        near(conversation.top, 45);
-        near(conversation.right, width);
-        near(conversation.bottom, height);
+        near(conversation.top, 44);
+        near(conversation.right, width - 4);
+        near(conversation.bottom, height - 4);
         const composer = form.getBoundingClientRect();
         const padding = width >= 640 ? 24 : 12;
         const dockWidth = Math.min(768, conversation.width);
         near(composer.width, dockWidth - padding * 2);
         near(composer.left, left + (conversation.width - dockWidth) / 2 + padding);
-        near(composer.bottom, height - 16);
+        near(composer.bottom, height - 20);
         within(form, main);
         within(input.element(), form);
         for (const name of controls)
@@ -85,10 +100,18 @@ test.each([
             .element()
             .closest("aside")!;
           const side = sidebar.getBoundingClientRect();
-          near(side.left, 49);
-          near(side.top, 45);
-          near(side.width, 256);
-          near(side.bottom, height);
+          near(side.left, 52);
+          near(side.top, 44);
+          near(side.width, 268);
+          near(side.bottom, height - 4);
+          expect(getComputedStyle(sidebar).backgroundColor).toBe(
+            dark ? "rgb(31, 30, 30)" : "rgb(248, 247, 247)",
+          );
+          expect(getComputedStyle(sidebar).borderLeftWidth).toBe("0px");
+          expect(getComputedStyle(sidebar).borderRightWidth).toBe("1px");
+          expect(getComputedStyle(sidebar).borderRightColor).toBe(
+            dark ? "rgba(255, 255, 255, 0.1)" : "rgba(13, 13, 13, 0.1)",
+          );
         }
       };
 
@@ -116,10 +139,10 @@ test.each([
       const footer = selectedForm.parentElement!.parentElement!;
       const assertConversation = (sidebarOpen = selectedSidebarOpen) => {
         const bounds = main.getBoundingClientRect();
-        near(bounds.left, width >= 768 && sidebarOpen ? 305 : 49);
-        near(bounds.top, 45);
-        near(bounds.right, width);
-        near(bounds.bottom, height);
+        near(bounds.left, width >= 768 && sidebarOpen ? 320 : 52);
+        near(bounds.top, 44);
+        near(bounds.right, width - 4);
+        near(bounds.bottom, height - 4);
         near(feed.getBoundingClientRect().top, bounds.top);
         near(feed.getBoundingClientRect().bottom, footer.getBoundingClientRect().top);
         near(feed.getBoundingClientRect().left, bounds.left);
@@ -129,7 +152,7 @@ test.each([
         const padding = width >= 640 ? 24 : 12;
         near(composer.width, dockWidth - padding * 2);
         near(composer.left, bounds.left + (bounds.width - dockWidth) / 2 + padding);
-        near(composer.bottom, height - 16);
+        near(composer.bottom, height - 20);
         within(selectedForm, main);
         within(selectedInput.element(), selectedForm);
         for (const name of controls)
@@ -142,13 +165,17 @@ test.each([
         const nav = navigation.getBoundingClientRect();
         near(nav.left, 0);
         near(nav.top, 44);
-        near(nav.width, 48);
+        near(nav.width, 52);
         near(nav.bottom, height);
-        near(toggle.element().getBoundingClientRect().left, 80);
+        near(toggle.element().getBoundingClientRect().left, 156);
         expect(root.scrollWidth).toBeLessThanOrEqual(width);
         expect(root.scrollHeight).toBeLessThanOrEqual(height);
       };
       assertConversation();
+      if (width >= 768)
+        expect(getComputedStyle(header.lastElementChild!).borderLeftColor).toBe(
+          dark ? "rgba(255, 255, 255, 0.1)" : "rgba(13, 13, 13, 0.1)",
+        );
       await toggle.click();
       await expect.element(toggle).toHaveAttribute("aria-pressed", String(!selectedSidebarOpen));
       assertConversation(!selectedSidebarOpen);

@@ -4,3 +4,6 @@ dist/
 
 # Local Vitest browser failure artifacts
 .vitest/
+
+# Isolated desktop development state and runtime
+.desktop-dev/
