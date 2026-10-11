@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -185,3 +185,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 ## 开发 Framework 复制与签名修复
 
 用户运行开发命令报 embedded Framework unsealed contents，由 [17](issues/17-development-framework-copy-signing.md) 的新代理修复于 `ca71ef8d`。默认 cp 将原生相对符号链接改为指向源 app 的绝对路径；复制显式保留链接原文，开发副本可独立读写。缓存格式升级让旧错误副本自动重建，只替换 cache app，保留 data/electron/session。最小真实文件回归先失败后 1 pass（24ms）；隔离副本实际 copy/fuse/ad-hoc 签名及 strict deep 验证通过（603ms），旧格式恢复分支通过（625ms），持久化哨兵保留，源 272 个文件哈希/链接条目前后相同。缺少 runtime 的依赖准备失败与原 unpacked runtime 签名验证失败保留在票据记录，不称为成功；最终成功针对重新封签的开发副本。两轴零发现，父代理读取记录复核，新 merger 只快进不重复验证。ADR Coverage 沿用 ADR-0035/0034 的隔离与签名边界；机械复制修正不引入新架构取舍，无需额外 ADR。17/spec 同步 resolved，未启动 Electron、访问钥匙串、重跑源码构建/整套或等待 CI，用户预览和数据保持，PR 未合并。
+
+## 开发入口模块解析修复
+
+[18](issues/18-development-entry-resolution.md) 修复于 `24b1ea9e`：Electron41 将 manifest.main 拼接到 app 路径，绝对入口形成 app/Users/... 错误目标。相对 ESM bootstrap 用正确编码的 file URL 等待外部 main 完成，保持 ready 前身份与路径配置时序。缓存格式升级让旧入口自动重建，保留开发数据。无 Electron 的真实 Node 文件接缝先复现错误，最终单例 1 pass（191ms），覆盖特殊字符、不同 cwd、后续源码更新与入口读回拒绝；局部类型、lint、格式与文档检查通过。新的两轴只读审查零发现，新 merger 仅快进集成，父代理复用证据。ADR Coverage 沿用 ADR-0035/0034，无新架构决定。18/spec 同时 resolved，未启动 Electron、访问钥匙串、重签名、构建或重跑包级/全量/浏览器/CI；真实启动尚未验收，用户预览与数据保留，PR 未合并。
