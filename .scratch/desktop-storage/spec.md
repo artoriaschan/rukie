@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -81,14 +81,15 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 
 ## ADR Coverage
 
-| 决定                           | 归属                                                                                                                                         | 理由                                                           |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| 独立数据根、SQLite、输出与凭证 | 新增 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)                                                                      | 替代共享持久化，明确事务、隔离与资源所有权                     |
-| 原生恢复和重放                 | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                             | 更换后端不更换执行语义                                         |
-| MCP 生命周期                   | 部分替代并沿用 [ADR-0019](../../docs/adr/0019-mcp-oauth-credential-ownership.md)                                                             | 改密文落盘，保留身份、授权和项目信任                           |
-| Cookie 与钥匙串                | 沿用 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md)，更新 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md) | 禁用未使用 Cookie；目录/历史只读不解密，显式执行保留系统加解密 |
-| UI、server、desktop 所有权     | 沿用 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)                                                                            | main 管宿主加密，server 组合，Core 拥有执行                    |
-| 模型服务布局与组件             | 无需额外 ADR                                                                                                                                 | 用户指定既有画板流程，遵守 DESIGN.md；协议缺口由实施调查核实   |
+| 决定                           | 归属                                                                                                                                         | 理由                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 独立数据根、SQLite、输出与凭证 | 新增 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)                                                                      | 替代共享持久化，明确事务、隔离与资源所有权                                        |
+| 原生恢复和重放                 | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                             | 更换后端不更换执行语义                                                            |
+| MCP 生命周期                   | 部分替代并沿用 [ADR-0019](../../docs/adr/0019-mcp-oauth-credential-ownership.md)                                                             | 改密文落盘，保留身份、授权和项目信任                                              |
+| Cookie 与钥匙串                | 沿用 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md)，更新 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md) | 禁用未使用 Cookie；目录/历史只读不解密，显式执行保留系统加解密                    |
+| UI、server、desktop 所有权     | 沿用 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)                                                                            | main 管宿主加密，server 组合，Core 拥有执行                                       |
+| 模型服务布局与组件             | 无需额外 ADR                                                                                                                                 | 用户指定既有画板流程，遵守 DESIGN.md；协议缺口由实施调查核实                      |
+| 桌面开发环境与退出清理         | 更新 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)，沿用 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md) | 固定开发数据、应用和系统加密身份；保留真实工具 home；所属进程清理完成前保留启动锁 |
 
 ## Delivery Evidence
 
@@ -171,3 +172,5 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 ## 隔离的桌面开发入口
 
 用户要求增加 `dev:desktop` 调试命令，开发所依赖的状态与正式版完全隔离，开发数据不影响正式数据。由 [15](issues/15-isolated-desktop-development.md) 新代理实施；开发身份、业务数据与 Electron 状态分离，真实工具 home 保留，生产来源校验/凭据策略不被开发便利削弱。
+
+15 本地实现完成于 `7414cb96`：根命令重建当前 main/preload/UI/compiled sidecar，使用固定 `.desktop-dev` 路径和独立开发应用身份，打开 DevTools，关闭后重跑更新源码。独占启动锁、持久化树链接拒绝及所属进程组退出确认保护正式数据与开发产物。独立 Spec 零阻止项；Standards 的子进程残留和内部链接两项 P1、父代理发现的无效 cache API 均已集中修正并只读复核关闭。新增受控进程/路径三例 3 pass（92ms）、bootstrap mock 三例 3 pass（133ms），此前启动/产物/锁与源码构建证据复用；相关类型、格式、lint、Knip、文档和测试策略检查通过。新 merger 快进集成不重复验证。ADR Coverage 核对更新 ADR-0035、沿用 ADR-0034/0029，不改变 Core 或正式包安全合同。开发 bundle 缓存创建、签名、真实启动和系统凭据尚未原生验收；未启动 Electron、未重跑整套，用户旧预览保持。15/spec 同步 resolved，以本地实现证据交付，PR 未合并。

@@ -1,6 +1,6 @@
 # 15: dev:desktop 开发入口与正式环境隔离
 
-Status: claimed
+Status: resolved
 
 Blocked by: 14
 
@@ -10,7 +10,7 @@ Blocked by: 14
 - [x] 增加 dev:desktop 命令及生产边界约束，构建当前 main/preload/UI 并启动独立开发运行环境
 - [x] 按实际需要提供源码更新/调试能力，严格 renderer/preload 来源校验，不开放正式版网络或任意 IPC
 - [x] 最小 mock/纯函数/进程接缝验证隔离、启动失败和退出清理，更新桌面 README 与适用 ADR
-- [ ] 独立两轴复核、记录本地证据与未验收边界后关闭
+- [x] 独立两轴复核、记录本地证据与未验收边界后关闭
 
 ## Verification scope
 
@@ -27,3 +27,5 @@ Blocked by: 14
 ### 集中评审修正
 
 Standards 两项 P1 已修复：父进程退出后仍确认所属进程组实际无可继续工作的成员，无法确认清理则保留入口锁并非零退出；business/Electron userData/session 持久化树拒绝符号链接，顶层 Chromium IPC 链接不跟随、活动 PID 拒绝、持有 launcher 锁后只移除三个 exact 名称。删除 Electron 未定义的 cache specialpath，Chromium cache 由 sessionData 隔离。新增三项公开接缝测试 3 pass / 3 filtered，92ms；受影响 bootstrap mock 文件 3 pass，133ms；变更文件格式/lint 与 scripts/desktop 类型检查通过。父代理只读复核已关闭两项 P1 与 cache 缺陷，原生验收仍未执行。
+
+最终交付：候选 `7414cb96` 经新 merger 快进至 `feat/desktop-storage`，集成工作树与祖先确认通过；父代理复用现有测试和静态证据，不重复执行。Spec 独立评审零阻止项，Standards 与父代理发现已全部关闭。ADR Coverage 归 spec：更新 ADR-0035 的开发隔离与生命周期，沿用 ADR-0034/0029；15 与 spec 同时 resolved。真实开发 bundle 创建/签名/运行及系统凭据未验收，保留用户旧 Electron；按用户要求本地交付不等待 CI，PR 等待评审，未授权合并。
