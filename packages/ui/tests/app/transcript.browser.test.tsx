@@ -1277,6 +1277,11 @@ test("navigation previews escape the scroll rail and current response stays high
 
 test("approval queue replaces the composer and the full edge scrollbar maps transcript endpoints", async () => {
   await page.viewport(1280, 900);
+  const resizeErrors: string[] = [];
+  const captureResizeError = (event: ErrorEvent) => {
+    if (event.message.includes("ResizeObserver")) resizeErrors.push(event.message);
+  };
+  window.addEventListener("error", captureResizeError);
   const connection = await commands.startWire();
   const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
   const send = async (facts: object) => {
@@ -1301,12 +1306,8 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
         sessionAllow: { kind: "tool", rule: "bash" },
       },
     });
-  try {
-    await screen
-      .getByRole("button", { name: /Fix compiler/ })
-      .first()
-      .click();
-    await send({
+  const updateContent = (paragraphs: number) =>
+    send({
       type: "snapshot",
       model: "test/script",
       compactions: [],
@@ -1320,7 +1321,7 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
             {
               type: "text",
               text: Array.from(
-                { length: 40 },
+                { length: paragraphs },
                 (_, index) => `Paragraph ${index} of conversation content.`,
               ).join("\n\n"),
             },
@@ -1330,6 +1331,12 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
       toolStates: {},
       run: { inputs: [] },
     });
+  try {
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    await updateContent(40);
     await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Preserved draft");
     await ask("First approval");
     await ask("Second approval");
@@ -1342,6 +1349,16 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
       .not.toBeInTheDocument();
     const feed = screen.getByRole("feed").element();
     expect(feed.querySelector('[aria-label="Permission required"]')).toBeNull();
+    await page.viewport(420, 700);
+    await screen
+      .getByRole("banner")
+      .getByRole("button", { name: "Toggle sidebar", exact: true })
+      .click();
+    await screen
+      .getByRole("banner")
+      .getByRole("button", { name: "Toggle sidebar", exact: true })
+      .click();
+    await page.viewport(1280, 900);
     await screen.getByRole("button", { name: "Allow ↵", exact: true }).click();
     await expect.element(screen.getByText("Second approval", { exact: true })).toBeVisible();
     await screen.getByRole("button", { name: "Deny Esc", exact: true }).click();
@@ -1383,8 +1400,20 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
       .toBe(Math.round(feed.scrollHeight - feed.clientHeight));
     await verifyBottom();
     expect(feed.scrollWidth).toBe(feed.clientWidth);
+    const previousRange = Number(track.getAttribute("aria-valuemax"));
+    await updateContent(80);
+    await expect
+      .poll(() => Number(track.getAttribute("aria-valuemax")))
+      .toBeGreaterThan(previousRange);
+    await verifyBottom();
+    await expect
+      .poll(() => Number(track.getAttribute("aria-valuemax")))
+      .toBe(Math.round(feed.scrollHeight - feed.clientHeight));
+    expect(resizeErrors).toEqual([]);
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
+    window.removeEventListener("error", captureResizeError);
+    await page.viewport(1280, 900);
   }
 });

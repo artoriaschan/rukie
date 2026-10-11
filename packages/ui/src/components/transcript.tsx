@@ -390,6 +390,8 @@ export function Transcript({
     anchorTo: "end",
     followOnAppend: true,
     scrollEndThreshold: 56,
+    // Viewport and row measurements can change layout when the approval dock or width changes.
+    useAnimationFrameWithResizeObserver: true,
   });
   const items = virtual.getVirtualItems();
   return (
