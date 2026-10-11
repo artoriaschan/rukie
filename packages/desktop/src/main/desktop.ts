@@ -17,6 +17,7 @@ export interface DesktopOptions {
   rendererDirectory: string;
   preload: string;
   sidecar: SidecarOptions;
+  sidecarEnvironment?: Promise<NodeJS.ProcessEnv>;
   userDataDirectory?: string;
 }
 
@@ -50,6 +51,9 @@ export async function startDesktop(options: DesktopOptions) {
   });
   const sidecar = new Sidecar({
     ...options.sidecar,
+    ...(options.sidecarEnvironment && {
+      env: { ...(await options.sidecarEnvironment), ...options.sidecar.env },
+    }),
     onChange: (state) => {
       options.sidecar.onChange?.(state);
       if (!window.isDestroyed()) window.webContents.send("rukie:connection-change", state);

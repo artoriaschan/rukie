@@ -2,10 +2,12 @@ import { app } from "electron";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startDesktop } from "./main/desktop.ts";
+import { readLoginShellEnvironment } from "./main/environment.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = app.getAppPath();
 void startDesktop({
+  sidecarEnvironment: readLoginShellEnvironment(),
   rendererDirectory: app.isPackaged ? join(root, "dist") : resolve(here, "../../ui/dist"),
   preload: join(here, "preload.cjs"),
   userDataDirectory: process.env.RUKIE_DESKTOP_USER_DATA,

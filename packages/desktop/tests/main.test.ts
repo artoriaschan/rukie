@@ -124,3 +124,30 @@ test("closing the window waits for real sidecar exit and rejects further host ca
     await owner.stop();
   }
 });
+
+test("desktop waits for acquired environment before starting the sidecar", async () => {
+  const environment = Promise.withResolvers<NodeJS.ProcessEnv>();
+  const starting = startDesktop({
+    rendererDirectory: "/tmp",
+    preload: "/tmp/preload.cjs",
+    sidecarEnvironment: environment.promise,
+    sidecar: {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./helpers/sidecar.mjs", import.meta.url)), "--env-token"],
+    },
+  });
+  expect(electron.protocol.registerSchemesAsPrivileged).toHaveBeenCalledOnce();
+  expect(electron.handlers.has("rukie:getConnection")).toBe(false);
+  environment.resolve({ ...process.env, RUKIE_TEST_PROVIDER_KEY: "local-test-value" });
+  const owner = await starting;
+  try {
+    expect(
+      await electron.handlers.get("rukie:getConnection")!({
+        sender: electron.window.webContents,
+        senderFrame: electron.window.webContents.mainFrame,
+      }),
+    ).toEqual({ port: 32123, token: "local-test-value" });
+  } finally {
+    await owner.stop();
+  }
+});

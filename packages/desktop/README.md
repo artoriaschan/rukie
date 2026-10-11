@@ -8,6 +8,8 @@ Electron host 启动 Bun sidecar，通过受来源校验的 preload 向 renderer
 
 `RUKIE_DESKTOP_BUN` 可指定开发态 Bun 可执行文件；`RUKIE_DESKTOP_USER_DATA` 可指定 Electron user-data 目录。测试和 smoke 应同时设置独立 `HOME` 和 user-data 目录：sidecar 从继承的 HOME 定位用户配置，user-data 只隔离 Electron 状态。
 
+macOS 启动时通过用户的登录交互 shell 读取环境变量，使 Finder 双击启动也能使用 shell 配置导出的 provider 凭据。优先使用继承的绝对 `SHELL` 路径，否则使用系统账户 shell；读取最多等待 5 秒，失败或超时沿用继承环境，并等待读取进程退出。继承变量优先于 shell 导出值，显式 `HOME` 与 user-data 隔离设置保持有效。环境值仅在内存中交给 sidecar，不写入配置或日志；sidecar 仍移除 Bun、Node 和动态库注入变量。此行为仅属于桌面启动，Headless CLI 与 TUI 的环境来源不变。
+
 ## 行为与限制
 
 [DesktopHost](../ui/src/host/index.ts) 只有 `getConnection`、`pickProjectFolder`、`revealPath`、`openInTerminal`。preload 暴露为 `window.rukieHost`；main 只接受本窗口的主 frame 且 URL 为 `app://rukie` 的 IPC。路径必须绝对且不含 NUL；打开 Terminal 使用参数数组，不拼 shell 或 AppleScript。
