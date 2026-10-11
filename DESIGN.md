@@ -419,3 +419,5 @@ Model dialogs use a 672px maximum width and 704px height, a separate 82px title 
 Model dialog numeric fields keep the installed beUI Input and numeric semantics, minimum validation, and keyboard stepping. Hide browser-native increment/decrement buttons in this dialog to match Pencil; retain the 36px control geometry.
 
 The beUI Switch uses the compact 36 × 20px role with a 16px thumb; the model services provider row uses the 32 × 18px variant with a 14px thumb.
+
+Model dialog footer actions follow C16: cancel is 68 × 36px with input surface, foreground text and a 1px border; save is 128 × 36px with primary fill, inverse text (#000000 in Dark, #ffffff in Light) and weight 500. Both use 12px radii. Preserve these fills on hover and visible keyboard focus; disabled actions retain the shared beUI disabled treatment. These scoped roles do not change other settings actions.

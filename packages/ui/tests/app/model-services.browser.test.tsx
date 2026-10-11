@@ -7,6 +7,72 @@ import { UiLocaleProvider } from "../../src/lib/i18n";
 import type { ModelServiceSummary } from "@rukie/shared";
 import "../../src/theme.css";
 
+test("Pencil model footer keeps cancel surface and primary save colors in both themes", async () => {
+  const originalClass = document.documentElement.className;
+  onTestFinished(() => {
+    document.documentElement.className = originalClass;
+  });
+  await page.viewport(1280, 900);
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "https://example.com/v1",
+              hasCredential: false,
+              models: [{ id: "footer", contextWindow: 128000 }],
+            },
+          ],
+          save: async () => {},
+          delete: async () => {},
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    const cancel = screen.getByRole("button", { name: "Cancel", exact: true });
+    const save = screen.getByRole("button", { name: "Save model", exact: true });
+    for (const dark of [true, false]) {
+      document.documentElement.classList.toggle("dark", dark);
+      const surface = dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)";
+      const primary = dark ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)";
+      const inverse = dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
+      await expect.poll(() => getComputedStyle(cancel.element()).backgroundColor).toBe(surface);
+      await expect.poll(() => getComputedStyle(save.element()).backgroundColor).toBe(primary);
+      await expect.poll(() => getComputedStyle(save.element()).color).toBe(inverse);
+      expect(getComputedStyle(save.element()).fontWeight).toBe("500");
+      expect(getComputedStyle(cancel.element()).borderTopWidth).toBe("1px");
+      await save.hover();
+      await expect.poll(() => getComputedStyle(save.element()).backgroundColor).toBe(primary);
+      cancel.element().focus();
+      await userEvent.keyboard("{Tab}");
+      await expect.element(save).toHaveFocus();
+      expect(getComputedStyle(save.element()).outlineStyle).not.toBe("none");
+      for (const [button, width] of [
+        [cancel, 68],
+        [save, 128],
+      ] as const) {
+        expect(button.element().getBoundingClientRect().width).toBe(width);
+        expect(button.element().getBoundingClientRect().height).toBe(36);
+        expect(getComputedStyle(button.element()).borderRadius).toBe("12px");
+      }
+    }
+  } finally {
+    try {
+      await screen.unmount();
+    } finally {
+      document.documentElement.className = originalClass;
+    }
+  }
+});
+
 test("Pencil model numeric fields hide native steppers while retaining numeric keyboard input", async () => {
   await page.viewport(1280, 900);
   const screen = await render(

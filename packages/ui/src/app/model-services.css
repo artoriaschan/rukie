@@ -504,8 +504,6 @@
   background: #26262633;
 }
 .model-services-modal-footer > button:nth-child(2) {
-  background: var(--secondary);
-  color: var(--foreground);
   width: 60px;
 }
 .model-services-modal-footer > button:last-child {
@@ -1125,15 +1123,29 @@
 }
 .model-services-modal-footer > button.model-services-model-cancel {
   margin-right: 0;
+  border-radius: 12px;
   width: 68px;
   padding: 0 12px;
   color: var(--foreground);
-  background: var(--secondary);
+  background: var(--input-surface);
+  border: 1px solid var(--border);
 }
 .model-services-modal-footer > .model-services-model-save {
   width: 128px;
-  color: var(--primary-foreground);
+  border-radius: 12px;
+  color: var(--model-save-foreground);
   background: var(--primary);
+  font-weight: 500;
+}
+.model-services-modal-footer {
+  --model-save-foreground: #ffffff;
+}
+.dark .model-services-modal-footer {
+  --model-save-foreground: #000000;
+}
+.model-services-modal-footer > button:disabled {
+  color: var(--muted-foreground);
+  background: var(--muted);
 }
 
 .model-services-option-card h3 {
