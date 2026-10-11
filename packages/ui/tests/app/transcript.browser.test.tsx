@@ -1009,6 +1009,7 @@ test("virtualized response groups follow streaming height, preserve upward readi
         ],
       },
     });
+    await expect.element(screen.getByText("Stream line 34", { exact: true })).toBeVisible();
     await expect
       .poll(() => feed.scrollHeight - feed.scrollTop - feed.clientHeight)
       .toBeLessThan(60);
@@ -1016,6 +1017,8 @@ test("virtualized response groups follow streaming height, preserve upward readi
     await expect
       .element(screen.getByRole("button", { name: "Jump to latest", exact: true }))
       .toBeVisible();
+    // The latest button may already be visible before the native upward scroll is handled.
+    await expect.element(screen.getByText("Final 1", { exact: true })).toBeVisible();
     const before = feed.scrollTop;
     await send({
       type: "message_update",
@@ -1028,7 +1031,11 @@ test("virtualized response groups follow streaming height, preserve upward readi
     await expect
       .element(screen.getByRole("button", { name: "Jump to latest", exact: true }))
       .toBeVisible();
+    // HTTP acknowledgement only confirms ws.send; the preview proves the browser committed it.
+    await screen.getByRole("button", { name: "Jump to response 80", exact: true }).hover();
+    await expect.element(screen.getByRole("tooltip")).toMatchTextContent(/Added while reading/);
     expect(feed.scrollTop).toBe(before);
+    expect(feed.querySelector('article[aria-posinset="1"]')).not.toBeNull();
     await screen.getByRole("button", { name: "Jump to response 5", exact: true }).click();
     await expect.element(screen.getByText("Final 5", { exact: true })).toBeVisible();
     const response = screen.getByRole("article", { name: "Response 5", exact: true });
