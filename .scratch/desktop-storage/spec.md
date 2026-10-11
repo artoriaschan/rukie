@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -123,3 +123,5 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 2026-10-11 用户明确授权更新供应商页面及添加模型弹窗布局，按当前 rukie.pen P01–P08 和组件复原；添加供应商仅保留自定义入口，不展示预设供应商。滚动区域采用设计源的 A13 自定义滚动条，浏览器验收包含 Light/Dark、窄屏和实际滚动交互，保留聊天布局。补充工作由 [07](issues/07-provider-pencil-refresh.md) 的新子代理实现，覆盖此前添加全部预设目录的要求。普通自动测试与浏览器 mock 验收按当前测试授权边界执行，不启动真实 Electron。
 
 本次局部供应商呈现/组件样式调整无需新 ADR：不改变存储、凭据、Session、协议或包依赖方向。最终关闭前核对实际 diff 与现有 ADR-0029/0035，记录组件来源、布局基线及本地验证。
+
+07 最终关闭：供应商仅自定义入口、最新 P01–P08 供应商/模型弹窗布局与 A13 覆盖式滚动条实现并完成评审修复；组件来源和几何更新归 DESIGN.md，所有配置/凭据合同保持既有边界。实际 footer 与 Light hover 缺陷已最小 red/green 修复，最终 Chromium/mock Light/Dark/窄屏/键盘/拖拽验收完成。root `1c6672f2` 的 desktop 100 pass（11.21s）及 check:dev 全通过，独立复评无遗留问题。ADR Coverage 复核沿用 ADR-0029/0035，本轮无需新 ADR；详细证据归 [07](issues/07-provider-pencil-refresh.md)。07/spec 同时 resolved，按用户要求以本地结果交付，不等待 CI，未启动真实 Electron，未授权合并 main。
