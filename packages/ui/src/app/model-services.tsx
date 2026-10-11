@@ -1,6 +1,44 @@
 import { Value } from "typebox/value";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Ellipsis, Plus, Server } from "lucide-react";
+import {
+  ArrowLeft,
+  CornerDownLeft,
+  LockKeyhole,
+  Ellipsis,
+  Plus,
+  Server,
+  RefreshCw,
+  Plug,
+  Unplug,
+  Pencil,
+  Trash2,
+  Info,
+  X,
+  Search,
+  Settings,
+  Sun,
+  CircleUser,
+  SlidersHorizontal,
+  Brain,
+  Keyboard,
+  Mic,
+  Upload,
+  Hand,
+  Globe,
+  Terminal,
+  GitBranch,
+  Anchor,
+  Puzzle,
+  Sparkles,
+  Bot,
+  Box,
+  Circle,
+  Zap,
+  ChevronRight,
+  ChevronDown,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import {
   THINKING_LEVELS,
   parseModelServiceSave,
@@ -14,6 +52,11 @@ import { Input } from "../components/motion/input";
 import { Checkbox } from "../components/motion/checkbox";
 import { Select, SelectTrigger, SelectContent, SelectItem } from "../components/motion/select";
 import { MorphingModal } from "../components/motion/morphing-modal";
+import { Switch } from "../components/motion/switch";
+import { Textarea } from "../components/ui/textarea";
+import "@fontsource-variable/noto-sans-sc";
+import "@fontsource-variable/jetbrains-mono";
+import "./model-services.css";
 import * as Menu from "../components/ui/dropdown-menu";
 import { useAppText } from "../lib/i18n";
 
@@ -69,8 +112,21 @@ export function ModelServices({
   const [intelligent, setIntelligent] = useState(false);
   const [modelError, setModelError] = useState("");
   const [modelNotice, setModelNotice] = useState("");
+  const [advanced, setAdvanced] = useState(true);
+  const [mapping, setMapping] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [rename, setRename] = useState("");
   const selected = providers.find((provider) => provider.id === draft?.id);
+  const dirty = Boolean(
+    draft &&
+    (!selected ||
+      key ||
+      removeKey ||
+      draft.name !== selected.name ||
+      draft.api !== selected.api ||
+      draft.baseUrl !== selected.baseUrl ||
+      JSON.stringify(draft.models) !== JSON.stringify(selected.models)),
+  );
   const choose = (provider: ModelService) => {
     setDraft(
       structuredClone({
@@ -186,7 +242,15 @@ export function ModelServices({
     setModel(structuredClone(index === undefined ? defaultModel : draft!.models[index]!));
     setModelError("");
     setModelNotice("");
-    setIntelligent(false);
+    setMapping(
+      JSON.stringify(
+        index === undefined ? {} : (draft!.models[index]!.thinkingLevelMap ?? {}),
+        null,
+        2,
+      ),
+    );
+    setAdvanced(true);
+    setIntelligent(index === undefined);
     setDialog("model");
   };
   const applyTemplate = (id: string) => {
@@ -196,6 +260,7 @@ export function ModelServices({
       .find((m) => m.id === id);
     if (template) {
       setModel({ ...structuredClone(template), enabled: model.enabled });
+      setMapping(JSON.stringify(template.thinkingLevelMap ?? {}, null, 2));
       setModelNotice(t("services.templateNote"));
     } else {
       setModel((previous) => ({ ...previous, id }));
@@ -207,9 +272,38 @@ export function ModelServices({
       setModelError(t("services.invalid"));
       return;
     }
+    let parsedMap: unknown;
+    try {
+      parsedMap = JSON.parse(mapping || "{}");
+    } catch {
+      setModelError(t("services.mappingInvalid"));
+      return;
+    }
+    if (!Value.Check(ModelCompatSchemas[draft.api], model.compat ?? {})) {
+      setModelError(t("services.apiIncompatible"));
+      return;
+    }
+    if (
+      !parsedMap ||
+      typeof parsedMap !== "object" ||
+      Array.isArray(parsedMap) ||
+      Object.entries(parsedMap).some(
+        ([level, value]) =>
+          !THINKING_LEVELS.includes(level as (typeof THINKING_LEVELS)[number]) ||
+          (value !== null && typeof value !== "string"),
+      )
+    ) {
+      setModelError(t("services.mappingInvalid"));
+      return;
+    }
+    const savedModel = {
+      ...model,
+      // The guard above validates every supported key and string/null value.
+      thinkingLevelMap: parsedMap as ServiceModel["thinkingLevelMap"],
+    };
     const models = [...draft.models];
-    if (editing === undefined) models.push(model);
-    else models[editing] = model;
+    if (editing === undefined) models.push(savedModel);
+    else models[editing] = savedModel;
     if (await persist({ ...draft, models })) setDialog(null);
     else setModelError(t("services.saveFailure"));
   };
@@ -228,285 +322,442 @@ export function ModelServices({
       setPending(false);
     }
   };
-  const updateMap = (level: (typeof THINKING_LEVELS)[number], value: string | null) =>
-    setModel((previous) => ({
-      ...previous,
-      thinkingLevelMap: { ...previous.thinkingLevelMap, [level]: value },
-    }));
   return (
     <section
       ref={surface}
       aria-label={t("services.title")}
-      className="fixed inset-x-0 bottom-0 top-11 z-30 flex min-h-0 bg-background text-foreground text-ui-base"
+      className="model-services fixed inset-x-0 bottom-0 top-11 z-30 flex min-h-0 text-foreground text-ui-base"
     >
-      <aside className="flex w-40 shrink-0 flex-col gap-3 border-r border-border bg-sidebar p-3 max-sm:w-28">
+      <p id="settings-unavailable" className="sr-only">
+        {t("services.unavailable")}
+      </p>
+      <aside className="model-services-navigation" aria-label={t("services.navigation")}>
         <Button variant="ghost" size="sm" onClick={onClose}>
           <ArrowLeft className="size-4" />
           {t("services.back")}
         </Button>
-        <Button variant="secondary" size="sm">
-          <Server className="size-4" />
-          {t("services.title")}
-        </Button>
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="shrink-0 border-b border-border p-4">
-          <h1 className="text-ui-lg font-semibold">{t("services.title")}</h1>
-          <p className="text-ui-sm text-muted-foreground">{t("services.description")}</p>
-        </div>
-        <div className="flex min-h-0 flex-1 max-sm:flex-col">
-          <aside
-            aria-label={t("services.custom")}
-            className="flex w-48 shrink-0 flex-col gap-2 overflow-y-auto border-r border-border p-3 max-sm:max-h-36 max-sm:w-full max-sm:border-r-0 max-sm:border-b"
-          >
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setCatalog(true);
-                setError("");
-              }}
-            >
-              <Plus className="size-4" />
-              {t("services.addProvider")}
-            </Button>
-            <p className="text-ui-xs text-muted-foreground">{t("services.custom")}</p>
-            {[
-              ...providers,
-              ...(draft && !selected ? [{ ...draft, hasCredential: false }] : []),
-            ].map((provider) => (
+        <Input
+          disabled
+          placeholder={t("services.search")}
+          aria-label={t("services.search")}
+          leftIcon={<Search className="size-4" />}
+        />
+        {(
+          [
+            [
+              "personal",
+              [
+                ["appearance", Sun],
+                ["general", Settings],
+                ["usage", CircleUser],
+                ["personalization", SlidersHorizontal],
+                ["memory", Brain],
+                ["shortcuts", Keyboard],
+                ["voice", Mic],
+                ["migration", Upload],
+              ],
+            ],
+            [
+              "environment",
+              [
+                ["computer", Hand],
+                ["browser", Globe],
+                ["runtime", Terminal],
+                ["worktrees", GitBranch],
+              ],
+            ],
+            [
+              "extensions",
+              [
+                ["hooks", Anchor],
+                ["plugins", Puzzle],
+                ["skills", Box],
+                ["mcp", Plug],
+                ["agents", Bot],
+                ["commands", Terminal],
+              ],
+            ],
+          ] as const
+        ).map(([group, items]) => (
+          <div key={String(group)} className="model-services-nav-group">
+            <p className="text-ui-sm text-muted-foreground">{t(`services.nav.${group}`)}</p>
+            {items.map(([name, Icon]) => (
               <Button
-                key={provider.id}
-                variant={draft?.id === provider.id ? "secondary" : "ghost"}
+                key={name}
+                variant="ghost"
                 size="sm"
-                className="justify-start truncate"
-                aria-pressed={draft?.id === provider.id}
-                disabled={pending}
-                onClick={() => choose(provider)}
+                disabled
+                title={t("services.unavailable")}
+                aria-describedby="settings-unavailable"
               >
-                {provider.name}
+                <Icon className="size-4" />
+                {t(`services.nav.${name}`)}
               </Button>
             ))}
-          </aside>
-          <div className="min-w-0 flex-1 overflow-y-auto p-4">
-            {error ? (
-              <div className="mb-3 text-ui-sm text-danger">
-                <p role="alert">{error}</p>
-                {error === t("services.loadFailure") ? (
-                  <Button variant="ghost" size="sm" onClick={() => void load()}>
-                    {t("services.retry")}
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
-            {status ? (
-              <p role="status" className="mb-3 text-ui-sm">
-                {status}
-              </p>
-            ) : null}
-            {catalog ? (
-              <div className="flex max-w-xl flex-col gap-3">
+          </div>
+        ))}
+        <div className="model-services-nav-group">
+          <p className="text-ui-sm text-muted-foreground">{t("services.nav.models")}</p>
+          <Button variant="secondary" size="sm" aria-current="page">
+            <Server className="size-4" />
+            {t("services.title")}
+          </Button>
+        </div>
+      </aside>
+      <div className="model-services-content">
+        <div className="model-services-workspace">
+          <header className="model-services-header">
+            <h1 className="text-ui-xl font-medium">{t("services.title")}</h1>
+            <p className="text-ui-base text-muted-foreground">{t("services.description")}</p>
+            <div className="model-services-toolbar">
+              <Button
+                variant="secondary"
+                size="icon"
+                aria-label={t("services.refresh")}
+                onClick={() => void load()}
+              >
+                <RefreshCw className="size-4" />
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setCatalog(true);
+                  setError("");
+                }}
+              >
+                <Plus className="size-4" />
+                {t("services.addProvider")}
+              </Button>
+            </div>
+          </header>
+          <div className="model-services-panel">
+            <aside aria-label={t("services.custom")} className="model-services-providers">
+              <div className="model-services-builtins">
+                <p className="text-ui-sm text-muted-foreground">{t("services.zhipu")}</p>
+                <Button variant="ghost" size="sm" disabled title={t("services.unavailable")}>
+                  <Sparkles className="size-4" />
+                  BigModel
+                  <Circle className="model-services-credential missing" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="self-start"
-                  onClick={() => setCatalog(false)}
+                  disabled={
+                    !templates.some(
+                      (template) => template.id === "zai-coding-cn-openai-completions",
+                    )
+                  }
+                  onClick={() =>
+                    create(
+                      templates.find(
+                        (template) => template.id === "zai-coding-cn-openai-completions",
+                      ),
+                    )
+                  }
                 >
-                  <ArrowLeft className="size-4" />
-                  {t("services.returnDetail")}
-                </Button>
-                <h2 className="font-medium">{t("services.catalog")}</h2>
-                <p className="text-ui-sm text-muted-foreground">{t("services.templateSource")}</p>
-                {templates.map((template) => (
-                  <Button
-                    key={template.id}
-                    variant="secondary"
-                    className="justify-start"
-                    onClick={() => create(template)}
-                  >
-                    {template.name}
-                  </Button>
-                ))}
-                <Button variant="secondary" onClick={() => create()}>
-                  {t("services.create")}
+                  <Zap className="size-4" />
+                  Z.ai Coding Plan
+                  <Circle className="model-services-credential missing" />
                 </Button>
               </div>
-            ) : draft ? (
-              <div className="flex max-w-2xl flex-col gap-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="truncate text-ui-lg font-medium">{draft.name}</h2>
-                  <Menu.DropdownMenu>
-                    <Menu.DropdownMenuTrigger asChild>
-                      <Button
-                        disabled={pending}
-                        aria-label={t("services.actions")}
-                        variant="ghost"
-                        size="icon"
-                      >
-                        <Ellipsis className="size-4" />
-                      </Button>
-                    </Menu.DropdownMenuTrigger>
-                    <Menu.DropdownMenuContent align="end">
-                      <Menu.DropdownMenuItem
-                        onSelect={() => {
-                          setRename(draft.name);
-                          setDialog("rename");
-                        }}
-                      >
-                        {t("services.rename")}
-                      </Menu.DropdownMenuItem>
-                      <Menu.DropdownMenuItem onSelect={() => setDialog("delete")}>
-                        {t("services.deleteProvider")}
-                      </Menu.DropdownMenuItem>
-                    </Menu.DropdownMenuContent>
-                  </Menu.DropdownMenu>
-                </div>
-                <Input
+              <p className="text-ui-sm text-muted-foreground">{t("services.custom")}</p>
+              {[
+                ...providers,
+                ...(draft && !selected ? [{ ...draft, hasCredential: false }] : []),
+              ].map((provider) => (
+                <Button
+                  key={provider.id}
+                  variant={!catalog && draft?.id === provider.id ? "secondary" : "ghost"}
+                  size="sm"
+                  className="justify-start truncate"
+                  aria-label={provider.name}
+                  aria-pressed={!catalog && draft?.id === provider.id}
                   disabled={pending}
-                  label={t("services.name")}
-                  value={draft.name}
-                  onChange={(name) => setDraft({ ...draft, name })}
-                />
-                <Input
-                  disabled={pending}
-                  label={t("services.url")}
-                  value={draft.baseUrl}
-                  placeholder="https://api.example.com/v1"
-                  onChange={(baseUrl) => setDraft({ ...draft, baseUrl })}
-                />
-                <div className="relative">
-                  <p className="mb-1 font-medium">{t("services.api")}</p>
-                  <Select
-                    value={draft.api}
-                    disabled={pending}
-                    onValueChange={(api) => {
-                      if (
-                        api === "anthropic-messages" ||
-                        api === "openai-completions" ||
-                        api === "openai-responses"
-                      )
-                        setDraft({ ...draft, api });
-                    }}
-                  >
-                    <SelectTrigger
-                      aria-label={t("services.api")}
-                    >{`${protocols[draft.api]} (${routes[draft.api]})`}</SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(protocols).map(([api, label]) => (
-                        <SelectItem
-                          key={api}
-                          value={api}
-                        >{`${label} (${routes[api as keyof typeof routes]})`}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  onClick={() => choose(provider)}
+                >
+                  <Box className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{provider.name}</span>
+                  <Circle
+                    aria-label={t(
+                      provider.hasCredential
+                        ? "services.credentialReady"
+                        : "services.credentialMissing",
+                    )}
+                    className={
+                      provider.hasCredential
+                        ? "model-services-credential ready"
+                        : "model-services-credential missing"
+                    }
+                  />
+                </Button>
+              ))}
+            </aside>
+            <div className="model-services-details">
+              {error ? (
+                <div className="mb-3 text-ui-sm text-danger">
+                  <p role="alert">{error}</p>
+                  {error === t("services.loadFailure") ? (
+                    <Button variant="ghost" size="sm" onClick={() => void load()}>
+                      {t("services.retry")}
+                    </Button>
+                  ) : null}
                 </div>
-                <p className="break-all text-ui-sm text-muted-foreground">
-                  {t("services.route")}: {draft.baseUrl.replace(/\/$/, "")}
-                  {routes[draft.api]}
+              ) : null}
+              {status ? (
+                <p role="status" className="mb-3 text-ui-sm">
+                  {status}
                 </p>
-                <Input
-                  disabled={pending}
-                  label={t("services.key")}
-                  type="password"
-                  autoComplete="off"
-                  value={key}
-                  placeholder={selected?.hasCredential ? "••••••••••••••••" : t("services.key")}
-                  onChange={setKey}
-                />
-                {selected?.hasCredential ? (
-                  <>
-                    <p className="text-ui-sm text-muted-foreground">{t("services.keyKeep")}</p>
-                    <Checkbox
-                      label={t("services.keyDelete")}
-                      checked={removeKey}
-                      disabled={pending}
-                      onCheckedChange={setRemoveKey}
-                    />
-                  </>
-                ) : null}
-                <div className="flex gap-2">
-                  <Button size="sm" disabled={pending} onClick={() => void persist(draft)}>
-                    {t("services.saveProvider")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={pending}
-                    onClick={() => (selected ? choose(selected) : setDraft(undefined))}
-                  >
-                    {t("services.cancel")}
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between gap-2 border-t border-border pt-4">
-                  <h3 className="font-medium">{t("services.models")}</h3>
-                  <Button variant="secondary" size="sm" onClick={() => openModel()}>
-                    <Plus className="size-4" />
-                    {t("services.addModel")}
-                  </Button>
-                </div>
-                {!draft.models.length ? (
-                  <p className="text-ui-sm text-muted-foreground">{t("services.empty")}</p>
-                ) : (
-                  draft.models.map((item, index) => (
-                    <div
-                      key={item.id}
-                      className="flex flex-wrap items-center gap-2 rounded-lg border border-card-border bg-card p-3"
+              ) : null}
+              {catalog ? (
+                <div className="model-services-catalog">
+                  <div className="model-services-catalog-heading">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t("services.returnDetail")}
+                      onClick={() => setCatalog(false)}
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="break-all font-medium">{item.id}</p>
-                        <p className="text-ui-xs text-muted-foreground">
-                          {item.contextWindow ?? 128000} ·{" "}
-                          {item.input?.includes("image") ? t("services.image") : t("services.text")}
-                          {item.reasoning ? ` · ${t("services.reasoning")}` : ""}
-                        </p>
-                      </div>
-                      <Checkbox
-                        label={t("services.enabled")}
-                        checked={item.enabled !== false}
-                        disabled={pending}
+                      <ArrowLeft className="size-4" />
+                    </Button>
+                    <h2 className="text-ui-lg">{t("services.addProvider")}</h2>
+                  </div>
+                  <p className="text-ui-sm text-muted-foreground">{t("services.catalog")}</p>
+                  <Button
+                    variant="secondary"
+                    className="model-services-custom-tile"
+                    onClick={() => create()}
+                  >
+                    <Plus className="size-6" />
+                    {t("services.create")}
+                    <ChevronRight className="ml-auto size-3.5" />
+                  </Button>
+                </div>
+              ) : draft ? (
+                <div className="model-services-provider-form">
+                  <div className="model-services-provider-heading flex items-center justify-between gap-2">
+                    <h2 className="flex items-center gap-2 truncate text-ui-lg font-medium">
+                      <Box className="size-5 text-muted-foreground" />
+                      {draft.name}
+                    </h2>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        ariaLabel={t("services.providerEnabled")}
+                        disabled={pending || !draft.models.length}
+                        checked={draft.models.some((item) => item.enabled !== false)}
                         onCheckedChange={(enabled) =>
                           void persist({
                             ...draft,
-                            models: draft.models.map((m, i) =>
-                              i === index ? { ...m, enabled } : m,
-                            ),
+                            models: draft.models.map((item) => ({ ...item, enabled })),
                           })
                         }
                       />
+                      <Menu.DropdownMenu>
+                        <Menu.DropdownMenuTrigger asChild>
+                          <Button
+                            disabled={pending}
+                            aria-label={t("services.actions")}
+                            variant="ghost"
+                            size="icon"
+                          >
+                            <Ellipsis className="size-4" />
+                          </Button>
+                        </Menu.DropdownMenuTrigger>
+                        <Menu.DropdownMenuContent
+                          align="end"
+                          className="model-services-menu model-services-provider-menu"
+                        >
+                          <Menu.DropdownMenuItem
+                            onSelect={() => {
+                              setRename(draft.name);
+                              setDialog("rename");
+                            }}
+                          >
+                            <Pencil className="size-4" />
+                            {t("services.rename")}
+                          </Menu.DropdownMenuItem>
+                          {selected?.hasCredential ? (
+                            <Menu.DropdownMenuCheckboxItem
+                              checked={removeKey}
+                              onCheckedChange={setRemoveKey}
+                            >
+                              {t("services.keyDelete")}
+                            </Menu.DropdownMenuCheckboxItem>
+                          ) : null}
+                          <Menu.DropdownMenuItem
+                            aria-label={t("services.deleteProvider")}
+                            className="text-danger"
+                            onSelect={() => setDialog("delete")}
+                          >
+                            <Trash2 className="size-4" />
+                            {t("services.delete")}
+                          </Menu.DropdownMenuItem>
+                        </Menu.DropdownMenuContent>
+                      </Menu.DropdownMenu>
+                    </div>
+                  </div>
+                  <Input
+                    disabled={pending}
+                    label={t("services.url")}
+                    value={draft.baseUrl}
+                    placeholder="https://api.example.com/v1"
+                    onChange={(baseUrl) => setDraft({ ...draft, baseUrl })}
+                  />
+                  <div className="relative">
+                    <p className="mb-1 font-medium">{t("services.api")}</p>
+                    <Select
+                      value={draft.api}
+                      disabled={pending}
+                      onValueChange={(api) => {
+                        if (
+                          api === "anthropic-messages" ||
+                          api === "openai-completions" ||
+                          api === "openai-responses"
+                        )
+                          setDraft({ ...draft, api });
+                      }}
+                    >
+                      <SelectTrigger
+                        aria-label={t("services.api")}
+                      >{`${protocols[draft.api]} (${routes[draft.api]})`}</SelectTrigger>
+                      <SelectContent className="model-services-menu model-services-api-menu">
+                        {Object.entries(protocols).map(([api, label]) => (
+                          <SelectItem
+                            key={api}
+                            value={api}
+                          >{`${label} (${routes[api as keyof typeof routes]})`}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="sr-only">
+                    {t("services.route")}: {draft.baseUrl.replace(/\/$/, "")}
+                    {routes[draft.api]}
+                  </p>
+                  <Input
+                    disabled={pending}
+                    label={t("services.key")}
+                    type={showKey ? "text" : "password"}
+                    autoComplete="off"
+                    value={key}
+                    placeholder={
+                      selected?.hasCredential
+                        ? "••••••••••••••••••••••••••••••••"
+                        : t("services.keyPlaceholder")
+                    }
+                    rightIcon={
                       <Button
-                        size="sm"
                         variant="ghost"
-                        disabled={!services.test || pending}
-                        onClick={() => void testConnection(item.id)}
+                        size="icon"
+                        aria-label={t("services.showKey")}
+                        onClick={() => setShowKey(!showKey)}
                       >
-                        {t("services.test")}
+                        {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => openModel(index)}>
-                        {t("services.edit")}
+                    }
+                    onChange={setKey}
+                  />
+                  {selected?.hasCredential ? (
+                    <>
+                      <p className="sr-only">{t("services.keyKeep")}</p>
+                    </>
+                  ) : null}
+                  <div className="model-services-model-heading flex items-center justify-between gap-2">
+                    <h3 className="font-medium">{t("services.models")}</h3>
+                    <Button variant="secondary" size="sm" onClick={() => openModel()}>
+                      <Plus className="size-4" />
+                      {t("services.addModel")}
+                    </Button>
+                  </div>
+                  {!draft.models.length ? (
+                    <p className="model-services-empty text-ui-base text-muted-foreground">
+                      <Info className="size-4 shrink-0" />
+                      {t("services.empty")}
+                    </p>
+                  ) : (
+                    draft.models.map((item, index) => (
+                      <div key={item.id} className="model-services-model-row">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-mono">{item.id}</p>
+                          <p className="model-services-model-metadata text-ui-xs text-muted-foreground">
+                            {new Intl.NumberFormat("en", {
+                              notation: "compact",
+                              maximumFractionDigits: 1,
+                            }).format(item.contextWindow ?? 128000)}{" "}
+                            {item.input?.includes("image") ? (
+                              <span>{t("services.vision")}</span>
+                            ) : null}
+                            {item.reasoning ? ` · ${t("services.reasoning")}` : ""}
+                          </p>
+                        </div>
+                        <Switch
+                          ariaLabel={t("services.enabled")}
+                          checked={item.enabled !== false}
+                          disabled={pending}
+                          onCheckedChange={(enabled) =>
+                            void persist({
+                              ...draft,
+                              models: draft.models.map((m, i) =>
+                                i === index ? { ...m, enabled } : m,
+                              ),
+                            })
+                          }
+                        />
+                        <Button
+                          size="icon"
+                          aria-label={t("services.test")}
+                          variant="ghost"
+                          disabled={!services.test || pending}
+                          onClick={() => void testConnection(item.id)}
+                        >
+                          <Unplug className="size-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label={t("services.edit")}
+                          onClick={() => openModel(index)}
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          aria-label={t("services.deleteModel")}
+                          variant="ghost"
+                          disabled={pending}
+                          onClick={() =>
+                            void persist({
+                              ...draft,
+                              models: draft.models.filter((_, i) => i !== index),
+                            })
+                          }
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                  {dirty ? (
+                    <div className="model-services-save flex gap-2">
+                      <Button size="sm" disabled={pending} onClick={() => void persist(draft)}>
+                        {t("services.saveProvider")}
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
                         disabled={pending}
-                        onClick={() =>
-                          void persist({
-                            ...draft,
-                            models: draft.models.filter((_, i) => i !== index),
-                          })
-                        }
+                        onClick={() => (selected ? choose(selected) : setDraft(undefined))}
                       >
-                        {t("services.deleteModel")}
+                        {t("services.cancel")}
                       </Button>
                     </div>
-                  ))
-                )}
-              </div>
-            ) : (
-              <Button variant="secondary" onClick={() => setCatalog(true)}>
-                {t("services.addProvider")}
-              </Button>
-            )}
+                  ) : null}
+                </div>
+              ) : (
+                <Button variant="secondary" onClick={() => setCatalog(true)}>
+                  {t("services.addProvider")}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -523,142 +774,232 @@ export function ModelServices({
           if (!pending) setDialog(null);
         }}
         placement="center"
+        className={
+          dialog === "model"
+            ? "model-services-modal model-services-model-modal"
+            : "model-services-modal model-services-confirm-modal"
+        }
       >
         {dialog === "model" ? (
           <form
-            className="flex min-h-0 flex-col gap-3"
+            className="model-services-model-form"
             onSubmit={(event) => {
               event.preventDefault();
               void saveModel();
             }}
           >
-            <h2 className="shrink-0 font-medium">
+            <h2 className="shrink-0 text-ui-lg font-medium">
               {t(editing === undefined ? "services.addModel" : "services.editModel")}
             </h2>
-            <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
-              <Checkbox
-                checked={intelligent}
-                label={t("services.intelligent")}
-                onCheckedChange={(value) => {
-                  setIntelligent(value);
-                  if (value) applyTemplate(model.id);
-                }}
-              />
-              <p className="text-ui-xs text-muted-foreground">
-                {modelNotice || t("services.templateNote")}
-              </p>
+            <Button
+              className="model-services-close"
+              variant="ghost"
+              size="icon"
+              aria-label={t("services.close")}
+              onClick={() => setDialog(null)}
+            >
+              <X className="size-4" />
+            </Button>
+            <div className="model-services-model-fields">
+              <div className="model-services-intelligent">
+                <span>{t("services.intelligent")}</span>
+                <Info
+                  className="size-3.5 text-muted-foreground"
+                  aria-label={t("services.templateNote")}
+                />
+                <Switch
+                  checked={intelligent}
+                  ariaLabel={t("services.intelligent")}
+                  onCheckedChange={(value) => {
+                    setIntelligent(value);
+                    if (value) applyTemplate(model.id);
+                  }}
+                />
+              </div>
+              {modelNotice ? (
+                <p className="text-ui-xs text-muted-foreground">{modelNotice}</p>
+              ) : null}
               <Input
                 label={t("services.id")}
+                placeholder={t("services.id")}
                 autoFocus
                 value={model.id}
                 onChange={(id) => (intelligent ? applyTemplate(id) : setModel({ ...model, id }))}
               />
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label={t("services.context")}
-                  type="number"
-                  min={1}
-                  value={String(model.contextWindow ?? "")}
-                  onChange={(value) => setModel({ ...model, contextWindow: Number(value) })}
-                />
-                <Input
-                  label={t("services.tokens")}
-                  type="number"
-                  min={1}
-                  value={String(model.maxTokens ?? "")}
-                  onChange={(value) => setModel({ ...model, maxTokens: Number(value) })}
-                />
+              <div className="model-services-token-fields">
+                <div className="model-services-help-field">
+                  <Input
+                    label={t("services.context")}
+                    type="number"
+                    min={1}
+                    value={String(model.contextWindow ?? "")}
+                    onChange={(value) => setModel({ ...model, contextWindow: Number(value) })}
+                  />
+                  <Info
+                    className="model-services-field-help context-help"
+                    aria-label={t("services.context")}
+                  />
+                </div>
+                <div className="model-services-help-field">
+                  <Input
+                    label={t("services.tokens")}
+                    type="number"
+                    min={1}
+                    value={String(model.maxTokens ?? "")}
+                    onChange={(value) => setModel({ ...model, maxTokens: Number(value) })}
+                  />
+                  <Info
+                    className="model-services-field-help tokens-help"
+                    aria-label={t("services.tokens")}
+                  />
+                </div>
               </div>
-              <h3 className="font-medium">{t("services.advanced")}</h3>
-              <p>{t("services.inputs")}</p>
-              <div className="flex flex-wrap gap-3">
-                <Checkbox checked disabled label={t("services.text")} onCheckedChange={() => {}} />
-                <Checkbox
-                  checked={model.input?.includes("image") ?? false}
-                  label={t("services.image")}
-                  onCheckedChange={(value) =>
-                    setModel({ ...model, input: value ? ["text", "image"] : ["text"] })
-                  }
-                />
-                <Checkbox
-                  checked={false}
-                  disabled
-                  label={t("services.video")}
-                  onCheckedChange={() => {}}
-                />
-                <Checkbox
-                  checked={false}
-                  disabled
-                  label={t("services.pdf")}
-                  onCheckedChange={() => {}}
-                />
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-expanded={advanced}
+                onClick={() => setAdvanced(!advanced)}
+              >
+                <ChevronDown className="size-4" />
+                {t("services.advanced")}
+              </Button>
+              <div className="model-services-advanced" hidden={!advanced}>
+                <p className="model-services-help-label">
+                  {t("services.inputs")}
+                  <Info aria-hidden="true" />
+                </p>
+                <div className="model-services-chips">
+                  <Checkbox
+                    checked
+                    disabled
+                    label={t("services.text")}
+                    onCheckedChange={() => {}}
+                  />
+                  <LockKeyhole className="model-services-text-lock" aria-hidden="true" />
+                  <Checkbox
+                    checked={model.input?.includes("image") ?? false}
+                    label={t("services.image")}
+                    onCheckedChange={(value) =>
+                      setModel({ ...model, input: value ? ["text", "image"] : ["text"] })
+                    }
+                  />
+                  <Checkbox
+                    checked={false}
+                    disabled
+                    label={t("services.video")}
+                    onCheckedChange={() => {}}
+                  />
+                  <Checkbox
+                    checked={false}
+                    disabled
+                    label={t("services.pdf")}
+                    onCheckedChange={() => {}}
+                  />
+                </div>
+                <p className="model-services-help-label">
+                  {t("services.capabilities")}
+                  <Info aria-hidden="true" />
+                </p>
+                <div className="model-services-chips">
+                  <Checkbox
+                    checked={false}
+                    disabled
+                    label={t("services.structured")}
+                    onCheckedChange={() => {}}
+                  />
+                  <Checkbox
+                    checked={false}
+                    disabled
+                    label={t("services.web")}
+                    onCheckedChange={() => {}}
+                  />
+                  <Checkbox
+                    checked={model.compat?.supportsMidConvoSystemMessages ?? false}
+                    label={t("services.midSystem")}
+                    onCheckedChange={(value) =>
+                      setModel({
+                        ...model,
+                        compat: { ...model.compat, supportsMidConvoSystemMessages: value },
+                      })
+                    }
+                  />
+                </div>
+                <p className="sr-only" id="model-services-unsupported">
+                  {t("services.unsupported")}
+                </p>
+                <div className="model-services-levels">
+                  <p className="model-services-help-label">
+                    {t("services.levels")}
+                    <Info aria-hidden="true" />
+                  </p>
+                  <div className="model-services-chips">
+                    {model.reasoning
+                      ? THINKING_LEVELS.filter(
+                          (level) =>
+                            model.thinkingLevelMap?.[level] !== null &&
+                            model.thinkingLevelMap?.[level] !== undefined,
+                        ).map((level) => (
+                          <span key={level} className="model-services-level-chip">
+                            {t(`services.${level}`)}
+                          </span>
+                        ))
+                      : null}
+                    <Menu.DropdownMenu>
+                      <Menu.DropdownMenuTrigger asChild>
+                        <Button variant="secondary" size="icon" aria-label={t("services.levels")}>
+                          <Plus className="size-4" />
+                        </Button>
+                      </Menu.DropdownMenuTrigger>
+                      <Menu.DropdownMenuContent className="model-services-menu">
+                        <Menu.DropdownMenuCheckboxItem
+                          checked={model.reasoning ?? false}
+                          onCheckedChange={(reasoning) => setModel({ ...model, reasoning })}
+                        >
+                          {t("services.reasoning")}
+                        </Menu.DropdownMenuCheckboxItem>
+                        {THINKING_LEVELS.map((level) => (
+                          <Menu.DropdownMenuCheckboxItem
+                            key={level}
+                            checked={
+                              model.reasoning === true &&
+                              model.thinkingLevelMap?.[level] !== undefined &&
+                              model.thinkingLevelMap?.[level] !== null
+                            }
+                            onCheckedChange={(enabled) => {
+                              const map = {
+                                ...model.thinkingLevelMap,
+                                [level]: enabled ? level : null,
+                              };
+                              setModel({ ...model, reasoning: true, thinkingLevelMap: map });
+                              setMapping(JSON.stringify(map, null, 2));
+                            }}
+                          >
+                            {t(`services.${level}`)}
+                          </Menu.DropdownMenuCheckboxItem>
+                        ))}
+                      </Menu.DropdownMenuContent>
+                    </Menu.DropdownMenu>
+                  </div>
+                </div>
+                <label className="model-services-mapping">
+                  <span className="model-services-help-label">
+                    {t("services.mapping")}
+                    <Info aria-hidden="true" />
+                  </span>
+                  <Textarea
+                    aria-label={t("services.mapping")}
+                    value={mapping}
+                    onChange={(event) => setMapping(event.target.value)}
+                  />
+                </label>
               </div>
-              <p>{t("services.capabilities")}</p>
-              <div className="flex flex-wrap gap-3">
-                <Checkbox
-                  checked={false}
-                  disabled
-                  label={t("services.structured")}
-                  onCheckedChange={() => {}}
-                />
-                <Checkbox
-                  checked={false}
-                  disabled
-                  label={t("services.web")}
-                  onCheckedChange={() => {}}
-                />
-                <Checkbox
-                  checked={model.compat?.supportsMidConvoSystemMessages ?? false}
-                  label={t("services.midSystem")}
-                  onCheckedChange={(value) =>
-                    setModel({
-                      ...model,
-                      compat: { ...model.compat, supportsMidConvoSystemMessages: value },
-                    })
-                  }
-                />
-              </div>
-              <p className="text-ui-xs text-muted-foreground">{t("services.unsupported")}</p>
-              <Checkbox
-                checked={model.reasoning ?? false}
-                label={t("services.reasoning")}
-                onCheckedChange={(reasoning) => setModel({ ...model, reasoning })}
-              />
-              {model.reasoning ? (
-                <>
-                  <p>{t("services.levels")}</p>
-                  {THINKING_LEVELS.map((level) => {
-                    const mapped = model.thinkingLevelMap?.[level];
-                    const enabled =
-                      mapped !== null &&
-                      ((level !== "xhigh" && level !== "max") || mapped !== undefined);
-                    return (
-                      <div key={level} className="flex items-center gap-3">
-                        <Checkbox
-                          checked={enabled}
-                          label={t(`services.${level}`)}
-                          onCheckedChange={(value) => updateMap(level, value ? level : null)}
-                        />
-                        <Input
-                          className="min-w-0 flex-1"
-                          aria-label={`${t("services.mapping")} ${level}`}
-                          disabled={!enabled}
-                          value={mapped ?? ""}
-                          placeholder={level}
-                          onChange={(value) => updateMap(level, value || level)}
-                        />
-                      </div>
-                    );
-                  })}
-                </>
-              ) : null}
               {modelError || error ? (
                 <p role="alert" className="text-ui-sm text-danger">
                   {modelError || error}
                 </p>
               ) : null}
             </div>
-            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            <div className="model-services-modal-footer">
               <Button
                 variant="ghost"
                 size="sm"
@@ -667,6 +1008,7 @@ export function ModelServices({
                   setModelError("");
                   setModelNotice("");
                   setIntelligent(false);
+                  setMapping("{}");
                 }}
               >
                 {t("services.reset")}
@@ -674,8 +1016,13 @@ export function ModelServices({
               <Button variant="ghost" size="sm" onClick={() => setDialog(null)} disabled={pending}>
                 {t("services.cancel")}
               </Button>
-              <Button type="submit" size="sm" disabled={pending}>
-                {t("services.saveModel")}
+              <Button
+                type="submit"
+                size="sm"
+                disabled={pending}
+                aria-label={t("services.saveModel")}
+              >
+                {t("services.save")}
               </Button>
             </div>
           </form>
@@ -707,11 +1054,29 @@ export function ModelServices({
               {t("services.deleteTitle", { name: draft?.name ?? "" })}
             </h2>
             <p className="text-ui-sm text-muted-foreground">{t("services.deleteNote")}</p>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setDialog(null)} disabled={pending}>
+            <div
+              className="model-services-delete-footer flex justify-end gap-2"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget
+                    .querySelector<HTMLButtonElement>("[data-confirm-delete]")
+                    ?.click();
+                }
+              }}
+            >
+              <Button
+                variant="secondary"
+                aria-label={t("services.cancel")}
+                onClick={() => setDialog(null)}
+                disabled={pending}
+              >
                 {t("services.cancel")}
+                <kbd aria-hidden="true">esc</kbd>
               </Button>
               <Button
+                aria-label={t("services.confirm")}
+                data-confirm-delete
                 disabled={pending}
                 onClick={() => {
                   if (!draft) return;
@@ -734,6 +1099,7 @@ export function ModelServices({
                 }}
               >
                 {t("services.confirm")}
+                <CornerDownLeft aria-hidden="true" className="size-4" />
               </Button>
             </div>
           </div>

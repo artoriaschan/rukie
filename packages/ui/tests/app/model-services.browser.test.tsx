@@ -128,7 +128,7 @@ test("Chinese narrow settings preserves compatibility, maps, credentials and mod
     await screen.getByRole("button", { name: "验证连接", exact: true }).click();
     await expect.element(screen.getByRole("status")).toHaveTextContent("连接验证成功。");
     expect(tested).toEqual(["model-b"]);
-    await screen.getByRole("checkbox", { name: "启用", exact: true }).click();
+    await screen.getByRole("switch", { name: "启用", exact: true }).click();
     await expect.poll(() => providers[0]?.models[0]?.enabled).toBe(false);
     await screen.getByRole("button", { name: "供应商操作", exact: true }).click();
     await screen.getByRole("menuitem", { name: "重命名", exact: true }).click();
@@ -194,7 +194,9 @@ test("intelligent configuration uses explicit templates and leaves unknown IDs e
   );
   try {
     await screen.getByRole("button", { name: "Add model", exact: true }).click();
-    await screen.getByRole("checkbox", { name: "Intelligent configuration" }).click();
+    await expect
+      .element(screen.getByRole("switch", { name: "Intelligent configuration" }))
+      .toHaveAttribute("aria-checked", "true");
     await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("known");
     await expect
       .element(screen.getByRole("spinbutton", { name: "Context window" }))
@@ -246,7 +248,6 @@ test("provider API changes accept compatible models and preserve incompatible dr
     providers = [
       { ...providers[0]!, models: [{ id: "m", compat: { supportsAdditionalTools: true } }] },
     ];
-    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
   } finally {
     await screen.unmount();
   }
@@ -302,5 +303,143 @@ test("settings returns keyboard focus and preserves chat geometry and draft", as
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
+  }
+});
+
+test("Pencil settings geometry uses compact workspace and stacked model form", async () => {
+  await page.viewport(1887, 1210);
+  const services = {
+    list: async () => [
+      {
+        id: "deepseek",
+        name: "DeepSeek",
+        api: "anthropic-messages" as const,
+        baseUrl: "https://api.deepseek.com/anthropic",
+        hasCredential: true,
+        models: [],
+      },
+    ],
+    save: async () => {},
+    delete: async () => {},
+  };
+  const screen = await render(
+    <UiLocaleProvider locale="zh">
+      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+    </UiLocaleProvider>,
+  );
+  try {
+    await expect.element(screen.getByRole("heading", { name: "DeepSeek" })).toBeVisible();
+    const workspace = document.querySelector<HTMLElement>(".model-services-workspace");
+    expect(workspace).not.toBeNull();
+    const box = workspace!.getBoundingClientRect();
+    expect(box.width).toBe(880);
+    expect(box.top).toBe(100);
+    expect(Math.abs(box.left - 660)).toBeLessThanOrEqual(1);
+    const url = screen
+      .getByRole("textbox", { name: "Base URL" })
+      .element()
+      .parentElement!.getBoundingClientRect();
+    expect(url.left).toBe(908);
+    expect(url.top).toBe(294);
+    expect(url.width).toBe(608);
+    expect(url.height).toBe(32);
+    const nav = document
+      .querySelector<HTMLElement>(".model-services-navigation")!
+      .getBoundingClientRect();
+    expect(nav.left).toBe(52);
+    expect(nav.width).toBe(268);
+    expect(nav.height).toBe(1162);
+    await screen.getByRole("button", { name: "API 格式", exact: true }).click();
+    const apiMenu = document.querySelector<HTMLElement>(".model-services-api-menu")!;
+    await expect.poll(() => Math.round(apiMenu.getBoundingClientRect().height)).toBe(108);
+    expect(apiMenu.getBoundingClientRect().top).toBe(366);
+    expect(apiMenu.getBoundingClientRect().width).toBe(608);
+    await screen
+      .getByRole("option", { name: "Anthropic Messages (/v1/messages)", exact: true })
+      .click();
+    await screen.getByRole("button", { name: "添加模型", exact: true }).click();
+    await expect
+      .poll(() => screen.getByRole("dialog").element().getBoundingClientRect().width)
+      .toBe(672);
+    const context = screen
+      .getByRole("spinbutton", { name: "上下文窗口" })
+      .element()
+      .getBoundingClientRect();
+    const tokens = screen
+      .getByRole("spinbutton", { name: "最大输出 Token" })
+      .element()
+      .getBoundingClientRect();
+    expect(context.left).toBe(tokens.left);
+    expect(tokens.top - context.top).toBe(80);
+  } finally {
+    await screen.unmount();
+    await page.viewport(1280, 900);
+  }
+});
+
+test("saved overview stays compact; dirty credentials and invalid mapping remain explicit", async () => {
+  await page.viewport(1280, 900);
+  let providers: ModelServiceSummary[] = [
+    {
+      id: "local",
+      name: "Local",
+      api: "openai-completions",
+      baseUrl: "https://api.example.com/v1",
+      hasCredential: true,
+      models: [
+        {
+          id: "m",
+          contextWindow: 128000,
+          maxTokens: 16384,
+          reasoning: true,
+          thinkingLevelMap: { high: "deep" },
+        },
+      ],
+    },
+  ];
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const services = {
+    list: async () => providers,
+    save: async (input: import("@rukie/shared").ModelServiceSave) => {
+      saved.push(input);
+      providers = [{ ...input.provider, hasCredential: true }];
+    },
+    delete: async () => {},
+  };
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+    </UiLocaleProvider>,
+  );
+  try {
+    await expect.element(screen.getByRole("heading", { name: "Local" })).toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Save provider", exact: true }))
+      .not.toBeInTheDocument();
+    await screen.getByRole("textbox", { name: "Base URL" }).fill("https://replacement.example/v1");
+    await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+    await expect.poll(() => saved.length).toBe(1);
+    expect(saved[0]!.credential.type).toBe("keep");
+    await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+    await expect.poll(() => providers[0]!.models[0]!.enabled).toBe(false);
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    const mapping = screen.getByRole("textbox", {
+      name: "Provider reasoning parameter",
+      exact: true,
+    });
+    await mapping.fill('{"unknown":"deep"}');
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent(
+        "Enter a JSON object mapping supported reasoning levels to strings or null.",
+      );
+    await expect.element(mapping).toHaveValue('{"unknown":"deep"}');
+    expect(providers[0]!.models[0]!.thinkingLevelMap).toEqual({ high: "deep" });
+    await mapping.fill('{"high":"maximum"}');
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    await expect.poll(() => providers[0]!.models[0]!.thinkingLevelMap?.high).toBe("maximum");
+  } finally {
+    await screen.unmount();
   }
 });

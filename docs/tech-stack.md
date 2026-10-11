@@ -147,3 +147,5 @@ ui 状态使用 Zustand vanilla store，React 订阅由 app 层的 `useSyncExter
 ## 本地桌面打包
 
 本地 macOS arm64 构建使用 electron-builder **26.15.3** 和 @electron/fuses **2.0.0**。Electron **41.0.3** 与 Bun **1.4.2** 为运行时，sidecar 的原生搜索资源来自 @vscode/ripgrep-darwin-arm64 **1.18.0**。这些是已安装的构建依赖；桌面打包不进入 GitHub Actions。命令与签名验收见 [desktop README](../packages/desktop/README.md#本地构建)。
+
+Desktop model services settings self-host `@fontsource-variable/noto-sans-sc` 5.3.1 (OFL-1.1, bundled Unicode-range WOFF2 files) to match the Pencil typography without runtime font network requests. The font is scoped to settings and its dialogs. Model identifiers use self-hosted `@fontsource-variable/jetbrains-mono` 5.3.0 (OFL-1.1). The beUI Switch and shadcn Textarea are copied sources adapted to the documented settings roles; both reuse existing runtime dependencies.
