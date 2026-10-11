@@ -697,13 +697,14 @@ test("an application-root Session held by another owner permits only a read-only
       ],
       { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
     );
-    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    let releaseReader: (() => void) | undefined;
     owner.add(async () => {
       child.kill();
       await child.exited;
-      reader?.releaseLock();
+      releaseReader?.();
     });
-    reader = child.stdout.getReader();
+    const reader = child.stdout.getReader();
+    releaseReader = () => reader.releaseLock();
     const log = Bun.file(
       join(
         createSessionStore({
