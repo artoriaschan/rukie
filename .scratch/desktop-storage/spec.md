@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -153,3 +153,5 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 ## 模型弹窗底部按钮配色
 
 用户指出底部取消/保存按钮没有按当前设计稿配色，由 [12](issues/12-model-footer-pencil-colors.md) 的新代理修正既有 beUI Button 的设置局部样式。旧位置颜色选择器覆盖保存主色；按 C16 对照 Light/Dark 角色，保持尺寸、布局和配置行为，复用此前证据，只验证失效的 footer 颜色/状态。不启动 Electron，spec 为本票重新 claimed。
+
+12 最终关闭于 `63884d0e`：既有 beUI Button 的取消面板色/描边及保存主色/反色文字按当前 C16 修复，68/128×36 尺寸保持、圆角 12px。最小公开浏览器单例 1 pass（1.30s），局部格式/lint 和一次 footer Light/Dark/420px、hover/键盘焦点验收通过；失败历史和字体警告边界见 [12](issues/12-model-footer-pencil-colors.md)。新的独立 Standards/Spec 零发现，父代理快进集成复用记录，没有重复测试、静态或浏览器验收。ADR Coverage 沿用 ADR-0029/0035，无新架构取舍。12/spec 同时 resolved，本地交付不等待 CI，未启动真实 Electron，PR 未合并。
