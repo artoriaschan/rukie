@@ -4,7 +4,7 @@
 
 Blocked by: 01
 
-Status: resolved
+Status: claimed
 
 - [x] app.sqlite 事务管理项目/置顶/偏好/配置/供应商/模型/能力缓存；Session 索引可从已提交元数据核对，建库后登记，异常协调不恢复执行
 - [x] main safeStorage + 受限 preload 和私有 sidecar 通道；API Key、完整敏感 OAuth state/client_secret 与 MCP 认证 header 均加密，SQLite 只存密文，脱敏列表，保留/替换/删除凭证，认证不读取环境 Key
@@ -36,3 +36,7 @@ Status: resolved
 实施ADR-0035应用SQLite/密文/隔离合同，沿用ADR-0019 MCP身份/OAuth/项目信任、ADR-0034 Cookie-free但显式凭证访问系统safeStorage、ADR-0029 main/server/Core边界。没有新调度或迁移兼容层，无需新增ADR。模型服务UI归05，真实系统加密/打包验收归06。
 
 Final closure: integrated implementation, independent review and applicable local verification complete. Unified browser and genuine packaged acceptance are recorded in [06](06-integration-and-packaged-acceptance.md); spec/tickets close together after that gate. Prior aggregate environment failures remain recorded separately from passing focused follow-up. Final documentation commit CI remains pending until observed on the PR.
+
+## Corrective follow-up
+
+2026-10-11 用户报告每次启动出现钥匙串/密码授权窗口，以及设置页未严格还原 Pencil。重新打开 03、05、06 与 spec，分别由新的子代理诊断启动凭证访问并对照实际画板修正设置布局/样式；历史验收记录保留，最终关闭需完成本轮回归与原生/浏览器验收。

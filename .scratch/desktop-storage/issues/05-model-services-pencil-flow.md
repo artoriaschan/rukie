@@ -4,7 +4,7 @@
 
 Blocked by: 03
 
-Status: resolved
+Status: claimed
 
 - [x] 读取 rukie.pen M17、C10–C17、P01–P08，记录流程和字段映射；先核对智能配置、高级输入/能力、推理等级与映射合同，缺口显式提出不假装支持
 - [x] 按原画板实现总览/目录/新供应商/地址与协议/密钥/添加编辑模型/模型行连接验证、删除与启用/重命名/删除确认；遵守当前 DESIGN.md 和组件来源，保持聊天布局
@@ -29,3 +29,7 @@ After merging integration `1913e9f4` (04) into issue05 (`ff423157`), combined `b
 Integrated acceptance on runtime candidate `4d3cf021`: unified real browser Light/Dark/420px and keyboard/focus/console checks passed. Fresh displayed-model first send, provider deletion plus sidecar restart with historical full-output pagination, and explicit replacement-model continuation passed after public regression fixes. Independent Standards/Spec review completed and documentation finding corrected. Final closure remains coordinated with 06 genuine native acceptance and spec.
 
 Final closure: integrated implementation, independent review and applicable local verification complete. Unified browser and genuine packaged acceptance are recorded in [06](06-integration-and-packaged-acceptance.md); spec/tickets close together after that gate. Prior aggregate environment failures remain recorded separately from passing focused follow-up. Final documentation commit CI remains pending until observed on the PR.
+
+## Corrective follow-up
+
+2026-10-11 用户报告每次启动出现钥匙串/密码授权窗口，以及设置页未严格还原 Pencil。重新打开 03、05、06 与 spec，分别由新的子代理诊断启动凭证访问并对照实际画板修正设置布局/样式；历史验收记录保留，最终关闭需完成本轮回归与原生/浏览器验收。
