@@ -56,7 +56,7 @@ export function Sidebar(props: SidebarProps) {
       >
         <button
           onClick={() => props.onSelect(session.id)}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-current={props.selected === session.id ? "page" : undefined}
         >
           {session.running && !session.waitingPermission ? (
@@ -98,7 +98,7 @@ export function Sidebar(props: SidebarProps) {
         <button
           onClick={() => toggle(id)}
           aria-expanded={!groups.includes(id)}
-          className="flex min-w-0 flex-1 items-center gap-1 py-2 text-left text-ui-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center gap-1 py-1 min-h-7 text-left text-ui-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronDown
             className={cn(
@@ -247,7 +247,7 @@ export function Sidebar(props: SidebarProps) {
                               : [...projectGroups, project.id],
                           })
                         }
-                        className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {projectGroups.includes(project.id) ? (
                           <Folder className="size-4" />

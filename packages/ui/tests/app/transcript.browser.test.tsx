@@ -108,8 +108,8 @@ test("App shows committed and streaming replies, with failed tool output expande
     const toolIcon = tool.querySelector(".lucide-square-terminal")!;
     expect(thinkingIcon.getBoundingClientRect().left).toBe(toolIcon.getBoundingClientRect().left);
     expect(reasoning.getBoundingClientRect().left).toBe(toolIcon.getBoundingClientRect().right + 8);
-    expect(getComputedStyle(reasoning).fontSize).toBe("12px");
-    expect(getComputedStyle(tool).fontSize).toBe("12px");
+    expect(getComputedStyle(reasoning).fontSize).toBe("13px");
+    expect(getComputedStyle(tool).fontSize).toBe("13px");
     expect(getComputedStyle(reasoning).color).toBe(
       getComputedStyle(tool.querySelector(".font-mono")!).color,
     );
@@ -179,6 +179,10 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
     });
   };
   try {
+    await screen.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: /Fix compiler/ }).first())
+      .toBeVisible();
     await userEvent.keyboard("{Control>}1{/Control}");
     await expect
       .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
@@ -593,8 +597,12 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
     await ask("first");
     await expect.element(screen.getByRole("region", { name: "Permission required" })).toBeVisible();
     await expect
-      .element(screen.getByRole("button", { name: "Allow ↵", exact: true }))
-      .toHaveFocus();
+      .poll(
+        () =>
+          screen.getByRole("region", { name: "Permission required" }).element().parentElement ===
+          document.activeElement,
+      )
+      .toBe(true);
     await userEvent.keyboard("a");
     await expect
       .element(screen.getByRole("region", { name: "Permission required" }))
@@ -625,8 +633,12 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
       .toBeEnabled();
     await ask("replayed");
     await expect
-      .element(screen.getByRole("button", { name: "Allow ↵", exact: true }))
-      .toHaveFocus();
+      .poll(
+        () =>
+          screen.getByRole("region", { name: "Permission required" }).element().parentElement ===
+          document.activeElement,
+      )
+      .toBe(true);
     await send({ type: "interaction_settled", identity: identity("replayed") });
     await ask("cancelled");
     await send({ type: "interaction_settled", identity: identity("cancelled") });
@@ -1051,7 +1063,7 @@ test("virtualized response groups follow streaming height, preserve upward readi
     const summary = screen.getByRole("complementary", { name: "Session summary", exact: true });
     await expect
       .poll(() => summary.element().getBoundingClientRect().width)
-      .toBe(feed.getBoundingClientRect().width);
+      .toBe(feed.getBoundingClientRect().width - 32);
     await userEvent.keyboard("{Escape}");
     await expect.element(summary).not.toBeInTheDocument();
   } finally {

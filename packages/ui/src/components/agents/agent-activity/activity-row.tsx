@@ -16,7 +16,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { EASE_OUT, SPRING_LAYOUT } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 import type {
   AgentActivityItem,
@@ -29,13 +29,14 @@ import type {
 } from "./types";
 
 function StepRow({ item }: { item: AgentActivityStep }) {
+  const reduce = useReducedMotion() ?? false;
   const state = item.status ?? "complete";
 
   return (
-    <div className="flex min-h-7 items-start gap-2.5 rounded-md px-1.5 py-1">
+    <div className="flex min-h-7 items-start gap-2 rounded-md px-2 py-1">
       <span
         aria-hidden="true"
-        className="mt-0.5 grid size-4 shrink-0 place-items-center text-muted-foreground/70"
+        className="mt-0.5 grid size-4 shrink-0 place-items-center text-muted-foreground"
       >
         {state === "complete" ? (
           <Check className="size-4" strokeWidth={1.8} />
@@ -43,8 +44,11 @@ function StepRow({ item }: { item: AgentActivityStep }) {
           <span className="relative grid size-3 place-items-center">
             <motion.span
               className="absolute inset-0 rounded-full bg-foreground/10"
-              animate={{ opacity: [0.35, 0.8, 0.35] }}
-              transition={{ duration: 1.5, repeat: Number.POSITIVE_INFINITY }}
+              animate={reduce ? { opacity: 0.6 } : { opacity: [0.35, 0.8, 0.35] }}
+              transition={{
+                duration: reduce ? 0 : 1.5,
+                repeat: reduce ? 0 : Number.POSITIVE_INFINITY,
+              }}
             />
             <span className="size-1.5 rounded-full bg-foreground/60" />
           </span>
@@ -54,23 +58,19 @@ function StepRow({ item }: { item: AgentActivityStep }) {
       </span>
       <span
         className={cn(
-          "min-w-0 flex-1 leading-5",
-          state === "pending" ? "text-muted-foreground/55" : "text-foreground/90",
+          "min-w-0 flex-1 ",
+          state === "pending" ? "text-muted-foreground" : "text-foreground",
         )}
       >
         {item.label}
       </span>
-      {item.meta ? (
-        <span className="shrink-0 leading-5 text-muted-foreground/55">{item.meta}</span>
-      ) : null}
+      {item.meta ? <span className="shrink-0  text-muted-foreground">{item.meta}</span> : null}
     </div>
   );
 }
 
 function TextRow({ item }: { item: AgentActivityText }) {
-  return (
-    <div className="rounded-md px-1.5 py-1 leading-5 text-muted-foreground">{item.content}</div>
-  );
+  return <div className="rounded-md px-2 py-1  text-muted-foreground">{item.content}</div>;
 }
 
 function SearchResultRow({ result }: { result: AgentSearchResult }) {
@@ -82,14 +82,14 @@ function SearchResultRow({ result }: { result: AgentSearchResult }) {
       >
         {result.icon ?? <Globe2 className="size-3" strokeWidth={2} />}
       </span>
-      <span className="min-w-0 truncate font-medium text-foreground/90">{result.title}</span>
+      <span className="min-w-0 truncate font-medium text-foreground">{result.title}</span>
       {result.domain ? (
-        <span className="min-w-0 truncate text-muted-foreground/55">{result.domain}</span>
+        <span className="min-w-0 truncate text-muted-foreground">{result.domain}</span>
       ) : null}
     </>
   );
   const className = cn(
-    "flex min-h-7 items-center gap-2 rounded-md px-1.5 py-1 text-left outline-none transition-colors",
+    "flex min-h-7 items-center gap-2 rounded-md px-2 py-1 text-left outline-none transition-colors",
     result.url && "focus-visible:ring-2 focus-visible:ring-ring",
   );
 
@@ -106,20 +106,20 @@ function SearchRow({ item }: { item: AgentActivitySearch }) {
   const componentText = useComponentText();
 
   const reduce = useReducedMotion() ?? false;
-  const enter = reduce ? { opacity: 1 } : { opacity: 0, y: 6 };
+  const enter = reduce ? { opacity: 1 } : { opacity: 0, y: 4 };
   const visible = { opacity: 1, y: 0 };
   const exit = reduce ? { opacity: 0 } : { opacity: 0, y: -3 };
   const transition = reduce
     ? { duration: 0 }
     : {
         opacity: { duration: 0.18, ease: EASE_OUT },
-        y: SPRING_LAYOUT,
-        layout: SPRING_LAYOUT,
+        y: { duration: 0.16, ease: EASE_OUT },
+        layout: { duration: 0.16, ease: EASE_OUT },
       };
 
   return (
     <div className="space-y-0.5">
-      <div className="flex min-h-7 items-center gap-2.5 rounded-md px-1.5 py-1 text-muted-foreground">
+      <div className="flex min-h-7 items-center gap-2 rounded-md px-2 py-1 text-muted-foreground">
         <Search aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.7} />
         <span className="min-w-0 truncate">{item.query}</span>
       </div>
@@ -128,7 +128,7 @@ function SearchRow({ item }: { item: AgentActivitySearch }) {
           <AnimatePresence initial mode="popLayout">
             {item.results.map((result) => (
               <motion.div
-                layout="position"
+                layout={false}
                 key={result.id}
                 initial={enter}
                 animate={visible}
@@ -149,7 +149,7 @@ function SearchRow({ item }: { item: AgentActivitySearch }) {
             animate={visible}
             exit={exit}
             transition={transition}
-            className="px-1.5 py-1 pl-8 text-muted-foreground/55"
+            className="px-2 py-1 pl-8 text-muted-foreground"
           >
             {componentText("component.more-count", { count: item.moreCount })}
           </motion.div>
@@ -172,15 +172,15 @@ function ToolRow({ item }: { item: AgentActivityTool }) {
   const action = item.action.charAt(0).toUpperCase() + item.action.slice(1);
 
   return (
-    <div className="flex min-h-8 min-w-0 items-center gap-2.5 rounded-md px-1.5 py-0.5 leading-5">
+    <div className="flex min-h-7 min-w-0 items-center gap-2 rounded-md px-2 py-0.5 ">
       <span
         aria-hidden="true"
-        className="grid size-4 shrink-0 place-items-center text-muted-foreground/70"
+        className="grid size-4 shrink-0 place-items-center text-muted-foreground"
       >
         <ActionIcon action={item.action} />
       </span>
-      <span className="shrink-0 font-medium text-foreground/90">{action}</span>
-      <span className="min-w-0 flex-1 truncate rounded-lg bg-muted/80 px-2.5 py-1 font-mono text-ui-sm text-muted-foreground/70">
+      <span className="shrink-0 font-medium text-foreground">{action}</span>
+      <span className="min-w-0 flex-1 truncate rounded-lg bg-muted/80 px-3 py-1 font-mono text-ui-control text-muted-foreground">
         {item.target}
       </span>
       {typeof item.additions === "number" || typeof item.deletions === "number" ? (
@@ -214,7 +214,7 @@ function TraceRow({ item }: { item: AgentActivityTrace }) {
   return (
     <div
       className={cn(
-        "grid min-h-7 items-center gap-2 rounded-md text-ui-sm text-muted-foreground",
+        "grid min-h-7 items-center gap-2 rounded-md text-ui-control text-muted-foreground",
         showIcon ? "grid-cols-[1rem_auto_minmax(0,1fr)]" : "grid-cols-[auto_minmax(0,1fr)]",
       )}
     >
@@ -233,7 +233,7 @@ function TraceRow({ item }: { item: AgentActivityTrace }) {
             aria-expanded={open}
             aria-controls={contentId}
             onClick={() => setOpen(!open)}
-            className="flex items-center gap-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="flex items-center gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {item.label}
             <ChevronDown
@@ -246,7 +246,7 @@ function TraceRow({ item }: { item: AgentActivityTrace }) {
         )}
       </div>
       {item.detail ? (
-        <span className="min-w-0 truncate rounded-lg bg-muted/80 px-2.5 py-1 font-mono text-ui-sm text-muted-foreground/70">
+        <span className="min-w-0 truncate rounded-lg bg-muted/80 px-3 py-1 font-mono text-ui-control text-muted-foreground">
           {item.detail}
         </span>
       ) : null}

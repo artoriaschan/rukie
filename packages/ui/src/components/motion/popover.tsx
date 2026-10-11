@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/motion/popover
 
@@ -35,17 +36,16 @@ type Side = "top" | "bottom";
 type Align = "start" | "center" | "end";
 type TriggerMode = "click" | "hover";
 
-// This morph needs less bounce than layout motion: too much overshoot makes
-// the liquid neck balloon past the final panel edges.
-const GOO_OPEN_SPRING = {
-  type: "spring",
-  visualDuration: 0.3,
-  bounce: 0.15,
+// Short tweens preserve the popover geometry without overshoot.
+const GOO_OPEN_TRANSITION = {
+  type: "tween",
+  duration: 0.16,
+  ease: [0.2, 0, 0.2, 1],
 } as const;
-const GOO_CLOSE_SPRING = {
-  type: "spring",
-  visualDuration: 0.21,
-  bounce: 0.15,
+const GOO_CLOSE_TRANSITION = {
+  type: "tween",
+  duration: 0.16,
+  ease: [0.2, 0, 0.2, 1],
 } as const;
 const HOVER_CLOSE_DELAY = 120;
 const CIRCLE_KAPPA = 0.5523;
@@ -249,11 +249,11 @@ export interface PopoverProps {
   side?: Side;
   /** Alignment along the trigger's edge. Default "center". */
   align?: Align;
-  /** Gap between trigger and panel, in px — the length of the gooey neck. Default 14. */
+  /** Gap between trigger and panel, in px — the length of the gooey neck. Default 4. */
   sideOffset?: number;
-  /** Corner radius of the open panel, in px. Default 16. */
+  /** Corner radius of the open panel, in px. Default 12. */
   panelRadius?: number;
-  /** Blur radius feeding the goo filter — higher melts more. Default 8. */
+  /** Blur radius feeding the goo filter — higher melts more. Default 0. */
   gooStrength?: number;
   className?: string;
 }
@@ -266,9 +266,9 @@ export function Popover({
   trigger = "click",
   side = "bottom",
   align = "center",
-  sideOffset = 14,
-  panelRadius = 16,
-  gooStrength = 8,
+  sideOffset = 4,
+  panelRadius = 12,
+  gooStrength = 0,
   className,
 }: PopoverProps) {
   const reduce = useReducedMotion() ?? false;
@@ -318,7 +318,7 @@ export function Popover({
     const animation = animate(
       progress,
       open ? 1 : 0,
-      reduce ? { duration: 0 } : open ? GOO_OPEN_SPRING : GOO_CLOSE_SPRING,
+      reduce ? { duration: 0 } : open ? GOO_OPEN_TRANSITION : GOO_CLOSE_TRANSITION,
     );
     return () => animation.stop();
   }, [open, progress, reduce]);
@@ -577,7 +577,10 @@ export function PopoverContent({ children, className, ariaLabel }: PopoverConten
   return createPortal(
     <div
       data-popover-portal=""
-      className="pointer-events-none fixed left-0 top-0 z-[9999] isolate size-0"
+      className={cn(
+        OVERLAY_LAYER.interactive,
+        "pointer-events-none fixed left-0 top-0 isolate size-0",
+      )}
       style={{
         visibility: layout ? "visible" : "hidden",
         transform: `translate3d(${layout?.trigger.left ?? 0}px, ${layout?.trigger.top ?? 0}px, 0)`,
@@ -666,7 +669,7 @@ export function PopoverContent({ children, className, ariaLabel }: PopoverConten
               transformOrigin: `${ALIGN_ORIGIN[align]} ${side === "bottom" ? "top" : "bottom"}`,
             }}
             className={cn(
-              "w-max max-w-[min(92vw,20rem)] max-h-[calc(100dvh-16px)] overflow-y-auto p-4 text-popover-foreground outline-none",
+              "w-max max-w-[min(calc(100vw-32px),320px)] max-h-[calc(100dvh-32px)] overflow-y-auto rounded-xl border border-border-strong bg-popover p-3 text-popover-foreground shadow-md outline-none",
               className,
             )}
           >

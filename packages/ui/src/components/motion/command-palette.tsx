@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/blocks/command-palette
 
@@ -37,12 +38,10 @@ export interface CommandPaletteProps {
 }
 
 // Opened via a keyboard shortcut many times a day — entrance must read as
-// instant. Tight spring, even faster exit.
+// immediate. A short tween avoids overshoot.
 const PANEL_SPRING = {
-  type: "spring",
-  stiffness: 560,
-  damping: 40,
-  mass: 0.5,
+  duration: 0.16,
+  ease: EASE_OUT,
 } as const;
 
 export function CommandPalette({
@@ -207,7 +206,10 @@ export function CommandPalette({
               transition={{ duration: 0.18, ease: EASE_OUT }}
               {...gate}
               onClick={() => setOpen(false)}
-              className="pointer-events-auto fixed inset-0 z-[100] bg-background/5 [backdrop-filter:blur(12px)_saturate(140%)] [-webkit-backdrop-filter:blur(12px)_saturate(140%)]"
+              className={cn(
+                OVERLAY_LAYER.modal,
+                "pointer-events-auto fixed inset-0 bg-foreground/20",
+              )}
             />
           )}
         </PresenceGate>
@@ -220,7 +222,10 @@ export function CommandPalette({
             // `inert` alone rather than the gate's pointer-events value.
             <div
               inert={!isPresent}
-              className="pointer-events-none fixed inset-x-4 bottom-4 top-[18vh] z-[100] flex items-start justify-center"
+              className={cn(
+                OVERLAY_LAYER.modal,
+                "pointer-events-none fixed inset-x-4 bottom-4 top-[18vh] flex items-start justify-center",
+              )}
             >
               <motion.div
                 ref={panelRef}
@@ -229,20 +234,20 @@ export function CommandPalette({
                 aria-label={componentText("component.command-palette")}
                 initial={{
                   opacity: 0,
-                  y: reduce ? 0 : -8,
-                  scale: reduce ? 1 : 0.97,
+                  y: reduce ? 0 : -4,
+                  scale: reduce ? 1 : 0.98,
                 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{
                   opacity: 0,
-                  y: reduce ? 0 : -8,
-                  scale: reduce ? 1 : 0.97,
+                  y: reduce ? 0 : -4,
+                  scale: reduce ? 1 : 0.98,
                   transition: { duration: 0.12, ease: EASE_OUT },
                 }}
-                transition={reduce ? { duration: 0.1 } : PANEL_SPRING}
+                transition={reduce ? { duration: 0 } : PANEL_SPRING}
                 {...gate}
                 onKeyDown={onKeyDown}
-                className="pointer-events-auto w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-background shadow-2xl will-change-transform"
+                className="pointer-events-auto w-full max-w-[640px] max-h-full overflow-hidden rounded-2xl border border-border-strong bg-popover shadow-md will-change-transform"
               >
                 <div className="flex items-center gap-3 border-b border-border px-4">
                   <Search className="h-4 w-4 text-muted-foreground" />
@@ -258,7 +263,7 @@ export function CommandPalette({
                     aria-activedescendant={rows.length > 0 ? `${uid}-opt-${active}` : undefined}
                     aria-autocomplete="list"
                     className={cn(
-                      "h-12 flex-1 bg-transparent text-ui-base text-foreground placeholder:text-muted-foreground outline-none",
+                      "h-9 min-w-0 flex-1 bg-transparent text-ui-base text-foreground placeholder:text-muted-foreground outline-none",
                       // The palette focuses this field the moment it opens, and iOS
                       // zooms the page in on a focused field under 16px: the fixed
                       // overlay is magnified off-center — clipped leading edge, half
@@ -267,7 +272,7 @@ export function CommandPalette({
                       canTouch && "text-ui-lg",
                     )}
                   />
-                  <kbd className="hidden rounded border border-border bg-background px-1.5 py-0.5 text-ui-xs text-muted-foreground sm:inline-block">
+                  <kbd className="hidden rounded-sm border border-border bg-background px-1 font-mono text-ui-xs text-muted-foreground sm:inline-block">
                     ESC
                   </kbd>
                 </div>
@@ -276,7 +281,7 @@ export function CommandPalette({
                   id={`${uid}-list`}
                   role="listbox"
                   aria-label={componentText("component.commands")}
-                  className="max-h-[60vh] overflow-y-auto overscroll-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  className="max-h-[min(60vh,calc(82dvh-72px))] overflow-y-auto overscroll-contain p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
                   {rows.length === 0 ? (
                     <div className="p-8 text-center text-ui-base text-muted-foreground">
@@ -287,7 +292,7 @@ export function CommandPalette({
                       <div key={group} className="mb-1 last:mb-0">
                         <div
                           aria-hidden
-                          className="px-2 py-1.5 text-ui-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                          className="px-2 py-1 text-ui-sm font-medium text-muted-foreground"
                         >
                           {group}
                         </div>
@@ -310,7 +315,7 @@ export function CommandPalette({
                                 setOpen(false);
                               }}
                               className={cn(
-                                "relative isolate flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-ui-base transition-colors",
+                                "relative isolate flex w-full items-center min-h-7 gap-2 rounded-md px-2 py-1 text-left text-ui-base transition-colors",
                                 isActive ? "text-foreground" : "text-muted-foreground",
                               )}
                             >
@@ -324,9 +329,8 @@ export function CommandPalette({
                                       : // Tracks rapid arrow-key navigation — keep it tighter
                                         // than SPRING_LAYOUT so it never lags the active row.
                                         {
-                                          type: "spring",
-                                          stiffness: 480,
-                                          damping: 38,
+                                          duration: 0.16,
+                                          ease: EASE_OUT,
                                         }
                                   }
                                 />
@@ -341,7 +345,7 @@ export function CommandPalette({
                                 <span className="relative z-10 shrink-0">{it.badge}</span>
                               ) : null}
                               {it.hint ? (
-                                <kbd className="relative z-10 rounded border border-border bg-background px-1.5 py-0.5 text-ui-xs text-muted-foreground">
+                                <kbd className="relative z-10 rounded-sm border border-border bg-background px-1 font-mono text-ui-xs text-muted-foreground">
                                   {it.hint}
                                 </kbd>
                               ) : null}

@@ -10,7 +10,7 @@ The visual reference is the ZCode Design System: calm surfaces, compact operatio
 
 The GUI is built from [beUI](https://beui.dev) first and [shadcn/ui](https://ui.shadcn.com) for roles beUI does not provide, installed through the shadcn CLI (sourcing rules: [AGENTS.md](AGENTS.md#ui-components)). Registry components supply structure, accessibility, and behavior. This document owns their final typography, geometry, surfaces, radius, elevation, and motion. A copied component's original defaults do not establish compliance.
 
-These are binding target rules for new and changed GUI surfaces. They are not a claim that every existing component has been migrated. In particular, the current theme defines `text-ui-caption` as 11px, and the installed Button still has 40px/48px heights, pill radii, and spring scaling. Those defaults need adaptation to the targets below when migrated; this document does not change runtime CSS. Validate the rendered result before claiming product acceptance.
+These are binding rules for GUI surfaces. Shared primitives define their reusable geometry and state treatment; callers choose roles and preserve content layout. A component is accepted only after its applicable rules and rendered behavior are verified. Registry provenance or a documentation check does not establish runtime conformity.
 
 When this file and a registry default disagree, this file wins. Use the existing semantic tokens and shared primitives; when a need is not covered, update this file before introducing an exception. Copy is localized through `@rukie/i18n` with zh and en entries.
 
@@ -113,7 +113,7 @@ All portable ZCode rules for typography, spacing, radius, sizing, component stat
 
 ### UI font scale
 
-All interface typography uses the `text-ui-*` scale, derived from `--ui-font-size` (default `14px`). Choose by role rather than isolated visual preference. Values below are targets; `text-ui-caption` currently computes to 11px in [theme.css](packages/ui/src/theme.css) and requires a separate runtime migration to reach 13px.
+All interface typography uses the `text-ui-*` scale, derived from `--ui-font-size` (default `14px`). Choose by role rather than isolated visual preference. The scale is defined in [theme.css](packages/ui/src/theme.css); the role table governs all consumers.
 
 | Token             | Target formula         | Default | Target line height | Roles                                                       |
 | ----------------- | ---------------------- | ------: | -----------------: | ----------------------------------------------------------- |
@@ -129,7 +129,7 @@ Line-height ratios follow the default pairs above as interface text scales. `tex
 
 - Do not use Tailwind's built-in `text-xs`, `text-sm`, `text-base`, `text-lg`, arbitrary sizes such as `text-[13px]`, or inline `font-size` for interface text.
 - Interface font scaling changes only `--ui-font-size`; never change the root `html` font size. Icons, spacing, and radius do not scale with it.
-- Code, Diff, and terminal-like content retain their independent numeric font-size settings. Their headers, labels, and controls use `text-ui-*`.
+- Code, Diff, and terminal-like content use the independent `text-code` content token (`--code-font-size`, default 14px), which does not change with `--ui-font-size`. Their headers, labels, and controls use `text-ui-*`. This content token is not an interface hierarchy role.
 - Body and common controls use `font-normal`; section labels use `font-medium`. Markdown h3–h4 use `font-semibold`, h5 uses `font-medium`, and h6 uses `font-normal`.
 - Supporting copy uses `muted-foreground`; primary reading text uses `foreground`. Font size and color express different hierarchy decisions. Do not weaken operational labels by combining tiny text with low opacity.
 - Tooltip copy uses `text-ui-sm`; shortcut labels use `text-ui-xs`. Rich Markdown in a tooltip retains reading hierarchy.
@@ -171,7 +171,7 @@ These names describe reusable design roles, not CSS variables already shipped. I
 Control heights are compact baselines at the default font size, not clipping constraints. At larger text sizes or with wrapped labels, allow height to grow to fit the line box plus padding. Keep small icon-only controls' hit targets at least 24px square; larger targets must not overlap adjacent actions. Micro actions use `text-ui-sm` for sparse auxiliary controls, never primary approval actions or normal body text. Other text actions use `text-ui-base` unless an explicit role above applies.
 
 - Default icon: 16px. Supported icon sizes: 12px, 14px, 16px, 20px, 24px. Larger icons are for explicit empty-state or brand artwork roles.
-- Reuse existing Button size names: `sm` targets 28px, `md` targets 32px, `lg` targets 36px, `icon` targets 32px square. These targets replace the current 32px/40px/48px registry button heights; additional micro sizes require a shared primitive API, not isolated inline overrides.
+- Reuse existing Button size names: `sm` targets 28px, `md` targets 32px, `lg` targets 36px, `icon` targets 32px square. Additional micro sizes require a shared primitive API, not isolated inline overrides.
 - Menu shells use 4px padding, 2px gaps between adjacent option rows, and a 4px trigger offset. Tooltips use 8px padding and 4px offset.
 - Ordinary cards have 12px content gaps; repeated Trace rows have 4px gaps, Trace groups have 8px gaps, and separate messages have 16px gaps. Do not stack a row's vertical padding with an equivalent external spacer.
 - In flex layouts with text, use `min-w-0`; in nested scroll or split panels, use `min-h-0`. Technical values wrap or scroll inside their own content region, never push action buttons beyond the shell.

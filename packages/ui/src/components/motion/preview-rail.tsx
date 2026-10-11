@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { SPRING_LAYOUT } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { useDismiss } from "@/lib/hooks/use-dismiss";
 import { useHoverGesture } from "@/lib/hooks/use-hover-gesture";
 import { useTapGesture } from "@/lib/hooks/use-tap-gesture";
@@ -52,7 +52,7 @@ function DefaultPreview({ item }: { item: PreviewRailItem }) {
   return (
     <div
       data-slot="preview-rail-card"
-      className="rounded-2xl border border-border bg-card p-4 shadow-sm"
+      className="rounded-xl border border-border-strong bg-popover p-4 shadow-md"
     >
       <p data-slot="preview-rail-title" className="font-medium text-card-foreground">
         {item.label}
@@ -185,7 +185,7 @@ export function PreviewRail({
                 data-highlighted={colored ? "" : undefined}
                 aria-hidden="true"
                 animate={isHorizontal ? { scaleY: scale } : { scaleX: scale }}
-                transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+                transition={{ duration: reduce ? 0 : 0.16, ease: EASE_OUT }}
                 className={cn(
                   "block bg-current",
                   isHorizontal ? "h-12 w-0.5 origin-bottom" : "h-0.5 w-12 origin-left",

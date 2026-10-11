@@ -18,7 +18,7 @@ import { Button } from "@/components/motion/button";
 import { Checkbox } from "@/components/motion/checkbox";
 import { Input } from "@/components/motion/input";
 import { RadioGroup, RadioGroupItem } from "@/components/motion/radio";
-import { EASE_OUT, SPRING_SWAP } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 import type {
   ApprovalCardAnswer,
@@ -112,7 +112,7 @@ function QuestionOptions({
                       : answer.selected.filter((value) => value !== option.value),
                   })
                 }
-                className="min-h-9 rounded-lg px-1.5 py-1"
+                className="min-h-7 rounded-md px-2 py-1"
               />
             ))}
           </div>
@@ -131,7 +131,7 @@ function QuestionOptions({
                 value={option.value}
                 label={option.label}
                 disabled={disabled || option.disabled}
-                className="min-h-9 rounded-lg px-1.5 py-1"
+                className="min-h-7 rounded-md px-2 py-1"
               />
             ))}
           </RadioGroup>
@@ -153,7 +153,7 @@ function QuestionOptions({
           }
           className={cn("p-0.5", question.options?.length && "mt-1.5")}
           classNames={{
-            field: "h-10 rounded-xl border-0 bg-background/70 focus-within:bg-background",
+            field: "min-h-8 rounded-md border-0 bg-background/70 focus-within:bg-background",
             input: "px-3 text-ui-base",
           }}
         />
@@ -166,7 +166,7 @@ function ProgressDots({ current, ids }: { current: number; ids: string[] }) {
   const componentText = useComponentText();
 
   return (
-    <span className="flex gap-1.5">
+    <span className="flex gap-2">
       <span className="sr-only">
         {componentText("component.question-count", { current: current + 1, total: ids.length })}
       </span>
@@ -182,7 +182,7 @@ function ProgressDots({ current, ids }: { current: number; ids: string[] }) {
             scale: index === current ? 1 : 0.75,
             opacity: index <= current ? 1 : 0.35,
           }}
-          transition={SPRING_SWAP}
+          transition={{ duration: 0.16, ease: EASE_OUT }}
           className="size-1.5 rounded-full bg-foreground"
         />
       ))}
@@ -297,7 +297,7 @@ export function ApprovalCard({
     <div
       data-state={status}
       aria-busy={busy}
-      className={cn("w-full overflow-hidden rounded-2xl bg-muted p-4 text-ui-base", className)}
+      className={cn("w-full overflow-hidden rounded-xl bg-muted p-4 text-ui-base", className)}
     >
       <div className="flex items-start gap-3">
         <span
@@ -324,19 +324,19 @@ export function ApprovalCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-start gap-3">
-            <h3 className="min-w-0 flex-1 text-ui-lg font-medium leading-5 text-foreground">
+            <h3 className="min-w-0 flex-1 text-ui-base font-medium text-foreground">
               <ActionSwapRollText value={titleKey}>{displayTitle}</ActionSwapRollText>
             </h3>
             {questionMode && interactive ? (
               multipleQuestions ? (
-                <span className="shrink-0 text-ui-sm tabular-nums text-muted-foreground/65">
+                <span className="shrink-0 text-ui-sm tabular-nums text-muted-foreground">
                   {currentStep + 1}/{questions.length}
                 </span>
               ) : null
             ) : (
               <span
                 className={cn(
-                  "shrink-0 rounded-full border px-2 py-0.5 text-ui-caption font-medium transition-colors",
+                  "shrink-0 rounded-md border px-2 py-0.5 text-ui-xs font-medium transition-colors",
                   getStatusBadgeClass(status),
                 )}
               >
@@ -349,7 +349,7 @@ export function ApprovalCard({
                 aria-label={componentText("component.dismiss")}
                 disabled={busy || disabled}
                 onClick={onDismiss}
-                className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="size-4" />
               </button>
@@ -367,7 +367,7 @@ export function ApprovalCard({
                   transition={{ duration: reduce ? 0 : 0.2, ease: EASE_OUT }}
                 >
                   {question.description ? (
-                    <p className="mt-1 leading-5 text-muted-foreground">{question.description}</p>
+                    <p className="mt-1 text-muted-foreground">{question.description}</p>
                   ) : null}
                   <QuestionOptions
                     question={question}
@@ -380,15 +380,13 @@ export function ApprovalCard({
               </AnimatePresence>
             ) : (
               <div>
-                {description ? (
-                  <p className="mt-1 leading-5 text-muted-foreground">{description}</p>
-                ) : null}
+                {description ? <p className="mt-1 text-muted-foreground">{description}</p> : null}
                 {children ? <div className="mt-3">{children}</div> : null}
               </div>
             )}
 
             {questionMode ? (
-              <div className="mt-4 flex items-center gap-3">
+              <div className="mt-4 flex items-center gap-2">
                 {multipleQuestions ? (
                   <>
                     <Button
@@ -397,7 +395,7 @@ export function ApprovalCard({
                       aria-label={componentText("component.previous-question")}
                       disabled={busy || disabled || currentStep === 0}
                       onClick={() => setStep(currentStep - 1)}
-                      className="rounded-full"
+                      className="rounded-lg"
                     >
                       <ArrowLeft className="size-4" />
                     </Button>
@@ -413,7 +411,7 @@ export function ApprovalCard({
                   }
                   disabled={busy || disabled || !isAnswered(currentAnswer)}
                   onClick={continueQuestion}
-                  className="ml-auto rounded-full"
+                  className="ml-auto rounded-lg"
                 >
                   {busy ? (
                     <LoaderCircle className={cn("size-4", !reduce && "animate-spin")} />
@@ -434,7 +432,7 @@ export function ApprovalCard({
                   size="sm"
                   disabled={busy || disabled}
                   onClick={onApprove}
-                  className="rounded-full"
+                  className="rounded-lg"
                 >
                   {approveLabel}
                 </Button>
@@ -445,7 +443,7 @@ export function ApprovalCard({
                     size="sm"
                     disabled={busy || disabled}
                     onClick={onRequestChanges}
-                    className="rounded-full"
+                    className="rounded-lg"
                   >
                     {componentText("component.request-changes")}
                   </Button>
@@ -456,7 +454,7 @@ export function ApprovalCard({
                     size="sm"
                     disabled={busy || disabled}
                     onClick={onReject}
-                    className="rounded-full text-muted-foreground hover:text-danger hover:text-danger"
+                    className="rounded-lg text-muted-foreground hover:text-danger"
                   >
                     {rejectLabel ?? componentText("component.reject")}
                   </Button>

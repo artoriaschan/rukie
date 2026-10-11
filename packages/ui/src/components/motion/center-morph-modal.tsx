@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/motion/center-morph-modal
 
@@ -135,6 +136,7 @@ export function CenterMorphModalClose({ children }: CenterMorphModalCloseProps) 
 }
 
 export interface CenterMorphModalContentProps {
+  /** Compose non-shrinking title/footer siblings around a min-h-0 overflow-y-auto body. */
   children: ReactNode;
   /** Accessible name announced by screen readers. */
   ariaLabel: string;
@@ -158,15 +160,13 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-const CENTER_FOLDED_CLIP = "inset(48% 48% 48% 48% round 30px)";
-const CENTER_OPEN_CLIP = "inset(0% 0% 0% 0% round 30px)";
+const CENTER_FOLDED_CLIP = "inset(2% 2% 2% 2% round 16px)";
+const CENTER_OPEN_CLIP = "inset(0% 0% 0% 0% round 16px)";
 
-// Complex clip-path strings can snap when a spring resolves its final distance.
-// Keep the radius constant so the whole duration reads as surface unfolding,
-// rather than finishing early and spending its last frames rounding corners.
+// The restrained clip keeps radius constant throughout the short entrance.
 const CENTER_UNFOLD_EASE = [0.2, 0, 0.2, 1] as const;
 const CENTER_UNFOLD_TRANSITION = {
-  duration: 0.43,
+  duration: 0.16,
   ease: CENTER_UNFOLD_EASE,
 } as const;
 
@@ -261,12 +261,13 @@ export function CenterMorphModalContent({
                 exit={{ opacity: 0 }}
                 {...gate}
                 transition={{
-                  duration: reduce ? 0.1 : 0.28,
+                  duration: reduce ? 0 : 0.16,
                   ease: EASE_OUT,
                 }}
                 onClick={() => context.setOpen(false)}
                 className={cn(
-                  "pointer-events-auto fixed inset-0 z-[100] h-full w-full cursor-default bg-background/10 backdrop-blur-sm",
+                  OVERLAY_LAYER.modal,
+                  "pointer-events-auto fixed inset-0 h-full w-full cursor-default bg-foreground/20",
                   backdropClassName,
                 )}
               />
@@ -276,11 +277,14 @@ export function CenterMorphModalContent({
                   events, so it carries `inert` alone. */}
               <div
                 inert={!isPresent}
-                className="pointer-events-none fixed inset-4 z-[100] flex items-center justify-center overflow-y-auto drop-shadow-2xl"
+                className={cn(
+                  OVERLAY_LAYER.modal,
+                  "pointer-events-none fixed inset-4 flex items-center justify-center drop-shadow-md",
+                )}
               >
                 {/* Drop-shadow reads the clipped child's alpha, so depth follows the
                     unfolding silhouette without introducing another panel layer. */}
-                <div className="flex w-full flex-col items-center py-8">
+                <div className="flex min-h-0 max-h-full w-full flex-col items-center">
                   <motion.div
                     ref={panelRef}
                     id={context.contentId}
@@ -314,7 +318,7 @@ export function CenterMorphModalContent({
                       reduce ? { duration: 0.14, ease: EASE_OUT } : CENTER_UNFOLD_TRANSITION
                     }
                     className={cn(
-                      "pointer-events-auto relative w-full max-w-[26rem] origin-center overflow-hidden rounded-[30px] border border-border bg-background will-change-[clip-path]",
+                      "pointer-events-auto relative w-full max-w-[480px] max-h-[calc(100dvh-32px)] origin-center flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border-strong bg-popover will-change-[clip-path]",
                       className,
                     )}
                   >
@@ -325,7 +329,7 @@ export function CenterMorphModalContent({
                         type="button"
                         aria-label={closeButtonLabel}
                         onClick={() => context.setOpen(false)}
-                        initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.8 }}
+                        initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{
                           opacity: 0,
@@ -337,7 +341,7 @@ export function CenterMorphModalContent({
                           duration: reduce ? 0.12 : 0.2,
                           ease: EASE_OUT,
                         }}
-                        className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full bg-foreground/[0.05] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-foreground/[0.05] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <X className="h-4 w-4" aria-hidden="true" />
                       </motion.button>

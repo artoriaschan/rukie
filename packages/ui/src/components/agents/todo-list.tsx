@@ -14,7 +14,7 @@ import {
 } from "react";
 import { ActionSwapRollText } from "@/components/motion/action-swap-roll";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
-import { EASE_OUT, SPRING_LAYOUT, SPRING_SWAP } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 export type TodoItemStatus = "pending" | "in-progress" | "completed" | "cancelled";
@@ -58,7 +58,7 @@ function TodoHeaderIcon({ complete }: { complete: boolean }) {
             initial={reduce ? { opacity: 1 } : { opacity: 0, scale: 0.72 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            transition={reduce ? { duration: 0 } : SPRING_SWAP}
+            transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
             className="absolute size-5.5 overflow-visible text-success"
           >
             <circle cx="12" cy="12" r="9" fill="currentColor" />
@@ -71,7 +71,7 @@ function TodoHeaderIcon({ complete }: { complete: boolean }) {
               strokeLinejoin="round"
               initial={reduce ? { pathLength: 1 } : { pathLength: 0 }}
               animate={{ pathLength: 1 }}
-              transition={reduce ? { duration: 0 } : { duration: 0.24, ease: EASE_OUT }}
+              transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
             />
           </motion.svg>
         ) : (
@@ -80,7 +80,7 @@ function TodoHeaderIcon({ complete }: { complete: boolean }) {
             initial={reduce ? { opacity: 1 } : { opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.72 }}
-            transition={reduce ? { duration: 0 } : SPRING_SWAP}
+            transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
             className="absolute grid place-items-center text-muted-foreground"
           >
             <ListTodo className="size-4" />
@@ -141,7 +141,7 @@ function TodoStatusIcon({ status, progress }: { status: TodoItemStatus; progress
             ? { rotate: { duration: 1.1, repeat: Infinity, ease: "linear" } }
             : reduce
               ? { duration: 0 }
-              : SPRING_LAYOUT
+              : { duration: 0.16, ease: EASE_OUT }
         }
         style={{ transformOrigin: "12px 12px" }}
       />
@@ -157,7 +157,7 @@ function TodoStatusIcon({ status, progress }: { status: TodoItemStatus; progress
           pathLength: status === "completed" ? 1 : 0,
           opacity: status === "completed" ? 1 : 0,
         }}
-        transition={reduce ? { duration: 0 } : { duration: 0.24, ease: EASE_OUT }}
+        transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
       />
       <motion.path
         d="M8.5 8.5 15.5 15.5M15.5 8.5 8.5 15.5"
@@ -240,7 +240,7 @@ export function TodoList({
   return (
     <section
       aria-label={componentText("component.agent-task-list")}
-      className={cn("w-full overflow-hidden rounded-2xl border border-border/70", className)}
+      className={cn("w-full overflow-hidden rounded-xl border border-border/70", className)}
     >
       <button
         id={triggerId}
@@ -248,10 +248,10 @@ export function TodoList({
         aria-expanded={currentOpen}
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
-        className="group flex h-11 w-full items-center gap-2.5 rounded-2xl px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group flex min-h-8 w-full items-center gap-2 rounded-xl px-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <TodoHeaderIcon complete={allComplete} />
-        <h3 className="min-w-0 flex-1 truncate text-ui-base font-medium text-foreground/90">
+        <h3 className="min-w-0 flex-1 truncate text-ui-base font-medium text-foreground">
           {title}
         </h3>
         <span
@@ -272,7 +272,7 @@ export function TodoList({
         <motion.span
           aria-hidden="true"
           animate={{ rotate: currentOpen ? 180 : 0 }}
-          transition={reduce ? { duration: 0 } : SPRING_SWAP}
+          transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
           className="text-muted-foreground/50 transition-colors group-hover:text-muted-foreground"
         >
           <ChevronDown className="size-3.5" />
@@ -292,9 +292,9 @@ export function TodoList({
                   const status = item.status ?? "pending";
                   return (
                     <motion.li
-                      layout="position"
+                      layout={false}
                       key={item.id}
-                      initial={reduce ? { opacity: 1 } : { opacity: 0, y: 6 }}
+                      initial={reduce ? { opacity: 1 } : { opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3 }}
                       transition={
@@ -302,21 +302,21 @@ export function TodoList({
                           ? { duration: 0 }
                           : {
                               opacity: { duration: 0.18, ease: EASE_OUT },
-                              y: SPRING_LAYOUT,
-                              layout: SPRING_LAYOUT,
+                              y: { duration: 0.16, ease: EASE_OUT },
+                              layout: { duration: 0.16, ease: EASE_OUT },
                             }
                       }
-                      className="flex min-h-9 items-center gap-2.5 rounded-xl px-1.5 py-1"
+                      className="flex min-h-7 items-center gap-2 rounded-lg px-2 py-1"
                     >
                       <TodoStatusIcon status={status} progress={item.progress} />
                       <span className="sr-only">{statusLabel(componentText, status)}: </span>
                       <span
                         className={cn(
-                          "min-w-0 flex-1 truncate text-ui-base leading-5",
-                          status === "pending" && "text-muted-foreground/65",
+                          "min-w-0 flex-1 truncate text-ui-base ",
+                          status === "pending" && "text-muted-foreground",
                           status === "in-progress" && "text-foreground",
-                          status === "completed" && "text-muted-foreground/60",
-                          status === "cancelled" && "text-muted-foreground/55",
+                          status === "completed" && "text-muted-foreground",
+                          status === "cancelled" && "text-muted-foreground",
                         )}
                       >
                         <span className="relative inline-block max-w-full">
@@ -331,14 +331,14 @@ export function TodoList({
                             transition={
                               reduce
                                 ? { duration: 0 }
-                                : { duration: 0.28, ease: EASE_OUT, delay: 0.06 }
+                                : { duration: 0.16, ease: EASE_OUT, delay: 0.06 }
                             }
                             className="absolute inset-x-0 top-1/2 h-px origin-left bg-current"
                           />
                         </span>
                       </span>
                       {item.detail ? (
-                        <span className="shrink-0 text-ui-base text-muted-foreground/55">
+                        <span className="shrink-0 text-ui-base text-muted-foreground">
                           {item.detail}
                         </span>
                       ) : null}
@@ -348,7 +348,7 @@ export function TodoList({
               </AnimatePresence>
             </ol>
           ) : (
-            <p className="px-1.5 py-2 text-ui-base text-muted-foreground">
+            <p className="px-2 py-2 text-ui-base text-muted-foreground">
               {componentText("component.no-tasks")}
             </p>
           )}

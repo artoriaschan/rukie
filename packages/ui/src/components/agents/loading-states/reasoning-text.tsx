@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { Loader } from "@/components/motion/loader";
 import { TextScramble } from "@/components/motion/text-scramble";
-import { EASE_OUT, SPRING_SWAP } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import {
   TEXT_SHIMMER_CLASS_NAME,
   TEXT_SHIMMER_KEYFRAMES,
@@ -85,7 +85,7 @@ function CascadePhrase({ phrase, reduce, shimmerDuration }: PhraseProps) {
               animate: (delay: number) => ({
                 opacity: 1,
                 y: "0%",
-                transition: { ...SPRING_SWAP, delay },
+                transition: { duration: 0.16, ease: EASE_OUT, delay },
               }),
               exit: (delay: number) => ({
                 opacity: 0,
@@ -152,7 +152,7 @@ function ScramblePhrase({ phrase, shimmerDuration }: PhraseProps) {
 
 export function ReasoningText({
   phrases: phrasesProp,
-  variant = "cascade",
+  variant = "swap",
   interval = 1800,
   shimmerDuration = 2.2,
   indicator,
@@ -172,7 +172,7 @@ export function ReasoningText({
   const phraseProps = { phrase, reduce, shimmerDuration };
 
   useEffect(() => {
-    if (safePhrases.length < 2) return;
+    if (reduce || safePhrases.length < 2) return;
 
     const timer = window.setInterval(
       () => {
@@ -182,7 +182,7 @@ export function ReasoningText({
     );
 
     return () => window.clearInterval(timer);
-  }, [interval, safePhrases.length]);
+  }, [interval, reduce, safePhrases.length]);
 
   return (
     <>

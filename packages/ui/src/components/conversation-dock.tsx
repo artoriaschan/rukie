@@ -44,7 +44,9 @@ export function PermissionDock({
     if (modal) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (composing.current) return;
-    region.current?.querySelector<HTMLButtonElement>("[data-permission-primary]")?.focus();
+    // Focus the boundary so the initial action keeps its resting appearance.
+    // Tab enters the actions normally; Enter/A/Escape remain region shortcuts.
+    region.current?.focus({ preventScroll: true });
     return () => {
       if (
         document.activeElement === document.body ||
@@ -92,7 +94,7 @@ export function PermissionDock({
     return () => window.removeEventListener("keydown", key, true);
   }, [first, connected, pending, shortcutsEnabled, onReply]);
   return (
-    <div ref={region} className="w-full shrink-0">
+    <div ref={region} tabIndex={-1} className="w-full shrink-0 outline-none">
       {first ? (
         <section
           key={first.identity.epoch}
@@ -156,9 +158,9 @@ export function QueuedInputs({
       {items.map((input) => (
         <div
           key={input.requestId}
-          className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-2 text-ui-sm"
+          className="flex flex-wrap items-start gap-2 rounded-xl border border-border bg-muted/30 p-2 text-ui-sm"
         >
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 basis-40">
             <p className="whitespace-pre-wrap break-words">{input.prompt}</p>
             {input.images.map((image, index) => (
               <span key={index} className="font-mono text-muted-foreground">
@@ -224,7 +226,7 @@ export function Summary({
   return (
     <aside
       aria-label={t("conversation.summary")}
-      className="absolute inset-x-0 top-0 z-20 max-h-full overflow-y-auto rounded-2xl border border-border bg-card p-4 shadow-sm md:inset-x-auto md:right-3 md:top-3 md:w-72"
+      className="absolute inset-x-4 top-4 z-20 max-h-[calc(100%-32px)] overflow-y-auto rounded-xl border border-border-strong bg-popover p-4 shadow-md md:inset-x-auto md:right-4 md:top-4 md:w-72"
     >
       <div className="flex items-center justify-between">
         <h2 className="text-ui-base font-medium">{t("conversation.summary")}</h2>

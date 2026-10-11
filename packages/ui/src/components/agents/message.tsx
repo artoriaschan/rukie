@@ -55,12 +55,10 @@ export interface MessageTypingProps extends ComponentPropsWithRef<"span"> {
   label?: string;
 }
 
-// A sent row should rise from the live edge without changing measured layout.
+// Entrance only changes opacity and a short translation, keeping measured layout stable.
 const MESSAGE_POP_UP = {
-  type: "spring",
-  stiffness: 480,
-  damping: 32,
-  mass: 0.62,
+  duration: 0.16,
+  ease: EASE_OUT,
 } as const;
 
 export function Message({
@@ -95,7 +93,7 @@ export function Message({
             (animateIn && !reduce
               ? {
                   opacity: 0,
-                  transform: "translateY(8px) scale(0.95)",
+                  transform: "translateY(4px)",
                 }
               : false)
           }
@@ -104,7 +102,7 @@ export function Message({
             (animateIn && !reduce
               ? {
                   opacity: 1,
-                  transform: "translateY(0px) scale(1)",
+                  transform: "translateY(0px)",
                 }
               : { opacity: 1 })
           }
@@ -114,7 +112,7 @@ export function Message({
               ? { opacity: 0 }
               : {
                   opacity: 0,
-                  transform: "translateY(-3px) scale(0.99)",
+                  transform: "translateY(-3px)",
                 })
           }
           transition={transition ?? (reduce ? { duration: 0.12 } : MESSAGE_POP_UP)}
@@ -140,7 +138,7 @@ export function MessageGroup({ spacing = "compact", className, ...props }: Messa
   return (
     <div
       data-slot="message-group"
-      className={cn("flex w-full flex-col", spacing === "compact" ? "gap-1.5" : "gap-4", className)}
+      className={cn("flex w-full flex-col", spacing === "compact" ? "gap-2" : "gap-4", className)}
       {...props}
     />
   );
@@ -175,7 +173,7 @@ export function MessageContent({ className, ...props }: MessageContentProps) {
     <div
       data-slot="message-content"
       className={cn(
-        "flex min-w-0 flex-1 flex-col gap-1.5",
+        "flex min-w-0 flex-1 flex-col gap-2",
         from === "user" ? "items-end" : "items-start",
         className,
       )}
@@ -191,7 +189,7 @@ export function MessageHeader({ className, ...props }: MessageHeaderProps) {
     <div
       data-slot="message-header"
       className={cn(
-        "flex items-center gap-1.5 px-1 text-ui-caption leading-none text-muted-foreground",
+        "flex items-center gap-2 px-1 text-ui-caption leading-none text-muted-foreground",
         from === "user" ? "justify-end" : "justify-start",
         className,
       )}
@@ -221,7 +219,7 @@ export function MessageMarker({ className, ...props }: MessageMarkerProps) {
     <div
       data-slot="message-marker"
       className={cn(
-        "mx-auto flex w-fit max-w-[88%] items-center gap-1.5 rounded-full bg-muted/70 px-2.5 py-1 text-center text-ui-sm text-muted-foreground",
+        "mx-auto flex w-fit max-w-[88%] items-center gap-2 rounded-lg bg-muted/70 px-3 py-1 text-center text-ui-sm text-muted-foreground",
         className,
       )}
       {...props}

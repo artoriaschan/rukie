@@ -1,9 +1,10 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/motion/morphing-modal
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useEffect, useRef } from "react";
-import { EASE_OUT, SPRING_PANEL } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { PresenceGate } from "@/lib/presence-gate";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 import { cn } from "@/lib/utils";
@@ -33,8 +34,8 @@ export function MorphingModal({
   const panel = useRef<HTMLDivElement>(null);
   useModalFocus(open, panel);
   const reduce = useReducedMotion();
-  const enterY = reduce ? 0 : placement === "bottom" ? 40 : 20;
-  const enterScale = reduce ? 1 : 0.97;
+  const enterY = reduce ? 0 : placement === "bottom" ? 4 : 4;
+  const enterScale = reduce ? 1 : 0.98;
 
   useEffect(() => {
     if (!open) return;
@@ -63,10 +64,13 @@ export function MorphingModal({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2, ease: EASE_OUT }}
+              transition={{ duration: reduce ? 0 : 0.16, ease: EASE_OUT }}
               {...gate}
               onClick={onClose}
-              className="pointer-events-auto fixed inset-0 z-[80] bg-background/5 [backdrop-filter:blur(14px)_saturate(140%)] [-webkit-backdrop-filter:blur(14px)_saturate(140%)]"
+              className={cn(
+                OVERLAY_LAYER.modal,
+                "pointer-events-auto fixed inset-0 bg-foreground/20",
+              )}
             />
           )}
         </PresenceGate>
@@ -80,7 +84,8 @@ export function MorphingModal({
             <div
               inert={!isPresent}
               className={cn(
-                "pointer-events-none fixed inset-4 z-[80] flex justify-center",
+                OVERLAY_LAYER.modal,
+                "pointer-events-none fixed inset-4 flex justify-center",
                 placement === "bottom" ? "items-end pb-4" : "items-center",
               )}
             >
@@ -103,35 +108,36 @@ export function MorphingModal({
                   opacity: 0,
                   y: enterY,
                   scale: reduce ? 1 : 0.98,
-                  transition: { duration: 0.18, ease: EASE_OUT },
+                  transition: { duration: 0.12, ease: EASE_OUT },
                 }}
-                transition={SPRING_PANEL}
+                transition={{ duration: reduce ? 0 : 0.16, ease: EASE_OUT }}
                 {...gate}
                 className={cn(
-                  "pointer-events-auto relative w-full max-w-sm overflow-hidden rounded-3xl border border-border bg-background shadow-2xl will-change-transform",
+                  "pointer-events-auto relative w-full max-w-[480px] max-h-[calc(100dvh-32px)] flex flex-col overflow-hidden rounded-2xl border border-border-strong bg-popover shadow-md will-change-transform",
                   className,
                 )}
               >
-                <motion.div layout="position" className="p-5">
+                <motion.div layout="position" className="flex min-h-0 flex-col p-4">
                   <AnimatePresence mode="popLayout" initial={false}>
                     <motion.div
                       key={viewId}
-                      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, filter: "blur(4px)" }}
+                      className="flex min-h-0 flex-col"
+                      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
                       animate={
                         reduce
                           ? {
                               opacity: 1,
                               transition: {
-                                duration: 0.18,
+                                duration: 0.12,
                                 ease: EASE_OUT,
                               },
                             }
                           : {
                               opacity: 1,
                               y: 0,
-                              filter: "blur(0px)",
+
                               transition: {
-                                duration: 0.24,
+                                duration: 0.16,
                                 ease: EASE_OUT,
                               },
                             }
@@ -147,8 +153,7 @@ export function MorphingModal({
                             }
                           : {
                               opacity: 0,
-                              y: -8,
-                              filter: "blur(4px)",
+                              y: -4,
                               transition: {
                                 duration: 0.16,
                                 ease: EASE_OUT,

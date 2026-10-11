@@ -22,7 +22,7 @@ import {
   MorphPopoverTrigger,
 } from "@/components/motion/popover-morph";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/motion/select";
-import { SPRING_SWAP } from "@/lib/ease";
+
 import { cn } from "@/lib/utils";
 
 export interface PromptModel {
@@ -109,7 +109,7 @@ export function PromptInput({
     const measurement = measurementRef.current;
     if (!textarea || !measurement || textarea.value !== currentValue) return;
 
-    const lineHeight = 24;
+    const lineHeight = Number.parseFloat(getComputedStyle(textarea).lineHeight);
     const nextHeight = Math.min(
       Math.max(measurement.scrollHeight, minRows * lineHeight),
       maxRows * lineHeight,
@@ -125,9 +125,20 @@ export function PromptInput({
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(resizeTextarea);
+    let frame: number | null = null;
+    const observer = new ResizeObserver(() => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        resizeTextarea();
+      });
+    });
     observer.observe(textarea);
-    return () => observer.disconnect();
+    if (measurementRef.current) observer.observe(measurementRef.current);
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
   }, [resizeTextarea]);
 
   const setValue = (next: string) => {
@@ -176,7 +187,7 @@ export function PromptInput({
       <div
         ref={measurementRef}
         aria-hidden="true"
-        className="pointer-events-none invisible absolute inset-x-2 top-0 whitespace-pre-wrap px-2 text-ui-base leading-6 [overflow-wrap:break-word]"
+        className="pointer-events-none invisible absolute inset-x-2 top-0 whitespace-pre-wrap px-2 text-ui-base [overflow-wrap:break-word]"
       >
         {`${currentValue}\u200b`}
       </div>
@@ -190,10 +201,10 @@ export function PromptInput({
         {...textareaProps}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
-        className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 pt-1.5 text-ui-base leading-6 text-foreground outline-none placeholder:text-muted-foreground/55"
+        className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 pt-1 text-ui-base text-foreground outline-none placeholder:text-muted-foreground"
       />
 
-      <div className="mt-1 flex min-h-8 items-center gap-1">
+      <div className="mt-1 flex min-h-8 flex-wrap items-center gap-1">
         {actions.length ? (
           <MorphPopover open={actionsOpen} onOpenChange={setActionsOpen}>
             <MorphPopoverTrigger>
@@ -203,12 +214,12 @@ export function PromptInput({
                 size="icon"
                 disabled={disabled || loading}
                 aria-label={componentText("component.add-to-prompt")}
-                className={cn("size-8 rounded-full", !trailingAction && "ml-auto")}
+                className={cn("min-h-8 min-w-8 rounded-lg", !trailingAction && "ml-auto")}
               >
                 <motion.span
                   aria-hidden="true"
                   animate={{ rotate: actionsOpen ? 45 : 0 }}
-                  transition={reduce ? { duration: 0 } : SPRING_SWAP}
+                  transition={{ duration: reduce ? 0 : 0.12 }}
                 >
                   <Plus className="size-4" />
                 </motion.span>
@@ -218,9 +229,9 @@ export function PromptInput({
             <MorphPopoverContent
               side="top"
               align="start"
-              sideOffset={8}
-              radius={12}
-              className="w-56 p-1.5"
+              sideOffset={4}
+              radius={8}
+              className="w-56 space-y-0.5 p-1"
             >
               {actions.map((action) => (
                 <button
@@ -231,7 +242,7 @@ export function PromptInput({
                     onAction?.(action.value);
                     setActionsOpen(false);
                   }}
-                  className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted focus-visible:bg-muted disabled:pointer-events-none disabled:opacity-50"
+                  className="flex w-full items-start gap-2 rounded-md px-2 py-1 min-h-7 text-left outline-none transition-colors hover:bg-muted focus-visible:bg-muted disabled:pointer-events-none disabled:opacity-50"
                 >
                   {action.icon ? (
                     <span className="mt-0.5 grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-4">
@@ -259,8 +270,8 @@ export function PromptInput({
             disabled={disabled || loading}
             className="min-w-0"
           >
-            <SelectTrigger className="h-8 w-auto max-w-52 rounded-xl border-0 bg-transparent px-2 py-0 text-ui-sm hover:bg-muted focus-visible:ring-2">
-              <span className="flex min-w-0 items-center gap-1.5">
+            <SelectTrigger className="min-h-8 w-auto max-w-52 rounded-lg border-0 bg-transparent px-2 py-0 text-ui-sm hover:bg-muted focus-visible:ring-2">
+              <span className="flex min-w-0 items-center gap-2">
                 {currentModel?.icon ? (
                   <span className="grid size-4 shrink-0 place-items-center text-muted-foreground [&_svg]:size-3.5">
                     {currentModel.icon}
@@ -271,13 +282,13 @@ export function PromptInput({
                 </span>
               </span>
             </SelectTrigger>
-            <SelectContent className="right-auto w-52 shadow-none">
+            <SelectContent className="right-auto w-52">
               {models.map((option) => (
                 <SelectItem
                   key={option.value}
                   value={option.value}
                   disabled={option.disabled}
-                  className="py-2"
+                  className="py-1"
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     {option.icon ? (
@@ -309,7 +320,7 @@ export function PromptInput({
                 : componentText("component.send-prompt")
             }
             onClick={loading ? onStop : undefined}
-            className={cn("size-8 rounded-full", !trailingAction && "ml-auto")}
+            className={cn("min-h-8 min-w-8 rounded-lg", !trailingAction && "ml-auto")}
           >
             <AnimatePresence initial={false} mode="popLayout">
               <motion.span
@@ -317,7 +328,7 @@ export function PromptInput({
                 initial={reduce ? { opacity: 1 } : { opacity: 0, y: 3, scale: 0.8 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3, scale: 0.8 }}
-                transition={reduce ? { duration: 0 } : SPRING_SWAP}
+                transition={{ duration: reduce ? 0 : 0.12 }}
                 className="grid place-items-center"
               >
                 {loading ? (

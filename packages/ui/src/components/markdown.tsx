@@ -25,7 +25,7 @@ export function Markdown({ text, streaming = false }: { text: string; streaming?
     }
     if (node.type === "inlineCode")
       return (
-        <code key={index} className="rounded bg-muted px-1 font-mono text-ui-sm">
+        <code key={index} className="rounded-sm bg-muted px-1 font-mono text-ui-sm">
           {node.value}
         </code>
       );
@@ -83,5 +83,5 @@ export function Markdown({ text, streaming = false }: { text: string; streaming?
       children,
     );
   };
-  return <div className="min-w-0 text-ui-base leading-6">{tree.children.map(render)}</div>;
+  return <div className="min-w-0 text-ui-base">{tree.children.map(render)}</div>;
 }

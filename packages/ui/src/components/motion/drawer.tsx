@@ -1,9 +1,10 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/motion/drawer
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, type ReactNode } from "react";
-import { EASE_OUT, SPRING_PANEL } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { PresenceGate } from "@/lib/presence-gate";
 import { cn } from "@/lib/utils";
 
@@ -49,7 +50,7 @@ export function Drawer({
     };
   }, [open, onOpenChange]);
 
-  const offscreen = side === "right" ? "100%" : "-100%";
+  const offscreen = side === "right" ? 4 : -4;
 
   // Two fixed siblings, no wrapper: the backdrop spans the viewport edges but
   // paints the scrim, and the panel is inset off one side and paints its own
@@ -69,10 +70,11 @@ export function Drawer({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.25, ease: EASE_OUT }}
+              transition={{ duration: reduce ? 0 : 0.16, ease: EASE_OUT }}
               {...gate}
               className={cn(
-                "fixed inset-0 z-50 h-full w-full cursor-default bg-overlay backdrop-blur-sm",
+                OVERLAY_LAYER.modal,
+                "fixed inset-0 h-full w-full cursor-default bg-foreground/20",
                 backdropClassName,
               )}
             />
@@ -86,13 +88,16 @@ export function Drawer({
               role="dialog"
               aria-modal="true"
               aria-label={ariaLabel}
-              initial={reduce ? { opacity: 0 } : { x: offscreen }}
-              animate={reduce ? { opacity: 1 } : { x: 0 }}
-              exit={reduce ? { opacity: 0 } : { x: offscreen }}
-              transition={reduce ? { duration: 0.2, ease: EASE_OUT } : SPRING_PANEL}
+              initial={reduce ? { opacity: 0 } : { x: offscreen, opacity: 0 }}
+              animate={reduce ? { opacity: 1 } : { x: 0, opacity: 1 }}
+              exit={reduce ? { opacity: 0 } : { x: offscreen, opacity: 0 }}
+              transition={
+                reduce ? { duration: 0, ease: EASE_OUT } : { duration: 0.16, ease: EASE_OUT }
+              }
               {...gate}
               className={cn(
-                "fixed inset-y-0 z-50 flex w-80 max-w-[85vw] flex-col bg-background shadow-2xl",
+                OVERLAY_LAYER.modal,
+                "fixed inset-y-0 flex w-80 max-w-[calc(100vw-32px)] flex-col overflow-y-auto bg-popover shadow-md",
                 side === "right"
                   ? "right-0 border-l border-border"
                   : "left-0 border-r border-border",

@@ -20,7 +20,7 @@ export function TooltipSurface({
   ref?: Ref<HTMLSpanElement>;
 }) {
   const reduce = useReducedMotion();
-  const closed = { opacity: 0, scale: reduce ? 1 : 0.94 };
+  const closed = { opacity: 0, scale: reduce ? 1 : 0.98 };
   return (
     <motion.span
       ref={ref}
@@ -28,12 +28,12 @@ export function TooltipSurface({
       initial={closed}
       animate={{
         ...(ready ? { opacity: 1, scale: 1 } : closed),
-        transition: { duration: 0.18, ease: EASE_OUT },
+        transition: { duration: reduce ? 0 : 0.16, ease: EASE_OUT },
       }}
-      exit={{ ...closed, transition: { duration: 0.12, ease: EASE_OUT } }}
+      exit={{ ...closed, transition: { duration: reduce ? 0 : 0.12, ease: EASE_OUT } }}
       style={{ transformOrigin: "var(--tooltip-origin, center)", ...style }}
       className={cn(
-        "block whitespace-nowrap rounded-lg border border-border bg-background px-2.5 py-1 text-ui-sm font-medium text-foreground shadow-lg",
+        "block break-words whitespace-normal rounded-lg border border-border bg-popover px-2 py-1 text-ui-sm font-normal text-popover-foreground shadow-md",
         className,
       )}
       {...props}

@@ -1,3 +1,5 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
+import { cn } from "@/lib/utils";
 import { useIsPresent } from "motion/react";
 import { useCallback, useState, type ReactNode } from "react";
 import { useTooltipPosition } from "./use-position";
@@ -20,7 +22,7 @@ export function TooltipPositioner({
       ref={position.floatingRef}
       inert={!present}
       aria-hidden={!present || undefined}
-      className="pointer-events-none fixed left-0 top-0 z-[9999] w-max"
+      className={cn(OVERLAY_LAYER.hint, "pointer-events-none fixed left-0 top-0 w-max")}
       style={{ visibility: "hidden", maxWidth: "calc(100vw - 16px)" }}
     >
       {children(ready, present)}

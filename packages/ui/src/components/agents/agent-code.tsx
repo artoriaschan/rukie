@@ -105,7 +105,7 @@ export function AgentCode({
     <pre
       data-highlight={canHighlight(code) ? "eligible" : "skipped"}
       className={cn(
-        "m-0 overflow-x-auto whitespace-pre font-mono text-ui-sm leading-5 text-foreground/85",
+        "m-0 overflow-x-auto whitespace-pre font-mono text-code leading-5 text-foreground",
         className,
       )}
     >

@@ -46,10 +46,10 @@ export interface LoaderProps {
   className?: string;
 }
 
-// Reduced motion keeps a calm opacity pulse and drops every transform.
+// Reduced motion preserves a static glyph, including after the preference changes.
 const REDUCED = {
-  animate: { opacity: [1, 0.4, 1] },
-  transition: { duration: 1.4, ease: EASE_IN_OUT, repeat: Infinity },
+  animate: { opacity: 1, rotate: 0 },
+  transition: { duration: 0 },
 };
 
 export function Loader({
@@ -139,14 +139,18 @@ function Dots({ size, speed, reduce }: PartProps) {
           className="rounded-full bg-current"
           style={{ width: dot, height: dot }}
           animate={
-            reduce ? { opacity: [0.4, 1, 0.4] } : { y: [0, -size * 0.3, 0], opacity: [0.5, 1, 0.5] }
+            reduce ? { opacity: 1, y: 0 } : { y: [0, -size * 0.3, 0], opacity: [0.5, 1, 0.5] }
           }
-          transition={{
-            duration: speed,
-            ease: EASE_IN_OUT,
-            repeat: Infinity,
-            delay: i * speed * 0.16,
-          }}
+          transition={
+            reduce
+              ? REDUCED.transition
+              : {
+                  duration: speed,
+                  ease: EASE_IN_OUT,
+                  repeat: Infinity,
+                  delay: i * speed * 0.16,
+                }
+          }
         />
       ))}
     </span>
@@ -156,16 +160,15 @@ function Dots({ size, speed, reduce }: PartProps) {
 function Ascii({ frames, size, speed, reduce }: PartProps & { frames: string[] }) {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
-    // Reduced motion slows the cycle rather than stopping it — it's a glyph
-    // swap, not on-screen movement.
-    const step = ((reduce ? speed * 2.5 : speed) / frames.length) * 1000;
+    if (reduce) return;
+    const step = (speed / frames.length) * 1000;
     const id = setInterval(() => setFrame((f) => (f + 1) % frames.length), step);
     return () => clearInterval(id);
   }, [frames.length, speed, reduce]);
 
   return (
     <span className="font-mono leading-none tabular-nums text-ui-loader" style={loaderFont(size)}>
-      {frames[frame % frames.length]}
+      {frames[reduce ? 0 : frame % frames.length]}
     </span>
   );
 }
@@ -220,20 +223,20 @@ function Morph({ size, speed, reduce }: PartProps) {
       height={size}
       viewBox="0 0 100 100"
       role="img"
-      animate={reduce ? { opacity: [1, 0.4, 1] } : { rotate: MORPH_ROT, scale: MORPH_SCALE }}
+      animate={
+        reduce ? { opacity: 1, rotate: 0, scale: 1 } : { rotate: MORPH_ROT, scale: MORPH_SCALE }
+      }
       transition={
-        reduce
-          ? { duration: 1.4, ease: EASE_IN_OUT, repeat: Infinity }
-          : { duration: speed * 5, ease: EASE_IN_OUT, repeat: Infinity }
+        reduce ? REDUCED.transition : { duration: speed * 5, ease: EASE_IN_OUT, repeat: Infinity }
       }
     >
       <title>{componentText("component.loading")}</title>
       <motion.path
         fill="currentColor"
         d={MORPH_PATHS[0]}
-        animate={reduce ? undefined : { d: MORPH_SEQ }}
+        animate={reduce ? { d: MORPH_PATHS[0] } : { d: MORPH_SEQ }}
         transition={
-          reduce ? undefined : { duration: speed * 5, ease: EASE_IN_OUT, repeat: Infinity }
+          reduce ? REDUCED.transition : { duration: speed * 5, ease: EASE_IN_OUT, repeat: Infinity }
         }
       />
     </motion.svg>
@@ -313,7 +316,7 @@ function Scramble({ size, speed, reduce }: PartProps) {
       className="font-mono font-medium tracking-[0.2em] tabular-nums text-ui-loader"
       style={loaderFont(size * 0.42)}
     >
-      {text}
+      {reduce ? target : text}
     </span>
   );
 }
@@ -335,15 +338,23 @@ function Metaballs({ size, speed, reduce }: PartProps) {
         <motion.circle
           cy="50"
           r="15"
-          animate={reduce ? { opacity: [0.4, 1, 0.4] } : { cx: [30, 70, 30] }}
-          transition={{ duration: speed * 1.6, ease: EASE_IN_OUT, repeat: Infinity }}
+          animate={reduce ? { cx: 40 } : { cx: [30, 70, 30] }}
+          transition={
+            reduce
+              ? REDUCED.transition
+              : { duration: speed * 1.6, ease: EASE_IN_OUT, repeat: Infinity }
+          }
           cx={reduce ? 40 : 30}
         />
         <motion.circle
           cy="50"
           r="15"
-          animate={reduce ? { opacity: [0.4, 1, 0.4] } : { cx: [70, 30, 70] }}
-          transition={{ duration: speed * 1.6, ease: EASE_IN_OUT, repeat: Infinity }}
+          animate={reduce ? { cx: 60 } : { cx: [70, 30, 70] }}
+          transition={
+            reduce
+              ? REDUCED.transition
+              : { duration: speed * 1.6, ease: EASE_IN_OUT, repeat: Infinity }
+          }
           cx={reduce ? 60 : 70}
         />
       </g>
@@ -373,16 +384,18 @@ function Newton({ size, speed, reduce }: PartProps) {
             key={i}
             className="rounded-full bg-current"
             style={{ width: d, height: d }}
-            animate={reduce || !move ? undefined : { x: move.x }}
+            animate={reduce ? { x: 0 } : !move ? undefined : { x: move.x }}
             transition={
-              reduce || !move
-                ? undefined
-                : {
-                    duration: speed * 1.5,
-                    ease: EASE_IN_OUT,
-                    repeat: Infinity,
-                    times: move.times,
-                  }
+              reduce
+                ? REDUCED.transition
+                : !move
+                  ? undefined
+                  : {
+                      duration: speed * 1.5,
+                      ease: EASE_IN_OUT,
+                      repeat: Infinity,
+                      times: move.times,
+                    }
             }
           />
         );
@@ -407,38 +420,46 @@ function Helix({ size, speed, reduce }: PartProps) {
               style={{ width: dot, height: dot, left: size / 2 - dot / 2, top }}
               animate={
                 reduce
-                  ? { opacity: [0.4, 1, 0.4] }
+                  ? { x: amp * 0.6, opacity: 1, scale: 1 }
                   : {
                       x: [amp, -amp, amp],
                       scale: [1, 0.5, 1],
                       opacity: [1, 0.45, 1],
                     }
               }
-              transition={{
-                duration: speed,
-                ease: EASE_IN_OUT,
-                repeat: Infinity,
-                delay,
-              }}
+              transition={
+                reduce
+                  ? REDUCED.transition
+                  : {
+                      duration: speed,
+                      ease: EASE_IN_OUT,
+                      repeat: Infinity,
+                      delay,
+                    }
+              }
             />
             <motion.span
               className="absolute rounded-full bg-current"
               style={{ width: dot, height: dot, left: size / 2 - dot / 2, top }}
               animate={
                 reduce
-                  ? { opacity: [0.4, 1, 0.4] }
+                  ? { x: -amp * 0.6, opacity: 1, scale: 1 }
                   : {
                       x: [-amp, amp, -amp],
                       scale: [0.5, 1, 0.5],
                       opacity: [0.45, 1, 0.45],
                     }
               }
-              transition={{
-                duration: speed,
-                ease: EASE_IN_OUT,
-                repeat: Infinity,
-                delay,
-              }}
+              transition={
+                reduce
+                  ? REDUCED.transition
+                  : {
+                      duration: speed,
+                      ease: EASE_IN_OUT,
+                      repeat: Infinity,
+                      delay,
+                    }
+              }
             />
           </span>
         );
@@ -448,9 +469,11 @@ function Helix({ size, speed, reduce }: PartProps) {
 }
 
 function Percent({ size, speed, reduce }: PartProps) {
+  const componentText = useComponentText();
   const [p, setP] = useState(0);
   useEffect(() => {
-    const dur = (reduce ? speed * 2 : speed) * 1000;
+    if (reduce) return;
+    const dur = speed * 1000;
     const start = { t: 0 };
     const tickMs = 40;
     const id = setInterval(() => {
@@ -461,6 +484,10 @@ function Percent({ size, speed, reduce }: PartProps) {
     }, tickMs);
     return () => clearInterval(id);
   }, [speed, reduce]);
+
+  if (reduce) {
+    return <span className="text-ui-caption">{componentText("component.loading")}</span>;
+  }
 
   return (
     <span className="flex flex-col items-center" style={{ gap: size * 0.14, width: size * 1.4 }}>
@@ -489,13 +516,17 @@ function Bars({ size, speed, reduce }: PartProps) {
           key={i}
           className="rounded-full bg-current"
           style={{ width: bar, height: size, originY: 1 }}
-          animate={reduce ? { opacity: [0.4, 1, 0.4] } : { scaleY: [0.3, 1, 0.3] }}
-          transition={{
-            duration: speed,
-            ease: EASE_IN_OUT,
-            repeat: Infinity,
-            delay: i * speed * 0.12,
-          }}
+          animate={reduce ? { opacity: 1, scaleY: 1 } : { scaleY: [0.3, 1, 0.3] }}
+          transition={
+            reduce
+              ? REDUCED.transition
+              : {
+                  duration: speed,
+                  ease: EASE_IN_OUT,
+                  repeat: Infinity,
+                  delay: i * speed * 0.12,
+                }
+          }
         />
       ))}
     </span>
@@ -526,14 +557,18 @@ function DotMatrix({ size, speed, reduce }: PartProps) {
             className="rounded-full bg-current"
             style={{ width: dot, height: dot }}
             animate={
-              reduce ? { opacity: [0.3, 1, 0.3] } : { opacity: [0.2, 1, 0.2], scale: [0.7, 1, 0.7] }
+              reduce ? { opacity: 1, scale: 1 } : { opacity: [0.2, 1, 0.2], scale: [0.7, 1, 0.7] }
             }
-            transition={{
-              duration: speed,
-              ease: EASE_IN_OUT,
-              repeat: Infinity,
-              delay,
-            }}
+            transition={
+              reduce
+                ? REDUCED.transition
+                : {
+                    duration: speed,
+                    ease: EASE_IN_OUT,
+                    repeat: Infinity,
+                    delay,
+                  }
+            }
           />
         );
       })}
@@ -557,13 +592,17 @@ function Dither({ size, speed, reduce }: PartProps) {
           key={idx}
           className="bg-current"
           style={{ width: cell, height: cell }}
-          animate={reduce ? { opacity: [0.3, 1, 0.3] } : { opacity: [0.1, 1, 0.1] }}
-          transition={{
-            duration: speed,
-            ease: EASE_IN_OUT,
-            repeat: Infinity,
-            delay: (order / BAYER_4.length) * speed,
-          }}
+          animate={reduce ? { opacity: 1 } : { opacity: [0.1, 1, 0.1] }}
+          transition={
+            reduce
+              ? REDUCED.transition
+              : {
+                  duration: speed,
+                  ease: EASE_IN_OUT,
+                  repeat: Infinity,
+                  delay: (order / BAYER_4.length) * speed,
+                }
+          }
         />
       ))}
     </span>

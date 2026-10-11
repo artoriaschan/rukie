@@ -4,7 +4,7 @@ import { BookOpenText, ChevronDown, ExternalLink, Globe2 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useCallback, useId, useState } from "react";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
-import { EASE_OUT, SPRING_LAYOUT, SPRING_SWAP } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { useFavicon } from "@/lib/hooks/use-favicon";
 import { cn } from "@/lib/utils";
 
@@ -118,16 +118,16 @@ function CitationRow({
     <>
       <CitationFavicon url={citation.url} />
       <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="truncate text-ui-base font-medium text-foreground/80 transition-colors group-hover/citation:text-foreground">
+        <span className="truncate text-ui-base font-medium text-foreground transition-colors group-hover/citation:text-foreground">
           {citation.title}
         </span>
         {citation.domain ? (
-          <span className="min-w-0 truncate text-ui-sm text-muted-foreground/60">
+          <span className="min-w-0 truncate text-ui-sm text-muted-foreground">
             {citation.domain}
           </span>
         ) : null}
       </span>
-      <span className="flex shrink-0 items-center gap-1.5">
+      <span className="flex shrink-0 items-center gap-2">
         <span className="grid size-5 place-items-center rounded-md bg-foreground/[0.05] text-ui-xs font-semibold tabular-nums text-muted-foreground">
           {index}
         </span>
@@ -138,7 +138,7 @@ function CitationRow({
     </>
   );
   const className =
-    "group/citation flex items-center gap-2 rounded-md px-1.5 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "group/citation flex items-center gap-2 rounded-md px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring";
   const id = citationTargetId(idPrefix, citation.id);
 
   return citation.url ? (
@@ -162,9 +162,9 @@ export function CitationList({ citations, idPrefix, className }: CitationListPro
       <AnimatePresence mode="popLayout">
         {citations.map((citation, index) => (
           <motion.div
-            layout="position"
+            layout={false}
             key={citation.id}
-            initial={reduce ? { opacity: 1 } : { opacity: 0, y: 6 }}
+            initial={reduce ? { opacity: 1 } : { opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3 }}
             transition={
@@ -172,8 +172,8 @@ export function CitationList({ citations, idPrefix, className }: CitationListPro
                 ? { duration: 0 }
                 : {
                     opacity: { duration: 0.18, ease: EASE_OUT },
-                    y: SPRING_LAYOUT,
-                    layout: SPRING_LAYOUT,
+                    y: { duration: 0.16, ease: EASE_OUT },
+                    layout: { duration: 0.16, ease: EASE_OUT },
                   }
             }
           >
@@ -218,18 +218,18 @@ export function Citations({
         aria-expanded={currentOpen}
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
-        className="group -ml-1 flex min-h-8 items-center gap-2 rounded-lg px-1 text-left text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="group -ml-1 flex min-h-7 items-center gap-2 rounded-lg px-1 text-left text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         <BookOpenText className="size-4" />
         <span className="font-medium">{title}</span>
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-ui-xs font-semibold tabular-nums">
+        <span className="rounded-md bg-muted px-2 py-0.5 text-ui-xs font-semibold tabular-nums">
           {citations.length}
         </span>
         <motion.span
           aria-hidden="true"
           animate={{ rotate: currentOpen ? 180 : 0 }}
-          transition={reduce ? { duration: 0 } : SPRING_SWAP}
-          className="text-muted-foreground/60"
+          transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
+          className="text-muted-foreground"
         >
           <ChevronDown className="size-3.5" />
         </motion.span>

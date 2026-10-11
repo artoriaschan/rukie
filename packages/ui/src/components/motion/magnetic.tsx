@@ -10,12 +10,12 @@ export interface MagneticProps {
   className?: string;
 }
 
-export function Magnetic({ children, strength = 0.35, className }: MagneticProps) {
+export function Magnetic({ children, strength = 0, className }: MagneticProps) {
   const ref = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
   const canHover = useHoverCapable();
   // Decorative cursor-follow: skip on touch (phantom hover) and reduced motion.
-  const enabled = !reduce && canHover;
+  const enabled = strength !== 0 && !reduce && canHover;
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const sx = useSpring(x, SPRING_MOUSE);
@@ -39,7 +39,7 @@ export function Magnetic({ children, strength = 0.35, className }: MagneticProps
       ref={ref}
       onMouseMove={onMove}
       onMouseLeave={onLeave}
-      style={{ x: sx, y: sy }}
+      style={{ x: enabled ? sx : 0, y: enabled ? sy : 0 }}
       className={cn("inline-block", className)}
     >
       {children}

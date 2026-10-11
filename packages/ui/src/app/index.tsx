@@ -432,7 +432,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         </Menu.DropdownMenu>
       ) : null}
       {!connected ? (
-        <div role="status" className="rounded-lg border border-border bg-card p-3">
+        <div role="status" className="rounded-xl border border-border bg-card px-4 py-3">
           <div className="flex items-center gap-2">
             {state.connection === "reconnecting" ? (
               <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
@@ -460,7 +460,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         (view.busy ? (
           <div
             role="status"
-            className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3"
+            className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-4 py-3"
           >
             <p>{t("app.busy")}</p>
             <Button
@@ -768,11 +768,13 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               closePath();
             });
           }}
-          className="flex flex-col gap-4"
+          className="flex min-h-0 flex-col gap-3"
         >
-          <h2 className="text-ui-lg font-medium">{t("app.add-project")}</h2>
-          <Input autoFocus label={t("app.project-path")} value={path} onChange={setPath} />
-          <div className="flex justify-end gap-2">
+          <h2 className="shrink-0 text-ui-base font-medium">{t("app.add-project")}</h2>
+          <div className="min-h-0 overflow-y-auto">
+            <Input autoFocus label={t("app.project-path")} value={path} onChange={setPath} />
+          </div>
+          <div className="flex shrink-0 flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={closePath}>
               {t("app.cancel")}
             </Button>

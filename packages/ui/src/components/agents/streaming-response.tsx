@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { type CitationItem, CitationList, CitationStack } from "@/components/agents/citations";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
-import { EASE_OUT, SPRING_PRESS, SPRING_SWAP } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 export type StreamingResponseStatus = "streaming" | "complete" | "error";
@@ -52,8 +52,6 @@ function ResponseAction({
 }) {
   const componentText = useComponentText();
 
-  const reduce = useReducedMotion() ?? false;
-
   return (
     <motion.button
       type="button"
@@ -66,8 +64,7 @@ function ResponseAction({
           : undefined
       }
       onClick={onClick}
-      whileTap={reduce ? undefined : { scale: 0.9 }}
-      transition={SPRING_PRESS}
+      transition={{ duration: 0.16, ease: EASE_OUT }}
       className={cn(
         "grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
         active && "bg-muted text-foreground",
@@ -153,7 +150,7 @@ export function StreamingResponse({
       <div
         aria-live={announce ? "polite" : "off"}
         className={cn(
-          "text-ui-base leading-6 text-foreground/90 [&_a]:font-medium [&_a]:underline [&_a]:underline-offset-4 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-ui-sm [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_p+p]:mt-3 [&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-border [&_pre]:bg-muted/45 [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5",
+          "text-ui-base text-foreground [&_a]:font-medium [&_a]:underline [&_a]:underline-offset-4 [&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-ui-sm [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_p+p]:mt-3 [&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-border [&_pre]:bg-muted/45 [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5",
           contentClassName,
         )}
       >
@@ -166,7 +163,7 @@ export function StreamingResponse({
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: reduce ? 0.12 : 0.22, ease: EASE_OUT }}
+            transition={{ duration: reduce ? 0 : 0.16, ease: EASE_OUT }}
             className="mt-3"
           >
             <div className={cn("flex items-center gap-0.5", actionsClassName)}>
@@ -211,7 +208,7 @@ export function StreamingResponse({
                   aria-expanded={currentSourcesOpen}
                   aria-controls={sourcesContentId}
                   onClick={() => setSourcesOpen(!currentSourcesOpen)}
-                  className="group ml-1 inline-flex min-h-7 items-center gap-2 rounded-md px-1.5 text-ui-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  className="group ml-1 inline-flex min-h-7 items-center gap-2 rounded-md px-2 text-ui-base text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <CitationStack citations={sources} />
                   <span className="tabular-nums">
@@ -223,7 +220,7 @@ export function StreamingResponse({
                   <motion.span
                     aria-hidden="true"
                     animate={{ rotate: currentSourcesOpen ? 180 : 0 }}
-                    transition={reduce ? { duration: 0 } : SPRING_SWAP}
+                    transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
                     className="text-muted-foreground/50 group-hover:text-muted-foreground"
                   >
                     <ChevronDown className="size-3" />

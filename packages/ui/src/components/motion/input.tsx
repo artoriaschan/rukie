@@ -1,13 +1,5 @@
-import { AnimatePresence, animate, motion, useReducedMotion } from "motion/react";
-import {
-  forwardRef,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type InputHTMLAttributes,
-  type ReactNode,
-} from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { forwardRef, useId, useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export type InputClassNames = {
@@ -29,7 +21,7 @@ export interface InputProps extends Omit<
   value?: string;
   defaultValue?: string;
   onChange?: (value: string) => void;
-  /** Truthy error triggers a shake, red border and (if a string) a message. */
+  /** Truthy error shows a semantic border and (if a string) a message. */
   error?: string | boolean;
   /** Reserve one message line so validation does not shift nearby content. */
   reserveErrorLine?: boolean;
@@ -72,19 +64,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 
   const [focused, setFocused] = useState(false);
 
-  const fieldRef = useRef<HTMLDivElement>(null);
-
   const hasError = Boolean(error);
   const errorMessage = typeof error === "string" ? error : null;
 
   // Right edge shows the success check, otherwise the caller's right icon.
   const rightSlot = success ? null : rightIcon;
-
-  // Shake the field when an error appears.
-  useEffect(() => {
-    if (!fieldRef.current || reduce || !hasError) return;
-    animate(fieldRef.current, { x: [0, -6, 6, -4, 4, -2, 0] }, { duration: 0.45 });
-  }, [hasError, reduce]);
 
   const handleChange = (next: string) => {
     if (!controlled) setInternal(next);
@@ -92,7 +76,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   };
 
   return (
-    <div className={cn("flex flex-col gap-1.5", className, classNames?.root)}>
+    <div className={cn("flex flex-col gap-1", className, classNames?.root)}>
       {label ? (
         <label
           htmlFor={id}
@@ -103,12 +87,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       ) : null}
 
       <div
-        ref={fieldRef}
         data-state={hasError ? "error" : success ? "success" : focused ? "focused" : "idle"}
         className={cn(
-          "relative h-11 overflow-hidden rounded-full border transition-colors duration-200",
-          "border-border",
-          focused && !hasError && "border-foreground/40 ring-2 ring-ring/40",
+          "relative flex min-h-8 items-center rounded-lg border transition-colors duration-120",
+          "border-input",
+          focused && !hasError && "border-ring ring-2 ring-ring/40",
           hasError && "border-destructive ring-2 ring-destructive/25",
           disabled && "opacity-60",
           classNames?.field,
@@ -144,10 +127,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             onBlur?.(event);
           }}
           className={cn(
-            "peer h-full w-full bg-transparent text-ui-lg leading-6 text-foreground caret-foreground outline-none",
-            "placeholder:text-muted-foreground/60",
-            leftIcon ? "pl-10" : "pl-3.5",
-            rightSlot || success ? "pr-10" : "pr-3.5",
+            "peer min-h-7 w-full bg-transparent py-1 text-ui-base text-foreground caret-foreground outline-none",
+            "placeholder:text-muted-foreground",
+            leftIcon ? "pl-10" : "pl-3",
+            rightSlot || success ? "pr-10" : "pr-3",
             disabled && "cursor-not-allowed",
             classNames?.input,
           )}
@@ -158,7 +141,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             viewBox="0 0 24 24"
             fill="none"
             className={cn(
-              "absolute right-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-(--color-success)",
+              "absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--color-success)",
               classNames?.successIcon,
             )}
           >
@@ -170,13 +153,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
               strokeLinejoin="round"
               initial={reduce ? { pathLength: 1 } : { pathLength: 0 }}
               animate={{ pathLength: 1 }}
-              transition={{ duration: 0.35, ease: "easeOut" }}
+              transition={{ duration: reduce ? 0 : 0.12, ease: "easeOut" }}
             />
           </motion.svg>
         ) : rightSlot ? (
           <span
             className={cn(
-              "absolute right-0 top-0 flex h-full items-center text-muted-foreground [&_button]:grid [&_button]:size-11 [&_button]:place-items-center [&_svg]:h-4 [&_svg]:w-4",
+              "absolute right-0 top-0 flex h-full items-center text-muted-foreground [&_button]:grid [&_button]:size-8 [&_button]:place-items-center [&_svg]:h-4 [&_svg]:w-4",
               classNames?.rightIcon,
             )}
           >
@@ -191,10 +174,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             <motion.p
               id={`${id}-error`}
               role="alert"
-              initial={reduce ? { opacity: 0 } : { opacity: 0, y: -4, filter: "blur(4px)" }}
-              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4, filter: "blur(4px)" }}
-              transition={{ duration: 0.2 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
               className={cn("px-1 text-ui-sm text-destructive", classNames?.errorMessage)}
             >
               {errorMessage}

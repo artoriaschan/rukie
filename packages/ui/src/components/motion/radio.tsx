@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { SPRING_LAYOUT, SPRING_PRESS } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 type RadioCtx = {
@@ -62,12 +62,12 @@ export function RadioGroup({
   );
 
   return (
-    <MotionConfig transition={reduce ? { duration: 0 } : SPRING_LAYOUT}>
+    <MotionConfig transition={reduce ? { duration: 0 } : { duration: 0.12, ease: EASE_OUT }}>
       <RadioCtx.Provider value={contextValue}>
         <div
           role="radiogroup"
           className={cn(
-            "flex gap-3",
+            "flex gap-2",
             orientation === "vertical" ? "flex-col" : "flex-row flex-wrap",
             className,
           )}
@@ -104,7 +104,7 @@ export function RadioGroupItem({
     <label
       htmlFor={id}
       className={cn(
-        "inline-flex items-center gap-3",
+        "inline-flex items-center gap-2",
         disabled ? "cursor-not-allowed" : "cursor-pointer",
         className,
       )}
@@ -116,11 +116,10 @@ export function RadioGroupItem({
         aria-checked={selected}
         disabled={disabled}
         onClick={() => !disabled && setValue(value)}
-        whileTap={reduce || disabled ? undefined : { scale: 0.92 }}
-        transition={SPRING_PRESS}
+        transition={{ duration: reduce ? 0 : 0.12, ease: EASE_OUT }}
         data-state={selected ? "checked" : "unchecked"}
         className={cn(
-          "relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 outline-none transition-colors duration-200",
+          "relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border outline-none transition-colors duration-120",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           "disabled:cursor-not-allowed disabled:opacity-60",
           selected ? "border-primary" : "border-muted-foreground/50 hover:border-muted-foreground",
@@ -130,7 +129,7 @@ export function RadioGroupItem({
           <motion.span
             layoutId={layoutId}
             className="absolute inset-1 rounded-full bg-primary"
-            transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+            transition={reduce ? { duration: 0 } : { duration: 0.12, ease: EASE_OUT }}
           />
         ) : null}
       </motion.button>

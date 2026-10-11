@@ -18,7 +18,7 @@ import {
   type AgentCodeToken,
 } from "@/components/agents/agent-code";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
-import { SPRING_PRESS, SPRING_SWAP } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 export type FileDiffStatus = "streaming" | "complete";
@@ -153,17 +153,17 @@ export function FileDiff({
         aria-expanded={currentOpen}
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
-        className="group flex min-h-9 w-full items-center gap-2 rounded-md py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="group flex min-h-7 w-full items-center gap-2 rounded-md py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <FileCode2 aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate font-mono text-ui-sm text-foreground/80">
+        <span className="min-w-0 flex-1 truncate font-mono text-ui-base text-foreground">
           {file}
         </span>
         <span className="flex shrink-0 items-center gap-2">
           <ChangeCount value={additions} type="added" />
           <ChangeCount value={deletions} type="removed" />
         </span>
-        <span className="grid size-4 shrink-0 place-items-center text-muted-foreground/60">
+        <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
           {streaming ? (
             <LoaderCircle
               aria-label={componentText("component.applying-changes")}
@@ -176,7 +176,7 @@ export function FileDiff({
         <motion.span
           aria-hidden="true"
           animate={{ rotate: currentOpen ? 180 : 0 }}
-          transition={reduce ? { duration: 0 } : SPRING_SWAP}
+          transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
           className="shrink-0 text-muted-foreground/45 transition-colors group-hover:text-muted-foreground"
         >
           <ChevronDown className="size-3.5" />
@@ -184,15 +184,15 @@ export function FileDiff({
       </button>
 
       <AgentDisclosure id={contentId} role="region" aria-labelledby={triggerId} open={currentOpen}>
-        <div className="pl-6 pt-1.5">
-          <div className="overflow-hidden rounded-xl bg-muted/80">
+        <div className="pl-4 pt-1">
+          <div className="overflow-hidden rounded-lg bg-muted/80">
             <div
               ref={viewportRef}
               data-slot="file-diff-viewport"
               className="scrollbar-hide overflow-auto"
               style={{ maxHeight }}
             >
-              <div className="font-mono text-ui-sm leading-5">
+              <div className="font-mono text-code leading-5">
                 <span className="sr-only">{componentText("component.file-changes")}</span>
                 {lines.map((line) => {
                   const type = line.type ?? "context";
@@ -223,7 +223,7 @@ export function FileDiff({
                       <AgentCodeLine
                         code={line.content}
                         tokens={line.tokens}
-                        className="min-w-0 whitespace-pre px-1.5"
+                        className="min-w-0 whitespace-pre px-2"
                       />
                     </div>
                   );
@@ -232,7 +232,7 @@ export function FileDiff({
             </div>
 
             {canCopy ? (
-              <div className="flex justify-end px-2 pb-1.5 pt-1">
+              <div className="flex justify-end px-2 pb-1 pt-1">
                 <motion.button
                   type="button"
                   aria-label={
@@ -246,8 +246,7 @@ export function FileDiff({
                       : componentText("component.copy-diff")
                   }
                   onClick={handleCopy}
-                  whileTap={reduce ? undefined : { scale: 0.9 }}
-                  transition={SPRING_PRESS}
+                  transition={{ duration: 0.16, ease: EASE_OUT }}
                   className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}

@@ -7,8 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { EASE_OUT, SPRING_PRESS } from "@/lib/ease";
-import { useHoverCapable } from "@/lib/hooks/use-hover-capable";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "outline";
@@ -40,17 +39,17 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-ui-sm gap-1.5 rounded-full",
-  md: "h-10 px-5 text-ui-base gap-2 rounded-full",
-  lg: "h-12 px-6 text-ui-lg gap-2 rounded-full",
-  icon: "h-8 w-8 rounded-lg",
+  sm: "min-h-7 px-2 py-1 text-ui-base gap-1 rounded-lg",
+  md: "min-h-8 px-3 py-1 text-ui-base gap-2 rounded-lg",
+  lg: "min-h-9 px-4 py-2 text-ui-base gap-2 rounded-lg",
+  icon: "min-h-8 min-w-8 p-1 text-ui-base rounded-lg",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
     variant = "primary",
     size = "md",
-    pressScale = 0.93,
+    pressScale = 1,
     ripple = false,
     className,
     children,
@@ -60,7 +59,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   ref,
 ) {
   const reduce = useReducedMotion();
-  const canHover = useHoverCapable();
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const nextId = useRef(0);
 
@@ -89,14 +87,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <motion.button
       ref={ref}
       type="button"
-      whileTap={reduce ? undefined : { scale: pressScale }}
-      whileHover={reduce || !canHover ? undefined : { scale: 1.02 }}
-      transition={SPRING_PRESS}
+      whileTap={reduce || pressScale === 1 ? undefined : { scale: pressScale }}
+      transition={{ duration: reduce ? 0 : 0.12, ease: EASE_OUT }}
       onPointerDown={handlePointerDown}
       className={cn(
-        "inline-flex items-center justify-center font-medium select-none",
-        "transition-colors",
-        "disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center font-normal select-none",
+        "transition-colors duration-120",
+        "disabled:pointer-events-none disabled:bg-muted disabled:text-muted-foreground",
         ripple && "relative overflow-hidden",
         VARIANT_CLASS[variant],
         SIZE_CLASS[size],
@@ -122,7 +119,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
                 initial={{ scale: 0.05, opacity: 0.3 }}
                 animate={{ scale: 1, opacity: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 1.6, ease: EASE_OUT }}
+                transition={{ duration: 0.12, ease: EASE_OUT }}
                 onAnimationComplete={() => setRipples((prev) => prev.filter((x) => x.id !== r.id))}
               />
             ))}
@@ -135,21 +132,19 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 });
 
 export const ButtonLink = forwardRef<HTMLAnchorElement, ButtonLinkProps>(function ButtonLink(
-  { variant = "primary", size = "md", pressScale = 0.93, className, children, ...rest },
+  { variant = "primary", size = "md", pressScale = 1, className, children, ...rest },
   ref,
 ) {
   const reduce = useReducedMotion();
-  const canHover = useHoverCapable();
 
   return (
     <motion.a
       ref={ref}
-      whileTap={reduce ? undefined : { scale: pressScale }}
-      whileHover={reduce || !canHover ? undefined : { scale: 1.02 }}
-      transition={SPRING_PRESS}
+      whileTap={reduce || pressScale === 1 ? undefined : { scale: pressScale }}
+      transition={{ duration: reduce ? 0 : 0.12, ease: EASE_OUT }}
       className={cn(
-        "inline-flex items-center justify-center font-medium select-none",
-        "transition-colors",
+        "inline-flex items-center justify-center font-normal select-none",
+        "transition-colors duration-120",
         VARIANT_CLASS[variant],
         SIZE_CLASS[size],
         className,

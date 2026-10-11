@@ -36,7 +36,7 @@ export function AgentDisclosure({
       }
       transition={
         transition ?? {
-          duration: reduce ? 0 : open ? 0.22 : 0.14,
+          duration: reduce ? 0 : open ? 0.16 : 0.12,
           ease: EASE_OUT,
         }
       }

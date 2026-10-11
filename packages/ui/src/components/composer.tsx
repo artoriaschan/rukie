@@ -98,7 +98,7 @@ export function Composer(props: ComposerProps) {
           {props.images.map((image, index) => (
             <div
               key={`${image.name}-${index}`}
-              className="flex items-center gap-1 rounded-lg border border-border bg-card p-1"
+              className="flex items-center gap-1 rounded-xl border border-border bg-card p-1"
             >
               <img
                 src={`data:${image.mimeType};base64,${image.data}`}
@@ -198,7 +198,7 @@ export function Composer(props: ComposerProps) {
                     <Menu.DropdownMenuRadioItem
                       key={mode}
                       value={mode}
-                      className={cn("items-start py-2", mode === "full-access" && "text-warning")}
+                      className={cn("items-start py-1", mode === "full-access" && "text-warning")}
                     >
                       <span>
                         <span className="block font-medium">{t(`app.${mode}`)}</span>
@@ -325,12 +325,12 @@ export function Composer(props: ComposerProps) {
               <Menu.DropdownMenuContent
                 side="top"
                 align="end"
-                className="flex max-w-[calc(100vw-16px)] flex-wrap gap-2 p-2"
+                className="flex max-w-[calc(100vw-32px)] flex-wrap gap-2 p-1"
               >
                 {detail ? (
                   <section
                     aria-label={detail.name}
-                    className="w-48 rounded-lg bg-card p-3 text-ui-sm"
+                    className="w-48 rounded-md bg-muted p-3 text-ui-sm"
                   >
                     <h3 className="mb-2 text-ui-base font-medium">{detail.name}</h3>
                     <p>

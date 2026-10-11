@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import {
   AnimatePresence,
   animate,
@@ -23,7 +24,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { usePopoverPortalPosition } from "@/components/motion/popover-position";
-import { EASE_OUT, SPRING_PANEL } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 type Side = "top" | "bottom";
@@ -207,9 +208,8 @@ function clipAt(side: Side, align: Align, radius: number, inset: number) {
   return `inset(${top} ${right} ${bottom} ${left} round ${radius}px)`;
 }
 
-// Preserve the original spring character on the wrapper, but tween the complex
-// clip-path so it cannot snap when the spring resolves its final distance.
-const MORPH_CLIP_TRANSITION = { duration: 0.32, ease: EASE_OUT } as const;
+// A short tween keeps the surface and clip synchronized without overshoot.
+const MORPH_CLIP_TRANSITION = { duration: 0.16, ease: EASE_OUT } as const;
 
 export interface MorphPopoverContentProps {
   children: ReactNode;
@@ -217,7 +217,7 @@ export interface MorphPopoverContentProps {
   align?: Align;
   /** Gap between trigger and panel, in px. Default 8. */
   sideOffset?: number;
-  /** Panel corner radius, in px. Default 16. */
+  /** Panel corner radius, in px. Default 12. */
   radius?: number;
   /** Draw the surface shadow. Default true. */
   shadow?: boolean;
@@ -243,8 +243,8 @@ function MorphPopoverSurface({
   children,
   side = "bottom",
   align = "end",
-  sideOffset = 8,
-  radius = 16,
+  sideOffset = 4,
+  radius = 12,
   shadow = true,
   onOpenAutoFocus,
   className,
@@ -292,14 +292,14 @@ function MorphPopoverSurface({
   const wrap = reduce
     ? undefined
     : {
-        hidden: { scale: 0.96, transition: SPRING_PANEL },
-        show: { scale: 1, transition: SPRING_PANEL },
+        hidden: { scale: 0.98, transition: { duration: 0.16, ease: EASE_OUT } },
+        show: { scale: 1, transition: { duration: 0.16, ease: EASE_OUT } },
       };
   const clip = reduce
     ? undefined
     : {
         hidden: {
-          clipPath: clipAt(resolvedSide, align, radius, 92),
+          clipPath: clipAt(resolvedSide, align, radius, 2),
           transition: MORPH_CLIP_TRANSITION,
         },
         show: {
@@ -324,7 +324,7 @@ function MorphPopoverSurface({
       return;
     }
     const animation = animate(opacity, isPresent ? 1 : 0, {
-      ...(reduce ? { duration: 0.12 } : SPRING_PANEL),
+      ...(reduce ? { duration: 0.12 } : { duration: 0.16, ease: EASE_OUT }),
       onComplete: () => {
         if (!isPresent) safeToRemove?.();
       },
@@ -350,10 +350,7 @@ function MorphPopoverSurface({
         visibility: layout ? "visible" : "hidden",
         transformOrigin: originFor(resolvedSide, align),
       }}
-      className={cn(
-        "fixed z-[9999]",
-        shadow && "[filter:drop-shadow(0_10px_18px_rgba(0,0,0,0.14))]",
-      )}
+      className={cn(OVERLAY_LAYER.interactive, "fixed ", shadow && "drop-shadow-md")}
     >
       <motion.div
         ref={ctx.contentRef}
@@ -370,9 +367,10 @@ function MorphPopoverSurface({
         style={{
           borderRadius: radius,
           maxHeight: layout ? availableHeight : undefined,
+          maxWidth: "calc(100vw - 32px)",
           overflowY: "auto",
         }}
-        className={cn("overflow-hidden border border-border bg-background", className)}
+        className={cn("overflow-hidden border border-border-strong bg-popover", className)}
       >
         {children}
       </motion.div>

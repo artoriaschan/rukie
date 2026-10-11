@@ -57,7 +57,13 @@ test("tool permission dock uses default Tool Approval details and unclipped acti
     }
   };
   try {
+    expect(allow.element()).not.toBe(document.activeElement);
+    expect(allow.element().matches(":focus-visible")).toBe(false);
+    expect(getComputedStyle(allow.element()).boxShadow).toBe("none");
+    await userEvent.keyboard("{Tab}{Tab}");
     await expect.element(allow).toHaveFocus();
+    expect(allow.element().getBoundingClientRect().height).toBeCloseTo(32, 0);
+    expect(getComputedStyle(allow.element()).fontSize).toBe("14px");
     const details = screen.getByRole("button", { name: "查看详情", exact: true });
     await expect.element(details).toHaveAttribute("aria-expanded", "false");
     expect(allow.element().closest("[data-state=pending]")).not.toBeNull();

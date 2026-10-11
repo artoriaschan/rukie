@@ -27,7 +27,7 @@ import {
 import { AgentCode, type AgentCodeLanguage } from "@/components/agents/agent-code";
 import { ActionSwapRollText } from "@/components/motion/action-swap-roll";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
-import { SPRING_PRESS, SPRING_SWAP } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 export type ToolResultStatus = "running" | "success" | "error" | "cancelled";
@@ -107,16 +107,13 @@ function ToolResultAction({
   onClick: () => void;
   children: ReactNode;
 }) {
-  const reduce = useReducedMotion() ?? false;
-
   return (
     <motion.button
       type="button"
       aria-label={label}
       title={label}
       onClick={onClick}
-      whileTap={reduce ? undefined : { scale: 0.9 }}
-      transition={SPRING_PRESS}
+      transition={{ duration: 0.16, ease: EASE_OUT }}
       className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
     >
       {children}
@@ -133,7 +130,7 @@ export function ToolResultOutput({
     <AgentCode
       code={children}
       language={language}
-      className={cn("whitespace-pre-wrap break-words text-foreground/80", className)}
+      className={cn("whitespace-pre-wrap break-words text-foreground", className)}
     />
   );
 }
@@ -235,7 +232,7 @@ export function ToolResult({
         aria-expanded={currentOpen}
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
-        className="group flex min-h-7 w-full items-center gap-2 rounded-md text-ui-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="group flex min-h-7 w-full items-center gap-2 rounded-lg text-ui-control text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <span
           aria-hidden="true"
@@ -244,15 +241,15 @@ export function ToolResult({
           {icon ?? <KindIcon kind={kind} />}
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="min-w-0 truncate font-mono text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">
             <ActionSwapRollText value={titleKey}>{title}</ActionSwapRollText>
           </span>
           {meta ? (
-            <span className="shrink-0 text-ui-sm text-muted-foreground/60">
+            <span className="max-w-[25%] truncate text-ui-control text-muted-foreground">
               <ActionSwapRollText value={metaKey}>{meta}</ActionSwapRollText>
             </span>
           ) : null}
-          <span className="min-w-0 truncate text-ui-sm text-muted-foreground">
+          <span className="max-w-[25%] truncate text-ui-control text-muted-foreground">
             <ActionSwapRollText value={toolKey}>{tool}</ActionSwapRollText>
           </span>
         </span>
@@ -268,7 +265,7 @@ export function ToolResult({
         <motion.span
           aria-hidden="true"
           animate={{ rotate: currentOpen ? 180 : 0 }}
-          transition={reduce ? { duration: 0 } : SPRING_SWAP}
+          transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
           className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground"
         >
           <ChevronDown className="size-3.5" />
@@ -276,14 +273,14 @@ export function ToolResult({
       </button>
 
       <AgentDisclosure id={contentId} role="region" aria-labelledby={triggerId} open={currentOpen}>
-        <div className="pl-6 pt-1.5">
+        <div className="pl-4 pt-1">
           <div className="overflow-hidden rounded-xl bg-muted/80">
             <div ref={viewportRef} className="scrollbar-hide overflow-y-auto" style={{ maxHeight }}>
               <div className={cn("p-3", contentClassName)}>{children}</div>
             </div>
 
             {canCopy || onRetry ? (
-              <div className="flex items-center gap-0.5 px-2 pb-1.5">
+              <div className="flex items-center gap-0.5 px-2 pb-1">
                 {canCopy ? (
                   <ToolResultAction
                     label={
@@ -301,7 +298,7 @@ export function ToolResult({
                     <RotateCcw className="size-3.5" />
                   </ToolResultAction>
                 ) : null}
-                <span className="ml-auto text-ui-caption text-muted-foreground/55">
+                <span className="ml-auto text-ui-caption text-muted-foreground">
                   <ActionSwapRollText value={status}>{statusLabel}</ActionSwapRollText>
                 </span>
               </div>

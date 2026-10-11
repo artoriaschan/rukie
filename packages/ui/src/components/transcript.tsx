@@ -73,7 +73,7 @@ function Group({
         })
       : t("conversation.duration", { duration: (duration / 1000).toFixed(1) });
   const title = (
-    <span className="flex items-center gap-2 text-ui-sm text-muted-foreground">
+    <span className="flex items-center gap-2 text-ui-control text-muted-foreground">
       {(group.status === "running" && waiting) ||
       group.status === "aborted" ||
       group.status === "failed" ? (
@@ -88,7 +88,7 @@ function Group({
         </span>
       ) : null}
       {group.status === "running" ? (
-        <ThinkingShimmer className="text-ui-sm font-normal">
+        <ThinkingShimmer className="text-ui-control font-normal">
           {t("conversation.processing", { duration: elapsed })}
         </ThinkingShimmer>
       ) : (
@@ -239,7 +239,7 @@ function Group({
     });
   }
   return (
-    <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-2 px-5 py-3">
+    <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-4 px-5 py-3">
       {user ? (
         <MessageBubble align="end">
           <MessageBubbleContent>
@@ -320,12 +320,12 @@ function Group({
                     ? Wrench
                     : Sparkles;
               const label = (
-                <span className="flex min-w-0 flex-1 items-center gap-2 text-ui-sm font-normal text-muted-foreground">
+                <span className="flex min-w-0 flex-1 items-center gap-2 text-ui-control font-normal text-muted-foreground">
                   <Icon aria-hidden="true" className="size-4 shrink-0" />
                   {working && latestDetail ? (
                     <TextShimmer
                       title={latestDetail}
-                      className="min-w-0 truncate text-ui-sm font-normal"
+                      className="min-w-0 truncate text-ui-control font-normal"
                     >
                       {latestDetail}
                     </TextShimmer>
@@ -357,7 +357,7 @@ function Group({
         )}
       />
       {group.error ? (
-        <p role="alert" className="text-ui-sm text-danger">
+        <p role="alert" className="text-ui-control text-danger">
           {group.error}
         </p>
       ) : null}

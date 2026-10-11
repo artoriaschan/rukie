@@ -14,7 +14,7 @@ import {
 } from "react";
 import { ThinkingShimmer } from "@/components/agents/loading-states/thinking-shimmer";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
-import { EASE_OUT, SPRING_LAYOUT, SPRING_SWAP } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 import { ActivityRow } from "./activity-row";
 import type { AgentActivityContentType, AgentActivityItem, AgentActivityProps } from "./types";
@@ -201,7 +201,7 @@ export function AgentActivity({
         <div
           id={triggerId}
           role="status"
-          className="flex h-7 min-w-0 items-center text-muted-foreground"
+          className="flex min-h-7 min-w-0 items-center text-muted-foreground"
         >
           {renderWorkingStatus ? (
             renderWorkingStatus({ label: liveLabel, duration })
@@ -216,7 +216,7 @@ export function AgentActivity({
           aria-expanded={expanded}
           aria-controls={contentId}
           onClick={toggle}
-          className="group flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-md text-left font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="group flex min-h-7 min-w-0 max-w-full items-center gap-2 rounded-md text-left font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <span className="min-w-0 truncate">
             {working ? (
@@ -234,8 +234,8 @@ export function AgentActivity({
           <motion.span
             aria-hidden="true"
             animate={{ rotate: expanded ? 0 : -90 }}
-            transition={reduce ? { duration: 0 } : SPRING_SWAP}
-            className="inline-flex shrink-0 text-muted-foreground/70 group-hover:text-foreground"
+            transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
+            className="inline-flex shrink-0 text-muted-foreground group-hover:text-foreground"
           >
             <ChevronDown className="size-3.5" />
           </motion.span>
@@ -271,16 +271,16 @@ export function AgentActivity({
               role="list"
               initial={false}
               animate={{ y: streamOffset }}
-              transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-              className={cn("space-y-0.5 py-2", contentClassName)}
+              transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
+              className={cn("space-y-1 py-1", contentClassName)}
             >
               <AnimatePresence mode="popLayout">
                 {items.map((item) => (
                   <motion.div
-                    layout="position"
+                    layout={false}
                     key={item.id}
                     role="listitem"
-                    initial={reduce ? { opacity: 1 } : { opacity: 0, y: 6 }}
+                    initial={reduce ? { opacity: 1 } : { opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3 }}
                     transition={
@@ -288,8 +288,8 @@ export function AgentActivity({
                         ? { duration: 0 }
                         : {
                             opacity: { duration: 0.18, ease: EASE_OUT },
-                            y: SPRING_LAYOUT,
-                            layout: SPRING_LAYOUT,
+                            y: { duration: 0.16, ease: EASE_OUT },
+                            layout: { duration: 0.16, ease: EASE_OUT },
                           }
                     }
                   >

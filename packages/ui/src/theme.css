@@ -34,6 +34,7 @@
   --diff-removed-fg: #82071e;
 
   --ui-font-size: 14px;
+  --code-font-size: 14px;
   --radius: 0.75rem;
 
   /* Base palette */
@@ -123,6 +124,11 @@
 }
 
 @theme inline {
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
   --color-ansi-black: var(--ansi-black);
   --color-ansi-red: var(--ansi-red);
   --color-ansi-green: var(--ansi-green);
@@ -162,11 +168,13 @@
   --text-ui-sm--line-height: calc(1 / 0.75);
   --text-ui-xs: calc(var(--ui-font-size) - 4px);
   --text-ui-xs--line-height: 1.4;
-  --text-ui-caption: calc(var(--ui-font-size) - 3px);
-  --text-ui-caption--line-height: 1.4;
+  --text-ui-caption: calc(var(--ui-font-size) - 1px);
+  --text-ui-caption--line-height: calc(20 / 13);
   --text-ui-control: calc(var(--ui-font-size) - 1px);
-  --text-ui-control--line-height: 1.5;
+  --text-ui-control--line-height: calc(20 / 13);
   --text-ui-loader: var(--loader-font-size);
+  --text-code: var(--code-font-size);
+  --text-code--line-height: calc(20 / 14);
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);

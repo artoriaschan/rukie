@@ -14,7 +14,7 @@ import {
   useId,
   useState,
 } from "react";
-import { EASE_OUT, SPRING_LAYOUT, SPRING_SWAP } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 import { MessageSideContext } from "@/components/agents/message-context";
 
@@ -78,12 +78,10 @@ const BUBBLE_CONTENT_REVEAL = {
   delay: 0.04,
 } as const;
 
-// Sent bubbles should pop into place quickly with one restrained overshoot.
+// Bubble surfaces use a short fade without scaling their contents.
 const BUBBLE_POP = {
-  type: "spring",
-  stiffness: 520,
-  damping: 27,
-  mass: 0.52,
+  duration: 0.16,
+  ease: EASE_OUT,
 } as const;
 
 export function MessageBubble({
@@ -112,8 +110,10 @@ export function MessageBubble({
         layout={layout}
         initial={initial ?? false}
         animate={animate}
-        exit={exit ?? (reduce ? { opacity: 0 } : { opacity: 0, y: -3, scale: 0.99 })}
-        transition={transition ?? (reduce ? { duration: 0.12 } : SPRING_LAYOUT)}
+        exit={exit ?? (reduce ? { opacity: 0 } : { opacity: 0, y: -3 })}
+        transition={
+          transition ?? (reduce ? { duration: 0.12 } : { duration: 0.16, ease: EASE_OUT })
+        }
         className={cn(
           "group/bubble flex w-full flex-col",
           resolvedAlign === "end" ? "items-end" : "items-start",
@@ -129,13 +129,13 @@ export function MessageBubble({
 
 function bubbleContentClass(variant: MessageBubbleVariant, interactive: boolean) {
   return cn(
-    "relative z-0 min-w-9 max-w-[82%] rounded-2xl px-3.5 py-2.5 text-ui-base leading-6 text-foreground",
-    "[&_a]:font-medium [&_a]:underline [&_a]:underline-offset-4 [&_code]:rounded [&_code]:bg-background/60 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-ui-sm [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p+p]:mt-2 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-background/60 [&_pre]:p-3 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
+    "relative z-0 min-w-9 max-w-[82%] rounded-xl px-3 py-2 text-ui-base text-foreground",
+    "[&_a]:font-medium [&_a]:underline [&_a]:underline-offset-4 [&_code]:rounded-sm [&_code]:bg-background/60 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-ui-sm [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p+p]:mt-2 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-background/60 [&_pre]:p-3 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
     variant === "solid" && "text-background",
     variant === "ghost" && "w-full max-w-none rounded-none px-0 py-0",
     variant === "danger" && "text-destructive",
     interactive &&
-      "cursor-pointer text-left outline-none transition-[background-color,color,transform] duration-150 hover:brightness-[0.98] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]",
+      "cursor-pointer text-left outline-none transition-[background-color,color,transform] duration-150 hover:brightness-[0.98] focus-visible:ring-2 focus-visible:ring-ring",
   );
 }
 
@@ -169,13 +169,13 @@ export function MessageBubbleContent({
       {variant !== "ghost" ? (
         <motion.span
           aria-hidden="true"
-          layout={reduce ? false : "size"}
+          layout={false}
           layoutDependency={layoutVersion}
           initial={
             animateIn && !reduce
               ? {
                   opacity: 0,
-                  scale: 0.92,
+                  scale: 1,
                 }
               : false
           }
@@ -186,7 +186,7 @@ export function MessageBubbleContent({
               : {
                   opacity: { duration: 0.12, ease: EASE_OUT },
                   scale: BUBBLE_POP,
-                  layout: SPRING_LAYOUT,
+                  layout: { duration: 0.16, ease: EASE_OUT },
                 }
           }
           className={bubbleSurfaceClass(variant, align)}
@@ -234,7 +234,7 @@ export function MessageBubbleGroup({
   return (
     <div
       data-slot="message-bubble-group"
-      className={cn("flex w-full flex-col", spacing === "compact" ? "gap-1.5" : "gap-3", className)}
+      className={cn("flex w-full flex-col", spacing === "compact" ? "gap-2" : "gap-3", className)}
       {...props}
     />
   );
@@ -304,7 +304,7 @@ export function MessageBubbleCollapsible({
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
         className={cn(
-          "mt-2 inline-flex h-7 items-center gap-1 rounded-full px-2 text-ui-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+          "mt-2 inline-flex min-h-7 items-center gap-1 rounded-lg px-2 text-ui-base font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
           triggerClassName,
         )}
       >
@@ -312,7 +312,7 @@ export function MessageBubbleCollapsible({
         <motion.span
           aria-hidden="true"
           animate={{ rotate: currentOpen ? 180 : 0 }}
-          transition={reduce ? { duration: 0 } : SPRING_SWAP}
+          transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
         >
           <ChevronDown className="size-3.5" />
         </motion.span>

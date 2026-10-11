@@ -15,7 +15,7 @@ export function AnsiOutput({ text }: { text: string }) {
     .join("\n");
   const parts = Anser.ansiToJson(clean, { use_classes: false, remove_empty: true });
   return (
-    <pre className="whitespace-pre-wrap break-words font-mono text-ui-sm leading-5">
+    <pre className="whitespace-pre-wrap break-words font-mono text-code leading-5">
       {parts.map((part, index) => (
         <span
           key={index}

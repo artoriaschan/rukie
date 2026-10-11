@@ -47,7 +47,7 @@ test("menu and beUI button preserve independent typography and keyboard focus", 
   );
   const trigger = screen.getByRole("button", { name: "Menu" });
   const triggerElement = trigger.element();
-  expect(getComputedStyle(triggerElement).fontSize).toBe("12px");
+  expect(getComputedStyle(triggerElement).fontSize).toBe("14px");
   await trigger.click();
   const item = screen.getByRole("menuitem", { name: "Open project" });
   await expect.element(item).toBeVisible();

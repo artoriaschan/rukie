@@ -17,7 +17,7 @@ import {
   AgentCodeLine,
   useAgentCodeTokens,
 } from "@/components/agents/agent-code";
-import { SPRING_PRESS } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 export type CodeBlockStatus = "streaming" | "complete";
@@ -103,16 +103,16 @@ export function CodeBlock({
     <div
       data-state={status}
       aria-busy={streaming}
-      className={cn("w-full overflow-hidden rounded-2xl bg-muted/80 text-ui-base", className)}
+      className={cn("w-full overflow-hidden rounded-xl bg-muted/80 text-ui-base", className)}
     >
-      <div className="flex h-10 items-center gap-2.5 px-3">
-        <FileCode2 aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground/70" />
+      <div className="flex min-h-8 items-center gap-2 px-3">
+        <FileCode2 aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
         {filename ? (
-          <span className="min-w-0 truncate font-mono text-ui-sm text-foreground/80">
+          <span className="min-w-0 truncate font-mono text-ui-base text-foreground">
             {filename}
           </span>
         ) : null}
-        <span className="text-ui-xs font-medium uppercase tracking-wide text-muted-foreground/55">
+        <span className="text-ui-xs font-medium uppercase tracking-wide text-muted-foreground">
           {language}
         </span>
         <span
@@ -138,9 +138,8 @@ export function CodeBlock({
               copied ? componentText("component.copied") : componentText("component.copy-code")
             }
             onClick={handleCopy}
-            whileTap={reduce ? undefined : { scale: 0.9 }}
-            transition={SPRING_PRESS}
-            className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            transition={{ duration: 0.16, ease: EASE_OUT }}
+            className="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
           </motion.button>
@@ -154,7 +153,7 @@ export function CodeBlock({
         className="scrollbar-hide overflow-auto border-t border-foreground/[0.06] py-2"
         style={{ maxHeight }}
       >
-        <pre className="m-0 min-w-max font-mono text-ui-sm leading-5 text-foreground/85">
+        <pre className="m-0 min-w-max font-mono text-code leading-5 text-foreground">
           <code>
             {lines.map((line, index) => {
               const lineNumber = index + 1;

@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/motion/context-menu
 
@@ -23,7 +24,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { EASE_OUT, SPRING_LAYOUT, SPRING_PANEL } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { holdSelection, TOUCH_GESTURE_CONTENT_CLASS } from "@/lib/touch";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +34,7 @@ type MenuPoint = { x: number; y: number };
 const VIEWPORT_PADDING = 8;
 const LONG_PRESS_DELAY = 520;
 const LONG_PRESS_TOLERANCE = 10;
-const MORPH_DURATION = 0.3;
+const MORPH_DURATION = 0.16;
 
 type TriggerElementProps = React.HTMLAttributes<HTMLElement> & {
   ref?: Ref<HTMLElement>;
@@ -91,7 +92,7 @@ function collapsedClip(origin: MenuPoint, size: { width: number; height: number 
   const right = clamp(size.width - origin.x - half, 0, size.width);
   const bottom = clamp(size.height - origin.y - half, 0, size.height);
   const left = clamp(origin.x - half, 0, size.width);
-  return `inset(${top}px ${right}px ${bottom}px ${left}px round 10px)`;
+  return `inset(${top}px ${right}px ${bottom}px ${left}px round 8px)`;
 }
 
 export interface ContextMenuProps {
@@ -468,7 +469,8 @@ export function ContextMenuContent({
       inert={!context.open}
       style={{ left: position.x, top: position.y }}
       className={cn(
-        "fixed z-[100] [filter:drop-shadow(0_18px_28px_rgba(0,0,0,0.2))]",
+        OVERLAY_LAYER.interactive,
+        "fixed drop-shadow-md",
         context.open ? "pointer-events-auto" : "pointer-events-none",
       )}
     >
@@ -491,7 +493,7 @@ export function ContextMenuContent({
           context.modality === "keyboard"
             ? { duration: 0 }
             : context.reduce
-              ? { duration: 0.1, ease: EASE_OUT }
+              ? { duration: 0, ease: EASE_OUT }
               : {
                   clipPath: {
                     duration: MORPH_DURATION,
@@ -506,7 +508,7 @@ export function ContextMenuContent({
         onKeyDown={onKeyDown}
         onContextMenu={(event) => event.preventDefault()}
         className={cn(
-          "min-w-56 overflow-hidden rounded-xl border border-border bg-card p-1.5 text-foreground outline-none",
+          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-border-strong bg-popover p-1 text-popover-foreground outline-none",
           className,
         )}
       >
@@ -571,7 +573,7 @@ function ContextMenuItemBase({
         if (closeOnSelect) context.setOpen(false);
       }}
       className={cn(
-        "relative isolate flex w-full select-none items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-ui-control outline-none",
+        "relative isolate flex w-full select-none items-center min-h-7 gap-2 rounded-md px-2 py-1 text-left text-ui-base outline-none",
         "focus-visible:ring-2 focus-visible:ring-foreground/15",
         "disabled:pointer-events-none disabled:opacity-40",
         inset && "pl-8",
@@ -583,10 +585,10 @@ function ContextMenuItemBase({
         <motion.span
           layoutId={`${context.menuId}-active`}
           className={cn(
-            "absolute inset-0 -z-10 rounded-lg",
+            "absolute inset-0 -z-10 rounded-md",
             tone === "destructive" ? "bg-destructive/10" : "bg-foreground/[0.065]",
           )}
-          transition={context.reduce ? { duration: 0 } : SPRING_LAYOUT}
+          transition={context.reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
         />
       ) : null}
       {children}
@@ -625,7 +627,7 @@ export function ContextMenuCheckboxItem({
               initial={context.reduce ? false : { opacity: 0, scale: 0.75 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: context.reduce ? 1 : 0.75 }}
-              transition={context.reduce ? { duration: 0.08 } : SPRING_PANEL}
+              transition={context.reduce ? { duration: 0.08 } : { duration: 0.16, ease: EASE_OUT }}
             >
               <Check aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2.4} />
             </motion.span>
@@ -660,7 +662,7 @@ export function ContextMenuRadioGroup({
   const context = useMemo(() => ({ value, onValueChange }), [value, onValueChange]);
   return (
     <ContextMenuRadioGroupContext.Provider value={context}>
-      <div className={className}>{children}</div>
+      <div className={cn("space-y-0.5", className)}>{children}</div>
     </ContextMenuRadioGroupContext.Provider>
   );
 }
@@ -705,7 +707,7 @@ export function ContextMenuLabel({ children, inset = false, className }: Context
   return (
     <div
       className={cn(
-        "px-2.5 pb-1 pt-1.5 text-ui-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground",
+        "px-2 py-1 text-ui-sm font-medium text-muted-foreground",
         inset && "pl-8",
         className,
       )}
@@ -733,7 +735,7 @@ export function ContextMenuShortcut({ children, className }: ContextMenuShortcut
     <span
       aria-hidden="true"
       className={cn(
-        "ml-auto pl-4 text-ui-xs font-medium tracking-wide text-muted-foreground",
+        "ml-auto pl-4 font-mono text-ui-xs font-medium tracking-wide text-muted-foreground",
         className,
       )}
     >
