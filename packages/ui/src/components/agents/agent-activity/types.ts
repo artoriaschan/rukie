@@ -51,6 +51,8 @@ export interface AgentActivityTrace {
   label: ReactNode;
   detail?: ReactNode;
   icon?: ReactNode;
+  /** Rich message content below the trace label; tool details can remain in the label. */
+  content?: ReactNode;
 }
 
 export type AgentActivityItem =
@@ -67,15 +69,15 @@ export interface AgentActivityProps {
   items: AgentActivityItem[];
   /** Expected activity kind before the first streamed item arrives. */
   contentType?: AgentActivityContentType;
-  /** Current run phase. Active runs always stay expanded. */
+  /** Current run phase. Active runs stay expanded unless collapsibleWhileWorking is enabled. */
   status?: AgentActivityStatus;
   /** Elapsed run time, in seconds. Used by the step-only summary. */
   duration?: number;
-  /** Controlled expanded state used after the run completes. */
+  /** Controlled expanded state. */
   open?: boolean;
-  /** Initial expanded state used after the run completes. */
+  /** Initial expanded state. */
   defaultOpen?: boolean;
-  /** Called when the completed activity disclosure changes state. */
+  /** Called when the activity disclosure changes state. */
   onOpenChange?: (open: boolean) => void;
   /** Collapse the disclosure when status changes from working to complete. */
   collapseOnComplete?: boolean;
@@ -89,8 +91,10 @@ export interface AgentActivityProps {
   renderWorkingStatus?: (context: { label: ReactNode; duration: number }) => ReactNode;
   /** Optional renderer for the contents before the built-in disclosure chevron. */
   renderCompletedStatus?: (context: { summary: ReactNode; duration: number }) => ReactNode;
-  /** Maximum visible activity height before the stream begins gliding. */
-  maxHeight?: number;
+  /** Maximum visible activity height before the stream begins gliding. Null displays all activity. */
+  maxHeight?: number | null;
+  /** Keep a separator immediately below the status title in both disclosure states. */
+  showStatusDivider?: boolean;
   className?: string;
   contentClassName?: string;
 }

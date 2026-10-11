@@ -69,20 +69,24 @@ function Group({
       : t("conversation.duration", { duration: (duration / 1000).toFixed(1) });
   const title = (
     <span className="flex items-center gap-2 text-ui-sm text-muted-foreground">
-      {group.status !== "complete" ? (
+      {(group.status === "running" && waiting) ||
+      group.status === "aborted" ||
+      group.status === "failed" ? (
         <span>
           {t(
             group.status === "running"
-              ? waiting
-                ? "app.waiting"
-                : "conversation.running"
+              ? "app.waiting"
               : group.status === "aborted"
                 ? "conversation.aborted"
                 : "conversation.failed",
           )}
         </span>
       ) : null}
-      <span>{t("conversation.elapsed", { duration: elapsed })}</span>
+      <span>
+        {t(group.status === "running" ? "conversation.processing" : "conversation.elapsed", {
+          duration: elapsed,
+        })}
+      </span>
     </span>
   );
   const activity: AgentActivityItem[] = [];
@@ -93,13 +97,17 @@ function Group({
       if (block.type === "thinking")
         activity.push({
           id,
-          type: "text",
+          type: "trace",
+          kind: "thinking",
+          label: t("conversation.thinking"),
           content: <Markdown text={block.thinking} streaming={group.status === "running"} />,
         });
       else if (block.type === "text" && message !== final)
         activity.push({
           id,
-          type: "text",
+          type: "trace",
+          kind: "message",
+          label: t("conversation.message"),
           content: (
             <StreamingResponse
               status={
@@ -116,7 +124,18 @@ function Group({
         });
       else if (block.type === "toolCall") {
         const tool = state.tools[presentationCallId(message, block.id)];
-        if (tool) activity.push({ id, type: "text", content: <ToolRow tool={tool} /> });
+        if (tool)
+          activity.push({
+            id,
+            type: "trace",
+            kind:
+              tool.callView?.kind === "execute"
+                ? "run"
+                : tool.callView?.kind === "edit"
+                  ? "write"
+                  : (tool.callView?.kind ?? "other"),
+            label: <ToolRow tool={tool} />,
+          });
       }
     });
   }
@@ -125,14 +144,16 @@ function Group({
     .forEach((item, index) => {
       activity.push({
         id: `permission-${index}`,
-        type: "text",
-        content: (
+        type: "trace",
+        kind: "permission",
+        icon:
+          item.reply === "deny" ? (
+            <CircleX className="size-4 text-danger" />
+          ) : (
+            <CircleCheck className="size-4 text-success" />
+          ),
+        label: (
           <div className="flex items-baseline gap-2 text-ui-sm text-muted-foreground">
-            {item.reply === "deny" ? (
-              <CircleX aria-hidden className="size-3 shrink-0 text-danger" />
-            ) : (
-              <CircleCheck aria-hidden className="size-3 shrink-0 text-success" />
-            )}
             <span>{t("conversation.decision", { decision: t(`conversation.${item.reply}`) })}</span>
             {item.origin ? <span>{item.origin}</span> : null}
             <code className="min-w-0 break-words font-mono">{item.title}</code>
@@ -167,6 +188,9 @@ function Group({
       ) : null}
       <AgentActivity
         items={activity}
+        contentType="trace"
+        maxHeight={null}
+        showStatusDivider
         status={group.status === "running" ? "working" : "complete"}
         duration={duration / 1000}
         open={expanded}
@@ -175,7 +199,6 @@ function Group({
         collapseOnComplete={!failed && group.status !== "aborted"}
         renderWorkingStatus={() => title}
         renderCompletedStatus={() => title}
-        className="border-b border-border pb-2"
       />
       {group.error ? (
         <p role="alert" className="text-ui-sm text-danger">

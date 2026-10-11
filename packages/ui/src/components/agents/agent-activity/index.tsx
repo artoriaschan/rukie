@@ -123,6 +123,7 @@ export function AgentActivity({
   renderWorkingStatus,
   renderCompletedStatus,
   maxHeight = 208,
+  showStatusDivider = false,
   className,
   contentClassName,
 }: AgentActivityProps) {
@@ -144,10 +145,15 @@ export function AgentActivity({
   const working = status === "working";
   const expanded = (working && !collapsibleWhileWorking) || currentOpen;
   const contentType = items.length ? getContentType(items) : (initialContentType ?? "mixed");
-  const cappedHeight = Math.min(contentHeight, Math.max(0, maxHeight));
-  const viewportHeight = working ? Math.max(0, maxHeight) : cappedHeight;
-  const capped = contentHeight > maxHeight;
-  const streamOffset = working ? Math.min(0, viewportHeight - contentHeight) : 0;
+  const capped = maxHeight !== null && contentHeight > maxHeight;
+  const viewportHeight =
+    maxHeight === null
+      ? contentHeight
+      : working
+        ? Math.max(0, maxHeight)
+        : Math.min(contentHeight, Math.max(0, maxHeight));
+  const streamOffset =
+    working && maxHeight !== null ? Math.min(0, viewportHeight - contentHeight) : 0;
 
   useLayoutEffect(() => {
     const node = contentRef.current;
@@ -235,12 +241,14 @@ export function AgentActivity({
         </button>
       )}
 
+      {showStatusDivider ? <hr className="mt-2 border-border" /> : null}
+
       <AgentDisclosure
         id={contentId}
         role="region"
         aria-labelledby={triggerId}
         open={expanded}
-        openHeight={viewportHeight}
+        openHeight={maxHeight === null ? "auto" : viewportHeight}
       >
         <div
           ref={viewportRef}
@@ -248,7 +256,11 @@ export function AgentActivity({
             "scrollbar-hide pr-1",
             capped && expanded && !working ? "overflow-y-auto" : "overflow-y-hidden",
           )}
-          style={{ height: viewportHeight, maskImage, WebkitMaskImage: maskImage }}
+          style={{
+            height: maxHeight === null ? undefined : viewportHeight,
+            maskImage,
+            WebkitMaskImage: maskImage,
+          }}
         >
           <motion.div
             ref={contentRef}

@@ -209,14 +209,17 @@ function TraceRow({ item }: { item: AgentActivityTrace }) {
       <span aria-hidden="true" className="grid size-4 place-items-center text-muted-foreground/70">
         {item.icon ?? <TraceIcon kind={item.kind} />}
       </span>
-      <span className="font-medium text-foreground/90">{item.label}</span>
+      <div className={cn("min-w-0 font-medium text-foreground/90", !item.detail && "col-span-2")}>
+        {item.label}
+      </div>
       {item.detail ? (
         <span className="min-w-0 truncate rounded-lg bg-muted/80 px-2.5 py-1 font-mono text-ui-sm text-muted-foreground/70">
           {item.detail}
         </span>
-      ) : (
-        <span />
-      )}
+      ) : null}
+      {item.content ? (
+        <div className="col-span-2 col-start-2 min-w-0 text-muted-foreground">{item.content}</div>
+      ) : null}
     </div>
   );
 }

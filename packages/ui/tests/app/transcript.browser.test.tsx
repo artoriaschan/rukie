@@ -150,20 +150,40 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
       role: "assistant",
       timestamp: 1001,
       content: [
-        { type: "thinking", thinking: "Inspecting the parser" },
+        {
+          type: "thinking",
+          thinking:
+            "Inspecting the parser\n\n" +
+            Array.from({ length: 20 }, (_, index) => `Trace line ${index + 1}`).join("\n\n"),
+        },
         { type: "text", text: "First **response**" },
       ],
     };
     await send({ type: "message_update", message: partial });
     const response = screen.getByRole("article", { name: "Response 1", exact: true });
-    const running = response.getByRole("button", { name: /^Running/ });
+    const running = response.getByRole("button", { name: /^Processed for/ });
     await expect.element(running).toHaveAttribute("aria-expanded", "true");
     await expect.element(screen.getByText("Inspecting the parser", { exact: true })).toBeVisible();
     expect(response.element().querySelector('[data-state="streaming"]')).not.toBeNull();
+    const trace = response.element().querySelector('[data-content="trace"]')!;
+    const region = document.getElementById(running.element().getAttribute("aria-controls")!)!;
+    const divider = trace.querySelector("hr")!;
+    expect(divider.nextElementSibling).toBe(region);
+    expect(getComputedStyle(divider).borderTopWidth).not.toBe("0px");
+    await expect.poll(() => region.getBoundingClientRect().height).toBeGreaterThan(208);
+    await expect.element(screen.getByText("Trace line 20", { exact: true })).toBeVisible();
+    expect(
+      region.querySelector('[role="list"]')!.getBoundingClientRect().height,
+    ).toBeLessThanOrEqual(region.getBoundingClientRect().height);
+    expect(
+      region.querySelector('[role="list"]')!.getBoundingClientRect().top,
+    ).toBeGreaterThanOrEqual(region.getBoundingClientRect().top);
     await running.click();
     await expect.element(running).toHaveAttribute("aria-expanded", "false");
     const activity = document.getElementById(running.element().getAttribute("aria-controls")!)!;
     expect(activity.inert).toBe(true);
+    expect(divider.nextElementSibling).toBe(activity);
+    expect(getComputedStyle(divider).borderTopWidth).not.toBe("0px");
     await expect.poll(() => activity.getBoundingClientRect().height).toBe(0);
     await send({
       type: "message_update",
@@ -178,7 +198,7 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
     await expect.element(running).toHaveAttribute("aria-expanded", "true");
     await send({ type: "message_end", entryId: "a", messages: [{ ...partial, entryId: "a" }] });
     await send({ type: "result", success: true, text: "First response", durationMs: 434000 });
-    const title = response.getByRole("button", { name: "Took 7m 14s", exact: true });
+    const title = response.getByRole("button", { name: "Time spent 7m 14s", exact: true });
     await expect.element(title).toHaveAttribute("aria-expanded", "false");
     await expect.element(screen.getByText("response", { exact: true })).toBeVisible();
     expect(
@@ -188,6 +208,8 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
     await userEvent.keyboard(" ");
     await expect.element(title).toHaveAttribute("aria-expanded", "true");
     await expect.element(screen.getByText("Inspecting the parser", { exact: true })).toBeVisible();
+    await expect.poll(() => region.getBoundingClientRect().height).toBeGreaterThan(208);
+    expect(divider.nextElementSibling).toBe(region);
     await title.click();
     await expect.element(title).toHaveAttribute("aria-expanded", "false");
     await expect.element(response.getByRole("button", { name: /steps/i })).not.toBeInTheDocument();
@@ -237,7 +259,7 @@ test.each(["aborted", "error"])(
         }),
       });
       const title = screen.getByRole("button", {
-        name: `${stopReason === "aborted" ? "已中止" : "失败"} 用时 7分钟 14秒`,
+        name: `${stopReason === "aborted" ? "已中止" : "失败"} 已用时 7分钟 14秒`,
         exact: true,
       });
       await expect.element(title).toHaveAttribute("aria-expanded", "true");
@@ -456,7 +478,7 @@ test("virtualized response groups follow streaming height, preserve upward readi
     await screen.getByRole("button", { name: "Jump to response 5", exact: true }).click();
     await expect.element(screen.getByText("Final 5", { exact: true })).toBeVisible();
     const response = screen.getByRole("article", { name: "Response 5", exact: true });
-    await response.getByRole("button", { name: /^Took / }).click();
+    await response.getByRole("button", { name: /^Time spent / }).click();
     await expect.element(screen.getByText("Intermediate 5", { exact: true })).toBeVisible();
     await send({
       type: "tool_state_changed",
@@ -567,11 +589,11 @@ test("running elapsed display advances at the virtual one-second deadline", asyn
         run: { inputs: [] },
       }),
     });
-    await expect.element(screen.getByText("Took 0.0s", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Processed for 0.0s", { exact: true })).toBeVisible();
     await vi.advanceTimersByTimeAsync(999);
-    await expect.element(screen.getByText("Took 0.0s", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Processed for 0.0s", { exact: true })).toBeVisible();
     await vi.advanceTimersByTimeAsync(1);
-    await expect.element(screen.getByText("Took 1.0s", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Processed for 1.0s", { exact: true })).toBeVisible();
   } finally {
     await screen.unmount();
     vi.useRealTimers();
