@@ -22,6 +22,8 @@
   --secondary-foreground: #d4d4d4;
   --accent: #ffffff1a;
   --accent-foreground: #d4d4d4;
+  --hover: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  --selected: color-mix(in srgb, var(--foreground) 8%, var(--background));
   font-family: "Noto Sans SC Variable", sans-serif;
   -webkit-font-smoothing: antialiased;
 }

@@ -9,6 +9,8 @@ import "../../src/theme.css";
 
 test("model services creates a provider and preserves input when encrypted save fails", async () => {
   await page.viewport(1280, 900);
+  const originalRootStyle = document.documentElement.getAttribute("style");
+  const originalRootClass = document.documentElement.className;
   let providers: ModelServiceSummary[] = [];
   let fail = false;
   const service = {
@@ -95,6 +97,21 @@ test("model services creates a provider and preserves input when encrypted save 
       .toHaveTextContent(
         "Video, PDF, structured output and native web search are unavailable in the current request adapter.",
       );
+    document.documentElement.classList.remove("dark");
+    // Model a dark host palette with the independently scoped Light settings theme.
+    document.documentElement.style.setProperty("--background", "#0d1117");
+    document.documentElement.style.setProperty("--foreground", "#e6edf3");
+    const advanced = screen.getByRole("button", { name: /Advanced configuration/ });
+    expect(getComputedStyle(advanced.element()).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    await advanced.hover();
+    await expect
+      .poll(() => getComputedStyle(advanced.element()).backgroundColor)
+      .toBe("color(srgb 0.931373 0.931373 0.931373)");
+    await expect.poll(() => getComputedStyle(advanced.element()).color).toBe("rgb(38, 38, 38)");
+    // Rendered Light title/background have 12.98:1 contrast (38 against 237.5).
+    advanced.element().focus();
+    await expect.element(advanced).toHaveFocus();
+    expect(getComputedStyle(advanced.element()).color).toBe("rgb(38, 38, 38)");
     await screen.getByRole("button", { name: /Advanced configuration/ }).click();
     await expect
       .element(screen.getByRole("checkbox", { name: "Structured output" }))
@@ -128,6 +145,9 @@ test("model services creates a provider and preserves input when encrypted save 
     expect(providers).toHaveLength(1);
   } finally {
     await screen.unmount();
+    if (originalRootStyle === null) document.documentElement.removeAttribute("style");
+    else document.documentElement.setAttribute("style", originalRootStyle);
+    document.documentElement.className = originalRootClass;
   }
 });
 
