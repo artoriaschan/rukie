@@ -1,5 +1,6 @@
 export const appCopy = {
   en: {
+    "app.error-model_unavailable": "Choose an available model service before sending.",
     "app.error-session_busy": "This Session is open elsewhere. Close it there, then retry.",
     "app.error-session_not_found": "This Session is unavailable. Choose another conversation.",
     "app.error-project_not_found": "The project folder does not exist. Choose another folder.",
@@ -150,6 +151,7 @@ export const appCopy = {
     "app.max": "Maximum",
   },
   zh: {
+    "app.error-model_unavailable": "发送前请选择可用的模型服务。",
     "app.error-session_busy": "这个 Session 正在别处打开，关闭后再试。",
     "app.error-session_not_found": "这个 Session 已不可用，请选择其他会话。",
     "app.error-project_not_found": "项目文件夹不存在，请重新选择。",

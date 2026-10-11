@@ -1,6 +1,6 @@
 # @rukie/server
 
-Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使用应用数据根中的 JSONL store，桌面项目注册表由本包维护；与终端的用户配置和 Session 隔离。
+Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使用应用数据根中各自独立的 SQLite store，应用索引、项目、置顶、偏好与模型配置由本包的 `app.sqlite` 维护；与终端的用户配置和 Session 隔离。
 
 ## 使用
 
@@ -16,13 +16,15 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 权限请求发送 `interaction_requested`（`sessionId`、原生 `identity`、去掉 signal 的 `request`）。回复核对完整 identity 和 epoch；旧回复返回 `interaction_stale`。回复、取消或会话规则覆盖都会发送 `interaction_settled`。订阅先收到 snapshot，再补发挂起请求；接管新连接后同样可以订阅并补发。
 
-`models.list` 读取显式提供的模型目录，不刷新或启动 OAuth。未安装桌面模型来源时返回空目录，发送因缺少桌面凭证失败；供应商认证不采用终端环境 API Key。订阅和状态更新还提供 `session_state`（permissionMode、thinkingLevel、contextReport），不修改原始 SessionEvent。模型切换要求 Session 空闲，权限模式对下一次工具调用生效。置顶与侧栏偏好写入注册表；首次连接、Run 开始/结束、权限创建/结算和这些修改发送 `sessions_changed`，携带 `sessions`、`projects`、`pinned` 与 `preferences`。Session summary 的 running 和 waitingPermission 是侧栏状态的权威事实，覆盖未订阅的后台 Session；子代理权限回调归父 Session，等待状态同样归父会话。
+`models.list` 读取 `app.sqlite` 中已启用的模型及凭证存在状态，不解密密钥、刷新模型或启动 OAuth。实际模型请求通过私有 main/sidecar 通道按供应商身份取得凭证；认证不采用终端环境 API Key。配置变更在后续发送前刷新，已开始的请求保留其供应商配置；删除选中模型或供应商后发送返回 `model_unavailable`，不会改用另一个供应商。没有可用模型或凭证时，订阅仍可读取已提交历史，并返回 `{ readonly: true, modelUnavailable: true }`。订阅和状态更新还提供 `session_state`（permissionMode、thinkingLevel、contextReport），不修改原始 SessionEvent。模型切换要求 Session 空闲，权限模式对下一次工具调用生效。置顶与侧栏偏好写入注册表；首次连接、Run 开始/结束、权限创建/结算和这些修改发送 `sessions_changed`，携带 `sessions`、`projects`、`pinned` 与 `preferences`。Session summary 的 running 和 waitingPermission 是侧栏状态的权威事实，覆盖未订阅的后台 Session；子代理权限回调归父 Session，等待状态同样归父会话。
 
 跨进程持有 lease 的 Session 可通过 Agent Core 的只读快照显示已提交 Transcript，然后返回 `session_busy`。只读访问不恢复任务、调用 Hooks 或写入 storage，不提供实时事件、权限回复与写命令；重新订阅可重试打开。快照保留消息、原生工具状态、排队输入、Run Summaries 与 Todo/Plan/Goal/子代理目录；不重建别的进程的 Background Job 或子代理活动。
 
 无订阅且没有 Run、挂起权限请求、Queued Input、运行中 Background Job 或子代理的 Session，在持续空闲 10 分钟后关闭并释放 lease。进程收到 SIGTERM/SIGINT，先等待全部 Session abort，再释放 Effect runtime 和 Session、Job 进程组；调用方应等待 close 完成。SIGKILL 无法执行这些清理，孤儿 Job 不回收。
 
-注册表位于 `dataRoot/registry.json`，默认工作区位于同级 `workspace/`。注册表损坏阻止启动。列举一个工作目录失败时记录 warning 并继续其余目录；添加项目需要绝对目录。调用方只能通过服务命令修改注册表。
+应用库位于 `dataRoot/app.sqlite`，默认工作区位于同级 `workspace/`。应用写入使用事务及 WAL/FULL；失败不报告保存成功。Session 索引从数据根内各 Session 库的已提交元数据核对，不依赖项目注册表，发现不取得执行 lease、不恢复任务。损坏元数据记录 warning，不读取旧目录。添加项目需要绝对目录。
+
+[AppDatabase](src/storage/app-database.ts) 提供配置和凭证的原子替换、删除，以及应用索引与能力缓存操作。敏感 MCP 配置（包括 headers、client_secret）及完整 OAuth state（包括 codeVerifier）通过[加密配置 adapter](src/storage/configuration.ts) 整体加密；终端文件来源保持原行为。模型服务写入通过独立鉴权的 `/private/model-services` 接口，仅供 main 调用；会话 WS 不接受凭证写入，也不返回密文或明文。私有通道能力从进程环境捕获后删除，不向工具子进程传递。
 
 ## 实现导航
 

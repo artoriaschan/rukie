@@ -74,3 +74,5 @@ export type { InteractionIdentity } from "./interaction/index.ts";
 export { readSessionSnapshot } from "./session/read-only.ts";
 
 export { openBunSqliteDatabase } from "./store/sqlite-database.ts";
+export { parseOAuthState } from "./mcp/credentials.ts";
+export { createApplicationModels } from "./config/application-models.ts";

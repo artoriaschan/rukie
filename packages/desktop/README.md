@@ -1,6 +1,6 @@
 # @rukie/desktop
 
-Electron host 启动 Bun sidecar，通过受来源校验的 preload 向 renderer 注入四个本机方法。Agent Core 与用户配置由 sidecar 持有，Electron 不导入 Agent Core。
+Electron host 启动 Bun sidecar，通过受来源校验的 preload 向 renderer 注入受限本机操作与模型服务管理方法。Agent Core 与用户配置由 sidecar 持有，Electron 不导入 Agent Core。
 
 ## 入口
 
@@ -12,7 +12,9 @@ macOS 启动时通过用户的登录交互 shell 读取环境变量，使 Finder
 
 ## 行为与限制
 
-[DesktopHost](../ui/src/host/index.ts) 只有 `getConnection`、`pickProjectFolder`、`revealPath`、`openInTerminal`。preload 暴露为 `window.rukieHost`；main 只接受本窗口的主 frame 且 URL 为 `app://rukie` 的 IPC。路径必须绝对且不含 NUL；打开 Terminal 使用参数数组，不拼 shell 或 AppleScript。
+[DesktopHost](../ui/src/host/index.ts) 提供 `getConnection`、`pickProjectFolder`、`revealPath`、`openInTerminal` 和 `modelServices.list/save/delete`。模型服务列表仅包含凭证存在状态，保存可保留、替换或删除凭证；没有读取已有明文或任意解密接口。preload 暴露为 `window.rukieHost`；main 只接受本窗口的主 frame 且 URL 为 `app://rukie` 的 IPC。路径必须绝对且不含 NUL；打开 Terminal 使用参数数组，不拼 shell 或 AppleScript。
+
+[safeStorage 服务](src/main/secrets.ts) 由 main 持有，按供应商、OAuth 或配置身份绑定密文，sidecar 经独立随机 token 的私有 loopback 通道调用；renderer Origin 一律拒绝。加密不可用、系统授权取消、解密失败均返回可重试错误，保留旧密文，禁止明文及 basic_text fallback。服务仅在显式凭证操作或执行用途调用系统加解密，普通启动不初始化 Cookie 加密。真实系统加密验收与 mock 测试分开，见[存储票据 06](../../.scratch/desktop-storage/issues/06-integration-and-packaged-acceptance.md)。
 
 [Sidecar](src/main/sidecar.ts) 校验 stdout 的 port/token 握手，10 秒未就绪时停止进程。意外退出自动恢复一次；第二次后由 Retry 再调用 `getConnection`。重连必须重新获取 port/token。preload 转发 `rukie:connection-change` DOM 事件，detail 为 `connected`、`disconnected` 或 `reconnecting`，没有新增 host 方法。
 

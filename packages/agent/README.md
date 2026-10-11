@@ -16,7 +16,7 @@
 
 `SessionOptions.dataRoot` 与 `loadSettings`、`listSkills`、`listSessions`、`readSessionSnapshot` 的同名参数选择显式绝对路径的应用数据根；省略时保留终端现有 home 来源。`homeDir` 始终是工具、权限规则和 Hook 工具的 `~/` 展开基准。应用来源不会扫描 home 中 `.rukie`、`.claude`、`.agents`，也不会导入或回退旧文件；项目来源和原有项目信任规则继续生效，信任只从选中用户来源读取。
 
-应用根中的 `settings.json` 拥有权限、hooks、信任与偏好，`mcp.json` 拥有用户 MCP；用户规则位于 `rules/AGENTS.md`，技能和代理定义位于 `skills/`、`agents/`，文件备份位于 `file-history/`；应用根的备份不执行仅按年龄删除的终端清理，以保留持久化历史引用。应用原生 SQLite store 位于 `sessions/<id>/session.sqlite`，所有新建、只读与恢复入口使用同一后端和根。应用模型须由调用方显式提供 `model/models`；默认模型解析拒绝终端环境认证，未提供模型来源的桌面目录为空。应用 MCP OAuth 不读取终端凭证，未安装加密凭证存储时保存明确失败，绝不临时写明文文件。后端架构约束见 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)。
+应用调用方通过 `loadSettings({ userSettings })` 注入权限、hooks、信任与偏好，通过 `SessionOptions.mcpPersistence` 注入用户 MCP 配置和 OAuth 存储；应用模式不读取 `settings.json`、`mcp.json` 或终端配置。桌面 sidecar 的应用数据库和加密配置适配说明见 [server README](../server/README.md)。用户规则位于 `rules/AGENTS.md`，技能和代理定义位于 `skills/`、`agents/`，文件备份位于 `file-history/`；应用根的备份不执行仅按年龄删除的终端清理，以保留持久化历史引用。应用原生 SQLite store 位于 `sessions/<id>/session.sqlite`，所有新建、只读与恢复入口使用同一后端和根。应用模型须由调用方显式提供 `model/models`；默认模型解析拒绝终端环境认证，未提供模型来源的桌面目录为空。应用 MCP OAuth 不读取终端凭证，未安装加密凭证存储时保存明确失败，绝不临时写明文文件。后端架构约束见 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)。
 
 # Pending interactions
 

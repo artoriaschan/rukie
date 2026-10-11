@@ -5,10 +5,244 @@ import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
 import { join } from "node:path";
 import { createSession, createSessionStore } from "@rukie/agent";
-import { startServer as startServerImpl, type ServerOptions } from "../src/index.ts";
+import { startServer as startServerImpl, AppDatabase, type ServerOptions } from "../src/index.ts";
 
 const startServer = (options: Omit<ServerOptions, "dataRoot">) =>
   startServerImpl({ ...options, dataRoot: join(options.homeDir, "desktop-data") });
+
+test("failed server startup closes its acquired listener and application database", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-startup-failure-"));
+  let port = 0;
+  try {
+    await expect(
+      startServer({
+        homeDir,
+        onHandshake(connection) {
+          port = connection.port;
+          throw new Error("handshake failed");
+        },
+      }),
+    ).rejects.toThrow("handshake failed");
+    await expect(fetch(`http://127.0.0.1:${port}/private/model-services`)).rejects.toThrow();
+    const database = await AppDatabase.open(join(homeDir, "desktop-data"));
+    try {
+      expect(await database.registry()).toEqual({ projects: [], pinned: [], preferences: {} });
+    } finally {
+      await database.close();
+    }
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("committed orphan Session metadata rebuilds the application index without recovery", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-orphan-index-"));
+  const dataRoot = join(homeDir, "desktop-data");
+  const cwd = join(homeDir, "unregistered-project");
+  await Bun.write(join(cwd, "seed"), "project");
+  const fake = fakeModel([fauxAssistantMessage("committed orphan")]);
+  const orphan = await createSession({ homeDir, dataRoot, cwd, ...fake });
+  await orphan.run("history");
+  await orphan.close();
+  const server = await startServer({ homeDir, onHandshake: () => {} });
+  const client = await connect(server);
+  let database: AppDatabase | undefined;
+  try {
+    const response = await client.command("sessions.list");
+    expect(response.result).toEqual([expect.objectContaining({ id: orphan.id, cwd })]);
+    expect((await client.command("projects.list")).result).toEqual([]);
+    client.socket.close();
+    await server.close();
+    database = await AppDatabase.open(dataRoot);
+    expect(await database.sessions()).toEqual([expect.objectContaining({ id: orphan.id, cwd })]);
+  } finally {
+    client.socket.close();
+    await server.close();
+    await database?.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("private provider management persists a redacted catalog without reading terminal authentication", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-services-wire-"));
+  const managementToken = "main-only-management-token";
+  let server = await startServer({ homeDir, managementToken, onHandshake: () => {} });
+  let client = await connect(server);
+  const manage = (input: unknown, token = managementToken, origin?: string) =>
+    fetch(`http://127.0.0.1:${server.port}/private/model-services`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, ...(origin ? { origin } : {}) },
+      body: JSON.stringify(input),
+    });
+  try {
+    expect((await manage({ type: "list" }, server.token)).status).toBe(403);
+    expect((await manage({ type: "list" }, managementToken, "app://rukie")).status).toBe(403);
+    expect(
+      (
+        await manage({
+          type: "save",
+          provider: {
+            id: "local",
+            name: "Local",
+            api: "openai-completions",
+            baseUrl: "http://localhost/v1",
+            models: [{ id: "m" }],
+          },
+          credential: { type: "replace", ciphertext: "opaque-ciphertext" },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await client.command("models.list")).result).toEqual([
+      expect.objectContaining({ providerId: "local", id: "m", authenticated: true }),
+    ]);
+    expect(JSON.stringify(client.messages)).not.toContain("opaque-ciphertext");
+    client.socket.close();
+    await server.close();
+    server = await startServer({ homeDir, managementToken, onHandshake: () => {} });
+    client = await connect(server);
+    expect((await client.command("models.list")).result).toEqual([
+      expect.objectContaining({ providerId: "local", authenticated: true }),
+    ]);
+    expect((await manage({ type: "delete", id: "local" })).status).toBe(200);
+    expect((await client.command("models.list")).result).toEqual([]);
+  } finally {
+    client.socket.close();
+    await server.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("encrypted desktop model requests use selected configuration and deletion preserves read-only history", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-services-execution-"));
+  const captured: { authorization: string | null; model: unknown }[] = [];
+  const provider = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      const body: unknown = await request.json();
+      if (typeof body !== "object" || body === null || !("model" in body))
+        throw new Error("Missing request model");
+      captured.push({ authorization: request.headers.get("authorization"), model: body.model });
+      return new Response(
+        'data: {"id":"test","choices":[{"index":0,"delta":{"role":"assistant","content":"desktop answer"},"finish_reason":null}]}\n\ndata: {"id":"test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    },
+  });
+  let decryptions = 0;
+  const managementToken = "main-only-test-token";
+  const encryption = {
+    async encrypt() {
+      return "cipher";
+    },
+    async decrypt(identity: string, ciphertext: string) {
+      expect(identity).toBe("provider:local");
+      expect(ciphertext).toBe("opaque");
+      decryptions++;
+      return "desktop-fixture-key";
+    },
+  };
+  let server = await startServer({ homeDir, managementToken, encryption, onHandshake: () => {} });
+  let client = await connect(server);
+  const manage = (input: unknown) =>
+    fetch(`http://127.0.0.1:${server.port}/private/model-services`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${managementToken}` },
+      body: JSON.stringify(input),
+    });
+  try {
+    expect(
+      (
+        await manage({
+          type: "save",
+          provider: {
+            id: "local",
+            name: "Local",
+            api: "openai-completions",
+            baseUrl: `http://127.0.0.1:${provider.port}/v1`,
+            models: [{ id: "desktop-model" }],
+          },
+          credential: { type: "replace", ciphertext: "opaque" },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await client.command("models.list")).result).toEqual([
+      expect.objectContaining({ authenticated: true }),
+    ]);
+    expect(decryptions).toBe(0);
+    const created = await client.command("session.create", {
+      project: null,
+      text: "hello",
+      modelSelection: { provider: "local", modelId: "desktop-model", thinkingLevel: "off" },
+    });
+    expect(created.error).toBeUndefined();
+    const sessionId = (created.result as { sessionId: string }).sessionId;
+    await client.next((message) => message.type === "result");
+    // The Session Run and its title generation both use the explicit desktop provider.
+    expect(captured).toEqual([
+      { authorization: "Bearer desktop-fixture-key", model: "desktop-model" },
+      { authorization: "Bearer desktop-fixture-key", model: "desktop-model" },
+    ]);
+    expect(JSON.stringify(client.messages)).not.toContain("desktop-fixture-key");
+    expect((await manage({ type: "delete", id: "local" })).status).toBe(200);
+    expect((await client.command("prompt", { sessionId, text: "again" })).error).toEqual({
+      code: "model_unavailable",
+    });
+    client.socket.close();
+    await server.close();
+    server = await startServer({ homeDir, managementToken, encryption, onHandshake: () => {} });
+    client = await connect(server);
+    expect((await client.command("session.subscribe", { sessionId })).result).toMatchObject({
+      readonly: true,
+      modelUnavailable: true,
+    });
+    expect(
+      client.messages.some(
+        (message) =>
+          message.type === "snapshot" && JSON.stringify(message).includes("desktop answer"),
+      ),
+    ).toBe(true);
+    expect(captured).toHaveLength(2);
+    expect(
+      (
+        await manage({
+          type: "save",
+          provider: {
+            id: "local",
+            name: "Local",
+            api: "openai-completions",
+            baseUrl: `http://127.0.0.1:${provider.port}/v1`,
+            models: [{ id: "replacement-model" }],
+          },
+          credential: { type: "replace", ciphertext: "opaque" },
+        })
+      ).status,
+    ).toBe(200);
+    const selected = await client.command("session.set_model", {
+      sessionId,
+      provider: "local",
+      modelId: "replacement-model",
+      thinkingLevel: "off",
+    });
+    expect(selected.result).toMatchObject({ model: "local/replacement-model" });
+    const before = captured.length;
+    expect(
+      (await client.command("prompt", { sessionId, text: "continue explicitly" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    // Server close drains the accepted Run before observing the external request count.
+    client.socket.close();
+    await server.close();
+    expect(captured.slice(before)).toEqual([
+      expect.objectContaining({ model: "replacement-model" }),
+    ]);
+  } finally {
+    client.socket.close();
+    await server.close();
+    await provider.stop(true);
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
 
 test("authenticated clients use the public registry over a real WebSocket", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-server-"));

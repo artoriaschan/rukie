@@ -41,6 +41,11 @@ const electron = vi.hoisted(() => {
       ),
     },
     dialog: { showOpenDialog: vi.fn().mockResolvedValue({ canceled: true, filePaths: [] }) },
+    safeStorage: {
+      isEncryptionAvailable: vi.fn(() => true),
+      encryptString: vi.fn((value: string) => Buffer.from(value)),
+      decryptString: vi.fn((value: Buffer) => value.toString()),
+    },
     shell: { showItemInFolder: vi.fn(), openPath: vi.fn().mockResolvedValue("") },
   };
 });
@@ -53,6 +58,76 @@ beforeEach(() => {
   electron.handlers.clear();
   electron.events.clear();
   vi.clearAllMocks();
+  electron.safeStorage.isEncryptionAvailable.mockReturnValue(true);
+});
+test("trusted credential save passes only ciphertext privately and cancellation never reports a save", async () => {
+  const owner = await startDesktop({
+    dataRoot: "/tmp/rukie-desktop-test-data",
+    rendererDirectory: "/tmp",
+    preload: "/tmp/preload.cjs",
+    sidecar: {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./helpers/sidecar.mjs", import.meta.url))],
+    },
+  });
+  const fetching = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValue(new Response("{}", { status: 200 }));
+  const event = {
+    sender: electron.window.webContents,
+    senderFrame: electron.window.webContents.mainFrame,
+  };
+  const input = {
+    provider: {
+      id: "local",
+      name: "Local",
+      api: "openai-completions",
+      baseUrl: "http://localhost/v1",
+      models: [],
+    },
+    credential: { type: "replace", value: "new-test-key" },
+  };
+  try {
+    await electron.handlers.get("rukie:modelServices:save")!(event, input);
+    const [, options] = fetching.mock.calls[0]!;
+    expect(options?.body).not.toContain("new-test-key");
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      type: "save",
+      credential: { type: "replace", ciphertext: expect.any(String) },
+    });
+    fetching.mockClear();
+    electron.safeStorage.encryptString.mockImplementationOnce(() => {
+      throw new Error("user cancelled new-test-key");
+    });
+    await expect(electron.handlers.get("rukie:modelServices:save")!(event, input)).rejects.toThrow(
+      "Retry or reconfigure",
+    );
+    expect(fetching).not.toHaveBeenCalled();
+    electron.safeStorage.isEncryptionAvailable.mockReturnValue(false);
+    await expect(electron.handlers.get("rukie:modelServices:save")!(event, input)).rejects.toThrow(
+      "unavailable",
+    );
+    expect(fetching).not.toHaveBeenCalled();
+  } finally {
+    fetching.mockRestore();
+    await owner.stop();
+  }
+});
+
+test("startup failure closes native resources", async () => {
+  electron.window.loadURL.mockRejectedValueOnce(new Error("cannot load renderer"));
+  await expect(
+    startDesktop({
+      dataRoot: "/tmp/rukie-desktop-test-data",
+      rendererDirectory: "/tmp",
+      preload: "/tmp/preload.cjs",
+      sidecar: {
+        command: process.execPath,
+        args: [fileURLToPath(new URL("./helpers/sidecar.mjs", import.meta.url))],
+      },
+    }),
+  ).rejects.toThrow("cannot load renderer");
+  expect(electron.window.destroy).toHaveBeenCalledOnce();
 });
 test("Electron installs app scheme before load and authenticates every native IPC sender", async () => {
   const owner = await startDesktop({
