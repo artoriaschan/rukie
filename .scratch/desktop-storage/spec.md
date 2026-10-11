@@ -1,4 +1,4 @@
-Status: resolved
+Status: claimed
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -149,3 +149,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 数字输入框仍使用 beUI Input，但其内部 number 输入的原生按钮未适配 Pencil，由 [11](issues/11-number-input-pencil-style.md) 的新代理仅修正模型弹窗样式。10 resolved，spec 为 11 保持 claimed。
 
 11 最终关闭于 `08adbe7a`：数字输入保留 beUI、number/min、键盘步进和 36px 高度，模型范围隐藏原生按钮。单例最终 1 pass（1.28s）；只验收受影响数字区域 Light/Dark/窄屏，截图范围限制与失败历史记录在 [11](issues/11-number-input-pencil-style.md)。独立两轴复核无实现缺陷，ADR Coverage 沿用 ADR-0029/0035，无新架构决定。根集成复用 10/11 的测试、静态及浏览器记录，未重复文件全套、desktop、check:dev 或 Electron；102 desktop 明确仅是此前基线。11/spec 同步 resolved，以实际本地证据交付，PR 未合并。
+
+## 模型弹窗底部按钮配色
+
+用户指出底部取消/保存按钮没有按当前设计稿配色，由 [12](issues/12-model-footer-pencil-colors.md) 的新代理修正既有 beUI Button 的设置局部样式。旧位置颜色选择器覆盖保存主色；按 C16 对照 Light/Dark 角色，保持尺寸、布局和配置行为，复用此前证据，只验证失效的 footer 颜色/状态。不启动 Electron，spec 为本票重新 claimed。
