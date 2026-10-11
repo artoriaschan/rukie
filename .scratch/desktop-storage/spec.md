@@ -1,4 +1,4 @@
-Status: resolved
+Status: claimed
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -117,3 +117,9 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 最终 ADR Coverage 对照 Implementation Decisions、最终 diff、独立评审与原生事实复核完成；展示配置与执行秘密分离及即时 busy 探测归更新后的 ADR-0035，原生 Harness、输出/附件/文件历史、加密身份和生命周期继续由已有 ADR 覆盖，设置样式/测试就绪修复无需新 ADR，领域含义不变。03/05/06 与 spec 在同一变更中 resolved；最终推送后的 CI 待观察，PR 等待用户评审，未授权合并 main。
 
 用户截图补充（2026-10-11）：重复测试密码提示来自独立验收 helper 访问正式应用同名钥匙串；普通 desktop 自动测试使用 mock 加密，不触发此路径。helper 已停用且当前无进程，未改钥匙串权限/用户凭据；正式应用启动与 helper 准备过程的证据分开记录，详见 [06](issues/06-integration-and-packaged-acceptance.md)。
+
+## P01–P08 供应商界面更新
+
+2026-10-11 用户明确授权更新供应商页面及添加模型弹窗布局，按当前 rukie.pen P01–P08 和组件复原；添加供应商仅保留自定义入口，不展示预设供应商。滚动区域采用设计源的 A13 自定义滚动条，浏览器验收包含 Light/Dark、窄屏和实际滚动交互，保留聊天布局。补充工作由 [07](issues/07-provider-pencil-refresh.md) 的新子代理实现，覆盖此前添加全部预设目录的要求。普通自动测试与浏览器 mock 验收按当前测试授权边界执行，不启动真实 Electron。
+
+本次局部供应商呈现/组件样式调整无需新 ADR：不改变存储、凭据、Session、协议或包依赖方向。最终关闭前核对实际 diff 与现有 ADR-0029/0035，记录组件来源、布局基线及本地验证。
