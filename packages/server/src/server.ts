@@ -11,6 +11,7 @@ import {
   applicationModelTemplates,
   listSessions,
   discoverSqliteSessions,
+  isSqliteSessionBusy,
   readSessionSnapshot,
   readSessionToolOutput,
   listModelCatalog,
@@ -32,11 +33,7 @@ import {
 } from "@rukie/shared";
 import { parseWireCommand } from "./command.ts";
 import { AppDatabase, type ApplicationRegistry } from "./storage/app-database.ts";
-import {
-  secretVault,
-  CredentialUnavailableError,
-  type SecretEncryption,
-} from "./storage/secrets.ts";
+import { secretVault, type SecretEncryption } from "./storage/secrets.ts";
 import { applicationMcpPersistence, applicationConfiguration } from "./storage/configuration.ts";
 
 type Registry = ApplicationRegistry;
@@ -85,6 +82,16 @@ export async function startServer(options: ServerOptions) {
   try {
     const vault = secretVault(database, options.encryption);
     const configuration = applicationConfiguration(database, vault, options.encryption);
+    const presentationSettings = async (cwd: string) =>
+      options.sessionOptions?.settings ??
+      (
+        await loadSettings({
+          cwd,
+          homeDir: options.homeDir,
+          dataRoot: options.dataRoot,
+          userSettings: await database.settings(),
+        })
+      ).settings;
     const registry = await database.registry();
     const configuredModels = async () =>
       createApplicationModels({
@@ -459,34 +466,44 @@ export async function startServer(options: ServerOptions) {
           return { sessionId: session.id, requestId };
         }
         case "session.subscribe": {
-          try {
-            const session = await find(command.sessionId);
-            subscribe(socket, session);
-            return { sessionId: session.id };
-          } catch (error) {
-            const readonly =
-              (error instanceof CommandError && error.code === "model_unavailable") ||
-              error instanceof CredentialUnavailableError;
-            if (
-              !readonly &&
-              !(error instanceof Error && "code" in error && error.code === "session-busy")
-            )
-              throw error;
-            const summary = (await summaries()).find((session) => session.id === command.sessionId);
-            if (summary)
-              send(
-                socket,
-                await readSessionSnapshot({
-                  cwd: summary.cwd,
-                  homeDir: options.homeDir,
-                  dataRoot: options.dataRoot,
-                  id: summary.id,
-                }),
-              );
-            if (readonly && summary)
-              return { sessionId: summary.id, readonly: true, modelUnavailable: true };
-            throw error;
+          const current = sessions.get(command.sessionId);
+          if (current) {
+            subscribe(socket, current);
+            return { sessionId: current.id };
           }
+          // Viewing persisted history must not recover tasks, acquire execution ownership,
+          // or unlock credentials. Explicit execution commands open the Session later.
+          const summary = (await summaries()).find((item) => item.id === command.sessionId);
+          if (!summary) throw new CommandError("session_not_found");
+          send(socket, {
+            ...(await readSessionSnapshot({
+              cwd: summary.cwd,
+              homeDir: options.homeDir,
+              dataRoot: options.dataRoot,
+              id: summary.id,
+            })),
+            permissionMode: (await presentationSettings(summary.cwd)).permissionMode ?? "ask",
+          });
+          if (
+            isSqliteSessionBusy({
+              cwd: summary.cwd,
+              homeDir: options.homeDir,
+              dataRoot: options.dataRoot,
+              id: summary.id,
+            })
+          )
+            throw new CommandError("session_busy");
+          await refreshModels();
+          const spec = summary.model;
+          const slash = spec.indexOf("/");
+          const model =
+            slash >= 0
+              ? applicationModels.getModel(spec.slice(0, slash), spec.slice(slash + 1))
+              : undefined;
+          const modelUnavailable =
+            !options.sessionOptions?.model &&
+            (!model || !(await applicationModels.checkAuth(model.provider)));
+          return { sessionId: summary.id, readonly: true, modelUnavailable };
         }
         case "tool_output.read": {
           const summary = (await summaries()).find((item) => item.id === command.sessionId);
@@ -521,6 +538,8 @@ export async function startServer(options: ServerOptions) {
               throw new CommandError("model_unavailable");
             if (!session.running) await session.setModelSelection({ model: session.model });
           }
+          subscribe(socket, session);
+          state(socket, session);
           const requestId = await startRun(session, command.text, command.images);
           return { requestId };
         }
@@ -553,16 +572,7 @@ export async function startServer(options: ServerOptions) {
           return {};
         }
         case "models.list": {
-          const settings =
-            options.sessionOptions?.settings ??
-            (
-              await loadSettings({
-                cwd: workspace,
-                homeDir: options.homeDir,
-                dataRoot: options.dataRoot,
-                userSettings: await configuration.settings(),
-              })
-            ).settings;
+          const settings = await presentationSettings(workspace);
           await refreshModels();
           return listModelCatalog(settings, options.sessionOptions?.models ?? applicationModels, {
             dataRoot: options.dataRoot,

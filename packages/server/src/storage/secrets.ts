@@ -4,7 +4,7 @@ export interface SecretEncryption {
   encrypt(identity: string, value: string): Promise<string>;
   decrypt(identity: string, ciphertext: string): Promise<string>;
 }
-export class CredentialUnavailableError extends Error {
+class CredentialUnavailableError extends Error {
   constructor() {
     super("Desktop credential operation failed. Retry or reconfigure credentials.");
   }

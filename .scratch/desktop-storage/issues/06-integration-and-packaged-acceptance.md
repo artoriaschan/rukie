@@ -4,7 +4,7 @@
 
 Blocked by: 02, 03, 04, 05
 
-Status: resolved
+Status: claimed
 
 - [x] 集成 01–05，附件原生消息块与外置文件适配不丢图片，文件历史与分支引用、失败写入/清理同步 owning modules
 - [x] 隔离 HOME/TUI 配置和 appData，验证双端同项目独立 Session、信任/凭证/skills/MCP，桌面不写旧用户目录
@@ -34,3 +34,7 @@ Root integration acceptance: independent Standards/Spec review completed; the st
 使用临时 npm 11.21.0（不修改系统 npm）复验 publication/recovery 两文件：20 pass、0 fail，114.27s。原 aggregate 的 19 项发布失败确认为环境版本门槛；聚焦复验不改写原 aggregate 结果。六张票和统一评审修复的临时工作树及已合入分支已清理，最终签名包和外部验收证据保留。
 
 Final genuine packaged acceptance (2026-10-11 after human unlock): clean signed runtime `4d3cf021`, ad-hoc hardened arm64 app, actual Electron safeStorage without mock Keychain/encryption. Trusted save and masked reload, real authenticated requests before/after restart, encrypted replacement/delete, form cancel preserving old authentication, wrong-key failure and isolated damaged-ciphertext native decrypt failure/repair all passed. Provider deletion plus full app restart retained historical full-output pagination; explicit replacement-model choice continued the same Session. Four Cmd-Q primary exits0; second-instance exits0; browser/fake API closed, owned ports18966–18968 have no listeners, app.sqlite integrity ok and credential rows0. No OS Keychain authorization dialog surfaced, so OS-prompt cancellation was not exercised or claimed; unavailable/encryption cancellation branches retain unit evidence. External report issue06-native-accepted.md records artifact hashes/screenshots; no real credentials or user Sessions used. ADR Coverage and independent review findings are complete; applicable local acceptance is complete with the earlier aggregate environment failures and successful focused remediation recorded accurately. Spec and all six tickets close together; final documentation commit CI remains pending until observed on the PR.
+
+## Corrective follow-up
+
+2026-10-11 用户报告每次启动出现钥匙串/密码授权窗口，以及设置页未严格还原 Pencil。重新打开 03、05、06 与 spec，分别由新的子代理诊断启动凭证访问并对照实际画板修正设置布局/样式；历史验收记录保留，最终关闭需完成本轮回归与原生/浏览器验收。

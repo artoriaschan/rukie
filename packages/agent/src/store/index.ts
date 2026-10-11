@@ -157,6 +157,31 @@ export function createSqliteStore(options: UserDataOptions & { cwd: string }): S
     throw new Error("SQLite Session storage requires an application data root.");
   return createStore(options, true);
 }
+
+/** Point-in-time desktop busy observation. Briefly probes only the host mutex, never opens a Session.
+ * No data is written; execution must still acquire its own lease afterward.
+ */
+export function isSqliteSessionBusy(
+  options: UserDataOptions & { cwd: string; id: string },
+): boolean {
+  validId(options.id);
+  if (!options.dataRoot)
+    throw new Error("Desktop busy observation requires an application data root.");
+  const database = new Database(
+    join(createSqliteStore(options).key(options.id), "host-lease.sqlite"),
+    { readwrite: true, create: false },
+  );
+  try {
+    database.exec("PRAGMA busy_timeout = 0; BEGIN IMMEDIATE;");
+    database.exec("ROLLBACK;");
+    return false;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "SQLITE_BUSY") return true;
+    throw error;
+  } finally {
+    database.close();
+  }
+}
 function createStore(options: UserDataOptions & { cwd: string }, sqlite: boolean): SessionStore {
   const cwd = resolve(options.cwd);
   const project = createHash("sha256").update(cwd).digest("hex");
