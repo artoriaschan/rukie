@@ -194,10 +194,11 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
     await running.click();
     await expect.element(running).toHaveAttribute("aria-expanded", "false");
     const activity = document.getElementById(running.element().getAttribute("aria-controls")!)!;
-    expect(activity.inert).toBe(true);
+    const hiddenTrace = activity.querySelector<HTMLElement>("[data-trace-group]")!;
+    expect(hiddenTrace.inert).toBe(true);
     expect(divider.nextElementSibling).toBe(activity);
     expect(getComputedStyle(divider).borderTopWidth).not.toBe("0px");
-    await expect.poll(() => activity.getBoundingClientRect().height).toBe(0);
+    await expect.poll(() => hiddenTrace.getBoundingClientRect().height).toBe(0);
     await send({
       type: "message_update",
       message: {
@@ -287,6 +288,12 @@ test.each(["aborted", "error"])(
       await title.click();
       await expect.element(title).toHaveAttribute("aria-expanded", "false");
       await expect.element(screen.getByText("已保留的回复", { exact: true })).toBeVisible();
+      expect(
+        screen
+          .getByText("已保留的回复", { exact: true })
+          .element()
+          .closest(`[data-state="${stopReason === "error" ? "error" : "complete"}"]`),
+      ).not.toBeNull();
       await title.click();
       await expect.element(title).toHaveAttribute("aria-expanded", "true");
       await expect.element(screen.getByText("历史推理", { exact: true })).toBeVisible();
@@ -296,6 +303,157 @@ test.each(["aborted", "error"])(
     }
   },
 );
+
+test("consecutive reasoning and tools form traces separated by persistent assistant messages", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const send = async (facts: object) => {
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "one", ...facts }),
+    });
+  };
+  try {
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    await expect.element(screen.getByRole("button", { name: "Context usage 25%" })).toBeVisible();
+    await send({
+      type: "snapshot",
+      model: "test/script",
+      compactions: [],
+      run: { inputs: [] },
+      messages: [
+        { role: "user", entryId: "u", timestamp: 1, content: "Inspect workflow" },
+        {
+          role: "assistant",
+          entryId: "a1",
+          timestamp: 2,
+          content: [
+            { type: "thinking", thinking: "Initial reasoning" },
+            { type: "text", text: "I will inspect the workflow." },
+            {
+              type: "toolCall",
+              id: "read",
+              name: "read",
+              arguments: { path: "ci.yml" },
+              view: { card: "generic", kind: "read", title: "ci.yml" },
+            },
+            { type: "thinking", thinking: "Check related scripts" },
+            { type: "text", text: "   " },
+            {
+              type: "toolCall",
+              id: "run",
+              name: "bash",
+              arguments: { command: "inspect-ci" },
+              view: { card: "terminal", kind: "execute", command: "inspect-ci" },
+            },
+            { type: "text", text: "The workflow needs a closer look." },
+          ],
+        },
+        {
+          role: "assistant",
+          entryId: "a2",
+          timestamp: 3,
+          content: [
+            { type: "thinking", thinking: "Final analysis" },
+            {
+              type: "toolCall",
+              id: "search",
+              name: "grep",
+              arguments: { pattern: "failed" },
+              view: { card: "generic", kind: "search", title: "Search scripts" },
+            },
+            { type: "text", text: "The result is ready." },
+          ],
+        },
+      ],
+    });
+    const response = screen.getByRole("article", { name: "Response 1", exact: true });
+    await expect
+      .element(response.getByRole("button", { name: "Analysis complete", exact: true }))
+      .toBeVisible();
+    const traces = response.element().querySelectorAll<HTMLElement>("[data-trace-group]");
+    expect(traces).toHaveLength(3);
+    expect(traces[0]!.querySelectorAll('[role="listitem"]')).toHaveLength(1);
+    expect(traces[1]!.querySelectorAll('[role="listitem"]')).toHaveLength(3);
+    expect(traces[2]!.querySelectorAll('[role="listitem"]')).toHaveLength(2);
+    const toolsTitle = response.getByRole("button", {
+      name: "Read files, Ran commands",
+      exact: true,
+    });
+    await expect.element(toolsTitle).toBeVisible();
+    const message = screen.getByText("I will inspect the workflow.", { exact: true }).element();
+    expect(message.closest('[role="listitem"]')).toBeNull();
+    expect(message.closest("[data-trace-group]")).toBeNull();
+    expect(message.closest('[data-state="complete"]')).not.toBeNull();
+    expect(
+      traces[0]!.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      message.compareDocumentPosition(traces[1]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    for (const button of response.getByRole("button", { name: "Reasoning", exact: true }).all()) {
+      await expect.element(button).toHaveAttribute("aria-expanded", "false");
+    }
+    await toolsTitle.click();
+    await expect.element(toolsTitle).toHaveAttribute("aria-expanded", "false");
+    await expect
+      .element(screen.getByText("The workflow needs a closer look.", { exact: true }))
+      .toBeVisible();
+    await toolsTitle.click();
+    const pending = {
+      role: "assistant",
+      timestamp: 4,
+      content: [{ type: "thinking", thinking: "Streaming analysis" }],
+    };
+    await send({ type: "message_update", message: pending });
+    await expect
+      .element(response.getByRole("button", { name: "Analyzing", exact: true }))
+      .toBeVisible();
+    await send({
+      type: "message_update",
+      message: {
+        ...pending,
+        content: [
+          ...pending.content,
+          {
+            type: "toolCall",
+            id: "live",
+            name: "bash",
+            arguments: { command: "live-inspection" },
+            view: { card: "terminal", kind: "execute", command: "live-inspection" },
+          },
+        ],
+      },
+    });
+    await expect
+      .element(response.getByRole("button", { name: "Running commands", exact: true }))
+      .toBeVisible();
+    await response.getByRole("button", { name: /^Processed for/ }).click();
+    for (const trace of traces) expect(trace.inert).toBe(true);
+    for (const text of [
+      "I will inspect the workflow.",
+      "The workflow needs a closer look.",
+      "The result is ready.",
+    ]) {
+      await expect.element(screen.getByText(text, { exact: true })).toBeVisible();
+    }
+    await send({ type: "result", success: true, text: "The result is ready.", durationMs: 2000 });
+    await expect
+      .element(response.getByRole("button", { name: "Time spent 2.0s", exact: true }))
+      .toHaveAttribute("aria-expanded", "false");
+    await expect
+      .element(response.getByRole("button", { name: "Message", exact: true }))
+      .not.toBeInTheDocument();
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
 
 test("permission epochs reply by keyboard, stale replies disappear, and queue withdrawal preserves the current draft", async () => {
   await page.viewport(1280, 900);

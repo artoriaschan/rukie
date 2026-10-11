@@ -70,6 +70,12 @@ export type AgentActivityContentType = AgentActivityItem["type"] | "mixed";
 export interface AgentActivityProps {
   /** Chronological activity entries. Append or update items as events stream. */
   items: AgentActivityItem[];
+  /** Compose chronological activity groups and persistent message bodies beneath this status. */
+  renderContent?: (context: {
+    expanded: boolean;
+    contentId: string;
+    triggerId: string;
+  }) => ReactNode;
   /** Expected activity kind before the first streamed item arrives. */
   contentType?: AgentActivityContentType;
   /** Current run phase. Active runs stay expanded unless collapsibleWhileWorking is enabled. */

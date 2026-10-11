@@ -110,6 +110,7 @@ function getSummary(
 
 export function AgentActivity({
   items,
+  renderContent,
   contentType: initialContentType,
   status = "working",
   duration = 0,
@@ -243,59 +244,63 @@ export function AgentActivity({
 
       {showStatusDivider ? <hr className="mt-2 border-border" /> : null}
 
-      <AgentDisclosure
-        id={contentId}
-        role="region"
-        aria-labelledby={triggerId}
-        open={expanded}
-        openHeight={maxHeight === null ? "auto" : viewportHeight}
-      >
-        <div
-          ref={viewportRef}
-          className={cn(
-            "scrollbar-hide pr-1",
-            capped && expanded && !working ? "overflow-y-auto" : "overflow-y-hidden",
-          )}
-          style={{
-            height: maxHeight === null ? undefined : viewportHeight,
-            maskImage,
-            WebkitMaskImage: maskImage,
-          }}
+      {renderContent ? (
+        renderContent({ expanded, contentId, triggerId })
+      ) : (
+        <AgentDisclosure
+          id={contentId}
+          role="region"
+          aria-labelledby={triggerId}
+          open={expanded}
+          openHeight={maxHeight === null ? "auto" : viewportHeight}
         >
-          <motion.div
-            ref={contentRef}
-            role="list"
-            initial={false}
-            animate={{ y: streamOffset }}
-            transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-            className={cn("space-y-0.5 py-2", contentClassName)}
+          <div
+            ref={viewportRef}
+            className={cn(
+              "scrollbar-hide pr-1",
+              capped && expanded && !working ? "overflow-y-auto" : "overflow-y-hidden",
+            )}
+            style={{
+              height: maxHeight === null ? undefined : viewportHeight,
+              maskImage,
+              WebkitMaskImage: maskImage,
+            }}
           >
-            <AnimatePresence mode="popLayout">
-              {items.map((item) => (
-                <motion.div
-                  layout="position"
-                  key={item.id}
-                  role="listitem"
-                  initial={reduce ? { opacity: 1 } : { opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3 }}
-                  transition={
-                    reduce
-                      ? { duration: 0 }
-                      : {
-                          opacity: { duration: 0.18, ease: EASE_OUT },
-                          y: SPRING_LAYOUT,
-                          layout: SPRING_LAYOUT,
-                        }
-                  }
-                >
-                  <ActivityRow item={item} />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
-        </div>
-      </AgentDisclosure>
+            <motion.div
+              ref={contentRef}
+              role="list"
+              initial={false}
+              animate={{ y: streamOffset }}
+              transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+              className={cn("space-y-0.5 py-2", contentClassName)}
+            >
+              <AnimatePresence mode="popLayout">
+                {items.map((item) => (
+                  <motion.div
+                    layout="position"
+                    key={item.id}
+                    role="listitem"
+                    initial={reduce ? { opacity: 1 } : { opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3 }}
+                    transition={
+                      reduce
+                        ? { duration: 0 }
+                        : {
+                            opacity: { duration: 0.18, ease: EASE_OUT },
+                            y: SPRING_LAYOUT,
+                            layout: SPRING_LAYOUT,
+                          }
+                    }
+                  >
+                    <ActivityRow item={item} />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
+          </div>
+        </AgentDisclosure>
+      )}
     </div>
   );
 }

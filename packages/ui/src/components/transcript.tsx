@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { FileText, Sparkles, SquareTerminal, Wrench } from "lucide-react";
+import { AgentDisclosure } from "./agents/agent-disclosure";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { PromptGroup, TranscriptState, PermissionDecision } from "../lib/transcript";
 import { messageText, presentationCallId } from "../lib/transcript";
@@ -47,12 +49,12 @@ function Group({
     return () => clearInterval(timer);
   }, [group.status]);
   const user = group.messages.find((message) => message.role === "user");
-  const final = group.messages
-    .filter((message) => message.role === "assistant")
-    .findLast(
-      (message) =>
-        messageText(message) && !message.content.some((block) => block.type === "toolCall"),
-    );
+  const finalMessage = group.messages.findLast(
+    (message) =>
+      message.role === "assistant" &&
+      messageText(message).trim() &&
+      !message.content.some((block) => block.type === "toolCall"),
+  );
   const duration =
     group.durationMs ??
     Math.max(
@@ -89,7 +91,15 @@ function Group({
       </span>
     </span>
   );
-  const activity: AgentActivityItem[] = [];
+  const sections: Array<
+    | { id: string; type: "trace"; items: AgentActivityItem[] }
+    | { id: string; type: "message"; content: ReactNode }
+  > = [];
+  const appendActivity = (item: AgentActivityItem) => {
+    const last = sections.at(-1);
+    if (last?.type === "trace") last.items.push(item);
+    else sections.push({ id: item.id, type: "trace", items: [item] });
+  };
   const approvals = decisions
     .filter((item) => item.request.placement?.groupId === group.id)
     .map((item) => {
@@ -111,7 +121,7 @@ function Group({
       if (anchor !== message || placement.blockIndex !== blockIndex || placement.before !== before)
         continue;
       const request = item.request;
-      activity.push({
+      appendActivity({
         id: `permission-${request.identity.epoch}`,
         type: "trace",
         kind: "permission",
@@ -153,7 +163,7 @@ function Group({
       appendApprovals(message, index, true);
       const id = `${message.entryId ?? `partial-${message.timestamp}`}:${index}`;
       if (block.type === "thinking")
-        activity.push({
+        appendActivity({
           id,
           type: "trace",
           kind: "thinking",
@@ -161,16 +171,18 @@ function Group({
           label: t("conversation.thinking"),
           content: <Markdown text={block.thinking} streaming={group.status === "running"} />,
         });
-      else if (block.type === "text" && message !== final)
-        activity.push({
+      else if (block.type === "text" && block.text.trim())
+        sections.push({
           id,
-          type: "trace",
-          kind: "message",
-          label: t("conversation.message"),
+          type: "message",
           content: (
             <StreamingResponse
               status={
-                message === state.partial && group.status === "running" ? "streaming" : "complete"
+                message === state.partial && group.status === "running"
+                  ? "streaming"
+                  : message === finalMessage && group.status === "failed"
+                    ? "error"
+                    : "complete"
               }
               showActions={false}
             >
@@ -184,7 +196,7 @@ function Group({
       else if (block.type === "toolCall") {
         const tool = state.tools[presentationCallId(message, block.id)];
         if (tool)
-          activity.push({
+          appendActivity({
             id,
             type: "trace",
             kind:
@@ -226,7 +238,7 @@ function Group({
         </MessageBubble>
       ) : null}
       <AgentActivity
-        items={activity}
+        items={[]}
         contentType="trace"
         maxHeight={null}
         showStatusDivider
@@ -238,25 +250,80 @@ function Group({
         collapseOnComplete={!failed && group.status !== "aborted"}
         renderWorkingStatus={() => title}
         renderCompletedStatus={() => title}
+        renderContent={({ expanded: activityOpen, contentId, triggerId }) => (
+          <div id={contentId} role="region" aria-labelledby={triggerId} className="space-y-3 py-2">
+            {sections.map((section, index) => {
+              if (section.type === "message") return <div key={section.id}>{section.content}</div>;
+              const working = group.status === "running" && index === sections.length - 1;
+              const kinds = new Set(
+                section.items.flatMap((item) =>
+                  item.type === "trace" && item.kind !== "thinking" && item.kind !== "permission"
+                    ? [item.kind]
+                    : [],
+                ),
+              );
+              const summary = kinds.size
+                ? [...kinds]
+                    .map((kind) => {
+                      const category =
+                        kind === "run"
+                          ? "execute"
+                          : kind === "write"
+                            ? "edit"
+                            : kind === "read"
+                              ? "read"
+                              : kind === "search"
+                                ? "search"
+                                : kind === "fetch"
+                                  ? "fetch"
+                                  : kind === "task"
+                                    ? "task"
+                                    : "other";
+                      return t(
+                        working
+                          ? `conversation.active-${category}`
+                          : `conversation.activity-${category}`,
+                      );
+                    })
+                    .join(t("conversation.activity-separator"))
+                : t(working ? "conversation.analyzing" : "conversation.analyzed");
+              const Icon = kinds.has("run")
+                ? SquareTerminal
+                : kinds.has("read")
+                  ? FileText
+                  : kinds.size
+                    ? Wrench
+                    : Sparkles;
+              const label = (
+                <span className="flex items-center gap-2 text-ui-sm">
+                  <Icon aria-hidden="true" className="size-4 shrink-0" />
+                  {summary}
+                </span>
+              );
+              return (
+                <AgentDisclosure key={section.id} open={activityOpen} data-trace-group="">
+                  <AgentActivity
+                    items={section.items}
+                    contentType="trace"
+                    status={working ? "working" : "complete"}
+                    defaultOpen
+                    collapseOnComplete={false}
+                    collapsibleWhileWorking
+                    maxHeight={null}
+                    renderWorkingStatus={() => label}
+                    renderCompletedStatus={() => label}
+                    contentClassName="ml-2 border-l border-border pl-2"
+                  />
+                </AgentDisclosure>
+              );
+            })}
+          </div>
+        )}
       />
       {group.error ? (
         <p role="alert" className="text-ui-sm text-danger">
           {group.error}
         </p>
-      ) : null}
-      {final ? (
-        <StreamingResponse
-          status={
-            group.status === "running"
-              ? "streaming"
-              : group.status === "failed"
-                ? "error"
-                : "complete"
-          }
-          showActions={false}
-        >
-          <Markdown text={messageText(final)} streaming={group.status === "running"} />
-        </StreamingResponse>
       ) : null}
     </div>
   );
