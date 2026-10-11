@@ -1,4 +1,9 @@
-import { createModels, createProvider, type MutableModels } from "@earendil-works/pi-ai";
+import {
+  createModels,
+  createProvider,
+  type MutableModels,
+  type ProviderStreams,
+} from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
@@ -30,7 +35,25 @@ export function createApplicationModels(options: {
           id: provider.id,
           name: provider.name,
           baseUrl: provider.baseUrl,
-          api: apis[provider.api](),
+          api: (() => {
+            const api = apis[provider.api]();
+            const temperature = (id: string) =>
+              provider.models.find((item) => item.id === id)?.temperature;
+            const streams: ProviderStreams = {
+              ...api,
+              stream: (model, context, options) =>
+                api.stream(model, context, {
+                  ...options,
+                  temperature: options?.temperature ?? temperature(model.id),
+                }),
+              streamSimple: (model, context, options) =>
+                api.streamSimple(model, context, {
+                  ...options,
+                  temperature: options?.temperature ?? temperature(model.id),
+                }),
+            };
+            return streams;
+          })(),
           auth: {
             apiKey: {
               name: "Desktop encrypted credential",
@@ -60,7 +83,12 @@ export function createApplicationModels(options: {
               reasoning: model.reasoning ?? false,
               contextWindow: model.contextWindow ?? 128_000,
               maxTokens: model.maxTokens ?? 16_384,
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              cost: {
+                input: model.inputPrice ?? 0,
+                output: model.outputPrice ?? 0,
+                cacheRead: model.cacheReadPrice ?? 0,
+                cacheWrite: model.cacheWritePrice ?? 0,
+              },
             })),
         }),
         options.homeDir,

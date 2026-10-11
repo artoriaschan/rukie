@@ -57,3 +57,5 @@ macOS 应用图标直接使用 [brand/rukie-app-icon.icns](../../brand/rukie-app
 打包 smoke 显式隔离应用数据根与 Electron user-data，保留真实工具 home，并仅使用已有 fakeModel 经外部 loopback 传输桥接，不改生产 sidecar。当前打包 smoke 使用普通启动参数，禁止以 `--use-mock-keychain` 代替启动验收。此前开启 Cookie Encryption 的产物曾依赖该测试参数；历史验收详细证据见 [issue 30](../../.scratch/desktop/issues/30-local-macos-build.md)。
 
 Electron 在初始化窗口和 sidecar 前取得单实例锁；第二实例退出并让现有窗口恢复、聚焦。宿主关闭拒绝新 IPC，幂等 shutdown 等待 sidecar 实际退出后关闭私有加密服务；sidecar 排空输出、Session 与 SQLite，释放执行 lease。系统凭证只通过明确录入/替换/删除操作接触 safeStorage；取消、系统加密不可用或解密失败不能报告保存成功。
+
+模型高级设置的压缩阈值填写上下文占用百分比（1–100），工具迭代填写每次 Run 的整批工具轮数上限；达到上限后模型可在无工具请求中总结。留空保留默认行为。Temperature 与 USD/百万 Token 价格按选定模型生效，价格来源仅为元数据。当前锁定 Harness 的子代理压缩沿用根 Session 策略，子代理不同模型的阈值不单独生效。

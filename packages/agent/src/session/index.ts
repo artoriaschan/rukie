@@ -511,49 +511,125 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
     });
     const providerConversations = new Map<string, ConversationId>();
+    // Reconstruct rounds from native committed entries, including history preceding compaction.
+    const toolRounds = async (id: ConversationId, ctx: Context) => {
+      const choice = await harness.snapshot(modelState.document, id, ctx);
+      const selected =
+        choice?.value &&
+        typeof choice.value === "object" &&
+        !Array.isArray(choice.value) &&
+        typeof choice.value.model === "string"
+          ? selectedModel(choice.value.model)
+          : model;
+      const configured: unknown = Reflect.get(selected, "maxToolIterations");
+      if (typeof configured !== "number") return undefined;
+      const live = await harness.snapshot(LiveDoc, id, ctx);
+      if (!live?.run) return undefined;
+      const inputs = await Promise.all(
+        live.run.inputs.map((input) => lease.storage.submission(input, ctx)),
+      );
+      const anchors = inputs.flatMap((input) => (input?.entry === undefined ? [] : [input.entry]));
+      const start = anchors.reduce<(typeof anchors)[number] | undefined>(
+        (oldest, entry) =>
+          oldest === undefined || Number(entry) < Number(oldest) ? entry : oldest,
+        undefined,
+      );
+      if (start === undefined) return undefined;
+      let count = 0;
+      let cursor: Cursor | undefined;
+      do {
+        const page = await lease.storage.scanEntries(
+          { conversationId: id, minEntryId: start },
+          256,
+          cursor,
+          ctx,
+        );
+        count += page.items.filter(
+          (entry) =>
+            Number(entry.id) > Number(start) &&
+            entry.model?.some(
+              (message) =>
+                message.role === "assistant" &&
+                message.stopReason === "toolUse" &&
+                message.content.some((part) => part.type === "toolCall"),
+            ),
+        ).length;
+        cursor = page.next;
+      } while (cursor !== undefined && count <= configured);
+      return { count, limit: configured };
+    };
+    const providerConversation = async (sessionId: string) => {
+      const known = providerConversations.get(sessionId);
+      if (known !== undefined) return known;
+      let cursor: Cursor | undefined;
+      do {
+        const page = await lease.storage.scanConversations({}, 100, cursor, context);
+        for (const row of page.items) {
+          const identity = await harness.snapshot(ProviderDoc, row.id, context);
+          if (identity) providerConversations.set(identity.sessionId, row.id);
+          if (identity?.sessionId === sessionId) return row.id;
+        }
+        cursor = page.next;
+      } while (cursor !== undefined);
+      return undefined;
+    };
+    const guardToolResponse = async (message: Message, id: ConversationId, ctx: Context) => {
+      if (message.role !== "assistant" || !message.content.some((part) => part.type === "toolCall"))
+        return false;
+      const rounds = await toolRounds(id, ctx);
+      return Boolean(rounds && rounds.count >= rounds.limit);
+    };
+
     const harness: Harness = await Harness.open(
       observedStorage,
       {
-        models: withAutomaticReasoning(models, async (sessionId) => {
-          const known = providerConversations.get(sessionId);
-          if (known !== undefined) {
-            const choice = await harness.snapshot(modelState.document, known, context);
+        models: withAutomaticReasoning(
+          models,
+          async (sessionId) => {
+            const id = await providerConversation(sessionId);
+            if (id === undefined) return false;
+            const choice = await harness.snapshot(modelState.document, id, context);
             return Boolean(
               choice?.value &&
               typeof choice.value === "object" &&
               !Array.isArray(choice.value) &&
               choice.value.thinkingLevel === "automatic",
             );
-          }
-          let cursor: Cursor | undefined;
-          do {
-            const page = await lease.storage.scanConversations({}, 100, cursor, context);
-            for (const row of page.items) {
-              const identity = await harness.snapshot(ProviderDoc, row.id, context);
-              if (identity) providerConversations.set(identity.sessionId, row.id);
-              if (identity?.sessionId !== sessionId) continue;
-              const choice = await harness.snapshot(modelState.document, row.id, context);
-              return choice?.value &&
-                typeof choice.value === "object" &&
-                !Array.isArray(choice.value)
-                ? choice.value.thinkingLevel === "automatic"
-                : false;
-            }
-            cursor = page.next;
-          } while (cursor !== undefined);
-          return false;
-        }),
+          },
+          async (sessionId) => {
+            const id = await providerConversation(sessionId);
+            const rounds = id === undefined ? undefined : await toolRounds(id, context);
+            return Boolean(rounds && rounds.count >= rounds.limit);
+          },
+          (selected) =>
+            typeof Reflect.get(selected, "compressionThreshold") === "number"
+              ? Math.max(
+                  1,
+                  Math.min(
+                    Math.floor(0.8 * Math.min(16384, Math.floor(selected.contextWindow * 0.2))),
+                    selected.maxTokens,
+                  ),
+                )
+              : undefined,
+        ),
         registry,
         env: () => env,
         settings: {
           retry: { enabled: false },
           progress: { partialIntervalMs: 0, outputIntervalMs: 0 },
           get compaction() {
+            const threshold: unknown = Reflect.get(model, "compressionThreshold");
             return {
               enabled: true,
               keepRecentTokens: Math.min(16000, Math.floor(model.contextWindow * 0.4)),
-              reserveTokens: Math.min(16384, Math.floor(model.contextWindow * 0.2)),
-              backgroundTokens: Math.min(32768, Math.floor(model.contextWindow * 0.25)),
+              reserveTokens:
+                typeof threshold === "number"
+                  ? Math.floor(model.contextWindow * (1 - threshold / 100))
+                  : Math.min(16384, Math.floor(model.contextWindow * 0.2)),
+              backgroundTokens:
+                typeof threshold === "number"
+                  ? 0
+                  : Math.min(32768, Math.floor(model.contextWindow * 0.25)),
             };
           },
         },
@@ -1575,7 +1651,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           tools: childLoadout.registrations,
           hooks: [
             hook(ToolTask, {
-              beforeTool: childRuntime.beforeTool,
+              beforeTool: async (call, api, ctx) => {
+                const rounds = await toolRounds(api.conversationId, ctx);
+                if (rounds && rounds.count > rounds.limit)
+                  return { block: "Tool iteration limit reached" };
+                return childRuntime.beforeTool(call, api, ctx);
+              },
               afterTool: childRuntime.afterTool,
             }),
             hook(GenerationTask, {
@@ -1639,8 +1720,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     );
                 return { messages: modelContextMessages(await child.context(ctx)) };
               },
-              afterResponse: async () => {
+              afterResponse: async (message, _api, ctx) => {
                 childTracking.finishRequest();
+                if (await guardToolResponse(message, child.id, ctx)) {
+                  warn("Model exceeded the configured tool iteration limit");
+                  await child.abort(ctx);
+                  return;
+                }
               },
               onYield: async (answer, api, ctx) => {
                 if (answer.stopReason !== "stop") return undefined;
@@ -2195,7 +2281,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return undefined;
               },
             }),
-            hook(ToolTask, { beforeTool: runtime.beforeTool, afterTool: runtime.afterTool }),
+            hook(ToolTask, {
+              beforeTool: async (call, api, ctx) => {
+                const rounds = await toolRounds(api.conversationId, ctx);
+                if (rounds && rounds.count > rounds.limit)
+                  return { block: "Tool iteration limit reached" };
+                return runtime.beforeTool(call, api, ctx);
+              },
+              afterTool: runtime.afterTool,
+            }),
             hook(GenerationTask, {
               beforeRequest: async (_request, api, ctx) => {
                 const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
@@ -2336,6 +2430,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               },
               afterResponse: async (message, api, ctx) => {
                 tracking.finishRequest();
+                if (await guardToolResponse(message, conversation.id, ctx)) {
+                  warn("Model exceeded the configured tool iteration limit");
+                  await conversation.abort(ctx);
+                  return;
+                }
                 const inputTokens =
                   message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
                 // Stop hooks can remain pending before the native assistant entry is appended.

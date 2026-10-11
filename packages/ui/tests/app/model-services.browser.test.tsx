@@ -508,6 +508,26 @@ test("Pencil advanced settings contains only reference fields and preserves hidd
       expect(getComputedStyle(card).minHeight).toBe("189px");
       expect(getComputedStyle(card).borderRadius).toBe("16px");
     }
+    const values = {
+      "Compression threshold": "80",
+      Temperature: "0.7",
+      "Maximum tool iterations": "3",
+      "Input price": "1.5",
+      "Output price": "2.5",
+      "Cache read price": "0.5",
+      "Cache write price": "0.75",
+    };
+    for (const [name, value] of Object.entries(values))
+      await screen.getByRole("spinbutton", { name, exact: true }).fill(value);
+    await screen.getByRole("spinbutton", { name: "Temperature", exact: true }).fill("");
+    await screen.getByRole("spinbutton", { name: "Temperature", exact: true }).click();
+    await userEvent.keyboard("0.7");
+    await expect
+      .element(screen.getByRole("spinbutton", { name: "Temperature", exact: true }))
+      .toHaveValue(0.7);
+    await screen
+      .getByRole("textbox", { name: "Price source", exact: true })
+      .fill("https://prices.example.com");
     await screen.getByRole("checkbox", { name: "Low", exact: true }).click();
     await screen.getByRole("spinbutton", { name: "Maximum output tokens" }).fill("14000");
     await screen.getByRole("button", { name: "Save model", exact: true }).click();
@@ -517,6 +537,25 @@ test("Pencil advanced settings contains only reference fields and preserves hidd
       low: null,
     });
     expect(providers[0]!.models[0]!.compat).toEqual(original.compat);
+    expect(providers[0]!.models[0]!).toMatchObject({
+      compressionThreshold: 80,
+      temperature: 0.7,
+      maxToolIterations: 3,
+      inputPrice: 1.5,
+      outputPrice: 2.5,
+      cacheReadPrice: 0.5,
+      cacheWritePrice: 0.75,
+      priceSource: "https://prices.example.com",
+    });
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await screen.getByRole("button", { name: /Advanced settings/ }).click();
+    for (const [name, value] of Object.entries(values))
+      await expect
+        .element(screen.getByRole("spinbutton", { name, exact: true }))
+        .toHaveValue(Number(value));
+    await expect
+      .element(screen.getByRole("textbox", { name: "Price source", exact: true }))
+      .toHaveValue("https://prices.example.com");
   } finally {
     await screen.unmount();
   }

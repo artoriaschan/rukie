@@ -23,6 +23,16 @@ export const ModelServiceSchema = Type.Object(
           name: Type.Optional(Type.String({ maxLength: 256 })),
           automaticReasoning: Type.Optional(Type.Boolean()),
           enabled: Type.Optional(Type.Boolean()),
+          /** Context occupancy percent; omitted uses the existing automatic policy. */
+          compressionThreshold: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
+          temperature: Type.Optional(Type.Number({ minimum: 0, maximum: 2 })),
+          maxToolIterations: Type.Optional(Type.Integer({ minimum: 1 })),
+          /** USD per million tokens. Omitted prices preserve the zero-cost custom-model default. */
+          inputPrice: Type.Optional(Type.Number({ minimum: 0 })),
+          outputPrice: Type.Optional(Type.Number({ minimum: 0 })),
+          cacheReadPrice: Type.Optional(Type.Number({ minimum: 0 })),
+          cacheWritePrice: Type.Optional(Type.Number({ minimum: 0 })),
+          priceSource: Type.Optional(Type.String({ maxLength: 2048 })),
           defaultThinkingLevel: Type.Optional(Type.Enum([...MODEL_SERVICE_THINKING_LEVELS])),
         },
         { additionalProperties: false },

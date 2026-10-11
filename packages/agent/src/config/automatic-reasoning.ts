@@ -1,9 +1,13 @@
-import type { Models, ModelsSimpleStreamOptions } from "@earendil-works/pi-ai";
+import type { Api, Model, Models, ModelsSimpleStreamOptions } from "@earendil-works/pi-ai";
 
-/** Native Harness carries automatic as off; the persisted product choice controls omission. */
+/** Session-owned model request policy: native off carries automatic, persisted facts control reasoning/tool omission.
+ * completeSimple is the locked Harness compaction seam; its independent summary budget must not inherit threshold reserve.
+ */
 export function withAutomaticReasoning(
   models: Models,
   automatic: (sessionId: string) => Promise<boolean>,
+  toolLimitReached?: (sessionId: string) => Promise<boolean>,
+  compactionMaxTokens?: (model: Model<Api>) => number | undefined,
 ): Models {
   return new Proxy(models, {
     get(target, key) {
@@ -14,10 +18,22 @@ export function withAutomaticReasoning(
           ...options,
           onPayload: async (payload, selected) => {
             const replaced = (await options?.onPayload?.(payload, selected)) ?? payload;
-            if (!options?.sessionId || !(await automatic(options.sessionId))) return replaced;
+            const limit = Boolean(
+              options?.sessionId && (await toolLimitReached?.(options.sessionId)),
+            );
+            const omitReasoning = Boolean(
+              options?.sessionId && (await automatic(options.sessionId)),
+            );
+            if (!limit && !omitReasoning) return replaced;
             if (typeof replaced !== "object" || replaced === null || Array.isArray(replaced))
               throw new Error("Automatic reasoning requires an object request payload");
             const result = { ...replaced };
+            if (limit) {
+              Reflect.deleteProperty(result, "tools");
+              Reflect.deleteProperty(result, "tool_choice");
+              Reflect.deleteProperty(result, "parallel_tool_calls");
+            }
+            if (!omitReasoning) return result;
             for (const field of [
               "reasoning",
               "reasoning_effort",
@@ -86,7 +102,14 @@ export function withAutomaticReasoning(
         });
         if (key === "completeSimple") {
           const complete: Models["completeSimple"] = (model, context, options) =>
-            target.completeSimple(model, context, requestOptions(options));
+            target.completeSimple(
+              model,
+              context,
+              requestOptions({
+                ...options,
+                maxTokens: compactionMaxTokens?.(model) ?? options?.maxTokens,
+              }),
+            );
           return complete;
         }
         const stream: Models["streamSimple"] = (model, context, options) =>

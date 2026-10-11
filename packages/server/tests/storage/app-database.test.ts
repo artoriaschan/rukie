@@ -88,6 +88,14 @@ test("desktop model defaults survive provider restart and reject unsupported lev
       {
         id: "m",
         name: "Distinct",
+        compressionThreshold: 80,
+        temperature: 0.7,
+        maxToolIterations: 3,
+        inputPrice: 1.5,
+        outputPrice: 2.5,
+        cacheReadPrice: 0.5,
+        cacheWritePrice: 0.75,
+        priceSource: "https://prices.example.com",
         automaticReasoning: true,
         reasoning: true,
         defaultThinkingLevel: "high" as const,
@@ -97,6 +105,19 @@ test("desktop model defaults survive provider restart and reject unsupported lev
   };
   try {
     await app.saveProvider(provider, { type: "keep" });
+    for (const invalid of [
+      { temperature: Infinity },
+      { temperature: -1 },
+      { compressionThreshold: 101 },
+      { maxToolIterations: 1.5 },
+      { inputPrice: -1 },
+    ])
+      await expect(
+        app.saveProvider(
+          { ...provider, models: [{ ...provider.models[0]!, ...invalid }] },
+          { type: "keep" },
+        ),
+      ).rejects.toThrow("Invalid provider");
     await app.close();
     app = await AppDatabase.open(root);
     expect((await app.providers())[0]!.models[0]).toEqual(provider.models[0]);

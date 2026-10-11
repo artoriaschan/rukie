@@ -62,6 +62,16 @@ import { useAppText } from "../lib/i18n";
 
 type Services = NonNullable<DesktopHost["modelServices"]>;
 type ServiceModel = ModelService["models"][number];
+const advancedNumericFields = [
+  "compressionThreshold",
+  "temperature",
+  "maxToolIterations",
+  "inputPrice",
+  "outputPrice",
+  "cacheReadPrice",
+  "cacheWritePrice",
+] as const;
+type AdvancedNumericField = (typeof advancedNumericFields)[number];
 const routes = {
   "anthropic-messages": "/v1/messages",
   "openai-completions": "/chat/completions",
@@ -119,6 +129,11 @@ export function ModelServices({
   const [editing, setEditing] = useState<number>();
   const [model, setModel] = useState<ServiceModel>(defaultModel);
   const [modelError, setModelError] = useState("");
+  const [advancedDraft, setAdvancedDraft] = useState<Partial<Record<AdvancedNumericField, string>>>(
+    {},
+  );
+  const editAdvanced = (field: AdvancedNumericField, value: string) =>
+    setAdvancedDraft((previous) => ({ ...previous, [field]: value }));
   const [advanced, setAdvanced] = useState(false);
   const [defaultReasoningOpen, setDefaultReasoningOpen] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -296,6 +311,7 @@ export function ModelServices({
     setEditing(index);
     setModel(structuredClone(index === undefined ? defaultModel : draft!.models[index]!));
     setModelError("");
+    setAdvancedDraft({});
     setAdvanced(false);
     setDialog("model");
   };
@@ -309,6 +325,10 @@ export function ModelServices({
       return;
     }
     const savedModel = { ...model };
+    for (const field of advancedNumericFields) {
+      const value = advancedDraft[field];
+      if (value !== undefined) savedModel[field] = value === "" ? undefined : Number(value);
+    }
     const models = [...draft.models];
     if (editing === undefined) models.push(savedModel);
     else models[editing] = savedModel;
@@ -1036,17 +1056,20 @@ export function ModelServices({
                   <ChevronDown className="ml-auto size-4" />
                 </Button>
                 <div className="model-services-advanced" hidden={!advanced}>
-                  <p className="sr-only" id="model-services-advanced-unavailable">
-                    {t("services.advancedUnavailable")}
-                  </p>
                   <div className="model-services-advanced-columns">
                     <section className="model-services-option-card">
                       <h3>{t("services.compression")}</h3>
                       <Input
                         label={t("services.compressionThreshold")}
-                        value=""
-                        disabled
-                        aria-describedby="model-services-advanced-unavailable"
+                        type="number"
+                        min={1}
+                        max={100}
+                        placeholder="%"
+                        value={
+                          advancedDraft.compressionThreshold ??
+                          String(model.compressionThreshold ?? "")
+                        }
+                        onChange={(value) => editAdvanced("compressionThreshold", value)}
                       />
                     </section>
                     <section className="model-services-option-card">
@@ -1054,9 +1077,12 @@ export function ModelServices({
                       <div className="model-services-basic-columns">
                         <Input
                           label="Temperature"
-                          value=""
-                          disabled
-                          aria-describedby="model-services-advanced-unavailable"
+                          type="number"
+                          min={0}
+                          max={2}
+                          step="any"
+                          value={advancedDraft.temperature ?? String(model.temperature ?? "")}
+                          onChange={(value) => editAdvanced("temperature", value)}
                         />
                         <Input
                           label={t("services.tokens")}
@@ -1068,9 +1094,12 @@ export function ModelServices({
                       </div>
                       <Input
                         label={t("services.toolIterations")}
-                        value=""
-                        disabled
-                        aria-describedby="model-services-advanced-unavailable"
+                        type="number"
+                        min={1}
+                        value={
+                          advancedDraft.maxToolIterations ?? String(model.maxToolIterations ?? "")
+                        }
+                        onChange={(value) => editAdvanced("maxToolIterations", value)}
                       />
                     </section>
                   </div>
@@ -1083,17 +1112,20 @@ export function ModelServices({
                         <Input
                           key={field}
                           label={t(`services.${field}`)}
-                          value=""
-                          disabled
-                          aria-describedby="model-services-advanced-unavailable"
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={advancedDraft[field] ?? String(model[field] ?? "")}
+                          onChange={(value) => editAdvanced(field, value)}
                         />
                       ))}
                     </div>
                     <Input
                       label={t("services.priceSource")}
-                      value=""
-                      disabled
-                      aria-describedby="model-services-advanced-unavailable"
+                      value={model.priceSource ?? ""}
+                      onChange={(priceSource) =>
+                        setModel({ ...model, priceSource: priceSource || undefined })
+                      }
                     />
                   </section>
                 </div>
