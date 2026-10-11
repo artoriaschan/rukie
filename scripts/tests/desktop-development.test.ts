@@ -1,11 +1,12 @@
 import { expect, test, onTestFinished } from "bun:test";
-import { mkdtemp, mkdir, rm, symlink, realpath, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, realpath, writeFile, readlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { watch } from "node:fs";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import {
+  copyDevelopmentRuntime,
   developmentPaths,
   developmentEnvironment,
   runDevelopmentProcess,
@@ -160,4 +161,35 @@ test("developer native persistent storage rejects redirected cache while allowin
       );
   }
   expect((await developmentPaths(root)).sessionData).toBe(paths.sessionData);
+});
+
+test("development runtime keeps framework links inside its independent app copy", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-dev-framework-")));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const source = join(root, "source.app");
+  const copy = join(root, "development.app");
+  const framework = "Contents/Frameworks/Electron Framework.framework";
+  await mkdir(join(source, framework, "Versions/A/Resources"), { recursive: true });
+  await writeFile(join(source, framework, "Versions/A/Electron Framework"), "source runtime");
+  await writeFile(join(source, framework, "Versions/A/Resources/sentinel"), "source resources");
+  for (const [name, target] of [
+    ["Versions/Current", "A"],
+    ["Electron Framework", "Versions/Current/Electron Framework"],
+    ["Resources", "Versions/Current/Resources"],
+  ] as const)
+    await symlink(target, join(source, framework, name));
+  await copyDevelopmentRuntime(source, copy);
+  expect(await readlink(join(copy, framework, "Versions/Current"))).toBe("A");
+  expect(await readlink(join(copy, framework, "Electron Framework"))).toBe(
+    "Versions/Current/Electron Framework",
+  );
+  expect(await readlink(join(copy, framework, "Resources"))).toBe("Versions/Current/Resources");
+  await writeFile(join(copy, framework, "Resources/sentinel"), "independent copy");
+  expect(await readFile(join(source, framework, "Resources/sentinel"), "utf8")).toBe(
+    "source resources",
+  );
+  await rm(source, { recursive: true });
+  expect(await readFile(join(copy, framework, "Electron Framework"), "utf8")).toBe(
+    "source runtime",
+  );
 });

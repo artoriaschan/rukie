@@ -268,7 +268,12 @@ export function runDevelopmentProcess(
   });
 }
 
-async function developmentBundle(
+/** Copy a versioned macOS runtime without redirecting its internal framework links. */
+export async function copyDevelopmentRuntime(sourceApp: string, app: string) {
+  await cp(sourceApp, app, { recursive: true, verbatimSymlinks: true });
+}
+
+export async function developmentBundle(
   paths: Awaited<ReturnType<typeof developmentPaths>>,
   env: NodeJS.ProcessEnv,
   signal: AbortSignal,
@@ -277,6 +282,7 @@ async function developmentBundle(
   const marker = join(paths.cache, "electron-41.0.3.json");
   const identity = JSON.stringify({
     electron: "41.0.3",
+    runtimeCopyFormat: 1,
     ...developmentIdentity,
     main: join(paths.build, "main.js"),
     cookieEncryption: false,
@@ -317,7 +323,7 @@ async function developmentBundle(
       });
     }
     signal.throwIfAborted();
-    await cp(sourceApp, app, { recursive: true });
+    await copyDevelopmentRuntime(sourceApp, app);
     const contents = join(app, "Contents");
     const packageDirectory = join(contents, "Resources/app");
     await mkdir(packageDirectory, { recursive: true });
