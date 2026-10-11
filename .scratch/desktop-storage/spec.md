@@ -1,4 +1,4 @@
-Status: resolved
+Status: claimed
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -125,3 +125,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 本次局部供应商呈现/组件样式调整无需新 ADR：不改变存储、凭据、Session、协议或包依赖方向。最终关闭前核对实际 diff 与现有 ADR-0029/0035，记录组件来源、布局基线及本地验证。
 
 07 最终关闭：供应商仅自定义入口、最新 P01–P08 供应商/模型弹窗布局与 A13 覆盖式滚动条实现并完成评审修复；组件来源和几何更新归 DESIGN.md，所有配置/凭据合同保持既有边界。实际 footer 与 Light hover 缺陷已最小 red/green 修复，最终 Chromium/mock Light/Dark/窄屏/键盘/拖拽验收完成。root `1c6672f2` 的 desktop 100 pass（11.21s）及 check:dev 全通过，独立复评无遗留问题。ADR Coverage 复核沿用 ADR-0029/0035，本轮无需新 ADR；详细证据归 [07](issues/07-provider-pencil-refresh.md)。07/spec 同时 resolved，按用户要求以本地结果交付，不等待 CI，未启动真实 Electron，未授权合并 main。
+
+## API 下拉框样式回归
+
+用户本机浏览器预览截图显示 API 格式下拉框出现列表圆点、异常行高与不匹配的悬停色。由 [08](issues/08-provider-api-dropdown-style.md) 的新代理从实际预览入口复现，继续采用已有 beUI Select，核对 P04/C14 展开几何与 Light/Dark 色板，并补上公开 DOM 样式回归。用户当前预览入口与进程保留，不通过启动真实 Electron 验证。
