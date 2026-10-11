@@ -123,6 +123,138 @@ test("App shows committed and streaming replies, with failed tool output expande
   }
 });
 
+test("Run title toggles beUI activity without hiding the streaming or final response", async () => {
+  await page.viewport(420, 800);
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const send = async (facts: object) => {
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "one", ...facts }),
+    });
+  };
+  try {
+    await userEvent.keyboard("{Control>}1{/Control}");
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toBeEnabled();
+    await send({
+      type: "snapshot",
+      model: "test/script",
+      compactions: [],
+      messages: [{ role: "user", entryId: "u", timestamp: 1000, content: "Repair parser" }],
+      run: { inputs: [] },
+    });
+    const partial = {
+      role: "assistant",
+      timestamp: 1001,
+      content: [
+        { type: "thinking", thinking: "Inspecting the parser" },
+        { type: "text", text: "First **response**" },
+      ],
+    };
+    await send({ type: "message_update", message: partial });
+    const response = screen.getByRole("article", { name: "Response 1", exact: true });
+    const running = response.getByRole("button", { name: /^Running/ });
+    await expect.element(running).toHaveAttribute("aria-expanded", "true");
+    await expect.element(screen.getByText("Inspecting the parser", { exact: true })).toBeVisible();
+    expect(response.element().querySelector('[data-state="streaming"]')).not.toBeNull();
+    await running.click();
+    await expect.element(running).toHaveAttribute("aria-expanded", "false");
+    const activity = document.getElementById(running.element().getAttribute("aria-controls")!)!;
+    expect(activity.inert).toBe(true);
+    await expect.poll(() => activity.getBoundingClientRect().height).toBe(0);
+    await send({
+      type: "message_update",
+      message: {
+        ...partial,
+        content: [partial.content[0], { type: "text", text: "Updated **response**" }],
+      },
+    });
+    await expect.element(screen.getByText("Updated", { exact: false })).toBeVisible();
+    await running.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(running).toHaveAttribute("aria-expanded", "true");
+    await send({ type: "message_end", entryId: "a", messages: [{ ...partial, entryId: "a" }] });
+    await send({ type: "result", success: true, text: "First response", durationMs: 434000 });
+    const title = response.getByRole("button", { name: "Took 7m 14s", exact: true });
+    await expect.element(title).toHaveAttribute("aria-expanded", "false");
+    await expect.element(screen.getByText("response", { exact: true })).toBeVisible();
+    expect(
+      response.element().querySelector('[data-state="complete"][aria-busy="false"]'),
+    ).not.toBeNull();
+    await title.element().focus();
+    await userEvent.keyboard(" ");
+    await expect.element(title).toHaveAttribute("aria-expanded", "true");
+    await expect.element(screen.getByText("Inspecting the parser", { exact: true })).toBeVisible();
+    await title.click();
+    await expect.element(title).toHaveAttribute("aria-expanded", "false");
+    await expect.element(response.getByRole("button", { name: /steps/i })).not.toBeInTheDocument();
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+    await page.viewport(1280, 900);
+  }
+});
+
+test.each(["aborted", "error"])(
+  "restored %s activity stays available behind the localized Run title",
+  async (stopReason) => {
+    await page.viewport(1280, 900);
+    const connection = await commands.startWire();
+    const screen = await render(
+      <App host={{ getConnection: async () => connection }} locale="zh" />,
+    );
+    try {
+      await screen
+        .getByRole("button", { name: /Fix compiler/ })
+        .first()
+        .click();
+      await expect.element(screen.getByRole("button", { name: "上下文用量 25%" })).toBeVisible();
+      await fetch(`http://127.0.0.1:${connection.port}/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "snapshot",
+          sessionId: "one",
+          model: "test/script",
+          compactions: [],
+          messages: [
+            { role: "user", entryId: "u", timestamp: 1000, content: "历史问题" },
+            {
+              role: "assistant",
+              entryId: "a",
+              timestamp: 435000,
+              stopReason,
+              content: [
+                { type: "thinking", thinking: "历史推理" },
+                { type: "text", text: "已保留的回复" },
+              ],
+            },
+          ],
+          runSummaries: [{ afterMessage: 1, durationMs: 434000, success: false, endedAt: 435000 }],
+        }),
+      });
+      const title = screen.getByRole("button", {
+        name: `${stopReason === "aborted" ? "已中止" : "失败"} 用时 7分钟 14秒`,
+        exact: true,
+      });
+      await expect.element(title).toHaveAttribute("aria-expanded", "true");
+      await expect.element(screen.getByText("历史推理", { exact: true })).toBeVisible();
+      await title.click();
+      await expect.element(title).toHaveAttribute("aria-expanded", "false");
+      await expect.element(screen.getByText("已保留的回复", { exact: true })).toBeVisible();
+      await title.click();
+      await expect.element(title).toHaveAttribute("aria-expanded", "true");
+      await expect.element(screen.getByText("历史推理", { exact: true })).toBeVisible();
+    } finally {
+      await screen.unmount();
+      await commands.stopWire(connection.port);
+    }
+  },
+);
+
 test("permission epochs reply by keyboard, stale replies disappear, and queue withdrawal preserves the current draft", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
@@ -324,7 +456,7 @@ test("virtualized response groups follow streaming height, preserve upward readi
     await screen.getByRole("button", { name: "Jump to response 5", exact: true }).click();
     await expect.element(screen.getByText("Final 5", { exact: true })).toBeVisible();
     const response = screen.getByRole("article", { name: "Response 5", exact: true });
-    await response.getByRole("button", { name: "Show steps", exact: true }).click();
+    await response.getByRole("button", { name: /^Took / }).click();
     await expect.element(screen.getByText("Intermediate 5", { exact: true })).toBeVisible();
     await send({
       type: "tool_state_changed",
@@ -435,11 +567,11 @@ test("running elapsed display advances at the virtual one-second deadline", asyn
         run: { inputs: [] },
       }),
     });
-    await expect.element(screen.getByText("0.0s", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Took 0.0s", { exact: true })).toBeVisible();
     await vi.advanceTimersByTimeAsync(999);
-    await expect.element(screen.getByText("0.0s", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Took 0.0s", { exact: true })).toBeVisible();
     await vi.advanceTimersByTimeAsync(1);
-    await expect.element(screen.getByText("1.0s", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Took 1.0s", { exact: true })).toBeVisible();
   } finally {
     await screen.unmount();
     vi.useRealTimers();

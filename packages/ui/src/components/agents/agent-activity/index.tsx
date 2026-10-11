@@ -117,6 +117,7 @@ export function AgentActivity({
   defaultOpen = false,
   onOpenChange,
   collapseOnComplete = true,
+  collapsibleWhileWorking = false,
   activeLabel,
   summary,
   renderWorkingStatus,
@@ -141,7 +142,7 @@ export function AgentActivity({
     onOpenChange,
   });
   const working = status === "working";
-  const expanded = working || currentOpen;
+  const expanded = (working && !collapsibleWhileWorking) || currentOpen;
   const contentType = items.length ? getContentType(items) : (initialContentType ?? "mixed");
   const cappedHeight = Math.min(contentHeight, Math.max(0, maxHeight));
   const viewportHeight = working ? Math.max(0, maxHeight) : cappedHeight;
@@ -189,7 +190,7 @@ export function AgentActivity({
       aria-busy={working}
       className={cn("w-full text-ui-base", className)}
     >
-      {working ? (
+      {working && !collapsibleWhileWorking ? (
         <div
           id={triggerId}
           role="status"
@@ -211,13 +212,21 @@ export function AgentActivity({
           className="group flex h-7 min-w-0 items-center gap-1.5 rounded-md text-left font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <span className="truncate">
-            {renderCompletedStatus
-              ? renderCompletedStatus({ summary: completedSummary, duration })
-              : completedSummary}
+            {working ? (
+              renderWorkingStatus ? (
+                renderWorkingStatus({ label: liveLabel, duration })
+              ) : (
+                <ThinkingShimmer>{liveLabel}</ThinkingShimmer>
+              )
+            ) : renderCompletedStatus ? (
+              renderCompletedStatus({ summary: completedSummary, duration })
+            ) : (
+              completedSummary
+            )}
           </span>
           <motion.span
             aria-hidden="true"
-            animate={{ rotate: expanded ? 180 : 0 }}
+            animate={{ rotate: expanded ? 0 : -90 }}
             transition={reduce ? { duration: 0 } : SPRING_SWAP}
             className="inline-flex shrink-0 text-muted-foreground/70 group-hover:text-foreground"
           >

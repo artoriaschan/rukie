@@ -24,10 +24,10 @@ wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `
 
 ## 对话呈现
 
-Transcript 呈现按用户输入分组（`PromptGroup`），组内保留多次 Turn，不改变 Agent Core 的 Turn 定义。完成的组默认只显示最后文本回复与耗时，展开后显示推理与工具步骤；正在执行的组完整展开；中止与失败保留状态，原生 provider 错误作为回复组的警告展示。TanStack 按组测量虚拟行，容器为 `role="feed"`；在底部时跟随追加和行高增长，上翻停止跟随，左缘刻度跳转并预览问题与回复。当前回答组（运行中的组，否则最后一组）的长刻度独立于点击跳转；预览复用 Tooltip portal，hover 或键盘聚焦可读，Esc 关闭，并在 viewport 内定位，不受轨道滚动裁切。屏幕外的组不在 DOM 中，读屏与页内查找只覆盖已渲染部分。
+Transcript 呈现按用户输入分组（`PromptGroup`），组内保留多次 Turn，不改变 Agent Core 的 Turn 定义。消息正文使用 beUI Streaming Response；推理、中间消息与工具步骤在 Agent Activity 中按原顺序展示。组内「用时」标题与箭头直接控制活动区展开和收起，支持鼠标、Enter 与 Space；正文始终可见，没有独立的步骤按钮。正在执行的组默认展开，允许手动收起；完成后默认收起，中止与失败默认展开并保留状态，原生 provider 错误作为回复组的警告展示。TanStack 按组测量虚拟行，容器为 `role="feed"`；在底部时跟随追加和行高增长，上翻停止跟随，左缘刻度跳转并预览问题与回复。当前回答组（运行中的组，否则最后一组）的长刻度独立于点击跳转；预览复用 Tooltip portal，hover 或键盘聚焦可读，Esc 关闭，并在 viewport 内定位，不受轨道滚动裁切。屏幕外的组不在 DOM 中，读屏与页内查找只覆盖已渲染部分。
 
 工具以提交的 assistant entry ID 与 call ID 组合归约，实时事件通过当前调用索引关联，复用 provider ID 不覆盖历史；默认折叠，失败展开。ANSI 输出通过 anser 解析标准、256 色与 RGB SGR 并剔除 OSC/光标控制；diff 按 unified hunk 分行，旧文与新文分别高亮，流式工具/diff 输出不使用 aria-live。Markdown 解析成 React 文本节点，不执行 HTML 或链接导航。所有代码块按需加载并共用 GitHub Light/Dark Shiki 高亮器；完整块缓存最多 64 条，超过 12,000 个字符或 200 行显示纯文本。未闭合代码块使用 ShikiStreamTokenizer，仅重算不稳定尾部。
 
-权限停靠卡以 epoch 关联回复；Esc 拒绝、A 在 Session 内允许、Enter 允许，编辑文本、组合输入与菜单/模态框不触发这些快捷键。断连禁用回复；settled 与 stale 删除对应 epoch，重新订阅时使用 server 补发的新请求。成功回复的决定保留为当前窗口中的回复结果行；重启窗口后以已提交工具结果事实为准。摘要显示当前 Todo 与子代理状态。
+权限停靠卡以 epoch 关联回复；Esc 拒绝、A 在 Session 内允许、Enter 允许，编辑文本、组合输入与菜单/模态框不触发这些快捷键。断连禁用回复；settled 与 stale 删除对应 epoch，重新订阅时使用 server 补发的新请求。成功回复的决定保留为当前窗口活动区中的结果行；重启窗口后以已提交工具结果事实为准。摘要显示当前 Todo 与子代理状态。
 
 权限回复按 Interaction epoch 保存当前 PromptGroup、命令和子代理来源，结果行不依赖可能复用的工具调用 ID。断连期间保留停靠卡并禁用按钮，恢复连接时清除旧 epoch，重新订阅后接受补发；提交应答期间保留可编辑草稿，提交按钮在命令应答前禁用。

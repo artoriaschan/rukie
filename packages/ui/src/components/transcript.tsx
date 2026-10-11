@@ -9,6 +9,8 @@ import { PreviewRail } from "./motion/preview-rail";
 import { MessageBubble, MessageBubbleContent } from "./agents/message-bubble";
 import { Markdown } from "./markdown";
 import { ToolRow } from "./tool-row";
+import { AgentActivity, type AgentActivityItem } from "./agents/agent-activity";
+import { StreamingResponse } from "./agents/streaming-response";
 function Group({
   group,
   state,
@@ -32,21 +34,25 @@ function Group({
             state.tools[presentationCallId(message, block.id)]?.status === "error",
         ),
     );
-  const [expanded, setExpanded] = useState(failed);
+  const [expanded, setExpanded] = useState(
+    group.status === "running" || group.status === "aborted" || failed,
+  );
   useEffect(() => {
-    if (failed) setExpanded(true);
-  }, [failed]);
+    if (failed || group.status === "running" || group.status === "aborted") setExpanded(true);
+  }, [failed, group.status]);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (group.status !== "running") return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [group.status]);
-  const open = group.status === "running" || group.status === "aborted" || expanded;
   const user = group.messages.find((message) => message.role === "user");
-  const final = group.messages.findLast(
-    (message) => message.role === "assistant" && messageText(message),
-  );
+  const final = group.messages
+    .filter((message) => message.role === "assistant")
+    .findLast(
+      (message) =>
+        messageText(message) && !message.content.some((block) => block.type === "toolCall"),
+    );
   const duration =
     group.durationMs ??
     Math.max(
@@ -54,7 +60,86 @@ function Group({
       (group.status === "running" ? now : (group.messages.at(-1)?.timestamp ?? group.startedAt)) -
         group.startedAt,
     );
-  const content = open ? group.messages : final ? [final] : [];
+  const elapsed =
+    duration >= 60000
+      ? t("conversation.duration-minutes", {
+          minutes: Math.floor(duration / 60000),
+          seconds: Math.floor(duration / 1000) % 60,
+        })
+      : t("conversation.duration", { duration: (duration / 1000).toFixed(1) });
+  const title = (
+    <span className="flex items-center gap-2 text-ui-sm text-muted-foreground">
+      {group.status !== "complete" ? (
+        <span>
+          {t(
+            group.status === "running"
+              ? waiting
+                ? "app.waiting"
+                : "conversation.running"
+              : group.status === "aborted"
+                ? "conversation.aborted"
+                : "conversation.failed",
+          )}
+        </span>
+      ) : null}
+      <span>{t("conversation.elapsed", { duration: elapsed })}</span>
+    </span>
+  );
+  const activity: AgentActivityItem[] = [];
+  for (const message of group.messages) {
+    if (message.role !== "assistant") continue;
+    message.content.forEach((block, index) => {
+      const id = `${message.entryId ?? `partial-${message.timestamp}`}:${index}`;
+      if (block.type === "thinking")
+        activity.push({
+          id,
+          type: "text",
+          content: <Markdown text={block.thinking} streaming={group.status === "running"} />,
+        });
+      else if (block.type === "text" && message !== final)
+        activity.push({
+          id,
+          type: "text",
+          content: (
+            <StreamingResponse
+              status={
+                message === state.partial && group.status === "running" ? "streaming" : "complete"
+              }
+              showActions={false}
+            >
+              <Markdown
+                text={block.text}
+                streaming={message === state.partial && group.status === "running"}
+              />
+            </StreamingResponse>
+          ),
+        });
+      else if (block.type === "toolCall") {
+        const tool = state.tools[presentationCallId(message, block.id)];
+        if (tool) activity.push({ id, type: "text", content: <ToolRow tool={tool} /> });
+      }
+    });
+  }
+  decisions
+    .filter((item) => item.groupId === group.id)
+    .forEach((item, index) => {
+      activity.push({
+        id: `permission-${index}`,
+        type: "text",
+        content: (
+          <div className="flex items-baseline gap-2 text-ui-sm text-muted-foreground">
+            {item.reply === "deny" ? (
+              <CircleX aria-hidden className="size-3 shrink-0 text-danger" />
+            ) : (
+              <CircleCheck aria-hidden className="size-3 shrink-0 text-success" />
+            )}
+            <span>{t("conversation.decision", { decision: t(`conversation.${item.reply}`) })}</span>
+            {item.origin ? <span>{item.origin}</span> : null}
+            <code className="min-w-0 break-words font-mono">{item.title}</code>
+          </div>
+        ),
+      });
+    });
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-3 px-5 py-4">
       {user ? (
@@ -80,80 +165,37 @@ function Group({
           </MessageBubbleContent>
         </MessageBubble>
       ) : null}
-      <div className="flex items-center gap-2 text-ui-sm text-muted-foreground">
-        <span>
-          {t(
-            group.status === "running"
-              ? waiting
-                ? "app.waiting"
-                : "conversation.running"
-              : group.status === "aborted"
-                ? "conversation.aborted"
-                : group.status === "failed"
-                  ? "conversation.failed"
-                  : "conversation.complete",
-          )}
-        </span>
-        <span>{t("conversation.duration", { duration: (duration / 1000).toFixed(1) })}</span>
-        {group.status !== "running" ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
-          >
-            {t(expanded ? "conversation.collapse" : "conversation.expand")}
-          </Button>
-        ) : null}
-      </div>
+      <AgentActivity
+        items={activity}
+        status={group.status === "running" ? "working" : "complete"}
+        duration={duration / 1000}
+        open={expanded}
+        onOpenChange={setExpanded}
+        collapsibleWhileWorking
+        collapseOnComplete={!failed && group.status !== "aborted"}
+        renderWorkingStatus={() => title}
+        renderCompletedStatus={() => title}
+        className="border-b border-border pb-2"
+      />
       {group.error ? (
         <p role="alert" className="text-ui-sm text-danger">
           {group.error}
         </p>
       ) : null}
-      {decisions
-        .filter((item) => item.groupId === group.id)
-        .map((item, index) => (
-          <div key={index} className="flex items-baseline gap-2 text-ui-sm text-muted-foreground">
-            {item.reply === "deny" ? (
-              <CircleX aria-hidden className="size-3 shrink-0 text-danger" />
-            ) : (
-              <CircleCheck aria-hidden className="size-3 shrink-0 text-success" />
-            )}
-            <span>{t("conversation.decision", { decision: t(`conversation.${item.reply}`) })}</span>
-            {item.origin ? <span>{item.origin}</span> : null}
-            <code className="min-w-0 break-words font-mono">{item.title}</code>
-          </div>
-        ))}
-      {content.map((message, index) => {
-        if (message.role === "user") return null;
-        if (message.role === "assistant")
-          return (
-            <div key={message.entryId ?? index}>
-              {message.content.map((block, i) =>
-                block.type === "text" ? (
-                  <Markdown key={i} text={block.text} streaming={group.status === "running"} />
-                ) : block.type === "thinking" ? (
-                  open ? (
-                    <details key={i}>
-                      <summary className="text-ui-sm text-muted-foreground">
-                        {t("conversation.thinking")}
-                      </summary>
-                      <Markdown text={block.thinking} />
-                    </details>
-                  ) : null
-                ) : block.type === "toolCall" &&
-                  state.tools[presentationCallId(message, block.id)] &&
-                  open ? (
-                  <div key={block.id}>
-                    <ToolRow tool={state.tools[presentationCallId(message, block.id)]!} />
-                  </div>
-                ) : null,
-              )}
-            </div>
-          );
-        return null;
-      })}
+      {final ? (
+        <StreamingResponse
+          status={
+            group.status === "running"
+              ? "streaming"
+              : group.status === "failed"
+                ? "error"
+                : "complete"
+          }
+          showActions={false}
+        >
+          <Markdown text={messageText(final)} streaming={group.status === "running"} />
+        </StreamingResponse>
+      ) : null}
     </div>
   );
 }

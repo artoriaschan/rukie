@@ -79,6 +79,8 @@ export interface AgentActivityProps {
   onOpenChange?: (open: boolean) => void;
   /** Collapse the disclosure when status changes from working to complete. */
   collapseOnComplete?: boolean;
+  /** Allow the status title to toggle activity during a running Run as well. */
+  collapsibleWhileWorking?: boolean;
   /** Optional label shown while the run is active. */
   activeLabel?: ReactNode;
   /** Optional completed summary. Derived from the item types by default. */
