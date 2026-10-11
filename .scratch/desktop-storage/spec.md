@@ -4,7 +4,7 @@ Status: claimed
 
 ## Problem Statement
 
-已交付的[桌面 MVP](../desktop/spec.md) 使用终端的 JSONL Session、配置与供应商环境凭证。桌面端需要独立管理会话、项目、置顶、配置与加密凭证，工具完整输出存入数据库。用户已于 2026-10-11 确认全部设计分叉，并指定供应商录入采用 `rukie.pen` 的模型服务流程。本规格只代表设计已接受，运行代码尚未调整。
+已交付的[桌面 MVP](../desktop/spec.md) 使用终端的 JSONL Session、配置与供应商环境凭证。桌面端需要独立管理会话、项目、置顶、配置与加密凭证，工具完整输出存入数据库。用户已于 2026-10-11 确认全部设计分叉，并指定供应商录入采用 `rukie.pen` 的模型服务流程。01–06 的代码已集成；真实系统凭证验收尚未完成，状态保持 claimed。
 
 ## Solution
 
@@ -22,7 +22,7 @@ Status: claimed
   agents/
 ```
 
-布局为拟议实现路径。WAL/SHM 和执行 lease 属于所属数据库的资源，不作为另一套持久化事实。API Key、OAuth token/client_secret、授权临时秘密与 MCP header 认证秘密仅以密文落盘；图片等附件及恢复文件历史单独存文件。桌面用户级 MCP、hooks、权限和项目信任存 app.sqlite，规则/skills/agents 内容由同一数据根内的文件承载。
+布局为当前实现路径。WAL/SHM 和执行 lease 属于所属数据库的资源，不作为另一套持久化事实。API Key、OAuth token/client_secret、授权临时秘密与 MCP header 认证秘密仅以密文落盘；图片等附件及恢复文件历史单独存文件。桌面用户级 MCP、hooks、权限和项目信任存 app.sqlite，规则/skills/agents 内容由同一数据根内的文件承载。
 
 ## Implementation Decisions
 
@@ -95,3 +95,9 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 设计访谈已完成，所有存储分叉经用户确认。领域复核保留 CONTEXT.md 的 Session、Transcript、Run、Turn、Interaction、Model Selection 含义；SQLite、应用数据根和凭证密文属于实现选择，不为它们新增领域术语。原 MVP resolved 记录保留历史交付证据，新功能状态按本规格 01–06 更新，不把文档确认当作实现完成。
 
 文档交付检查：`bun run docs:update`、`bun run check:docs`、`bun run check:scratch`、修改文件的 `oxfmt --check` 与 `git diff --check` 通过。只读事实复核补齐 OAuth client_secret/认证 header 的加密范围，以及只读 SQLite 不得触发 schema migration。未运行行为测试或生产加密验收；六张实施票保持 ready-for-agent。
+
+实施集成记录（2026-10-11）：每张票使用独立的新 implementer 子代理，依赖顺序集成至 `feat/desktop-storage`；运行代码候选 `4d3cf021`，统一文档评审修复与 06 最新证据合入 `d4de7b37`。Standards 发现的 CONTEXT 存储说明与 ADR 替代链已修正；Spec 评审未发现代码缺陷。ADR Coverage 复核确认独立数据根、原生 Harness、输出/文件引用、加密通道与宿主生命周期分别由表中 ADR 覆盖，领域含义不变；协议适配器不支持的视频、PDF、结构化输出和原生联网在模型设置中明确禁用说明，不宣称可用。
+
+根集成验证：受影响 Core/server 29 pass，1.87s；`bun run test:desktop` 25 文件 92 pass，8.98s；浏览器 Light/Dark、窄窗口、历史完整输出和显式重选后续发送通过。一次 `env -u NO_COLOR bun run check` 静态阶段通过，Bun 3429 pass、21 fail，165.53s，未进入 desktop 阶段。19 项发布失败受本机 npm 11.19.1 门槛阻止，最小 publication 用例同样报要求 11.21.0 或受支持的 OIDC 版本；发布脚本无本轮 diff。两个 TUI 模型面板用例受继承的 `DEEPSEEK_API_KEY` 增加页签影响：当前与基线 `a447d45f` 均 3 pass/2 fail，单独移除该变量后均 5 pass（568ms），相关测试/模型路径无本轮 diff。这些既有环境失败不扩展为本轮修复范围，全量结果仍为失败。签名 arm64 包来自 clean `4d3cf021`，打包完整性检查通过；真实 safeStorage 录入、重启认证、替换、删除及失败/取消尚未验收，原生 UI 报告 Mac 锁定，需要人工解锁。PR 保持 draft，工单/spec 不关闭。
+
+使用临时 npm 11.21.0（不修改系统 npm）复验 publication/recovery 两文件：20 pass、0 fail，114.27s。原 aggregate 的 19 项发布失败确认为环境版本门槛；聚焦复验不改写原 aggregate 结果。六张票和统一评审修复的临时工作树及已合入分支已清理，最终签名包和外部验收证据保留。

@@ -6,12 +6,12 @@ Blocked by: 02, 03, 04, 05
 
 Status: claimed
 
-- [ ] 集成 01–05，附件原生消息块与外置文件适配不丢图片，文件历史与分支引用、失败写入/清理同步 owning modules
-- [ ] 隔离 HOME/TUI 配置和 appData，验证双端同项目独立 Session、信任/凭证/skills/MCP，桌面不写旧用户目录
-- [ ] 真实 Session 输出/abort/resume/subagent/readonly/索引失败与 crash 回归；主进程单实例、sidecar shutdown/restart 与 SQLite 连接/执行 lease 清理
+- [x] 集成 01–05，附件原生消息块与外置文件适配不丢图片，文件历史与分支引用、失败写入/清理同步 owning modules
+- [x] 隔离 HOME/TUI 配置和 appData，验证双端同项目独立 Session、信任/凭证/skills/MCP，桌面不写旧用户目录
+- [x] 真实 Session 输出/abort/resume/subagent/readonly/索引失败与 crash 回归；主进程单实例、sidecar shutdown/restart 与 SQLite 连接/执行 lease 清理
 - [ ] 实际签名 macOS arm64 app 正常启动，真实 safeStorage/钥匙串录入重启认证、替换删除、取消失败；不用 mock keychain 代表生产成功
-- [ ] 完成受影响消费者盘点、focused timings/static 和适用 aggregate 检查；共享配置/存储/Jobs 接缝有跨模块风险时先说明再跑一次全量
-- [ ] 同步所有当前 README/architecture/配置例子/tech-stack 与 ADR Coverage，评审和 tracker 状态按真实实施验收更新；仅文档通过不关闭本规格
+- [x] 完成受影响消费者盘点、focused timings/static 和适用 aggregate 检查；共享配置/存储/Jobs 接缝有跨模块风险时先说明再跑一次全量
+- [x] 同步所有当前 README/architecture/配置例子/tech-stack 与 ADR Coverage，评审和 tracker 状态按真实实施验收更新；仅文档通过不关闭本规格
 
 ## Implementation Evidence
 
@@ -28,3 +28,7 @@ Unified real browser acceptance exposed two integrated defects, fixed with red p
 Browser repair repeat on `4d3cf021`: fresh displayed-default first-send creates a real Session; deleted provider and fully restarted sidecar with same SQLite data, reopened history still exposes full-output pagination. Explicit replacement provider selection continues that same history to a new reply. Browser runtime errors empty, informational Vite/React console only; no horizontal page overflow. One retry failure came from the external fake endpoint exiting and resolved after its isolated restart. Evidence and Light/Dark/420 screenshots live outside repo in the task evidence directory. Browser/Vite/sidecar/fake endpoint closed and awaited, explicitly nonproduction fixture removed.
 
 Final runtime candidate rebuilt clean `4d3cf021ef65d71ca197626b9b8bdce5736da2d6`; artifact `package-06-final/package/mac-arm64/Rukie.app`, metadata `package-06-final/desktop-build.json`: arm64/ad-hoc hardened runtime/strict deep codesign, sidecar JIT1, asar integrity and Cookie Encryption disabled verified. Earlier build `6b47a83` reached normal `app://rukie` renderer/preload without mock-keychain flags. Native UI inventory reported locked Mac requiring human unlock; valid native encrypted-save success not established. Original app process exited137 with unknown trigger, remaining owned package processes were stopped and awaited; no leftovers. Final rebuilt app's genuine safeStorage save/restart-auth/replace/delete/failure/cancel and graceful shutdown remain required pending human unlock. No publication, CI or production encryption success claim.
+
+Root integration acceptance: independent Standards/Spec review completed; the storage glossary/ADR chain finding was corrected in b55810d2, final integration d4de7b37. Core/server 29 pass1.87s; root test:desktop 25files92pass8.98s. One announced cross-module aggregate completed: static checks passed, Bun3429pass21fail165.53s, exited1 before desktop. Nineteen release failures are blocked by installed npm11.19.1; minimal publication reproduces version gate and release scripts have no task diff. Two model-switch cases also fail on baseline a447d45f due to ambient DEEPSEEK_API_KEY; removing only that variable gives5pass568ms on both baseline/current. These pre-existing environment failures are recorded, not changed or represented as a passing aggregate. Native encryption acceptance remains pending human unlock; spec/issue claimed and PR draft.
+
+使用临时 npm 11.21.0（不修改系统 npm）复验 publication/recovery 两文件：20 pass、0 fail，114.27s。原 aggregate 的 19 项发布失败确认为环境版本门槛；聚焦复验不改写原 aggregate 结果。六张票和统一评审修复的临时工作树及已合入分支已清理，最终签名包和外部验收证据保留。
