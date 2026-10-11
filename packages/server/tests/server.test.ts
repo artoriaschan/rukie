@@ -660,8 +660,9 @@ test("an application-root Session held by another owner permits only a read-only
       "session.sqlite",
     ),
   );
-  const client = await connect(server);
+  let client: Awaited<ReturnType<typeof connect>> | undefined;
   try {
+    client = await connect(server);
     expect(new TextDecoder().decode((await reader.read()).value)).toStartWith("READY ");
     const committed = await log.bytes();
     expect((await client.command("session.subscribe", { sessionId: owned.id })).error).toEqual({
@@ -688,7 +689,7 @@ test("an application-root Session held by another owner permits only a read-only
     });
     await reopened.close();
   } finally {
-    client.socket.close();
+    client?.socket.close();
     child.kill();
     await child.exited;
     reader.releaseLock();
