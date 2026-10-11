@@ -143,3 +143,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 ## 模型默认推理等级
 
 用户确认补齐默认等级选择、保存和采用模型时生效，由 [10](issues/10-model-default-reasoning.md) 的新实施代理完成；模型设置使用既有 beUI Select，桌面模型默认值不替换会话已明确选择或恢复的推理等级。09 历史关闭证据保留，spec 为本票重新 claimed。验证遵守更新后的 docs/testing.md：由实施代理记录，父代理复用；未涉及原生合同，不启动 Electron。
+
+10 本地完成于 `d3defa71`：桌面元数据保存与采用模型接线、显式等级优先、恢复保留选择均有 focused 证据；独立两轴复核 0，实际 Light/Dark/窄屏默认菜单、保存重开及局部尺寸修正验收通过。集成复用实施代理的测试/静态/截图，只检查 FF/祖先和差异，不重复执行。ADR Coverage 沿用 ADR-0029/0035，无新增架构取舍；详细实际失败与结果见 [10](issues/10-model-default-reasoning.md)。
+
+数字输入框仍使用 beUI Input，但其内部 number 输入的原生按钮未适配 Pencil，由 [11](issues/11-number-input-pencil-style.md) 的新代理仅修正模型弹窗样式。10 resolved，spec 为 11 保持 claimed。
