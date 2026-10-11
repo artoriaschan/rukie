@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -159,3 +159,5 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 ## 无供应商空状态
 
 用户要求无供应商时按当前 P01-E 与浅色对应复原，由 [13](issues/13-provider-empty-pencil.md) 的新代理实施。仅授权模型服务空状态布局；有供应商界面和业务合同保持，采用已有 beUI 与当前验证复用约束。
+
+13 最终关闭于 `56e59d0f`：P01-E/C26 整块空面板隐藏工具栏、供应商列表与详情，居中图标、标题、说明和 beUI 添加入口，保留加载失败重试及原有自定义添加流程。Light/Dark/420px 一次 Chromium/mock 验收通过；空状态最终单例 1 pass（1.22s），有供应商布局单例及 UI 类型检查通过并复用。独立 Spec 无发现，Standards viewport cleanup 发现已修正，父代理核对最终差异、截图和记录闭合。ADR Coverage 沿用 ADR-0029/0035，无新架构取舍。13/spec 同时 resolved，未重复包级/全量或 Electron 验收，用户此前预览保持；以本地结果交付，PR 未合并。

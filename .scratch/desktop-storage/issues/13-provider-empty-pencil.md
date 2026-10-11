@@ -1,6 +1,6 @@
 # 13: 无供应商状态按 P01-E 复原
 
-Status: claimed
+Status: resolved
 
 Blocked by: 12
 
@@ -9,7 +9,7 @@ Blocked by: 12
 - [x] Pencil MCP 核对 P01-E、浅色对应与 C26；建立当前布局基线并先更新 DESIGN.md
 - [x] 复原空状态布局、图标、文案及添加入口，同步 zh/en
 - [x] 最小公开浏览器用例验证空状态几何、主题、窄屏、添加交互及有供应商布局保持
-- [ ] 局部检查、一次 Chromium/mock 空状态验收、独立复核与 ADR Coverage 后关闭
+- [x] 局部检查、一次 Chromium/mock 空状态验收、独立复核与 ADR Coverage 后关闭
 
 ## Verification scope
 
@@ -26,3 +26,5 @@ Blocked by: 12
 一次 Chromium/mock 验收完成 Light/Dark 1887px 与 420px 截图，键盘 Tab 可见焦点、Enter 进入唯一自定义目录、返回恢复空状态。窄屏 scrollWidth420，无横向裁切。字体资源 200/loaded，无 JavaScript 错误；仅测试站点 favicon404。自有浏览器与 QA fixture 已关闭/移除；用户 Electron 和独立预览数据保留。未运行包级、全量、真实 Electron、打包或钥匙串验收。
 
 ADR Coverage：仅 GUI 空状态呈现与文案，沿用 ADR-0029/ADR-0035 的前端与宿主边界，无新架构决定。独立评审、父级集成及工单关闭待完成。
+
+最终关闭：候选 `56e59d0f` 由新的 merger 快进集成。Spec 复核零发现；Standards 的测试 viewport 异常清理发现已通过初始化前登记 onTestFinished 修正，父代理检查最终差异关闭发现，仅该单例复验 1 pass（1.22s），未重复生产浏览器或类型检查。父代理读取实际 Dark 与 Light 窄屏截图、核对验证记录，复用实施代理的布局、添加交互与有供应商几何证据。ADR Coverage 对照最终局部布局/文案差异，沿用 ADR-0029/0035，无新的存储、凭据或架构决定。13/spec 同时 resolved，本地结果交付，不等待 CI，未启动或重建 Electron；用户此前应用保留。
