@@ -84,3 +84,10 @@ Status: resolved
 
 - 新增H14公开回归复现原4px间距（预期42px）；将模型专用Radix sideOffset设42、alignOffset设-208后，Composer6用例通过，2.15s，日志 `/tmp/rukie-h14-red.log`、`/tmp/rukie-h14-green.log`。测试最初在根目录未收集、随后因打开菜单使背景入口inert而查询不到，改在打开前保存入口几何；最终红绿复现覆盖真实位置。增量tsc/lint/docs通过，双轴只读审查无发现。
 - agent-browser真实Composer假catalog验收1887×1346明暗及420×900窄屏：初开详情hidden；hover列表位置不变，列表332×312、详情280×184、间距4、顶部相同；选择High更新入口并关闭；窄屏同宽上下排列、无横向溢出。页面无错误，console只有Vite/React提示，网络200。截图h14-list-light.png、h14-hover-light.png、h14-hover-dark.png、h14-narrow.png在原外部证据目录。浏览器/Vite退出，临时入口已删除；复用其余有效证据，不重复既有失败的全量check。ADR coverage仍沿用ADR-0029，纯定位无架构变化。
+
+### 模型列表紧贴入口（截图纠正）
+
+用户截图指出短列表远离入口。原H14静态坐标误用为固定offset，且隐藏C07参与菜单高度，导致两模型列表大幅抬高。本轮以实际列表为入口锚定表面：列表底部距入口4px、右对齐；详情独立定位，不参与列表尺寸，优先右侧顶部对齐，碰撞翻到左侧，窄屏在列表上方排列。保留hover/键盘选择与184px详情滚动。新增两模型与长列表公开几何复现；仅模型相关证据失效，其余复用。
+
+- 公开两模型回归首先失败：旧隐藏详情及42px offset产生152px间距，日志 `/tmp/rukie-attached-red.log`；改为列表独立Radix锚点与详情FloatingUI定位后，初次6用例5通过/1失败（旧top对齐断言忽略短列表接近窗口底部时详情必须上移）。更新为碰撞约束断言，最终6用例通过2.18s，日志 `/tmp/rukie-attached-reviewed.log`；类型/lint/docs/test-policy通过。复用已有组件，FloatingUI是已安装定位依赖，无新增依赖。审查发现size middleware过期计算仍可写高度，已加相同revision/cleanup检查并复核通过。
+- agent-browser实际Composer假catalog，1280×900明暗：两模型列表332×74，底部778/入口顶部782，右边968相同；hover列表位置不变，详情宽280高184、间隔4，无横向溢出；High选择关闭并更新。420×900窄屏详情同宽置于列表上方，间隔4，列表继续贴入口；800×900详情正常翻到左侧。无页面错误、console仅Vite/React提示、网络日志 `/tmp/rukie-attached-network.log`。截图attached-list-light.png、attached-hover-light.png、attached-hover-dark.png、attached-narrow.png在原外部证据目录。临时入口/浏览器/Vite清理。ADR coverage仍为UI呈现规则，无架构或配置更改。

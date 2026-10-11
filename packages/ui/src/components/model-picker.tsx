@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { autoUpdate, computePosition, flip, offset, shift, size } from "@floating-ui/dom";
 import { ChevronDown, Check } from "lucide-react";
 import { THINKING_LEVELS, type ThinkingLevel, type WireModelCatalogEntry } from "@rukie/shared";
 import type { ModelSelection } from "./composer";
@@ -28,6 +29,45 @@ export function ModelPicker({
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<string>();
   const content = useRef<HTMLDivElement>(null);
+  const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
+  const [detailElement, setDetailElement] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (!open || !preview || !listElement || !detailElement) return;
+    let revision = 0;
+    let stopped = false;
+    const update = () => {
+      const current = ++revision;
+      const narrow = window.matchMedia("(max-width: 671px)").matches;
+      void computePosition(listElement, detailElement, {
+        placement: narrow ? "top-start" : "right-start",
+        middleware: [
+          offset(4),
+          flip({ padding: 16, fallbackPlacements: narrow ? ["bottom-start"] : ["left-start"] }),
+          shift({ padding: 16, crossAxis: true }),
+          size({
+            padding: 16,
+            apply({ availableHeight, elements }) {
+              if (stopped || revision !== current) return;
+              elements.floating.style.setProperty(
+                "--model-detail-height",
+                `${Math.max(0, Math.min(184, availableHeight))}px`,
+              );
+            },
+          }),
+        ],
+      }).then(({ x, y }) => {
+        if (stopped || revision !== current) return;
+        Object.assign(detailElement.style, { left: `${x}px`, top: `${y}px` });
+        detailElement.dataset.positioned = "true";
+      });
+    };
+    detailElement.dataset.positioned = "false";
+    const stop = autoUpdate(listElement, detailElement, update);
+    return () => {
+      stopped = true;
+      stop();
+    };
+  }, [open, preview, listElement, detailElement]);
   const available = models.filter((entry) => entry.authenticated);
   const selected = available.find((entry) => entry.spec === model);
   const detail = available.find((entry) => entry.spec === preview) ?? selected ?? available[0];
@@ -63,13 +103,16 @@ export function ModelPicker({
         ref={content}
         side="top"
         align="end"
-        sideOffset={42}
-        alignOffset={-208}
+        sideOffset={4}
         collisionPadding={16}
         className="conversation-model-menu conversation-pencil space-y-0"
         aria-label={t("app.model")}
       >
-        <div data-model-list className="conversation-model-list conversation-control-panel">
+        <div
+          ref={setListElement}
+          data-model-list
+          className="conversation-model-list conversation-control-panel"
+        >
           <ScrollArea className="conversation-model-scroll" viewportLabel={t("app.model")}>
             <Menu.DropdownMenuGroup>
               {available.length ? (
@@ -118,6 +161,7 @@ export function ModelPicker({
         </div>
         {detail ? (
           <section
+            ref={setDetailElement}
             aria-label={detail.name || detail.id}
             aria-hidden={preview === undefined}
             inert={preview === undefined}

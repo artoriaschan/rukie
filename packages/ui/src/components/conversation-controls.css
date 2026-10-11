@@ -118,10 +118,7 @@
 }
 .conversation-model-menu {
   animation: none;
-  display: grid;
-  grid-template-columns: 332px 280px;
-  gap: 4px;
-  width: 616px;
+  width: 332px;
   min-width: 0;
   max-width: calc(100vw - 32px);
   padding: 0;
@@ -138,7 +135,6 @@
   margin-block: 0;
 }
 .conversation-model-menu:not(:has([data-model-spec])) {
-  grid-template-columns: 332px;
   width: 332px;
   min-height: 0;
 }
@@ -195,17 +191,19 @@
   font-weight: 500;
   overflow-wrap: anywhere;
 }
-.conversation-model-detail[data-preview="false"] {
+.conversation-model-detail[data-preview="false"],
+.conversation-model-detail:not([data-positioned="true"]) {
   visibility: hidden;
   pointer-events: none;
 }
 .conversation-model-detail {
-  height: min(184px, var(--radix-dropdown-menu-content-available-height));
-  max-height: var(--radix-dropdown-menu-content-available-height);
+  position: absolute;
+  width: 280px;
+  height: var(--model-detail-height, 184px);
 }
 .conversation-model-detail-scroll {
   height: 100%;
-  max-height: calc(var(--radix-dropdown-menu-content-available-height) - 2px);
+  max-height: 100%;
   border-radius: 11px;
 }
 .conversation-model-detail-scroll > [data-slot="scroll-area-viewport"] {
@@ -269,10 +267,8 @@
 @media (max-width: 671px) {
   .conversation-model-menu {
     width: min(332px, calc(100vw - 32px));
-    grid-template-columns: minmax(0, 1fr);
     max-height: var(--radix-dropdown-menu-content-available-height);
-    overflow-y: auto;
-    scrollbar-width: none;
+    overflow: visible;
   }
   .conversation-model-scroll {
     max-height: min(
