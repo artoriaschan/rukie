@@ -103,7 +103,7 @@ export type HooksSettings = Partial<
   Record<HookEvent, { matcher?: string; hooks: HookHandler[] }[]>
 >;
 
-const CustomModel = Type.Object({
+export const CustomModelSchema = Type.Object({
   id: Type.String(),
   /** Accepted modalities; omitted input means text only. Text must always be included. */
   input: Type.Optional(
@@ -121,7 +121,7 @@ const CustomProvider = Type.Object({
   baseUrl: Type.String(),
   /** Name of the env var holding the key; settings never contain the key itself. */
   apiKeyEnv: Type.String({ minLength: 1 }),
-  models: Type.Array(CustomModel),
+  models: Type.Array(CustomModelSchema),
 });
 
 /** `~/.rukie/settings.json` and `<project>/.rukie/settings.json`. */

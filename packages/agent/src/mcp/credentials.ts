@@ -54,6 +54,10 @@ const Credentials = Type.Object({
     Type.Object({ serverName: Type.String(), serverUrl: Type.String(), state: State }),
   ),
 });
+export function parseOAuthState(value: unknown): Static<typeof State> {
+  if (!Value.Check(State, value)) throw new Error("Invalid encrypted OAuth state");
+  return value;
+}
 
 // Providers have separate queues; the file has one queue shared by all Sessions in this process.
 const writes = new Map<string, Promise<void>>();

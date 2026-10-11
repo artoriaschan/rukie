@@ -1,5 +1,6 @@
+import { App } from "../../src/app";
 import { expect, test, vi } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { ToolRow } from "../../src/components/tool-row";
 import type { TranscriptTool } from "../../src/lib/transcript";
@@ -68,5 +69,80 @@ test("full output is fetched on demand, byte pages and failed reads remain retry
   } finally {
     await screen.unmount();
     await page.viewport(1280, 900);
+  }
+});
+
+test("App reads a historical tool reference through the session wire command", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  try {
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "snapshot",
+        sessionId: "one",
+        model: "test/script",
+        compactions: [],
+        queuedInputs: [],
+        toolStates: {},
+        background: [],
+        runSummaries: [],
+        messages: [
+          { role: "user", entryId: "u", timestamp: 1, content: "Historical command" },
+          {
+            role: "assistant",
+            entryId: "a",
+            timestamp: 2,
+            content: [
+              {
+                type: "toolCall",
+                id: "call",
+                name: "bash",
+                arguments: { command: "historical" },
+                view: { card: "terminal", kind: "execute", command: "historical" },
+              },
+            ],
+          },
+          {
+            role: "toolResult",
+            entryId: "r",
+            timestamp: 3,
+            toolCallId: "call",
+            toolName: "bash",
+            isError: true,
+            content: [{ type: "text", text: "bounded output" }],
+            view: {
+              card: "terminal",
+              kind: "execute",
+              output: "bounded output",
+              outputRef: { id: "historical-ref" },
+            },
+          },
+        ],
+      }),
+    });
+    await screen.getByRole("button", { name: "Ran commands", exact: true }).click();
+    await screen.getByRole("button", { name: "Read full output", exact: true }).click();
+    await expect.element(screen.getByText("historical full output", { exact: true })).toBeVisible();
+    const requests = await (await fetch(`http://127.0.0.1:${connection.port}/commands`)).json();
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool_output.read",
+          sessionId: "one",
+          outputRef: { id: "historical-ref" },
+          offset: 0,
+          maxBytes: 65536,
+        }),
+      ]),
+    );
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
   }
 });

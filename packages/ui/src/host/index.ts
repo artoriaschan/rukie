@@ -1,9 +1,15 @@
 /** Native capabilities are injected by the Electron or browser entry. */
+import type { ModelServiceSave, ModelServiceSummary } from "@rukie/shared";
 export interface DesktopHost {
   getConnection(): Promise<{ port: number; token: string }>;
   pickProjectFolder(): Promise<string | null>;
   revealPath(path: string): Promise<void>;
   openInTerminal(path: string): Promise<void>;
+  modelServices?: {
+    list(): Promise<ModelServiceSummary[]>;
+    save(input: ModelServiceSave): Promise<void>;
+    delete(id: string): Promise<void>;
+  };
 }
 
 export function browserHost(): Pick<DesktopHost, "getConnection"> {

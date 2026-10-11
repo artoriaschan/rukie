@@ -196,7 +196,7 @@ export function createJobs(
         retain("stdout", decoders.stdout.end());
         retain("stderr", decoders.stderr.end());
         try {
-          await output?.flush();
+          if (output) await output.flush();
         } catch (error) {
           failure ??= error;
         }
@@ -298,7 +298,10 @@ export function createJobs(
         });
       }
       signal?.throwIfAborted();
-      await output?.flush();
+      if (output) {
+        if (["running", "stopping"].includes(view.status)) await output.flush();
+        else if (failure) throw failure;
+      }
       const collected = read(modelOffset);
       modelOffset = collected.nextOffset;
       if (wait && !["running", "stopping"].includes(view.status)) suppressed = true;
@@ -354,7 +357,7 @@ export function createJobs(
           ]);
         } finally {
           clearTimeout(timer);
-          await output?.flush();
+          if (output) await output.flush();
         }
       },
       promote() {

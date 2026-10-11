@@ -54,6 +54,9 @@ test("desktop Bash retains full output after truncation and restart by byte curs
   );
   expect(rest.stdout).toBe("x".repeat(300000) + "last\n");
   expect(rest.nextOffset).toBe(300011);
+  await expect(
+    readSessionToolOutput({ ...options, cwd: dirs.homeDir, id }, details.outputRef),
+  ).rejects.toMatchObject({ code: "session-not-found" });
 });
 
 function outputRef(message: unknown): { id: string } {
@@ -178,28 +181,39 @@ test("committed Bash chunks remain readable after process crash without repeatin
 test("desktop background job_output retains both streams after model memory drops them", async () => {
   dirs = await tempDirs();
   const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };
-  const complete = Promise.withResolvers<void>();
+  const pipe = Bun.spawn(["mkfifo", join(dirs.cwd, "gate")], { stdout: "ignore", stderr: "pipe" });
+  expect(await pipe.exited).toBe(0);
+  const waiting = Promise.withResolvers<void>();
   const fake = fakeModel([
     fauxAssistantMessage(
       fauxToolCall("bash", {
-        command: "head -c 300000 /dev/zero | tr '\\0' b; printf diagnostic >&2",
+        command:
+          "cat gate >/dev/null; head -c 300000 /dev/zero | tr '\\0' b; printf diagnostic >&2",
         description: "background streams",
         run_in_background: true,
       }),
       { stopReason: "toolUse" },
     ),
-    fauxAssistantMessage("started"),
     fauxAssistantMessage(fauxToolCall("job_output", { job_id: "bash-1", wait: true }), {
       stopReason: "toolUse",
     }),
-    ...Array.from({ length: 4 }, () => fauxAssistantMessage("job handled")),
+    fauxAssistantMessage("job handled"),
   ]);
   session = await createSession({ ...options, ...fake, permissionMode: "full-access" });
-  session.subscribe((event) => {
-    if (event.type === "job_event" && event.kind === "settled") complete.resolve();
+  const run = session.run("start job", {
+    onEvent(event) {
+      if (event.type === "tool_execution_start" && event.toolName === "job_output")
+        waiting.resolve();
+    },
   });
-  await session.run("start job");
-  await complete.promise;
+  await waiting.promise;
+  const release = Bun.spawn(["sh", "-c", "printf release > gate"], {
+    cwd: dirs.cwd,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  expect(await release.exited).toBe(0);
+  await run;
   await session.waitForIdle();
   const job = session.jobs()[0];
   if (!job?.outputRef) throw new Error("Missing job output reference");
@@ -247,4 +261,83 @@ test("abort drains committed foreground stdout before preserving its interrupted
   const result = session.messages.find((message) => message.role === "toolResult");
   expect(result).toMatchObject({ isError: true });
   expect((await session.readToolOutput(outputRef(result))).stdout).toBe("before");
+});
+
+test("Session close drains final background bytes before its Harness database closes", async () => {
+  dirs = await tempDirs();
+  const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };
+  const pipe = Bun.spawn(["mkfifo", join(dirs.cwd, "gate")], { stdout: "ignore", stderr: "pipe" });
+  expect(await pipe.exited).toBe(0);
+  const output = Promise.withResolvers<void>();
+  session = await createSession({
+    ...options,
+    permissionMode: "full-access",
+    ...fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("bash", {
+          command: "trap 'printf stopped' TERM; printf before; cat gate",
+          description: "close output drain",
+          run_in_background: true,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("started"),
+    ]),
+  });
+  session.subscribe((event) => {
+    if (event.type === "job_event" && event.kind === "output") output.resolve();
+  });
+  await session.run("start");
+  await output.promise;
+  const ref = session.jobs()[0]?.outputRef;
+  if (!ref) throw new Error("Missing background reference");
+  const id = session.id;
+  await session.close();
+  session = undefined;
+  expect((await readSessionToolOutput({ ...options, id }, ref)).stdout).toBe("beforestopped");
+});
+
+test("SQLite pending job_output collection suppresses the committed completion notification", async () => {
+  dirs = await tempDirs();
+  const pipe = Bun.spawn(["mkfifo", join(dirs.cwd, "gate")], { stdout: "ignore", stderr: "pipe" });
+  expect(await pipe.exited).toBe(0);
+  const waiting = Promise.withResolvers<void>();
+  session = await createSession({
+    ...dirs,
+    dataRoot: join(dirs.homeDir, "desktop-data"),
+    permissionMode: "full-access",
+    ...fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("bash", {
+          command: "cat gate >/dev/null",
+          description: "wait completion",
+          run_in_background: true,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(fauxToolCall("job_output", { job_id: "bash-1", wait: true }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("collected"),
+    ]),
+  });
+  const run = session.run("collect", {
+    onEvent(event) {
+      if (event.type === "tool_execution_start" && event.toolName === "job_output")
+        waiting.resolve();
+    },
+  });
+  await waiting.promise;
+  const writer = Bun.spawn(["bash", "-c", "printf go > gate"], {
+    cwd: dirs.cwd,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  expect(await writer.exited).toBe(0);
+  await run;
+  await session.waitForIdle();
+  expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1);
+  expect(session.messages.filter((message) => message.role === "toolResult").at(-1)).toMatchObject({
+    isError: false,
+  });
 });

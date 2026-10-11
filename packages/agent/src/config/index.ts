@@ -77,8 +77,8 @@ function validate(
 }
 
 /**
- * Loads the selected user source (`dataRoot/settings.json`, or terminal `~/.rukie/settings.json`)
- * merged with `<cwd>/.rukie/settings.json`. No application source falls back to home.
+ * Loads injected application settings, or terminal `~/.rukie/settings.json`
+ * merged with `<cwd>/.rukie/settings.json`. An application root without injected settings has an empty user configuration.
  * The project file may override `model`, `reviewModel` and `subagentModel`.
  * Project deny/ask rules append to the user rules; allow rules append only for
  * the exact Trusted Project used by project MCP configuration.
@@ -86,11 +86,17 @@ function validate(
  * a project must not redirect credentials or grant itself broader permissions.
  * Language preferences belong to the user, not the project.
  */
-export async function loadSettings(options: UserDataOptions & { cwd: string }) {
+export async function loadSettings(
+  options: UserDataOptions & { cwd: string; userSettings?: Settings },
+) {
   const userFile = join(userDataDirectory(options), "settings.json");
   const projectFile = join(options.cwd, ".rukie/settings.json");
   const [userData, { providers, permissionMode, locale, ...projectData }] = await Promise.all([
-    readJson(userFile),
+    options.userSettings !== undefined
+      ? Promise.resolve(options.userSettings)
+      : options.dataRoot !== undefined
+        ? Promise.resolve({})
+        : readJson(userFile),
     readJson(projectFile),
   ]);
   const warnings: string[] = [];

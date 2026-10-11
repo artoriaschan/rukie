@@ -529,9 +529,10 @@ test("desktop settings and project trust are independent of terminal settings", 
   expect(desktop.settings).toEqual({ permissions: { deny: ["edit"] } });
   expect((await loadSettings(dirs)).settings.permissions?.allow).toEqual(["bash", "write"]);
   await Bun.write(join(dataRoot, "settings.json"), JSON.stringify({ trustedProjects: [dirs.cwd] }));
-  expect((await loadSettings({ ...dirs, dataRoot })).settings.permissions?.allow).toEqual([
-    "write",
-  ]);
+  expect(
+    (await loadSettings({ ...dirs, dataRoot, userSettings: { trustedProjects: [dirs.cwd] } }))
+      .settings.permissions?.allow,
+  ).toEqual(["write"]);
 });
 
 test("desktop model resolution never authenticates using terminal environment keys", async () => {

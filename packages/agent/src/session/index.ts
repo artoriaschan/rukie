@@ -154,6 +154,8 @@ export interface SessionOptions {
   homeDir: string;
   /** Explicit isolated application data root; terminal callers omit it. */
   dataRoot?: string;
+  /** Host-owned encrypted MCP persistence; never used by terminal defaults. */
+  mcpPersistence?: import("../mcp/index.ts").McpPersistence;
   /** Merged settings, see `loadSettings`. */
   settings?: Settings;
   /** Model call; defaults to pi-ai's `streamSimple` for the resolved model. Tests inject a fake. */
@@ -164,6 +166,8 @@ export interface SessionOptions {
   store?: SessionStore;
   /** Continue an existing Session in this project; never silently creates a new one. */
   resumeId?: string;
+  /** Explicit user selection while reopening an idle Session whose former model is unavailable. */
+  resumeModelSelection?: { model: string; thinkingLevel?: ThinkingLevel };
   /** Session allow rules in settings syntax, supplied by --allow-tools. */
   allowRules?: string[];
   /** Optional shared memory collection; never loaded from or written to Transcript. */
@@ -472,6 +476,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     // even though no durable submission receipt can be fabricated for that failure.
     const observedStorage = new Proxy(lease.storage, {
       get(target, key) {
+        // Native shutdown stops scheduling first. The root lease keeps its connection
+        // alive until owned background pipes drain, then release closes the storage.
+        if (key === "close" && lease.outputs) return async () => {};
         if (key === "document")
           return async (...args: Parameters<Storage["document"]>) => {
             const document = await target.document(...args);
@@ -555,6 +562,31 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       ).items.find((row) => Number(row.id) === metadata!.activeConversationId);
       if (!found) throw new Error("Active conversation is missing.");
       conversation = (await harness.conversation(found.id, context))!;
+    }
+    if (options.resumeModelSelection) {
+      if (!options.resumeId) throw new Error("Resume Model Selection requires an existing Session");
+      const inspection = await harness.inspect(context);
+      if (inspection.tasks.length || inspection.submissions.length)
+        throw createUserVisibleError(
+          "Session has pending execution; restore its model before changing selection.",
+          { code: "session-run-active", params: {} },
+        );
+      const next = selectedModel(options.resumeModelSelection.model);
+      if (!(await models.checkAuth(next.provider)))
+        throw createUserVisibleError("Selected model has no desktop credential.", {
+          code: "no-api-key",
+          params: { provider: next.provider, env: "" },
+        });
+      await conversation.configure(
+        {
+          model: { provider: next.provider, modelId: next.id },
+          thinkingLevel: supportedThinkingLevel(
+            next,
+            options.resumeModelSelection.thinkingLevel ?? thinkingLevel,
+          ),
+        },
+        context,
+      );
     }
     const savedAgent = await conversation.agent(context);
     const savedModel = savedAgent.model;
@@ -878,6 +910,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         cwd,
         homeDir: options.homeDir,
         dataRoot: options.dataRoot,
+        persistence: options.mcpPersistence,
         settings,
         trustProjectMcp: options.trustProjectMcp,
         interactive: !!options.onMcpAuth,
@@ -1944,6 +1977,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         cwd,
         homeDir: options.homeDir,
         dataRoot: options.dataRoot,
+        persistence: options.mcpPersistence,
         settings,
         trustProjectMcp: options.trustProjectMcp,
         interactive: !!options.onMcpAuth,

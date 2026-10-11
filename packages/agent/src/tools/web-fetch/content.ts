@@ -86,7 +86,13 @@ export function decodeBody(bytes: Uint8Array, contentType: string | null): strin
   return type === "text/html" || type === "application/xhtml+xml" ? convertHtml(text) : text;
 }
 
-export function renderHttpError(url: URL, status: number, body: string): string {
+export function renderHttpError(
+  url: URL,
+  status: number,
+  body: string,
+  capture?: (text: string) => void,
+): string {
+  capture?.(`HTTP ${status} from ${url.href}\n${NOTICE}\n\n${body}`);
   return `HTTP ${status} from ${url.href}\n${NOTICE}\n\n${body.slice(0, 2000)}`;
 }
 

@@ -86,7 +86,7 @@ export async function fetchWeb(
           offset += chunk.length;
         }
         const body = decodeBody(bytes, response.headers.get("content-type"));
-        if (!response.ok) throw new Error(renderHttpError(url, response.status, body));
+        if (!response.ok) throw new Error(renderHttpError(url, response.status, body, capture));
         return render(url, response.status, body, truncated, capture);
       } finally {
         await response.body?.cancel().catch(() => {});

@@ -94,6 +94,7 @@ export const WireCommandSchema = Type.Union([
 export type WireCommand = Static<typeof WireCommandSchema>;
 
 export type WireErrorCode =
+  | "model_unavailable"
   | "session_busy"
   | "session_not_found"
   | "project_not_found"
