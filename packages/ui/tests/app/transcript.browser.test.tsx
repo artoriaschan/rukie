@@ -102,6 +102,8 @@ test("App shows committed and streaming replies, with failed tool output expande
     expect(traceRow.querySelectorAll(".lucide-square-terminal")).toHaveLength(1);
     const reasoning = screen.getByRole("button", { name: "Reasoning", exact: true }).element();
     expect(reasoning.getAttribute("aria-expanded")).toBe("false");
+    expect(reasoning.closest('[role="listitem"]')!.querySelector(".font-mono")).toBeNull();
+    expect(traceRow.textContent).not.toContain("Ran command · check");
     const thinkingIcon = reasoning.closest('[role="listitem"]')!.querySelector(".lucide-sparkles")!;
     const toolIcon = tool.querySelector(".lucide-square-terminal")!;
     expect(thinkingIcon.getBoundingClientRect().left).toBe(toolIcon.getBoundingClientRect().left);
@@ -829,7 +831,11 @@ test("live Trace titles show the latest detail until every group tool settles", 
           role: "assistant",
           entryId: "a",
           timestamp: 2,
-          content: [toolCall("first", "first-command"), toolCall("latest", command)],
+          content: [
+            { type: "thinking", thinking: "Private analysis inside disclosure" },
+            toolCall("first", "first-command"),
+            toolCall("latest", command),
+          ],
         },
       ],
     });
@@ -847,6 +853,20 @@ test("live Trace titles show the latest detail until every group tool settles", 
     expect(shimmer.scrollWidth).toBeGreaterThan(shimmer.clientWidth);
     expect(getComputedStyle(shimmer).animationName).toBe("beui-text-shimmer");
     await live.click();
+    const reasoning = response.getByRole("button", { name: "Reasoning", exact: true });
+    await expect.element(reasoning).toHaveAttribute("aria-expanded", "false");
+    const reasoningRow = reasoning.element().closest('[role="listitem"]')!;
+    expect(reasoningRow.querySelector(".font-mono")).toBeNull();
+    const reasoningContent = document.getElementById(
+      reasoning.element().getAttribute("aria-controls")!,
+    )!;
+    expect(reasoningContent.inert).toBe(true);
+    await expect.poll(() => reasoningContent.getBoundingClientRect().height).toBe(0);
+    const toolRow = response
+      .getByRole("button", { name: /first-command Ran command/ })
+      .element()
+      .closest('[role="listitem"]')!;
+    expect(toolRow.textContent).not.toContain("Running commands · first-command");
     await end("latest");
     await send({
       type: "message_update",
@@ -881,6 +901,26 @@ test("live Trace titles show the latest detail until every group tool settles", 
     await expect.element(summary).toHaveAttribute("aria-expanded", "true");
     expect(summary.element().querySelector(".beui-text-shimmer")).toBeNull();
     await expect.element(response.getByRole("button", { name: /^Processed for/ })).toBeVisible();
+    expect(reasoningRow.querySelector(".font-mono")).toBeNull();
+    expect(reasoningContent.inert).toBe(true);
+    await expect.poll(() => reasoningContent.getBoundingClientRect().height).toBe(0);
+    await send({ type: "result", success: true, text: "", durationMs: 2000 });
+    const run = response.getByRole("button", { name: "Time spent 2.0s", exact: true });
+    await expect.element(run).toHaveAttribute("aria-expanded", "false");
+    await run.click();
+    await expect.element(summary).toHaveAttribute("aria-expanded", "true");
+    await expect.element(reasoning).toHaveAttribute("aria-expanded", "false");
+    expect(reasoningContent.inert).toBe(true);
+    await expect.poll(() => reasoningContent.getBoundingClientRect().height).toBe(0);
+    reasoning.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect
+      .element(screen.getByText("Private analysis inside disclosure", { exact: true }))
+      .toBeVisible();
+    await userEvent.keyboard(" ");
+    await expect.element(reasoning).toHaveAttribute("aria-expanded", "false");
+    expect(reasoningContent.inert).toBe(true);
+    await expect.poll(() => reasoningContent.getBoundingClientRect().height).toBe(0);
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);

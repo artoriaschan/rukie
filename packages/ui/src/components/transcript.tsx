@@ -95,18 +95,20 @@ function Group({
       )}
     </span>
   );
+  type TraceActivity = { item: AgentActivityItem; headerDetail?: string; active?: boolean };
   const sections: Array<
     | {
         id: string;
         type: "trace";
-        items: Array<AgentActivityItem & { detail?: string; active?: boolean }>;
+        items: TraceActivity[];
       }
     | { id: string; type: "message"; content: ReactNode }
   > = [];
-  const appendActivity = (item: AgentActivityItem & { detail?: string; active?: boolean }) => {
+  const appendActivity = (item: AgentActivityItem, header: Omit<TraceActivity, "item"> = {}) => {
+    const activity = { item, ...header };
     const last = sections.at(-1);
-    if (last?.type === "trace") last.items.push(item);
-    else sections.push({ id: item.id, type: "trace", items: [item] });
+    if (last?.type === "trace") last.items.push(activity);
+    else sections.push({ id: item.id, type: "trace", items: [activity] });
   };
   const approvals = decisions
     .filter((item) => item.request.placement?.groupId === group.id)
@@ -171,19 +173,23 @@ function Group({
       appendApprovals(message, index, true);
       const id = `${message.entryId ?? `partial-${message.timestamp}`}:${index}`;
       if (block.type === "thinking")
-        appendActivity({
-          id,
-          type: "trace",
-          kind: "thinking",
-          detail: `${t("conversation.thinking")} · ${block.thinking.replace(/\s+/g, " ").trim()}`,
-          active:
-            group.status === "running" &&
-            message === state.partial &&
-            index === message.content.length - 1,
-          collapsible: true,
-          label: t("conversation.thinking"),
-          content: <Markdown text={block.thinking} streaming={group.status === "running"} />,
-        });
+        appendActivity(
+          {
+            id,
+            type: "trace",
+            kind: "thinking",
+            collapsible: true,
+            label: t("conversation.thinking"),
+            content: <Markdown text={block.thinking} streaming={group.status === "running"} />,
+          },
+          {
+            headerDetail: `${t("conversation.thinking")} · ${block.thinking.replace(/\s+/g, " ").trim()}`,
+            active:
+              group.status === "running" &&
+              message === state.partial &&
+              index === message.content.length - 1,
+          },
+        );
       else if (block.type === "text" && block.text.trim())
         sections.push({
           id,
@@ -209,20 +215,24 @@ function Group({
       else if (block.type === "toolCall") {
         const tool = state.tools[presentationCallId(message, block.id)];
         if (tool)
-          appendActivity({
-            id,
-            type: "trace",
-            kind:
-              tool.callView?.kind === "execute"
-                ? "run"
-                : tool.callView?.kind === "edit"
-                  ? "write"
-                  : (tool.callView?.kind ?? "other"),
-            active: group.status === "running" && tool.status === "running",
-            detail: `${t(tool.status === "running" ? `conversation.active-${tool.callView?.kind ?? "other"}` : `conversation.action-${tool.callView?.kind ?? "other"}`)} · ${toolTitle(tool).replace(/\s+/g, " ").trim()}`,
-            icon: null,
-            label: <ToolRow tool={tool} />,
-          });
+          appendActivity(
+            {
+              id,
+              type: "trace",
+              kind:
+                tool.callView?.kind === "execute"
+                  ? "run"
+                  : tool.callView?.kind === "edit"
+                    ? "write"
+                    : (tool.callView?.kind ?? "other"),
+              icon: null,
+              label: <ToolRow tool={tool} />,
+            },
+            {
+              active: group.status === "running" && tool.status === "running",
+              headerDetail: `${t(tool.status === "running" ? `conversation.active-${tool.callView?.kind ?? "other"}` : `conversation.action-${tool.callView?.kind ?? "other"}`)} · ${toolTitle(tool).replace(/\s+/g, " ").trim()}`,
+            },
+          );
       }
       appendApprovals(message, index, false);
     });
@@ -270,9 +280,11 @@ function Group({
             {sections.map((section) => {
               if (section.type === "message") return <div key={section.id}>{section.content}</div>;
               const working = section.items.some((item) => item.active);
-              const latestDetail = section.items.findLast((item) => item.detail)?.detail;
+              const latestDetail = section.items.findLast(
+                (item) => item.headerDetail,
+              )?.headerDetail;
               const kinds = new Set(
-                section.items.flatMap((item) =>
+                section.items.flatMap(({ item }) =>
                   item.type === "trace" && item.kind !== "thinking" && item.kind !== "permission"
                     ? [item.kind]
                     : [],
@@ -326,7 +338,7 @@ function Group({
               return (
                 <AgentDisclosure key={section.id} open={activityOpen} data-trace-group="">
                   <AgentActivity
-                    items={section.items}
+                    items={section.items.map(({ item }) => item)}
                     contentType="trace"
                     status={working ? "working" : "complete"}
                     defaultOpen={false}
