@@ -1,3 +1,5 @@
+import { ToolResultViewSchema } from "@rukie/shared";
+import { Value } from "typebox/value";
 import { resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -77,7 +79,26 @@ export async function readSessionSnapshot(options: {
             ...(pending && { "rukie.pending-input-facts": pending }),
           },
         },
-        messages,
+        messages.map((message) => {
+          if (message.role !== "toolResult") return message;
+          const details = message.details;
+          const outputRef =
+            typeof details === "object" && details !== null && "outputRef" in details
+              ? details.outputRef
+              : undefined;
+          // History has no tool registry or execution owner. Persisted output references still expose the read capability.
+          const view = {
+            card: "generic" as const,
+            kind: "other" as const,
+            text: message.content
+              .flatMap((item) => (item.type === "text" ? [item.text] : []))
+              .join("\n"),
+            outputRef,
+          };
+          return outputRef && Value.Check(ToolResultViewSchema, view)
+            ? { ...message, view }
+            : message;
+        }),
         {
           toolStates,
           runSummaries: readRunSummaries(entries),

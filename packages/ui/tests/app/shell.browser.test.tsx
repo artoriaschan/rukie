@@ -129,6 +129,7 @@ test("sidebar searches projects, selects a welcome target and creates a Session 
         type: "session.create",
         project: "project",
         text: "Build a compiler",
+        modelSelection: { provider: "test", modelId: "script" },
       }),
     );
   } finally {
@@ -476,6 +477,28 @@ test("sidebar status follows fresh summaries across unselected permission waits 
       if (getComputedStyle(child).overflowY === "auto")
         expect(child.scrollWidth).toBeLessThanOrEqual(child.clientWidth);
     }
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("missing model errors remain actionable and preserve the current draft", async () => {
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  try {
+    await expect.element(screen.getByRole("button", { name: "Choose model" })).toBeEnabled();
+    await fetch(`http://127.0.0.1:${connection.port}/error`, {
+      method: "POST",
+      body: JSON.stringify({ type: "session.create", code: "model_unavailable" }),
+    });
+    const input = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    await input.fill("Preserve this draft");
+    await userEvent.keyboard("{Enter}");
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("Action failed: Choose an available model service before sending.");
+    await expect.element(input).toHaveValue("Preserve this draft");
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);

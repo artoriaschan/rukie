@@ -127,6 +127,12 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     });
   const [permission, setPermission] = useState<PermissionMode>("ask");
   const [model, setModel] = useState<ModelSelection>();
+  const catalogDefault = state.models.find((item) => item.authenticated);
+  const newSessionModel =
+    model ??
+    (catalogDefault
+      ? { provider: catalogDefault.providerId, modelId: catalogDefault.id }
+      : undefined);
   const [sending, setSending] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
   const recent = useMemo(() => recentSessions(state), [state.sessions, state.preferences]);
@@ -280,7 +286,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           project: state.target,
           text,
           images: attachments,
-          modelSelection: model,
+          modelSelection: newSessionModel,
           permissionMode: permission,
         });
         if (
@@ -495,9 +501,9 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             model={
               state.selected
                 ? view.snapshot?.model
-                : model
-                  ? `${model.provider}/${model.modelId}`
-                  : state.models.find((model) => model.authenticated)?.spec
+                : newSessionModel
+                  ? `${newSessionModel.provider}/${newSessionModel.modelId}`
+                  : undefined
             }
             thinkingLevel={view.thinkingLevel ?? model?.thinkingLevel}
             contextReport={view.contextReport}

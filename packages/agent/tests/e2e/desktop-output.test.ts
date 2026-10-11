@@ -3,7 +3,12 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { Database } from "bun:sqlite";
 import { crashUnsafeEffect } from "../helpers/native-recovery.ts";
 import { join } from "node:path";
-import { createSession, readSessionToolOutput, type Session } from "../../src/index.ts";
+import {
+  createSession,
+  readSessionSnapshot,
+  readSessionToolOutput,
+  type Session,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -46,6 +51,10 @@ test("desktop Bash retains full output after truncation and restart by byte curs
   expect(initial).toMatchObject({ stdout: "first\n", stderr: "", nextOffset: 6, dropped: false });
   await session.close();
   session = undefined;
+  const readonly = await readSessionSnapshot({ ...options, id });
+  expect(readonly.messages.find((message) => message.role === "toolResult")).toMatchObject({
+    view: { outputRef: details.outputRef },
+  });
   const rest = await readSessionToolOutput(
     { ...options, id },
     details.outputRef,
