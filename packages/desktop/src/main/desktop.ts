@@ -54,6 +54,7 @@ export async function startDesktop(options: DesktopOptions) {
       minWidth: 420,
       minHeight: 400,
       titleBarStyle: "hiddenInset",
+      trafficLightPosition: { x: 16, y: 16 },
       webPreferences: {
         preload: options.preload,
         nodeIntegration: false,

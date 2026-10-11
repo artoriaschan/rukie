@@ -200,7 +200,7 @@ export function Sidebar(props: SidebarProps) {
   return (
     <aside
       aria-label={t("app.home")}
-      className="flex h-full min-h-0 w-64 shrink-0 flex-col border-r border-border bg-sidebar p-2"
+      className="app-session-sidebar flex h-full min-h-0 shrink-0 flex-col p-2"
     >
       <div className="mb-4 flex items-center gap-1">
         <Button

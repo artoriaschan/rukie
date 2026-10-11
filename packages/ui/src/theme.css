@@ -449,3 +449,76 @@
 .transcript-viewport::-webkit-scrollbar {
   display: none;
 }
+
+/* C01 shell roles are independent of cards and model-service form surfaces. */
+:root {
+  --layout-rail: #e9e8e8;
+  --layout-titlebar: #e8e9e9;
+  --layout-sidebar: #f8f7f7;
+  --layout-content: #ffffff;
+}
+.dark {
+  --layout-rail: #2b2827;
+  --layout-titlebar: #282928;
+  --layout-sidebar: #1f1e1e;
+  --layout-content: #181818;
+}
+[data-workspace-shell] {
+  background: var(--layout-rail);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.app-titlebar {
+  background: var(--layout-titlebar);
+}
+.app-titlebar-navigation {
+  width: 196px;
+  padding-left: 88px;
+  gap: 2px;
+}
+.app-titlebar-navigation > span[aria-hidden="true"] {
+  position: absolute;
+  left: 0;
+  width: 76px;
+}
+.app-titlebar-navigation button {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+.app-titlebar-navigation button:disabled {
+  background: transparent;
+  opacity: 0.4;
+}
+.app-titlebar-navigation button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.app-titlebar-navigation svg {
+  width: 16px;
+  height: 16px;
+}
+.app-navigation {
+  width: 52px;
+  background: var(--layout-rail);
+}
+.app-workspace {
+  margin-right: 4px;
+  margin-bottom: 4px;
+  border-radius: 12px;
+  background: var(--layout-content);
+}
+.app-workspace > main {
+  background: var(--layout-content);
+}
+.app-session-sidebar {
+  width: 268px;
+  background: var(--layout-sidebar);
+  border-radius: 12px 0 0 12px;
+  border-right: 1px solid var(--border);
+}
+@media (min-width: 768px) {
+  .app-titlebar-navigation[data-sidebar-open="true"] {
+    width: 320px;
+  }
+}

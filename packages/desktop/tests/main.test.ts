@@ -153,6 +153,8 @@ test("Electron installs app scheme before load and authenticates every native IP
     );
     expect(electron.BrowserWindow).toHaveBeenCalledWith(
       expect.objectContaining({
+        titleBarStyle: "hiddenInset",
+        trafficLightPosition: { x: 16, y: 16 },
         webPreferences: expect.objectContaining({
           contextIsolation: true,
           sandbox: true,
