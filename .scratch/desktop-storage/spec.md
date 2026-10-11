@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -181,3 +181,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 由 [16](issues/16-independent-model-name-reasoning-labels.md) 的新代理实施，模型 ID/名称独立保存；菜单严格对应勾选的 C16 固定八层名称。用户进一步确认“自动”可选、保存且执行为不附加显式推理参数，由供应商决定。产品持久 Model Selection 保存自动事实，拥有 Models 边界覆盖生成及原生压缩；普通子代理、fork 和 retained 使用各自有效选择，显式会话选择、恢复与 Rewind 保留合同。最小本地证据由实施代理单一记录，父代理复用，未启动真实 Electron/钥匙串或等待 CI。
 
 16 最终关闭于 `80ff7776`：模型名称可独立编辑和清空，模型 ID 仍是请求身份；关闭、自动、Minimal、Low、Medium、High、XHigh、Max 两侧同名同序，菜单仅已勾选项，不国际化等级名称。UI 单例通过（2.67s），实际三协议请求与压缩三例通过（362ms），子代理普通继承/fork 双向及 retained 三例通过（495ms），服务默认、显式优先和冷恢复单例通过（254ms）、Core Rewind/恢复单例通过（86ms）；保存/存储与相关静态证据复用。Light/en、Dark/zh 与两色 420px 实际 Chromium/mock 验收通过，英文占位折行只改短文案并增量复核该控件。两轴的子代理选择一致性和超时清理发现已集中修正，父代理核对源码、断言、记录和截图关闭；新 merger 快进不重跑验证。ADR Coverage 更新 ADR-0035、沿用 ADR-0024/0029，CONTEXT 补齐 automatic 含义。16/spec 同步 resolved，用户预览保留，本地交付不等待 CI，PR 未合并。
+
+## 开发 Framework 复制与签名修复
+
+用户运行开发命令报 embedded Framework unsealed contents，由 [17](issues/17-development-framework-copy-signing.md) 的新代理修复于 `ca71ef8d`。默认 cp 将原生相对符号链接改为指向源 app 的绝对路径；复制显式保留链接原文，开发副本可独立读写。缓存格式升级让旧错误副本自动重建，只替换 cache app，保留 data/electron/session。最小真实文件回归先失败后 1 pass（24ms）；隔离副本实际 copy/fuse/ad-hoc 签名及 strict deep 验证通过（603ms），旧格式恢复分支通过（625ms），持久化哨兵保留，源 272 个文件哈希/链接条目前后相同。缺少 runtime 的依赖准备失败与原 unpacked runtime 签名验证失败保留在票据记录，不称为成功；最终成功针对重新封签的开发副本。两轴零发现，父代理读取记录复核，新 merger 只快进不重复验证。ADR Coverage 沿用 ADR-0035/0034 的隔离与签名边界；机械复制修正不引入新架构取舍，无需额外 ADR。17/spec 同步 resolved，未启动 Electron、访问钥匙串、重跑源码构建/整套或等待 CI，用户预览和数据保持，PR 未合并。
