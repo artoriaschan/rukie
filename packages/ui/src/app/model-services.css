@@ -36,15 +36,15 @@
   --surface: #0d0d0d0d;
   --card: #fff;
   --popover: #fff;
-  --popover-border: #0000001a;
-  --border: #0000001a;
-  --input-border: #0000001a;
+  --popover-border: #0d0d0d1a;
+  --border: #0d0d0d1a;
+  --input-border: #0d0d0d1a;
   --input-surface: #fff;
   --primary: #000;
   --primary-foreground: #fff;
-  --secondary: #0000000d;
+  --secondary: #0d0d0d0d;
   --secondary-foreground: #262626;
-  --accent: #0000000d;
+  --accent: #0d0d0d0d;
   --accent-foreground: #262626;
 }
 .model-services {
@@ -189,9 +189,10 @@
   color: var(--muted-foreground);
 }
 .model-services-model-heading {
+  position: relative;
   height: 32px;
-  margin-top: 0;
-  margin-bottom: -10px;
+  margin-top: -2px;
+  margin-bottom: -8px;
 }
 .model-services-empty {
   border: 1px solid var(--border);
@@ -266,6 +267,7 @@
 }
 .model-services-confirm-modal {
   max-width: 448px;
+  margin-top: 10px;
 }
 .model-services-modal > div {
   padding: 23px;
@@ -490,6 +492,9 @@
   background: var(--input-surface);
 }
 .model-services-model-heading h3 {
+  position: absolute;
+  top: 10px;
+  left: 0;
   font-weight: 400;
   color: var(--muted-foreground);
 }
@@ -708,7 +713,7 @@
   border-top: 1px solid var(--border);
 }
 .model-services-delete-footer {
-  margin-top: 8px;
+  margin-top: 12px;
 }
 .model-services-delete-footer > button {
   height: 36px;
@@ -733,7 +738,12 @@
   border-color: transparent;
 }
 .model-services-model-heading > button {
+  position: absolute;
+  top: 0;
+  right: 0;
   width: 104px;
+  height: 32px;
+  min-height: 32px;
   background: var(--secondary);
   border-color: transparent;
 }
@@ -768,4 +778,25 @@
 .model-services-model-fields::-webkit-scrollbar-thumb {
   background: var(--secondary);
   border-radius: 2px;
+}
+
+.model-services-delete > h2 {
+  font-size: var(--text-ui-lg);
+  line-height: 1.5;
+}
+.model-services-delete > p {
+  line-height: 1.5;
+}
+.model-services-model-metadata > span:first-child {
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.model-services-model-fields input::placeholder {
+  color: var(--foreground);
+}
+
+.model-services-modal-footer > button {
+  height: 32px;
+  min-height: 32px;
 }

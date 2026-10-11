@@ -679,10 +679,12 @@ export function ModelServices({
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-mono">{item.id}</p>
                           <p className="model-services-model-metadata text-ui-xs text-muted-foreground">
-                            {new Intl.NumberFormat("en", {
-                              notation: "compact",
-                              maximumFractionDigits: 1,
-                            }).format(item.contextWindow ?? 128000)}{" "}
+                            <span>
+                              {new Intl.NumberFormat("en", {
+                                notation: "compact",
+                                maximumFractionDigits: 1,
+                              }).format(item.contextWindow ?? 128000)}
+                            </span>
                             {item.input?.includes("image") ? (
                               <span>{t("services.vision")}</span>
                             ) : null}
@@ -1049,7 +1051,7 @@ export function ModelServices({
             </div>
           </form>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="model-services-delete flex flex-col gap-3">
             <h2 className="font-medium">
               {t("services.deleteTitle", { name: draft?.name ?? "" })}
             </h2>

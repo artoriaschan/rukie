@@ -371,6 +371,16 @@ test("Pencil settings geometry uses compact workspace and stacked model form", a
       .getBoundingClientRect();
     expect(context.left).toBe(tokens.left);
     expect(tokens.top - context.top).toBe(80);
+    await screen.getByRole("button", { name: "关闭", exact: true }).click();
+    await screen.getByRole("button", { name: "供应商操作", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "删除供应商", exact: true }).click();
+    await expect
+      .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().height))
+      .toBe(180);
+    expect(screen.getByRole("dialog").element().getBoundingClientRect().width).toBe(448);
+    await expect
+      .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().top))
+      .toBe(520);
   } finally {
     await screen.unmount();
     await page.viewport(1280, 900);
