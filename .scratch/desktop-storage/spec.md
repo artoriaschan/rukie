@@ -1,4 +1,4 @@
-Status: resolved
+Status: claimed
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -189,3 +189,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 ## 开发入口模块解析修复
 
 [18](issues/18-development-entry-resolution.md) 修复于 `24b1ea9e`：Electron41 将 manifest.main 拼接到 app 路径，绝对入口形成 app/Users/... 错误目标。相对 ESM bootstrap 用正确编码的 file URL 等待外部 main 完成，保持 ready 前身份与路径配置时序。缓存格式升级让旧入口自动重建，保留开发数据。无 Electron 的真实 Node 文件接缝先复现错误，最终单例 1 pass（191ms），覆盖特殊字符、不同 cwd、后续源码更新与入口读回拒绝；局部类型、lint、格式与文档检查通过。新的两轴只读审查零发现，新 merger 仅快进集成，父代理复用证据。ADR Coverage 沿用 ADR-0035/0034，无新架构决定。18/spec 同时 resolved，未启动 Electron、访问钥匙串、重签名、构建或重跑包级/全量/浏览器/CI；真实启动尚未验收，用户预览与数据保留，PR 未合并。
+
+## API Key 展示修复
+
+用户指出遮罩字符过疏、显示隐藏无效并要求该按钮无 hover 动效，由 [19](issues/19-api-key-visibility.md) 的新代理实施。保持现有组件、字段布局与凭据边界，仅用假的 Key 在 Chromium/mock 验证；真实 Electron/Keychain 不在本次授权范围。
