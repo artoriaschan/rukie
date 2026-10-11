@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -147,3 +147,5 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 10 本地完成于 `d3defa71`：桌面元数据保存与采用模型接线、显式等级优先、恢复保留选择均有 focused 证据；独立两轴复核 0，实际 Light/Dark/窄屏默认菜单、保存重开及局部尺寸修正验收通过。集成复用实施代理的测试/静态/截图，只检查 FF/祖先和差异，不重复执行。ADR Coverage 沿用 ADR-0029/0035，无新增架构取舍；详细实际失败与结果见 [10](issues/10-model-default-reasoning.md)。
 
 数字输入框仍使用 beUI Input，但其内部 number 输入的原生按钮未适配 Pencil，由 [11](issues/11-number-input-pencil-style.md) 的新代理仅修正模型弹窗样式。10 resolved，spec 为 11 保持 claimed。
+
+11 最终关闭于 `08adbe7a`：数字输入保留 beUI、number/min、键盘步进和 36px 高度，模型范围隐藏原生按钮。单例最终 1 pass（1.28s）；只验收受影响数字区域 Light/Dark/窄屏，截图范围限制与失败历史记录在 [11](issues/11-number-input-pencil-style.md)。独立两轴复核无实现缺陷，ADR Coverage 沿用 ADR-0029/0035，无新架构决定。根集成复用 10/11 的测试、静态及浏览器记录，未重复文件全套、desktop、check:dev 或 Electron；102 desktop 明确仅是此前基线。11/spec 同步 resolved，以实际本地证据交付，PR 未合并。
