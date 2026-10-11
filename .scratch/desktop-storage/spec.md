@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -133,3 +133,9 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 08 本地交付完成：`5f36dfca` 保留 beUI 并修复列表结构、Pencil 展开几何和局部 hover；desktop 102 pass（11.83s）及 check:dev 通过，实际 Chromium/mock Light/Dark/窄屏/键盘验收完成。独立评审要求的 hover 覆盖与异常清理由两个新代理分别在 `86893fec`、`a6f2f0bd` 修复；最后仅两例复验 2 pass（1.93s），生产源码未变，复用此前整套及浏览器证据。具体失败、警告与复核记录归 [08](issues/08-provider-api-dropdown-style.md)。ADR Coverage 沿用 ADR-0029/0035，本轮局部 DOM/样式/测试无需新 ADR，不等待 CI，未启动真实 Electron。
 
 用户随后指出高级配置包含当前 C16 不存在的表单，作为独立后续工作推进；本规格保持 claimed，08 已 resolved。
+
+## 当前 C16 高级设置纠正
+
+[09](issues/09-model-advanced-pencil-fields.md) 在 `817c3bbf` 移除设计源不存在的智能配置、额外能力/兼容、JSON 映射和重置入口，并同步高级设置标题、摘要和卡片几何。设计中的自动压缩、运行参数和价格九项字段保留；编辑保存沿用原模型的 compat/thinkingLevelMap，不改变宿主、持久化 schema 或凭据合同。最新用户要求覆盖历史 05 中这些额外表单的呈现要求。
+
+受影响 ModelServices 文件 13 pass（10.79s），之后几何和推理开关修正只补跑单例 1 pass（1.27s）；静态检查通过，实际 Chromium/mock Light/Dark/420px 的高级区域验证完成。最终仅更新 4px 宽度修正影响的截图，根集成复用证据，不再重复整套测试、静态或完整浏览器流程，未启动 Electron。独立 Standards/Spec 的唯一过时文档发现已删除；父代理核对最终差异、断言与截图关闭发现。ADR Coverage 沿用 ADR-0029/0035，局部表单和冗余 UI 状态清理无需新 ADR。09/spec 同步 resolved，以本地结果交付，不等待 CI，PR 等待用户评审，未授权合并 main。
