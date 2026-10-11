@@ -1,6 +1,6 @@
 # 21: 模型美元价格自动填充
 
-Status: claimed
+Status: resolved
 
 Blocked by: 20
 
@@ -11,7 +11,7 @@ Blocked by: 20
 - [x] 使用已有宿主/网络边界，远端JSON作为unknown限量/超时/校验，匹配请求不带APIKey，不暴露任意URLfetch；处理快速切换/关闭/迟到结果
 - [x] 触发语义保持稳定：添加模型ID确认或失焦时取价、打开现有模型缺价格时取价，手动修改仍支持；不能每击键请求或保存过时结果
 - [x] 最小public focused验证换算/缺价/歧义/错误及输入自动填充保存/重开，局部静态+一次Chromium/mock Light/Dark/窄屏，禁止真实Electron/Keychain/包级/全量/CI
-- [ ] 同步必要契约/文档/ADRcoverage，新两轴与freshmerger集成关闭ticket/spec
+- [x] 同步必要契约/文档/ADRcoverage，新两轴与freshmerger集成关闭ticket/spec
 
 本票使用现有beUI组件和高级设置价格区，不增加未授权布局。数据源：llmprice首页列明 https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json；原站加载jsdelivr/rawGitHub及backup，不必复制多重fallback。当前源码1596等父已核对，不视为未来稳定API，需清晰记录来源与失败处理。
 
@@ -20,3 +20,5 @@ Blocked by: 20
 最新用户来源选择覆盖初始CDN方案：生产固定raw.githubusercontent.com原始JSON，无CDNfallback；priceSource保存GitHub文件链接、匹配键与USD单位。保存时未取价的ID先查价，进行中受同步guard保护并禁用保存，失败后可手动保存。
 
 Fresh Spec review P1（在途/Enter 保存竞态）已集中修复并由父只读闭合；Standards 无实质发现。最新来源固定用户 GitHub 文件 raw JSON，最新 UI focused 1.85s/server 2case13ms、IPC/preload及局部静态通过；父复用证据，无再次测试。等待 fresh merger 和父关闭。
+
+- 交付：实现 4bc608a0，新的 Spec 保存竞态 P1 已集中修正，Standards 无实现发现；父代理只读核对 source/refguard/disabled/manual 保留和证据关闭发现，fresh merger 仅快进复用验证。21/spec 同步 resolved，PR 未合并，未运行 Electron/Keychain、包级/全量/CI。

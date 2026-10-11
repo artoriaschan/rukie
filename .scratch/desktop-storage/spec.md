@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -205,3 +205,5 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 ## 模型美元价格自动填充
 
 用户指定 llmprice.cn 的价格作为模型高级设置自动填充来源，由 [21](issues/21-model-price-autofill.md) 新代理核查其原始USD数据与模型精确匹配，保持手动编辑和现有布局。价格按USD/百万Token保存，不使用站点人民币换算。
+
+21 最终关闭于 `4bc608a0`：用户进一步指定 LiteLLM GitHub 文件，固定读取其 raw JSON（不抓网页人民币、不使用 CDN fallback），原始 USD/token 转 USD/百万Token，来源记录 GitHub 链接、匹配键及单位。官方 endpoint/provider 与模型 ID 精确匹配，同供应商同价别名去重，分层/歧义/零或缺值/失败保留空白并提示；未手动填写的四价与来源自动补齐，名称不参与匹配。ID失焦、已有模型缺价和首次提交协调取价；异步去重、手改/清空保护、ID切换过期拒绝及取价中保存禁用，失败允许手动保存。现有 beUI、价格标题单行状态和表单几何保持。最终 server 两例 13ms、UI 单例 1.85s、主 IPC 318ms/preload 114ms，相关类型/局部静态/文档通过；Light/Dark/420px 一次 Chromium/mock 与末次按钮增量验收通过，临时服务清理。指定 raw 源只读下载成功（4042记录），早期 SSL/CDN 调查失败历史保留，不作为当前来源。新 Spec 保存竞态 P1 集中修正，Standards 无实现发现，父只读闭合、fresh merger 快进复用证据。ADR Coverage 沿用 ADR-0035 管理边界及价格元数据，无新架构决定；已知官方 hostname 范围见 server README，未知代理不猜官方价格。21/spec resolved，本地交付，不等待 CI，未启动真实 Electron/Keychain 或包级/全量，用户预览保持，PR 未合并。
