@@ -129,3 +129,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 ## API 下拉框样式回归
 
 用户本机浏览器预览截图显示 API 格式下拉框出现列表圆点、异常行高与不匹配的悬停色。由 [08](issues/08-provider-api-dropdown-style.md) 的新代理从实际预览入口复现，继续采用已有 beUI Select，核对 P04/C14 展开几何与 Light/Dark 色板，并补上公开 DOM 样式回归。用户当前预览入口与进程保留，不通过启动真实 Electron 验证。
+
+08 本地交付完成：`5f36dfca` 保留 beUI 并修复列表结构、Pencil 展开几何和局部 hover；desktop 102 pass（11.83s）及 check:dev 通过，实际 Chromium/mock Light/Dark/窄屏/键盘验收完成。独立评审要求的 hover 覆盖与异常清理由两个新代理分别在 `86893fec`、`a6f2f0bd` 修复；最后仅两例复验 2 pass（1.93s），生产源码未变，复用此前整套及浏览器证据。具体失败、警告与复核记录归 [08](issues/08-provider-api-dropdown-style.md)。ADR Coverage 沿用 ADR-0029/0035，本轮局部 DOM/样式/测试无需新 ADR，不等待 CI，未启动真实 Electron。
+
+用户随后指出高级配置包含当前 C16 不存在的表单，作为独立后续工作推进；本规格保持 claimed，08 已 resolved。
