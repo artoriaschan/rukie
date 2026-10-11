@@ -1,3 +1,4 @@
+import { captureFullOutput } from "../support/runtime.ts";
 import type { PresentedTool } from "../support/presentation.ts";
 import { Value } from "typebox/value";
 import { Type } from "typebox";
@@ -38,10 +39,12 @@ export function createWebFetchTool(
             outputUnavailable: details.truncated,
           }
         : undefined,
-    async execute({ url }, _api, context) {
+    async execute({ url }, api, context) {
       const signal = context.abortSignal;
       try {
-        const result = await fetchWeb(url, signal, options, applicationVersion);
+        const result = await fetchWeb(url, signal, options, applicationVersion, (text) =>
+          captureFullOutput(api, text),
+        );
         return { ...result, details: { ...result.details, category: "web" } };
       } catch (error) {
         if (signal?.aborted) throw error;

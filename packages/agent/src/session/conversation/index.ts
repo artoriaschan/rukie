@@ -1,3 +1,4 @@
+import type { SqliteOutputs } from "../../store/output.ts";
 import { withHookTranscript } from "../../hooks/transcript.ts";
 import type { Context, JsonValue } from "@earendil-works/chord";
 import type { ToolCall } from "@earendil-works/pi-ai";
@@ -69,6 +70,7 @@ function createJobsOwner() {
 
 /** Native Conversation policy is distinct; idle forks retain the logical Subagent's Jobs owner. */
 export function createConversationRuntimePool(options: {
+  outputs?: SqliteOutputs;
   lifetime: AbortSignal;
   isClosed(): boolean;
 }) {
@@ -100,6 +102,7 @@ export function createConversationRuntimePool(options: {
 /** A Conversation owns policy state and host resources; Session supplies durable admission adapters. */
 export function createConversationRuntime(options: {
   origin?: { agentId: string; description: string };
+  outputs?: SqliteOutputs;
   lifetime: AbortSignal;
   isClosed(): boolean;
   jobOwner?: ReturnType<typeof createJobsOwner>;
@@ -162,7 +165,7 @@ export function createConversationRuntime(options: {
       return (hooks ??= createHooks(input));
     },
     createJobs(input: Parameters<typeof createJobs>[0]) {
-      return jobOwner.bind(input);
+      return jobOwner.bind({ ...input, outputs: options.outputs });
     },
     createFileTracking(...args: Parameters<typeof createFileTracking>) {
       return (tracking ??= createFileTracking(...args));
@@ -235,7 +238,63 @@ export function createConversationRuntime(options: {
           inputs.set(api.callId, args as Record<string, unknown>);
           const started = performance.now();
           try {
-            return await tool.execute(args, api, context);
+            if (!options.outputs) return await tool.execute(args, api, context);
+            const invocation = `task-${api.taskId}-${crypto.randomUUID()}`;
+            const streamed = options.outputs.writer({ id: `${invocation}-stream` });
+            const final = options.outputs.writer({ id: `${invocation}-result` });
+            const complete = options.outputs.writer({ id: `${invocation}-full` });
+            let hasComplete = false;
+            let hasStream = false;
+            if (tool.name !== "bash") await api.details({ outputRef: streamed.ref }, context);
+            try {
+              const wrappedApi = {
+                ...api,
+                outputWindow: undefined,
+                captureFullOutput(text: string) {
+                  hasComplete = true;
+                  complete.append("stdout", text);
+                },
+                output: ((chunk, skipped) => {
+                  if (skipped?.bytes) throw new Error("Full output cannot accept skipped bytes");
+                  hasStream = true;
+                  if (tool.name !== "bash") streamed.append("stdout", chunk);
+                  api.output(chunk, skipped);
+                }) satisfies typeof api.output,
+              };
+              const result = await tool.execute(args, wrappedApi, context);
+              if (tool.name === "bash") return result;
+              if (result.content !== undefined) {
+                for (const part of result.content)
+                  if (part.type === "text") final.append("stdout", part.text);
+                await final.flush();
+              }
+              await streamed.flush();
+              await complete.flush();
+              const details = result.details;
+              const savedDetails = {
+                ...(typeof details === "object" && details !== null && !Array.isArray(details)
+                  ? details
+                  : details === undefined
+                    ? {}
+                    : { originalDetails: details }),
+                outputRef:
+                  typeof details === "object" &&
+                  details !== null &&
+                  !Array.isArray(details) &&
+                  "outputRef" in details
+                    ? details.outputRef
+                    : hasComplete
+                      ? complete.ref
+                      : result.content === undefined && hasStream
+                        ? streamed.ref
+                        : final.ref,
+              };
+              await api.details(savedDetails, context);
+              return { ...result, details: savedDetails };
+            } finally {
+              await streamed.flush();
+              await complete.flush();
+            }
           } finally {
             durations.set(api.callId, performance.now() - started);
             if (context.abortSignal?.aborted && !options.isClosed()) {

@@ -60,6 +60,12 @@ export const WireCommandSchema = Type.Union([
   }),
   command("session.subscribe", session),
   command("session.unsubscribe", session),
+  command("tool_output.read", {
+    ...session,
+    outputRef: Type.Object({ id }, { additionalProperties: false }),
+    offset: Type.Integer({ minimum: 0 }),
+    maxBytes: Type.Optional(Type.Integer({ minimum: 1, maximum: 4 * 1024 * 1024 })),
+  }),
   command("prompt", { ...session, ...prompt }),
   command("steer_now", { ...session, requestId: id }),
   command("withdraw", { ...session, requestId: id }),

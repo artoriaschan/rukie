@@ -1,3 +1,5 @@
+import type { JobOutput, ToolOutputRef } from "@rukie/shared";
+import { Button } from "./motion/button/base";
 import { useEffect, useState } from "react";
 import { createTwoFilesPatch, parsePatch } from "diff";
 import { toolTitle, type TranscriptTool } from "../lib/transcript";
@@ -74,8 +76,20 @@ function Diff({
     />
   );
 }
-export function ToolRow({ tool }: { tool: TranscriptTool }) {
+export type ReadToolOutput = (ref: ToolOutputRef, offset: number) => Promise<JobOutput>;
+export function ToolRow({
+  tool,
+  readOutput,
+}: {
+  tool: TranscriptTool;
+  readOutput?: ReadToolOutput;
+}) {
   const t = useAppText();
+  const [page, setPage] = useState<JobOutput>();
+  const [cursor, setCursor] = useState(0);
+  const [pending, setPending] = useState(false);
+  const [outputError, setOutputError] = useState(false);
+  const [end, setEnd] = useState(false);
   const [open, setOpen] = useState(tool.status === "error");
   useEffect(() => {
     if (tool.status === "error") setOpen(true);
@@ -84,7 +98,7 @@ export function ToolRow({ tool }: { tool: TranscriptTool }) {
   const result = tool.resultView;
   const title = toolTitle(tool);
   const diffs = result?.card === "diff" ? result.diffs : call?.card === "diff" ? call.diffs : [];
-  const output =
+  const boundedOutput =
     result?.card === "terminal"
       ? result.output
       : result?.card === "read"
@@ -92,6 +106,24 @@ export function ToolRow({ tool }: { tool: TranscriptTool }) {
         : result?.card === "generic"
           ? result.text
           : tool.output;
+  const output = page
+    ? page.stdout + (page.stderr ? `\n[stderr]\n${page.stderr}` : "")
+    : boundedOutput;
+  const load = async (offset: number) => {
+    if (!readOutput || !result?.outputRef || pending) return;
+    setPending(true);
+    setOutputError(false);
+    try {
+      const value = await readOutput(result.outputRef, offset);
+      setPage(value);
+      setCursor(offset);
+      setEnd(value.nextOffset === offset);
+    } catch {
+      setOutputError(true);
+    } finally {
+      setPending(false);
+    }
+  };
   return (
     <>
       <ToolResult
@@ -104,11 +136,49 @@ export function ToolRow({ tool }: { tool: TranscriptTool }) {
         collapseOnComplete={false}
         copyText={output}
       >
-        {diffs.length ? (
+        {diffs.length && !page ? (
           diffs.map((source, index) => <Diff key={index} source={source} />)
         ) : (
           <AnsiOutput text={output} />
         )}
+        {readOutput && result?.outputRef ? (
+          <div>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={pending || (page !== undefined && end)}
+              onClick={() => {
+                void load(page?.nextOffset ?? 0);
+              }}
+            >
+              {t(page ? "conversation.output-next" : "conversation.output-full")}
+            </Button>
+            {page ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={pending}
+                onClick={() => {
+                  setPage(undefined);
+                  setCursor(0);
+                  setEnd(false);
+                }}
+              >
+                {t("conversation.output-summary")}
+              </Button>
+            ) : null}
+            {page ? (
+              <p className="text-ui-sm text-muted-foreground">
+                {t("conversation.output-range", { start: cursor, end: page.nextOffset })}
+              </p>
+            ) : null}
+            {outputError ? (
+              <p role="alert" className="text-ui-sm text-danger">
+                {t("conversation.output-error")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </ToolResult>
       {tool.status === "cancelled" ? (
         <p className="text-ui-sm text-warning">{t("conversation.unknown")}</p>
@@ -121,7 +191,7 @@ export function ToolRow({ tool }: { tool: TranscriptTool }) {
           {t("conversation.continue", { offset: result.nextOffset })}
         </p>
       ) : null}
-      {result && "outputUnavailable" in result && result.outputUnavailable ? (
+      {result && "outputUnavailable" in result && result.outputUnavailable && !result.outputRef ? (
         <p className="text-ui-sm text-warning">{t("conversation.unavailable")}</p>
       ) : null}
     </>

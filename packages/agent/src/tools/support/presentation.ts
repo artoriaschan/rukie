@@ -39,7 +39,16 @@ export function presentResult(
     const text = result.content
       .flatMap((item) => (item.type === "text" ? [item.text ?? ""] : []))
       .join("\n");
-    const view = (tool as PresentedTool).presentResult?.(args, text, result.details);
+    const base = (tool as PresentedTool).presentResult?.(args, text, result.details);
+    const details = result.details;
+    const ref =
+      typeof details === "object" && details !== null && "outputRef" in details
+        ? details.outputRef
+        : undefined;
+    const view =
+      base && typeof ref === "object" && ref !== null && "id" in ref && typeof ref.id === "string"
+        ? { ...base, outputRef: { id: ref.id } }
+        : base;
     return view && Value.Check(ToolResultViewSchema, view) ? view : undefined;
   } catch {
     return;

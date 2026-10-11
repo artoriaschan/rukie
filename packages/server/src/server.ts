@@ -9,6 +9,7 @@ import {
   createSession,
   listSessions,
   readSessionSnapshot,
+  readSessionToolOutput,
   listModelCatalog,
   loadSettings,
   type PermissionAskRequest,
@@ -439,6 +440,21 @@ export async function startServer(options: ServerOptions) {
             );
           throw error;
         }
+      }
+      case "tool_output.read": {
+        const summary = (await summaries()).find((item) => item.id === command.sessionId);
+        if (!summary) throw new Error("Session not found");
+        return readSessionToolOutput(
+          {
+            cwd: summary.cwd,
+            homeDir: options.homeDir,
+            dataRoot: options.dataRoot,
+            id: summary.id,
+          },
+          command.outputRef,
+          command.offset,
+          command.maxBytes,
+        );
       }
       case "session.unsubscribe":
         subscriptions.get(socket.raw)?.get(command.sessionId)?.();

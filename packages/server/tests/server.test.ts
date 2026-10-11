@@ -856,3 +856,50 @@ test("desktop neither lists nor contends with a terminal Session in the same pro
     await rm(homeDir, { recursive: true, force: true });
   }
 }, 5000);
+
+test("desktop output wire reads committed bytes after server restart without opening execution", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-output-wire-"));
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("bash", {
+        command: "printf 'stored output'; printf diagnostic >&2",
+        description: "persistent output",
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("done"),
+  ]);
+  let server = await startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} });
+  let client = await connect(server);
+  try {
+    const created = await client.command("session.create", {
+      project: null,
+      text: "capture",
+      permissionMode: "full-access",
+    });
+    const sessionId = (created.result as { sessionId: string }).sessionId;
+    await client.next((message) => message.type === "result");
+    const ended = client.messages.find(
+      (message) => message.type === "tool_execution_end" && message.toolName === "bash",
+    );
+    const result = ended?.result as { details: { outputRef: { id: string } } };
+    const outputRef = result.details.outputRef;
+    expect(
+      (await client.command("tool_output.read", { sessionId, outputRef, offset: 0 })).result,
+    ).toMatchObject({ stdout: "stored output", stderr: "diagnostic", nextOffset: 23 });
+    client.socket.close();
+    await server.close();
+    server = await startServer({ homeDir, onHandshake: () => {} });
+    client = await connect(server);
+    expect(
+      (await client.command("tool_output.read", { sessionId, outputRef, offset: 7 })).result,
+    ).toMatchObject({ stdout: "output", stderr: "diagnostic", nextOffset: 23 });
+    expect(
+      (await client.command("tool_output.read", { sessionId, outputRef, offset: -1 })).error,
+    ).toEqual({ code: "invalid_command" });
+  } finally {
+    client.socket.close();
+    await server.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});

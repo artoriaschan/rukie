@@ -10,6 +10,12 @@
 
 `readSessionStorage` 和 `readSessionSnapshot` 在 SQLite 上持有一个已提交 WAL 读取帧，可在另一个宿主执行时观察历史，不获取执行权，不执行迁移或 Harness 恢复。写入和 mintId 明确拒绝；缺失、不支持版本或结构不匹配的库读取失败。锁定 pi-durable 只有会迁移的 `SqliteStorage.open`，只读接缝在核对全部原生表/列及版本后调用其仅赋值的 constructor，并保留原生 document 与历史读取语义；升级依赖必须重新核对该 constructor 合同。只读 callback 不应关闭后继续使用 Storage；callback 返回或失败时连接关闭。
 
+SQLite Session 的完整工具文本输出和 Bash/Background Job 的 stdout/stderr 分块保存在同一个根 Harness 连接的 `session.sqlite` 中，使用原生数据库事务队列和 WAL/FULL。引用按原生 task 与 invocation 身份分隔，模型复用 call ID 不会覆盖其他输出；子代理仍写根 Harness 的同一库。工具自己的 read/grep/glob/web_fetch 模型截断前文本和 Harness 截断前的其他文本均保留，下载安全上限与用户指定 read 范围不改变。流式文本与显式最终结果分别存储，读取引用只选择一种，不重复拼接。
+
+`Session.readToolOutput(ref, offset?, maxBytes?)` 和 `readSessionToolOutput({ cwd, homeDir, dataRoot, id }, ref, offset?, maxBytes?)` 返回 `stdout`、`stderr`、跨两流的绝对 UTF-8 `nextOffset` 和 `dropped`。每页默认256KiB、最多4MiB；字符边界可缩短页或在页小于单个字符时前进一个完整字符。历史读取只持有已提交 WAL 帧，不迁移 schema、不启动恢复、不获取执行权。Frontend 可通过工具结果 `outputRef` 继续按页读取，桌面 wire 的 `tool_output.read` 复用历史入口；桌面卡片显示按需完整输出，不把截断误报为已不可用。
+
+输出块事务成功后才提交引用它们的最终工具事实；正常结束、abort 和关闭排空写入，写入失败成为工具失败或关闭错误，不能返回执行成功。崩溃只保证已提交块，恢复保留这些引用，unsafe Bash 不重放。Background Job 进程不恢复，但已提交输出仍可读。终端保留现有临时 spill、`fullOutputPath`、有限内存与 `job_output` 游标行为；桌面不创建临时日志权威引用。SQLite `job_output` 的模型文本仍有原内存边界，完整数据库引用独立于模型消费游标。
+
 `SessionOptions.initializationSignal` 可取消 SessionStart Hook 与打开过程，失败时关闭 observation、撤销注册读者并释放 Hook／连接／存储租约。这个信号只约束初始化，Session 返回后不会取消 Run；原生 Harness 的上下文独立于它。已打开宿主通过 `await session.close()` 保存 pending work 并等待释放；`abort()` 取消当前普通 ownership，`interruptSubagent()` 取消选中的 child。Frontend 的进程信号及输出边界见 [Headless README](../coding-agent/src/headless/README.md) 与 [TUI README](../coding-agent/src/tui/README.md)。
 
 # 用户来源与工具 home

@@ -90,8 +90,15 @@ export function renderHttpError(url: URL, status: number, body: string): string 
   return `HTTP ${status} from ${url.href}\n${NOTICE}\n\n${body.slice(0, 2000)}`;
 }
 
-export function render(url: URL, status: number, body: string, downloadedTruncated: boolean) {
+export function render(
+  url: URL,
+  status: number,
+  body: string,
+  downloadedTruncated: boolean,
+  capture?: (text: string) => void,
+) {
   const prefix = `Fetched ${url.href} (HTTP ${status})\n${NOTICE}\n\n`;
+  capture?.(prefix + body);
   const chars = body.length;
   const truncated = downloadedTruncated || prefix.length + chars > 50_000;
   const footer = truncated

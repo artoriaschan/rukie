@@ -74,3 +74,5 @@ export type { InteractionIdentity } from "./interaction/index.ts";
 export { readSessionSnapshot } from "./session/read-only.ts";
 
 export { openBunSqliteDatabase } from "./store/sqlite-database.ts";
+
+export { readSessionToolOutput } from "./store/index.ts";

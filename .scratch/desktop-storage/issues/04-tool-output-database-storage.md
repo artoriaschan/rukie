@@ -4,7 +4,7 @@
 
 Blocked by: 02
 
-Status: ready-for-agent
+Status: claimed
 
 - [ ] 盘点 Jobs registry spill、Bash fullOutputPath、job_output、工具结果卡和所有读取消费者；桌面完整 stdout/stderr 与后台 Job 输出按调用身份持久化
 - [ ] 分块有序追加并支持字节游标/按需读取；模型截断不删除完整输出；最终结果和关闭等待写入完成，失败不报告成功
