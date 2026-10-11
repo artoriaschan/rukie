@@ -70,3 +70,10 @@ Status: resolved
 - 双轴审查发现公共配置父目录链接会被 recursive mkdir 提前触碰；改为逐级检查/创建路径，新增父目录链接拒绝且目标 sentinel 不变的回归。启动器10用例通过，450ms；增量格式/lint/tsc通过，双轴只读复核均无新发现。main双根真实子进程接线11用例通过，848ms，development3用例证据有效。
 - `env -u NO_COLOR bun run check` 实际失败：静态通过；Bun 3453通过/25失败，333文件，177.10s，随后 desktop 未执行。19项发布/恢复失败来自本机npm11.19.1低于要求11.21.0；发布单例独立复现同一版本错误（6.78s）。4项既有Core/TUI模型用例分别涉及旧document版本、旧toolState期望和供应商切换断言；安装版MCP OAuth PTY超时及依赖其验收的下载原件用例失败。MCP PTY单例独立复现（19.57s）。这些文件及运行路径未被本次修改，不扩大修复范围；不得将本次完整check称为通过。日志 `/tmp/rukie-shared-config-check.log`，最小复现日志 `/tmp/rukie-shared-config-unrelated.log`、`/tmp/rukie-shared-config-pty.log`、`/tmp/rukie-shared-config-baseline-failures.log`。
 - 本地显式恢复：从已知旧5bcc SQLite一致读取供应商、模型和凭证密文，将配置与当前工作区偏好写入空公共库；源保持原样、不解密、不进入仓库。公共库含1供应商/2模型。已授权原生开发应用重启，模型服务页面实际可见DeepSeek、两个模型及已保存密钥状态；未发送真实模型请求或显示密钥。launcher日志 `/tmp/rukie-shared-config-start.log`。应用为用户保留运行，临时测试资源已清理。
+
+### 模型详情按 hover 展示
+
+用户纠正交互：打开只展示模型列表，hover模型选项后展示该模型详情；键盘导航仍可预览/进入推理档位。首次与重开详情均隐藏，列表在详情出现时位置稳定。修改前新增公开回归复现；本轮仅模型交互、受影响Composer与浏览器验收失效，复用其它证据。
+
+- 公开回归先复现首次详情可见（15.73s失败边界）；去除初始化预览后，仅列表初开/重开、hover与键盘预览通过。审查进一步发现窄屏以及不同高度模型会使列表跳动：隐藏详情保留实际布局、aria-hidden/inert/visibility禁止访问和命中，C07固定184px设计高度，长内容使用已有ScrollArea。新增窄屏有/无推理往返及短窗口18px字号几何断言。最终Composer5用例通过（2.06s），tsc/lint/docs/test-policy与格式增量通过，双轴复核无新发现。先前尝试不支持的Radix focus props被类型检查发现并移除，未保留类型断言。
+- agent-browser实际Composer假catalog验收明暗1280×900与420×900：初开无可见详情、hover显示、移入High芯片选择正常；默认截图几何保持。最终ModelPicker假catalog补验420×900的first→second无推理→first布局：列表始终x48/y566/332×74，详情184px，无横向溢出。新会话console仅Vite/React提示，无页面错误；前一开发会话记录过临时QA入口HMR重复createRoot警告及删除入口的reload错误，来源为临时harness，最终新会话已排除。截图list-only-light.png、hover-detail-light.png、hover-detail-dark.png、hover-detail-narrow.png位于原证据目录。临时入口/浏览器/Vite清理；原生开发app按最终代码重启，用户配置保持不变。复用未失效的包级/其它静态证据，不重复此前失败的全量检查。

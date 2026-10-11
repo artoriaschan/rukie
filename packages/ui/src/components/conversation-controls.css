@@ -131,13 +131,16 @@
   box-shadow: none;
   overflow: visible;
   align-items: start;
+  pointer-events: none;
 }
 .conversation-model-menu > * {
+  pointer-events: auto;
   margin-block: 0;
 }
-.conversation-model-menu:not(:has(.conversation-model-detail)) {
+.conversation-model-menu:not(:has([data-model-spec])) {
   grid-template-columns: 332px;
   width: 332px;
+  min-height: 0;
 }
 .conversation-control-panel {
   min-width: 0;
@@ -192,14 +195,21 @@
   font-weight: 500;
   overflow-wrap: anywhere;
 }
+.conversation-model-detail[data-preview="false"] {
+  visibility: hidden;
+  pointer-events: none;
+}
 .conversation-model-detail {
+  height: min(184px, var(--radix-dropdown-menu-content-available-height));
   max-height: var(--radix-dropdown-menu-content-available-height);
 }
 .conversation-model-detail-scroll {
+  height: 100%;
   max-height: calc(var(--radix-dropdown-menu-content-available-height) - 2px);
   border-radius: 11px;
 }
 .conversation-model-detail-scroll > [data-slot="scroll-area-viewport"] {
+  height: 100%;
   max-height: inherit;
 }
 .conversation-model-facts {

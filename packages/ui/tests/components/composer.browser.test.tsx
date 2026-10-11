@@ -81,7 +81,11 @@ test("Pencil model panels preserve the composer layout and show catalog facts", 
     expect(list.getBoundingClientRect().width).toBe(332);
     expect(first.element().getBoundingClientRect().height).toBe(32);
     const detail = screen.getByRole("region", { name: "First model", exact: true });
+    await expect.element(detail).not.toBeInTheDocument();
+    const beforeHover = list.getBoundingClientRect().toJSON();
+    await first.hover();
     await expect.element(detail).toBeVisible();
+    expect(list.getBoundingClientRect().toJSON()).toEqual(beforeHover);
     const panel = detail.element().getBoundingClientRect();
     expect(panel.width).toBe(280);
     expect(panel.height).toBe(184);
@@ -130,6 +134,10 @@ test("Pencil model panels preserve the composer layout and show catalog facts", 
       thinkingLevel: undefined,
     });
     await trigger.click();
+    await expect
+      .element(screen.getByRole("region", { name: "First model", exact: true }))
+      .not.toBeInTheDocument();
+    await screen.getByRole("menuitem", { name: /First model/ }).hover();
     await expect
       .element(screen.getByRole("region", { name: "First model", exact: true }))
       .toBeVisible();
@@ -280,10 +288,20 @@ test("model panels stack at narrow width, scroll long catalogs and reflow enlarg
     const first = screen.getByRole("menuitem", { name: /First model/ });
     await expect.element(first).toBeVisible();
     const list = first.element().closest("[data-model-list]")!;
+    const beforeHover = list.getBoundingClientRect().toJSON();
+    await first.hover();
+    expect(list.getBoundingClientRect().toJSON()).toEqual(beforeHover);
     const detail = screen.getByRole("region", { name: "First model", exact: true }).element();
     expect(detail.getBoundingClientRect().top - list.getBoundingClientRect().bottom).toBe(4);
     expect(list.getBoundingClientRect().left).toBeGreaterThanOrEqual(16);
     expect(detail.getBoundingClientRect().right).toBeLessThanOrEqual(404);
+    await screen.getByRole("menuitem", { name: /Second model/ }).hover();
+    expect(list.getBoundingClientRect().toJSON()).toEqual(beforeHover);
+    await expect
+      .element(screen.getByRole("region", { name: models[1]!.name, exact: true }))
+      .toBeVisible();
+    await first.hover();
+    expect(list.getBoundingClientRect().toJSON()).toEqual(beforeHover);
     const viewport = list.querySelector('[data-slot="scroll-area-viewport"]')!;
     expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight);
     await expect.element(screen.getByRole("scrollbar")).toBeVisible();
@@ -345,6 +363,10 @@ test("short wide windows keep enlarged model details scrollable and every reason
   );
   try {
     await screen.getByRole("button", { name: "Choose model", exact: true }).click();
+    const option = screen.getByRole("menuitem", { name: `${catalog[0]!.name} OpenAI` });
+    const beforeHover = option.element().getBoundingClientRect().toJSON();
+    await option.hover();
+    expect(option.element().getBoundingClientRect().toJSON()).toEqual(beforeHover);
     const detail = screen.getByRole("region", { name: catalog[0]!.name, exact: true }).element();
     expect(detail.getBoundingClientRect().top).toBeGreaterThanOrEqual(16);
     expect(detail.getBoundingClientRect().bottom).toBeLessThanOrEqual(304);

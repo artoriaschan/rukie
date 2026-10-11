@@ -39,7 +39,7 @@ export function ModelPicker({
     <Menu.DropdownMenu
       open={open}
       onOpenChange={(next) => {
-        setPreview(selected?.spec ?? available[0]?.spec);
+        setPreview(undefined);
         setOpen(next);
       }}
     >
@@ -117,6 +117,9 @@ export function ModelPicker({
         {detail ? (
           <section
             aria-label={detail.name || detail.id}
+            aria-hidden={preview === undefined}
+            inert={preview === undefined}
+            data-preview={preview !== undefined}
             className="conversation-model-detail conversation-control-panel"
           >
             <ScrollArea
