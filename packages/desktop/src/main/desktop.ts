@@ -16,7 +16,7 @@ import { Sidecar, type SidecarOptions } from "./sidecar.ts";
 import { serveAppFile } from "./protocol.ts";
 import { createSecretService, systemEncryptionAvailable } from "./secrets.ts";
 import { randomBytes } from "node:crypto";
-import { parseModelServiceSave } from "@rukie/shared";
+import { parseModelPriceRequest, parseModelServiceSave } from "@rukie/shared";
 
 export interface DesktopOptions {
   rendererDirectory: string;
@@ -120,6 +120,12 @@ export async function startDesktop(options: DesktopOptions) {
         throw new Error("Model service operation failed. Retry or reconfigure credentials.");
       return response.json();
     };
+    ipcMain.handle("rukie:modelServices:prices", async (event, input: unknown) => {
+      authorize(event);
+      const request = parseModelPriceRequest(input);
+      if (!request) throw new Error("Invalid model price identity");
+      return manage({ type: "prices", ...request });
+    });
     ipcMain.handle("rukie:modelServices:templates", async (event) => {
       authorize(event);
       return manage({ type: "templates" });

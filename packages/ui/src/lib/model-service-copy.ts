@@ -91,6 +91,12 @@ export const modelServiceCopy = {
     "services.cacheReadPrice": "Cache read price",
     "services.cacheWritePrice": "Cache write price",
     "services.priceSource": "Price source",
+    "services.priceLoading": "Fetching LiteLLM USD model prices…",
+    "services.priceFound": "Missing prices filled from LiteLLM (USD per million tokens).",
+    "services.priceunmatched": "No reliable price found; enter prices manually.",
+    "services.priceambiguous": "Provider or tiered pricing is ambiguous; enter prices manually.",
+    "services.priceunavailable":
+      "Price lookup failed; existing values are unchanged. Blur Model ID to retry.",
 
     "services.providerDetails": "Provider details",
     "services.modelDescription":
@@ -227,6 +233,11 @@ export const modelServiceCopy = {
     "services.cacheReadPrice": "缓存读取价格",
     "services.cacheWritePrice": "缓存写入价格",
     "services.priceSource": "价格来源",
+    "services.priceLoading": "正在获取 LiteLLM 模型美元价格…",
+    "services.priceFound": "已从 LiteLLM 补齐缺失价格（美元/百万 Token）。",
+    "services.priceunmatched": "未找到可靠价格，请手动填写。",
+    "services.priceambiguous": "供应商或分层价格不明确，请手动填写。",
+    "services.priceunavailable": "获取价格失败，已有值保持不变。模型 ID 失焦可重试。",
 
     "services.providerDetails": "供应商详情",
     "services.modelDescription": "先配置模型的基础能力；请求参数位于高级设置。",

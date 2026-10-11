@@ -80,3 +80,29 @@ export function modelServiceThinkingLevels(
     return mapped !== null && ((level !== "xhigh" && level !== "max") || mapped !== undefined);
   });
 }
+
+/** Public price lookup carries model identity only, never credentials or a caller-selected URL. */
+export const ModelPriceRequestSchema = Type.Object(
+  {
+    baseUrl: Type.String({ minLength: 1, maxLength: 2048 }),
+    modelId: Type.String({ minLength: 1, maxLength: 256 }),
+  },
+  { additionalProperties: false },
+);
+export type ModelPriceRequest = Static<typeof ModelPriceRequestSchema>;
+export type ModelPriceResult =
+  | {
+      status: "found";
+      prices: {
+        inputPrice: number;
+        outputPrice: number;
+        cacheReadPrice?: number;
+        cacheWritePrice?: number;
+      };
+      priceSource: string;
+    }
+  | { status: "unmatched" | "ambiguous" | "unavailable" };
+
+export function parseModelPriceRequest(input: unknown): ModelPriceRequest | undefined {
+  return Value.Check(ModelPriceRequestSchema, input) ? input : undefined;
+}

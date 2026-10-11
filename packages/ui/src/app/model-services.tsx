@@ -71,6 +71,7 @@ const advancedNumericFields = [
   "cacheReadPrice",
   "cacheWritePrice",
 ] as const;
+const priceFields = ["inputPrice", "outputPrice", "cacheReadPrice", "cacheWritePrice"] as const;
 type AdvancedNumericField = (typeof advancedNumericFields)[number];
 const routes = {
   "anthropic-messages": "/v1/messages",
@@ -132,8 +133,71 @@ export function ModelServices({
   const [advancedDraft, setAdvancedDraft] = useState<Partial<Record<AdvancedNumericField, string>>>(
     {},
   );
-  const editAdvanced = (field: AdvancedNumericField, value: string) =>
+  const editAdvanced = (field: AdvancedNumericField, value: string) => {
+    priceTouched.current.add(field);
     setAdvancedDraft((previous) => ({ ...previous, [field]: value }));
+  };
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [priceStatus, setPriceStatus] = useState("");
+  const attemptedPriceIdentity = useRef("");
+  const activePriceIdentity = useRef("");
+  const priceRequest = useRef(0);
+  const autoPrices = useRef(new Set<string>());
+  const priceTouched = useRef(new Set<string>());
+  const currentPriceIdentity = useRef("");
+  currentPriceIdentity.current =
+    dialog === "model" && draft ? `${draft.id}|${draft.baseUrl}|${model.id}` : "";
+  useEffect(
+    () => () => {
+      priceRequest.current++;
+    },
+    [],
+  );
+  const fillPrices = async (candidate: ServiceModel) => {
+    if (!draft || !candidate.id.trim() || !services.prices) return;
+    const identity = `${draft.id}|${draft.baseUrl}|${candidate.id}`;
+    if (activePriceIdentity.current === identity) return;
+    activePriceIdentity.current = identity;
+    attemptedPriceIdentity.current = identity;
+    setPriceLoading(true);
+    const request = ++priceRequest.current;
+    setPriceStatus(t("services.priceLoading"));
+    try {
+      const result = await services.prices({ baseUrl: draft.baseUrl, modelId: candidate.id });
+      if (request !== priceRequest.current || currentPriceIdentity.current !== identity) return;
+      if (result.status !== "found") {
+        setPriceStatus(t(`services.price${result.status}`));
+        return;
+      }
+      setModel((previous) => {
+        const next = { ...previous };
+        for (const field of priceFields) {
+          if (
+            next[field] === undefined &&
+            !priceTouched.current.has(field) &&
+            result.prices[field] !== undefined
+          ) {
+            next[field] = result.prices[field];
+            autoPrices.current.add(field);
+          }
+        }
+        if (!next.priceSource && !priceTouched.current.has("priceSource")) {
+          next.priceSource = result.priceSource;
+          autoPrices.current.add("priceSource");
+        }
+        return next;
+      });
+      setPriceStatus(t("services.priceFound"));
+    } catch {
+      if (request === priceRequest.current && currentPriceIdentity.current === identity)
+        setPriceStatus(t("services.priceunavailable"));
+    } finally {
+      if (request === priceRequest.current) {
+        activePriceIdentity.current = "";
+        setPriceLoading(false);
+      }
+    }
+  };
   const [advanced, setAdvanced] = useState(false);
   const [defaultReasoningOpen, setDefaultReasoningOpen] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -308,14 +372,37 @@ export function ModelServices({
     });
   };
   const openModel = (index?: number) => {
+    priceRequest.current++;
+    activePriceIdentity.current = "";
+    attemptedPriceIdentity.current = "";
+    setPriceLoading(false);
+    priceTouched.current.clear();
+    autoPrices.current.clear();
+    setPriceStatus("");
     setEditing(index);
     setModel(structuredClone(index === undefined ? defaultModel : draft!.models[index]!));
     setModelError("");
     setAdvancedDraft({});
     setAdvanced(false);
     setDialog("model");
+    if (
+      index !== undefined &&
+      priceFields.some((field) => draft!.models[index]![field] === undefined)
+    )
+      void fillPrices(draft!.models[index]!);
   };
   const saveModel = async () => {
+    if (activePriceIdentity.current) return;
+    if (
+      draft &&
+      services.prices &&
+      model.id.trim() &&
+      priceFields.some((field) => model[field] === undefined) &&
+      attemptedPriceIdentity.current !== `${draft.id}|${draft.baseUrl}|${model.id}`
+    ) {
+      void fillPrices(model);
+      return;
+    }
     if (!draft || !model.id.trim() || !model.contextWindow || !model.maxTokens) {
       setModelError(t("services.invalid"));
       return;
@@ -880,7 +967,25 @@ export function ModelServices({
                   placeholder={t("services.id")}
                   autoFocus
                   value={model.id}
-                  onChange={(id) => setModel({ ...model, id })}
+                  onChange={(id) => {
+                    priceRequest.current++;
+                    activePriceIdentity.current = "";
+                    attemptedPriceIdentity.current = "";
+                    setPriceLoading(false);
+                    setPriceStatus("");
+                    const next = { ...model, id };
+                    for (const field of priceFields)
+                      if (autoPrices.current.has(field) && !priceTouched.current.has(field))
+                        next[field] = undefined;
+                    if (
+                      autoPrices.current.has("priceSource") &&
+                      !priceTouched.current.has("priceSource")
+                    )
+                      next.priceSource = undefined;
+                    autoPrices.current.clear();
+                    setModel(next);
+                  }}
+                  onBlur={() => void fillPrices(model)}
                 />
                 <div className="model-services-basic-columns">
                   <Input
@@ -1104,7 +1209,15 @@ export function ModelServices({
                     </section>
                   </div>
                   <section className="model-services-option-card">
-                    <h3>{t("services.price")}</h3>
+                    <h3 className="truncate" title={priceStatus || undefined}>
+                      {t("services.price")}
+                      {priceStatus ? (
+                        <span role="status" className="text-ui-sm text-muted-foreground">
+                          {" "}
+                          · {priceStatus}
+                        </span>
+                      ) : null}
+                    </h3>
                     <div className="model-services-price-columns">
                       {(
                         ["inputPrice", "outputPrice", "cacheReadPrice", "cacheWritePrice"] as const
@@ -1123,9 +1236,10 @@ export function ModelServices({
                     <Input
                       label={t("services.priceSource")}
                       value={model.priceSource ?? ""}
-                      onChange={(priceSource) =>
-                        setModel({ ...model, priceSource: priceSource || undefined })
-                      }
+                      onChange={(priceSource) => {
+                        priceTouched.current.add("priceSource");
+                        setModel({ ...model, priceSource: priceSource || undefined });
+                      }}
                     />
                   </section>
                 </div>
@@ -1147,10 +1261,11 @@ export function ModelServices({
                 {t("services.cancel")}
               </Button>
               <Button
-                className="model-services-model-save"
+                className="model-services-model-save cursor-pointer disabled:pointer-events-auto disabled:cursor-not-allowed"
                 type="submit"
                 size="sm"
-                disabled={pending}
+                disabled={pending || priceLoading}
+                aria-busy={priceLoading}
                 aria-label={t("services.saveModel")}
               >
                 {t("services.saveModel")}

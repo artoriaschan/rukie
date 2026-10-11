@@ -30,7 +30,9 @@ import {
   type WireSessionSummary,
   WIRE_SUBPROTOCOL,
   ModelServiceSchema,
+  ModelPriceRequestSchema,
 } from "@rukie/shared";
+import { lookupModelPrices } from "./model-prices.ts";
 import { parseWireCommand } from "./command.ts";
 import { AppDatabase, type ApplicationRegistry } from "./storage/app-database.ts";
 import { secretVault, type SecretEncryption } from "./storage/secrets.ts";
@@ -702,6 +704,11 @@ export async function startServer(options: ServerOptions) {
             },
             { additionalProperties: false },
           );
+          const Prices = Type.Object(
+            { type: Type.Literal("prices"), ...ModelPriceRequestSchema.properties },
+            { additionalProperties: false },
+          );
+          if (Value.Check(Prices, input)) return c.json(await lookupModelPrices(input));
           if (Value.Check(Templates, input)) return c.json(applicationModelTemplates());
           if (Value.Check(Test, input)) {
             const providers = await database.providers();

@@ -1,5 +1,9 @@
 // Runtime-agnostic types and schemas shared across packages.
 export {
+  ModelPriceRequestSchema,
+  parseModelPriceRequest,
+  type ModelPriceRequest,
+  type ModelPriceResult,
   ModelServiceSchema,
   ModelServiceSaveSchema,
   parseModelServiceSave,

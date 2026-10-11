@@ -26,11 +26,16 @@ test("preload exposes fixed native methods and explicit credential reveal with f
   expect(Object.keys(host.modelServices!).sort()).toEqual([
     "delete",
     "list",
+    "prices",
     "revealKey",
     "save",
     "templates",
     "test",
   ]);
+  await host.modelServices!.prices!({
+    baseUrl: "https://api.deepseek.com",
+    modelId: "deepseek-chat",
+  });
   await host.modelServices!.templates!();
   await host.modelServices!.test!("local", "m");
   await host.modelServices!.list();
@@ -41,6 +46,10 @@ test("preload exposes fixed native methods and explicit credential reveal with f
     ["rukie:pickProjectFolder"],
     ["rukie:revealPath", "/tmp"],
     ["rukie:openInTerminal", "/tmp"],
+    [
+      "rukie:modelServices:prices",
+      { baseUrl: "https://api.deepseek.com", modelId: "deepseek-chat" },
+    ],
     ["rukie:modelServices:templates"],
     ["rukie:modelServices:test", "local", "m"],
     ["rukie:modelServices:list"],

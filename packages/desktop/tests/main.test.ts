@@ -336,3 +336,50 @@ test("a second desktop instance quits before opening a window or starting a side
   expect(electron.protocol.registerSchemesAsPrivileged).not.toHaveBeenCalled();
   await owner.stop();
 });
+
+test("model prices authorize the main frame and reject arbitrary lookup inputs before private transport", async () => {
+  const owner = await startDesktop({
+    dataRoot: "/tmp/rukie-desktop-test-data",
+    rendererDirectory: "/tmp",
+    preload: "/tmp/preload.cjs",
+    sidecar: {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./helpers/sidecar.mjs", import.meta.url))],
+    },
+  });
+  const fetching = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValue(Response.json({ status: "unmatched" }));
+  const event = {
+    sender: electron.window.webContents,
+    senderFrame: electron.window.webContents.mainFrame,
+  };
+  try {
+    const prices = electron.handlers.get("rukie:modelServices:prices")!;
+    await expect(
+      prices(
+        { ...event, senderFrame: { url: "app://rukie/" } },
+        { baseUrl: "https://api.openai.com", modelId: "m" },
+      ),
+    ).rejects.toThrow("Untrusted");
+    await expect(
+      prices(event, {
+        baseUrl: "https://api.openai.com",
+        modelId: "m",
+        url: "https://other.example",
+      }),
+    ).rejects.toThrow("Invalid");
+    expect(fetching).not.toHaveBeenCalled();
+    expect(await prices(event, { baseUrl: "https://api.openai.com", modelId: "m" })).toEqual({
+      status: "unmatched",
+    });
+    expect(JSON.parse(String(fetching.mock.calls[0]![1]?.body))).toEqual({
+      type: "prices",
+      baseUrl: "https://api.openai.com",
+      modelId: "m",
+    });
+  } finally {
+    fetching.mockRestore();
+    await owner.stop();
+  }
+});

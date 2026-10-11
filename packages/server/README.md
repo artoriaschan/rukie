@@ -29,3 +29,5 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 ## 实现导航
 
 [server.ts](src/server.ts) 持有 Hono 接入、单个 ManagedRuntime、Layer 与输入回执 FiberMap；[command.ts](src/command.ts) 在进入业务处理前校验不可信输入。依赖和架构约束见 [tech-stack](../../docs/tech-stack.md) 与 [ADR-0030](../../docs/adr/0030-desktop-server-hono-and-effect.md)。
+
+模型美元价格查询通过同一私有管理入口，只接收 Base URL 和精确模型 ID，不读取凭证。固定读取 [llmprice.cn](https://llmprice.cn/) 首页采用的 [LiteLLM Cost Map](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) 原始 JSON（raw.githubusercontent.com），不回退到 CDN，8 秒超时、8 MiB 上限并拒绝重定向。当前只认 HTTPS 官方主机 api.openai.com、api.anthropic.com、api.deepseek.com、api.mistral.ai、api.groq.com、api.x.ai、openrouter.ai 和 generativelanguage.googleapis.com；自定义代理地址返回歧义，不推测其账单。仅接受 provider 相符的精确 ID 或 provider/ID 键；同 provider 同价格别名可合并，冲突或上下文分层返回歧义。普通每 Token 美元价换算为百万 Token；缺少、无效或零值不视为已知价格，缓存价格缺失保持空白。网络、大小或解析失败返回不可用，不写配置、不提供任意 URL 抓取。

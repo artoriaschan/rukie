@@ -1338,3 +1338,106 @@ test("API Key ignores cancelled and stale reveals and retries a safe failure", a
     await screen.unmount();
   }
 });
+
+test("model USD price autofill preserves manual drafts, saves prices and ignores stale model requests", async () => {
+  let providers: ModelServiceSummary[] = [
+    {
+      id: "local",
+      name: "Local",
+      api: "openai-completions",
+      baseUrl: "https://api.deepseek.com/v1",
+      hasCredential: false,
+      models: [
+        {
+          id: "deepseek-chat",
+          input: ["text"],
+          reasoning: false,
+          contextWindow: 128000,
+          maxTokens: 8192,
+          inputPrice: 9,
+        },
+      ],
+    },
+  ];
+  const requests: string[] = [];
+  const pending: ((value: import("@rukie/shared").ModelPriceResult) => void)[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          list: async () => providers,
+          save: async ({ provider }) => {
+            providers = [{ ...provider, hasCredential: false }];
+          },
+          delete: async () => {},
+          prices: async ({ modelId }) => {
+            requests.push(modelId);
+            return new Promise((resolve) => pending.push(resolve));
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(1);
+    await expect
+      .element(screen.getByRole("button", { name: "Save model", exact: true }))
+      .toBeDisabled();
+    expect(
+      getComputedStyle(screen.getByRole("button", { name: "Save model", exact: true }).element())
+        .cursor,
+    ).toBe("not-allowed");
+    document.querySelector<HTMLFormElement>(".model-services-model-form")!.requestSubmit();
+    expect(providers[0]!.models[0]!.cacheReadPrice).toBeUndefined();
+    await screen.getByRole("button", { name: /Advanced settings/ }).click();
+    await screen.getByLabelText("Output price", { exact: true }).fill("7.5");
+    pending.shift()!({
+      status: "found",
+      prices: { inputPrice: 0.28, outputPrice: 0.42, cacheReadPrice: 0.028 },
+      priceSource: "https://llmprice.cn/ · fixture USD",
+    });
+    await expect.element(screen.getByLabelText("Input price", { exact: true })).toHaveValue(9);
+    await expect.element(screen.getByLabelText("Output price", { exact: true })).toHaveValue(7.5);
+    await expect
+      .element(screen.getByLabelText("Cache read price", { exact: true }))
+      .toHaveValue(0.028);
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    await expect.poll(() => providers[0]!.models[0]!.cacheReadPrice).toBe(0.028);
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(2);
+    await screen.getByLabelText("Model ID", { exact: true }).fill("different-id");
+    document.querySelector<HTMLFormElement>(".model-services-model-form")!.requestSubmit();
+    await expect.poll(() => requests.length).toBe(3);
+    await expect
+      .element(screen.getByRole("button", { name: "Save model", exact: true }))
+      .toBeDisabled();
+    expect(providers[0]!.models[0]!.id).toBe("deepseek-chat");
+    pending.shift()!({
+      status: "found",
+      prices: { inputPrice: 99, outputPrice: 99, cacheWritePrice: 99 },
+      priceSource: "stale",
+    });
+    await screen.getByRole("button", { name: /Advanced settings/ }).click();
+    await expect
+      .element(screen.getByLabelText("Cache write price", { exact: true }))
+      .toHaveValue(null);
+    await expect
+      .element(screen.getByLabelText("Price source", { exact: true }))
+      .toHaveValue("https://llmprice.cn/ · fixture USD");
+    pending.shift()!({ status: "unavailable" });
+    await expect
+      .element(screen.getByRole("button", { name: "Save model", exact: true }))
+      .toBeEnabled();
+    expect(
+      getComputedStyle(screen.getByRole("button", { name: "Save model", exact: true }).element())
+        .cursor,
+    ).toBe("pointer");
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    await expect.poll(() => providers[0]!.models[0]!.id).toBe("different-id");
+  } finally {
+    await screen.unmount();
+  }
+});
