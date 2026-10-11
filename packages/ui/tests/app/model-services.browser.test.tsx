@@ -440,7 +440,21 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     expect(nav.height).toBe(1162);
     await screen.getByRole("button", { name: "API 格式", exact: true }).click();
     const apiMenu = document.querySelector<HTMLElement>(".model-services-api-menu")!;
-    await expect.poll(() => Math.round(apiMenu.getBoundingClientRect().height)).toBe(108);
+    await expect.poll(() => apiMenu.getBoundingClientRect().height).toBe(96);
+    for (const option of apiMenu.querySelectorAll<HTMLElement>("[role=option]")) {
+      expect(getComputedStyle(option.parentElement!).listStyleType).toBe("none");
+      expect(option.getBoundingClientRect().height).toBe(28);
+      expect(option.parentElement!.getBoundingClientRect().height).toBe(28);
+      expect(getComputedStyle(option).paddingLeft).toBe("6px");
+      expect(option.getBoundingClientRect().left - apiMenu.getBoundingClientRect().left).toBe(4);
+      expect(option.getBoundingClientRect().width).toBe(apiMenu.getBoundingClientRect().width - 8);
+    }
+    const firstOption = apiMenu.querySelector<HTMLElement>("[role=option]")!;
+    expect(firstOption.getBoundingClientRect().top - apiMenu.getBoundingClientRect().top).toBe(4);
+    const lastOption = Array.from(apiMenu.querySelectorAll<HTMLElement>("[role=option]")).at(-1)!;
+    expect(apiMenu.getBoundingClientRect().bottom - lastOption.getBoundingClientRect().bottom).toBe(
+      4,
+    );
     expect(apiMenu.getBoundingClientRect().top).toBe(322);
     expect(apiMenu.getBoundingClientRect().width).toBe(624);
     await screen

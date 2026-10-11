@@ -23,6 +23,7 @@
   --accent: #ffffff1a;
   --accent-foreground: #d4d4d4;
   --hover: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  --menu-hover: var(--hover);
   --selected: color-mix(in srgb, var(--foreground) 8%, var(--background));
   font-family: "Noto Sans SC Variable", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -689,14 +690,25 @@
 }
 .model-services-api-menu {
   top: 0;
+  box-sizing: content-box;
   margin-top: 0 !important;
 }
+.model-services-api-menu > ul {
+  /* Pencil's 4px item inset includes the panel's 1px border. */
+  padding: 3px;
+}
 .model-services-api-menu [role="option"] {
-  height: 32px;
-  min-height: 32px;
+  height: 28px;
+  min-height: 28px;
+  padding-left: 6px;
+  padding-right: 6px;
   padding-top: 0;
   padding-bottom: 0;
   color: var(--foreground);
+}
+.model-services-api-menu [role="option"] > svg {
+  width: 16px;
+  height: 16px;
 }
 .model-services-api-menu [aria-selected="true"] {
   background: transparent;

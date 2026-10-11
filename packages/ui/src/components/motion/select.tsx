@@ -243,7 +243,7 @@ export interface SelectContentProps {
 
 export function SelectContent({ className, children }: SelectContentProps) {
   const ctx = useSelectContext("SelectContent");
-  const innerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLUListElement>(null);
   const [height, setHeight] = useState(0);
   const [availableHeight, setAvailableHeight] = useState(320);
   const open = ctx.open;
@@ -314,13 +314,13 @@ export function SelectContent({ className, children }: SelectContentProps) {
         className,
       )}
     >
-      <div
+      <ul
         ref={innerRef}
         style={{ maxHeight: availableHeight }}
-        className="overflow-y-auto space-y-0.5 p-1"
+        className="m-0 list-none overflow-y-auto space-y-0.5 p-1"
       >
         {children}
-      </div>
+      </ul>
     </motion.div>
   );
 }

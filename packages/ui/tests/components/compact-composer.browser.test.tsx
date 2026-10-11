@@ -1,8 +1,35 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { PromptInput } from "../../src/components/agents/prompt-input";
 import "../../src/theme.css";
+
+test("composer model options preserve compact rows and selection", async () => {
+  const changed = vi.fn();
+  const screen = await render(
+    <PromptInput
+      models={[
+        { value: "first", label: "First model" },
+        { value: "second", label: "Second model" },
+      ]}
+      onModelChange={changed}
+    />,
+  );
+  try {
+    await screen.getByRole("button", { name: "First model", exact: true }).click();
+    const second = screen.getByRole("option", { name: "Second model", exact: true });
+    expect(second.element().getBoundingClientRect().height).toBe(28);
+    expect(second.element().parentElement!.getBoundingClientRect().height).toBe(28);
+    expect(getComputedStyle(second.element().parentElement!).listStyleType).toBe("none");
+    await second.click();
+    expect(changed).toHaveBeenCalledWith("second");
+    await expect
+      .element(screen.getByRole("button", { name: "Second model", exact: true }))
+      .toBeVisible();
+  } finally {
+    await screen.unmount();
+  }
+});
 
 test("composer reflows enlarged text at narrow width without clipping actions", async () => {
   const root = document.documentElement;
