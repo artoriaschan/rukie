@@ -9,6 +9,7 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
   const connection = await commands.startWire();
   const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
   const wasDark = document.documentElement.classList.contains("dark");
+  const previousFontSize = document.documentElement.style.getPropertyValue("--ui-font-size");
   const region = (element: Element) =>
     getComputedStyle(element).getPropertyValue("-webkit-app-region");
   try {
@@ -18,30 +19,47 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
       const header = document.querySelector("header")!;
       expect(region(header)).toBe("drag");
       const shell = document.querySelector("[data-workspace-shell]")!;
-      const frame = document.querySelector('[data-workspace-frame="conversation"]')!;
-      expect(frame.contains(header)).toBe(true);
-      expect(frame.contains(screen.getByRole("main").element())).toBe(true);
+      const headerBounds = header.getBoundingClientRect();
+      expect(headerBounds.left).toBe(0);
+      expect(headerBounds.top).toBe(0);
+      expect(headerBounds.width).toBe(width);
+      expect(headerBounds.height).toBe(44);
+      const safeSpace = header.querySelector('[aria-hidden="true"]')!;
+      expect(safeSpace.getBoundingClientRect().width).toBe(64);
       for (const dark of [false, true]) {
         document.documentElement.classList.toggle("dark", dark);
-        const style = getComputedStyle(frame);
-        expect(style.borderTopLeftRadius).toBe("12px");
-        for (const edge of ["Top", "Right", "Bottom", "Left"] as const)
-          expect(style[`border${edge}Width`]).toBe("1px");
-        expect(getComputedStyle(shell).padding).toBe("4px");
-        expect(getComputedStyle(shell).gap).toBe("4px");
-        const bounds = frame.getBoundingClientRect();
-        expect(bounds.top).toBe(4);
-        expect(bounds.right).toBe(width - 4);
-        expect(bounds.bottom).toBe(796);
-        expect(shell.scrollWidth).toBeLessThanOrEqual(shell.clientWidth);
+        for (const fontSize of [14, 18]) {
+          document.documentElement.style.setProperty("--ui-font-size", `${fontSize}px`);
+          const main = screen.getByRole("main").element().getBoundingClientRect();
+          expect(main.top).toBe(45);
+          expect(main.bottom).toBe(800);
+          expect(shell.scrollWidth).toBeLessThanOrEqual(shell.clientWidth);
+          expect(header.getBoundingClientRect().height).toBe(44);
+        }
       }
       for (const section of header.children) expect(region(section)).not.toBe("no-drag");
       const toggle = screen
         .getByRole("banner")
         .getByRole("button", { name: "Toggle sidebar", exact: true });
       expect(region(toggle.element())).toBe("no-drag");
+      const toggleLeft = toggle.element().getBoundingClientRect().left;
+      expect(toggleLeft).toBe(80);
+      const sidebarBody = screen
+        .getByRole("button", { name: "New chat", exact: true })
+        .element()
+        .closest("aside")!;
+      expect(sidebarBody.getBoundingClientRect().width).toBe(256);
+      expect(
+        screen
+          .getByRole("navigation", { name: "Home", exact: true })
+          .element()
+          .getBoundingClientRect().width,
+      ).toBe(48);
+      expect(sidebarBody.getBoundingClientRect().top).toBe(45);
+      expect(sidebarBody.getBoundingClientRect().bottom).toBe(800);
       const previous = toggle.element().getAttribute("aria-pressed");
       await toggle.click();
+      expect(toggle.element().getBoundingClientRect().left).toBe(toggleLeft);
       await expect.element(toggle).toHaveAttribute("aria-pressed", String(previous !== "true"));
       await toggle.click();
       if (width === 420) {
@@ -73,6 +91,9 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
     await commands.stopWire(connection.port);
     await page.viewport(1280, 900);
     document.documentElement.classList.toggle("dark", wasDark);
+    if (previousFontSize)
+      document.documentElement.style.setProperty("--ui-font-size", previousFontSize);
+    else document.documentElement.style.removeProperty("--ui-font-size");
   }
 });
 
