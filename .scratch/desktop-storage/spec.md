@@ -115,3 +115,5 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 纠正复验关闭（2026-10-11）：clean `6c34274c` 真实签名 arm64 包通过两次真实密文配置启动、历史/目录/完整输出分页，未出现 OS 授权提示且无隐式配置请求；显式执行真实解密、认证与历史继续发送通过，键盘取消/确认、Light/Dark/窄屏、离线字体及退出/隔离数据清理完成。详细原生事实、构建/最终测试版本区别、未覆盖分支和初次 helper 缓存隔离偏差统一记录在 [06](issues/06-integration-and-packaged-acceptance.md)，不将先前失败或未覆盖行为算作通过。
 
 最终 ADR Coverage 对照 Implementation Decisions、最终 diff、独立评审与原生事实复核完成；展示配置与执行秘密分离及即时 busy 探测归更新后的 ADR-0035，原生 Harness、输出/附件/文件历史、加密身份和生命周期继续由已有 ADR 覆盖，设置样式/测试就绪修复无需新 ADR，领域含义不变。03/05/06 与 spec 在同一变更中 resolved；最终推送后的 CI 待观察，PR 等待用户评审，未授权合并 main。
+
+用户截图补充（2026-10-11）：重复测试密码提示来自独立验收 helper 访问正式应用同名钥匙串；普通 desktop 自动测试使用 mock 加密，不触发此路径。helper 已停用且当前无进程，未改钥匙串权限/用户凭据；正式应用启动与 helper 准备过程的证据分开记录，详见 [06](issues/06-integration-and-packaged-acceptance.md)。

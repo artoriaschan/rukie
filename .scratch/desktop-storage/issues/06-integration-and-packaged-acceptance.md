@@ -43,6 +43,8 @@ Final genuine packaged acceptance (2026-10-11 after human unlock): clean signed 
 
 纠正复验关闭（2026-10-11）：运行代码 clean `6c34274c`、最终测试修复 `bf1c434f`，两者仅七行测试差异，生产/构建输入相同。最终独立 Standards/Spec 及测试修复增量复评均通过，根 check:dev 和 desktop 97 pass（10.49s）通过；原 96/1 与更早 Bun aggregate 环境失败保持各自记录。真实签名 arm64 包两次保存四种密文目的后正常启动，历史/目录/输出分页无 OS 授权提示、配置 guard 请求为 0；显式执行后真实解密的配置请求增至 3，保存供应商认证成功。历史同一 Session 两次真实继续发送完成，显式选择高推理后请求及持久化 delta 为 high；重选模型的默认等级与历史恢复区别记录。Cancel Enter/Space 保留供应商和凭据，Confirm Enter 删除；模板/能力 Tooltip、离线字体、Light/Dark/窄屏与最终 clean console 通过。应用/第二实例正常退出、测试 API/guard 退出、无遗留监听、SQLite 完整性 ok、零凭据、隔离数据与 helper 密文清理完成。
 
-验收限制如实保留：没有出现 OS 授权提示，不声称验收其取消或锁定钥匙串；OAuth 密文保存及只读启动已验证，未执行 OAuth 刷新。初次 helper 缺少 userData 隔离可能初始化默认 Chromium 缓存，无法确认具体写入；未打开业务配置/Session、未读取真实凭据，已有 profile 保留，后续 helper 与所有生产验收均显式隔离。外部 corrective-native-accepted.md、settings-fix/design-qa.md、review-fix/verification.md 与独立评审/诊断报告保留实际证据。
+验收限制如实保留：正式应用的启动/只读观察未见 OS 授权提示；用户随后截图证实独立 Rukie Credential Fixture 访问同名钥匙串时触发了授权提示，不把 helper 准备过程记为无提示，也不声称验证了取消或锁定钥匙串；OAuth 密文保存及只读启动已验证，未执行 OAuth 刷新。初次 helper 缺少 userData 隔离可能初始化默认 Chromium 缓存，无法确认具体写入；未打开业务配置/Session、未读取真实凭据，已有 profile 保留，后续 helper 与所有生产验收均显式隔离。外部 corrective-native-accepted.md、settings-fix/design-qa.md、review-fix/verification.md 与独立评审/诊断报告保留实际证据。
 
 ADR Coverage 对照最终代码/规格与独立评审复核完成：ADR-0035 的展示/执行解密边界、只读 mutex 观察与资源归属已同步，ADR-0024/0019/0034/0029 及原输出/文件决定继续有效；局部设置样式和测试就绪修复不引入新架构决定。03/05/06 与 spec 在同一变更中 resolved；最终推送后的 CI 待观察，不表示已合并。
+
+用户随后报告跑测试重复要求密码：截图确认提示来自外部 Rukie Credential Fixture，其 appName 复用正式应用，因此临时 userData 不隔离系统钥匙串条目。普通 test:desktop 已使用 mock Electron/safeStorage，未调用此 helper。新的独立诊断代理停用外部 helper 启动/构建入口（导入 Electron 前即失败），更新为普通 mock 测试与手动正式应用原生验收分开；相关八项 mocked Electron 测试通过（628ms），当前无 helper/app 进程，未重放授权窗口、未改 ACL 或用户凭据。此前点击选项和签名变化未记录，不断言重复提示的确切频次原因。真实生产启动证据保留，外部 native 报告与 PR 纠正 helper 授权表述；工单实现状态仍 resolved。
