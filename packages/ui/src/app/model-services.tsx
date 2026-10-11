@@ -59,6 +59,7 @@ import "@fontsource-variable/jetbrains-mono";
 import "./model-services.css";
 import * as Menu from "../components/ui/dropdown-menu";
 import { useAppText } from "../lib/i18n";
+import { reasoningLabels } from "../lib/reasoning-labels";
 
 type Services = NonNullable<DesktopHost["modelServices"]>;
 type ServiceModel = ModelService["models"][number];
@@ -83,16 +84,7 @@ const protocols = {
   "openai-completions": "Chat Completions",
   "openai-responses": "Responses",
 };
-const reasoningLabels = {
-  off: "关闭",
-  automatic: "自动",
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "XHigh",
-  max: "Max",
-};
+
 const defaultModel: ServiceModel = {
   id: "",
   input: ["text"],

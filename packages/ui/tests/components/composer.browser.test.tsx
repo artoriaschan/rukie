@@ -298,6 +298,11 @@ test("model panels stack at narrow width, scroll long catalogs and reflow enlarg
     expect(list.getBoundingClientRect().toJSON()).toEqual(beforeHover);
     const detail = screen.getByRole("region", { name: "First model", exact: true }).element();
     await expect.element(detail).toBeVisible();
+    expect(Array.from(detail.querySelectorAll("button"), (button) => button.textContent)).toEqual([
+      "Low",
+      "High",
+      "Max",
+    ]);
     expect(list.getBoundingClientRect().top - detail.getBoundingClientRect().bottom).toBe(4);
     expect(list.getBoundingClientRect().left).toBeGreaterThanOrEqual(16);
     expect(detail.getBoundingClientRect().right).toBeLessThanOrEqual(404);
@@ -417,9 +422,7 @@ test("short wide windows keep enlarged model details scrollable and every reason
     const viewport = detail.querySelector('[data-slot="scroll-area-viewport"]')!;
     expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight);
     await userEvent.keyboard("{ArrowDown}{ArrowRight}{End}");
-    await expect
-      .element(screen.getByRole("button", { name: "Maximum", exact: true }))
-      .toHaveFocus();
+    await expect.element(screen.getByRole("button", { name: "Max", exact: true })).toHaveFocus();
     expect(viewport.scrollTop).toBeGreaterThan(0);
     await userEvent.keyboard("{Escape}");
   } finally {

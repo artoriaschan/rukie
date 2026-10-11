@@ -91,3 +91,10 @@ Status: resolved
 
 - 公开两模型回归首先失败：旧隐藏详情及42px offset产生152px间距，日志 `/tmp/rukie-attached-red.log`；改为列表独立Radix锚点与详情FloatingUI定位后，初次6用例5通过/1失败（旧top对齐断言忽略短列表接近窗口底部时详情必须上移）。更新为碰撞约束断言，最终6用例通过2.18s，日志 `/tmp/rukie-attached-reviewed.log`；类型/lint/docs/test-policy通过。复用已有组件，FloatingUI是已安装定位依赖，无新增依赖。审查发现size middleware过期计算仍可写高度，已加相同revision/cleanup检查并复核通过。
 - agent-browser实际Composer假catalog，1280×900明暗：两模型列表332×74，底部778/入口顶部782，右边968相同；hover列表位置不变，详情宽280高184、间隔4，无横向溢出；High选择关闭并更新。420×900窄屏详情同宽置于列表上方，间隔4，列表继续贴入口；800×900详情正常翻到左侧。无页面错误、console仅Vite/React提示、网络日志 `/tmp/rukie-attached-network.log`。截图attached-list-light.png、attached-hover-light.png、attached-hover-dark.png、attached-narrow.png在原外部证据目录。临时入口/浏览器/Vite清理。ADR coverage仍为UI呈现规则，无架构或配置更改。
+
+### 推理档位采用设计稿名称
+
+用户指出模型详情的Low/High/Max被通用i18n翻译。沿用C16现有固定档位映射并供会话控件复用，详情与入口显示相同名称；标题/属性继续正常本地化。增补中文Composer档位精确断言，更新受影响shell的Max查询，先复现后最小验证。模型几何与其余证据有效，仅档位呈现和相关浏览器证据失效。
+
+- 中文精确档位回归先复现低/高/最高（881ms失败），最终Composer6用例通过2.18s；shell模型选择单例通过1.26s，settings默认推理单例通过2.61s。日志 `/tmp/rukie-reasoning-label-red.log`、`/tmp/rukie-reasoning-label-green.log`、`/tmp/rukie-reasoning-label-shell.log`、`/tmp/rukie-labels-settings.log`。类型/lint/docs/test-policy及双轴只读审查通过；设置映射值原样抽取，无协议/Core或依赖变化，ADR coverage沿用原UI决定。
+- agent-browser实际ModelPicker假catalog中文验收1280×900明暗及420×900：详情可见Low/High/Max，标题推理模式正常中文，选择High后入口同步显示High，无横向溢出、无页面错误，console仅Vite/React提示。截图labels-light.png、labels-dark.png、labels-narrow.png在原外部目录；网络日志 `/tmp/rukie-labels-network.log`。浏览器/Vite和临时入口清理，最新源码重建开发app供本地验证。

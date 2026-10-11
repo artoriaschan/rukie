@@ -178,7 +178,7 @@ test("composer selects reasoning from native capabilities, keeps IME input and u
     await userEvent.keyboard("{ArrowDown}");
     await expect.element(screen.getByRole("button", { name: "High", exact: true })).toBeVisible();
     await expect
-      .element(screen.getByRole("button", { name: "Maximum", exact: true }))
+      .element(screen.getByRole("button", { name: "Max", exact: true }))
       .not.toBeInTheDocument();
     await screen.getByRole("button", { name: "High", exact: true }).click();
     await screen.getByRole("button", { name: "Permission mode" }).click();

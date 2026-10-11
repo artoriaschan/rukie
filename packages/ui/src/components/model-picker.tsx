@@ -11,6 +11,7 @@ import { useAppText } from "../lib/i18n";
 import "@fontsource-variable/noto-sans-sc";
 import "./conversation-controls.css";
 import { formatCapacity } from "../lib/format-capacity";
+import { reasoningLabels } from "../lib/reasoning-labels";
 
 export function ModelPicker({
   models,
@@ -90,11 +91,13 @@ export function ModelPicker({
           disabled={disabled}
           aria-label={t("app.model")}
           className="conversation-model-trigger"
-          title={`${selected?.name || model || t("app.model")}${thinkingLevel ? ` · ${t(`app.${thinkingLevel}`)}` : ""}`}
+          title={`${selected?.name || model || t("app.model")}${thinkingLevel ? ` · ${reasoningLabels[thinkingLevel]}` : ""}`}
         >
           <span className="truncate">{selected?.name || model || t("app.model")}</span>
           {thinkingLevel ? (
-            <span className="conversation-model-level shrink-0">· {t(`app.${thinkingLevel}`)}</span>
+            <span className="conversation-model-level shrink-0">
+              · {reasoningLabels[thinkingLevel]}
+            </span>
           ) : null}
           <ChevronDown aria-hidden="true" className="size-3 shrink-0" />
         </Button>
@@ -230,7 +233,7 @@ export function ModelPicker({
                             }
                           }}
                         >
-                          {t(`app.${level}`)}
+                          {reasoningLabels[level]}
                         </Button>
                       ),
                     )}
