@@ -473,7 +473,12 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       })
       .join("\n\n") ?? "";
   const footer = (approval?: ReactNode) => (
-    <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-2 px-3 pb-4 sm:px-6">
+    <div
+      className={cn(
+        "mx-auto flex w-full min-w-0 flex-col gap-2 px-3 pb-4 sm:px-6",
+        approval ? "max-w-3xl" : "max-w-[800px]",
+      )}
+    >
       {!state.selected ? (
         <Menu.DropdownMenu>
           <Menu.DropdownMenuTrigger asChild>

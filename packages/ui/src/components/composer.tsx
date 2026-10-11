@@ -1,8 +1,16 @@
-import { useRef, useState } from "react";
-import { Paperclip, X, Shield, CircleGauge, Square } from "lucide-react";
+import { useRef } from "react";
+import {
+  Plus,
+  X,
+  Hand,
+  ShieldCheck,
+  ShieldAlert,
+  ChevronDown,
+  CircleGauge,
+  Square,
+} from "lucide-react";
 import {
   PERMISSION_MODES,
-  THINKING_LEVELS,
   type PermissionMode,
   type ThinkingLevel,
   type WireModelCatalogEntry,
@@ -16,6 +24,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "./motion/popover";
 import * as Menu from "./ui/dropdown-menu";
 import { useAppText, useComponentText } from "../lib/i18n";
 import { cn } from "../lib/utils";
+import { ModelPicker } from "./model-picker";
 
 export type PromptImages = NonNullable<Extract<WireCommand, { type: "prompt" }>["images"]>;
 export interface ModelSelection {
@@ -47,14 +56,9 @@ export function Composer(props: ComposerProps) {
   const t = useAppText();
   const componentText = useComponentText();
   const file = useRef<HTMLInputElement>(null);
-  const [modelOpen, setModelOpen] = useState(false);
-  const [detail, setDetail] = useState<WireModelCatalogEntry>();
-  const available = props.models.filter((model) => model.authenticated);
-  const selected = available.find((model) => model.spec === props.model);
-  const choose = (model: WireModelCatalogEntry, thinkingLevel?: ThinkingLevel) => {
-    props.onModel({ provider: model.providerId, modelId: model.id, thinkingLevel });
-    setModelOpen(false);
-  };
+  const selected = props.models.find((model) => model.spec === props.model);
+  const permissionIcons = { ask: Hand, "auto-review": ShieldCheck, "full-access": ShieldAlert };
+  const PermissionIcon = permissionIcons[props.permissionMode];
   const addImages = async (files: FileList | null) => {
     if (!files) return;
     const images = await Promise.all(
@@ -132,6 +136,7 @@ export function Composer(props: ComposerProps) {
         }}
       />
       <PromptInput
+        className="conversation-composer conversation-pencil"
         value={props.draft}
         onValueChange={props.onDraft}
         onPaste={(event) => {
@@ -167,7 +172,7 @@ export function Composer(props: ComposerProps) {
                 aria-label={t("app.attach")}
                 onClick={() => file.current?.click()}
               >
-                <Paperclip className="size-4" />
+                <Plus className="size-4" />
               </Button>
             </Tooltip>
             <Menu.DropdownMenu>
@@ -182,11 +187,15 @@ export function Composer(props: ComposerProps) {
                     props.permissionMode === "full-access" && "text-warning",
                   )}
                 >
-                  <Shield className="size-4 shrink-0" />
+                  <PermissionIcon className="size-4 shrink-0" />
                   <span className="max-sm:sr-only">{t(`app.${props.permissionMode}`)}</span>
+                  <ChevronDown className="size-4 shrink-0" aria-hidden="true" />
                 </Button>
               </Menu.DropdownMenuTrigger>
-              <Menu.DropdownMenuContent className="w-72">
+              <Menu.DropdownMenuContent
+                side="top"
+                className="conversation-permission-menu conversation-pencil"
+              >
                 <Menu.DropdownMenuRadioGroup
                   value={props.permissionMode}
                   onValueChange={(value) => {
@@ -194,20 +203,27 @@ export function Composer(props: ComposerProps) {
                       props.onPermission(value as PermissionMode);
                   }}
                 >
-                  {PERMISSION_MODES.map((mode) => (
-                    <Menu.DropdownMenuRadioItem
-                      key={mode}
-                      value={mode}
-                      className={cn("items-start py-1", mode === "full-access" && "text-warning")}
-                    >
-                      <span>
-                        <span className="block font-medium">{t(`app.${mode}`)}</span>
-                        <span className="block text-ui-sm text-muted-foreground">
-                          {t(`app.${mode}-description`)}
+                  {PERMISSION_MODES.map((mode) => {
+                    const Icon = permissionIcons[mode];
+                    return (
+                      <Menu.DropdownMenuRadioItem
+                        key={mode}
+                        value={mode}
+                        className={cn(
+                          "conversation-permission-option",
+                          mode === "full-access" && "text-warning",
+                        )}
+                      >
+                        <Icon className="size-4 shrink-0" aria-hidden="true" />
+                        <span>
+                          <span className="block font-medium">{t(`app.${mode}`)}</span>
+                          <span className="block text-ui-sm text-muted-foreground">
+                            {t(`app.${mode}-description`)}
+                          </span>
                         </span>
-                      </span>
-                    </Menu.DropdownMenuRadioItem>
-                  ))}
+                      </Menu.DropdownMenuRadioItem>
+                    );
+                  })}
                 </Menu.DropdownMenuRadioGroup>
               </Menu.DropdownMenuContent>
             </Menu.DropdownMenu>
@@ -261,18 +277,25 @@ export function Composer(props: ComposerProps) {
                   </Button>
                 </PopoverTrigger>
               </Tooltip>
-              <PopoverContent aria-label={t("app.context")} className="w-72">
+              <PopoverContent
+                aria-label={t("app.context")}
+                className="conversation-context-panel conversation-pencil"
+              >
                 <h2 className="mb-3 flex items-center gap-2 text-ui-base font-medium">
                   <CircleGauge className="size-4" />
                   {t("app.context")}
                 </h2>
                 {report ? (
                   <>
-                    <p className="mb-3 font-mono text-ui-sm">
+                    <p className="mb-4 text-ui-sm text-muted-foreground">
+                      {selected?.name || props.model} · {report.window.toLocaleString()}{" "}
+                      {t("app.model-context")}
+                    </p>
+                    <p className="mb-4 flex justify-between text-ui-sm">
                       {report.used.toLocaleString()} / {report.window.toLocaleString()} ({percent}%)
                     </p>
                     <div
-                      className="mb-3 flex h-2 overflow-hidden rounded-full bg-muted"
+                      className="mb-3 flex h-1.5 overflow-hidden rounded-full bg-muted"
                       aria-hidden="true"
                     >
                       <span
@@ -308,76 +331,13 @@ export function Composer(props: ComposerProps) {
                 )}
               </PopoverContent>
             </Popover>
-            <Menu.DropdownMenu open={modelOpen} onOpenChange={setModelOpen}>
-              <Menu.DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={props.disabled}
-                  aria-label={t("app.model")}
-                  className="max-w-44 min-w-0"
-                >
-                  <span className="truncate">
-                    {selected?.name || props.model || t("app.model")}
-                  </span>
-                </Button>
-              </Menu.DropdownMenuTrigger>
-              <Menu.DropdownMenuContent
-                side="top"
-                align="end"
-                className="flex max-w-[calc(100vw-32px)] flex-wrap gap-2 p-1"
-              >
-                {detail ? (
-                  <section
-                    aria-label={detail.name || detail.id}
-                    className="w-48 rounded-md bg-muted p-3 text-ui-sm"
-                  >
-                    <h3 className="mb-2 text-ui-base font-medium">{detail.name || detail.id}</h3>
-                    <p>
-                      {t("app.input")}: {detail.input.join(", ")}
-                    </p>
-                    <p>
-                      {t("app.context-window")}: {detail.contextWindow.toLocaleString()}
-                    </p>
-                    <p className="mt-2 text-muted-foreground">{t("app.thinking")}</p>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {THINKING_LEVELS.filter((level) => detail.thinkingLevels.includes(level)).map(
-                        (level) => (
-                          <Button
-                            key={level}
-                            size="sm"
-                            variant={
-                              props.model === detail.spec && props.thinkingLevel === level
-                                ? "secondary"
-                                : "ghost"
-                            }
-                            onClick={() => choose(detail, level)}
-                          >
-                            {t(`app.${level}`)}
-                          </Button>
-                        ),
-                      )}
-                    </div>
-                  </section>
-                ) : null}
-                <Menu.DropdownMenuGroup className="min-w-40">
-                  {available.length ? (
-                    available.map((model) => (
-                      <Menu.DropdownMenuItem
-                        key={model.spec}
-                        onFocus={() => setDetail(model)}
-                        onPointerMove={() => setDetail(model)}
-                        onSelect={() => choose(model)}
-                      >
-                        {model.name || model.id}
-                      </Menu.DropdownMenuItem>
-                    ))
-                  ) : (
-                    <Menu.DropdownMenuLabel>{t("app.no-models")}</Menu.DropdownMenuLabel>
-                  )}
-                </Menu.DropdownMenuGroup>
-              </Menu.DropdownMenuContent>
-            </Menu.DropdownMenu>
+            <ModelPicker
+              models={props.models}
+              model={props.model}
+              thinkingLevel={props.thinkingLevel}
+              disabled={props.disabled}
+              onModel={props.onModel}
+            />
           </div>
         }
       />

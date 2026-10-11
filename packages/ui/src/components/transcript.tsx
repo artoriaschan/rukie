@@ -245,10 +245,10 @@ function Group({
     });
   }
   return (
-    <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-4 px-5 py-3">
+    <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-4 px-4 py-3">
       {user ? (
         <MessageBubble align="end">
-          <MessageBubbleContent>
+          <MessageBubbleContent className="py-3">
             <div className="whitespace-pre-wrap break-words">{messageText(user)}</div>
             {Array.isArray(user.content)
               ? user.content

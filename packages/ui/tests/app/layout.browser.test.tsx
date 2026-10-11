@@ -83,7 +83,8 @@ test.each([
         near(conversation.bottom, height - 4);
         const composer = form.getBoundingClientRect();
         const padding = width >= 640 ? 24 : 12;
-        const dockWidth = Math.min(768, conversation.width);
+        // Authorized Pencil C04 change: 752px composer plus the existing 24px side padding.
+        const dockWidth = Math.min(800, conversation.width);
         near(composer.width, dockWidth - padding * 2);
         near(composer.left, left + (conversation.width - dockWidth) / 2 + padding);
         near(composer.bottom, height - 20);
@@ -148,7 +149,7 @@ test.each([
         near(feed.getBoundingClientRect().left, bounds.left);
         near(feed.getBoundingClientRect().right, bounds.right);
         const composer = selectedForm.getBoundingClientRect();
-        const dockWidth = Math.min(768, bounds.width);
+        const dockWidth = Math.min(800, bounds.width);
         const padding = width >= 640 ? 24 : 12;
         near(composer.width, dockWidth - padding * 2);
         near(composer.left, bounds.left + (bounds.width - dockWidth) / 2 + padding);
