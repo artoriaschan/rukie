@@ -10,6 +10,8 @@ Electron 的 Cookie Encryption 会在 macOS 启动时访问钥匙串。当前本
 
 ## 决定
 
+[ADR-0035](0035-desktop-isolated-sqlite-storage.md) 部分替代桌面配置默认落盘规则，并引入显式凭证操作的 safeStorage。Cookie-free 和关闭 Cookie Encryption 保持有效；不能再把“桌面凭证操作不会访问钥匙串”作为验收承诺。新的凭证生命周期验收由存储调整工单负责。
+
 桌面端不在 Cookie 中存储凭据或 Session 状态。生产打包关闭 `EnableCookieEncryption`，构建脚本在最终签名产物中读回并验证该 fuse 已关闭。其余 sandbox、context isolation、asar 完整性与签名约束保持有效。
 
 Agent Core 继续拥有用户配置和 Session 存储，Electron 不接管这些数据。启动验收使用隔离 HOME 与 user-data，直接运行签名 app，不使用 mock keychain 掩盖钥匙串初始化。

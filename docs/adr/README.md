@@ -60,8 +60,9 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0029 桌面端拆成 ui、server、desktop 三个包，GUI 不复用终端的 view 层](0029-desktop-package-structure.md) — `accepted`
 - [0030 桌面端 server 用 Hono 接入，Effect 只在 server 内部](0030-desktop-server-hono-and-effect.md) — `accepted`
 - [0031 桌面端 wire 协议：单条 WebSocket 复用多个 Session，token 与 Origin 双重校验](0031-desktop-wire-protocol-and-local-auth.md) — `accepted`
-- [0032 桌面端与 TUI 共用 JSONL Session store，项目与置顶由桌面端注册表维护](0032-desktop-shares-jsonl-store.md) — `accepted`
+- [0032 桌面端与 TUI 共用 JSONL Session store，项目与置顶由桌面端注册表维护](0032-desktop-shares-jsonl-store.md) — `superseded`
 - [0033 Agent Core 拥有 Run 完成，server FiberMap 只等待输入回执](0033-desktop-request-receipt-ownership.md) — `accepted`
 - [0034 桌面端不使用 Cookie 存储，关闭未使用的 Cookie Encryption 初始化](0034-desktop-cookie-free-startup.md) — `accepted`
+- [0035 桌面端使用应用专属 SQLite 存储，与终端配置和 Session 隔离](0035-desktop-isolated-sqlite-storage.md) — `accepted`
 
 <!-- ADR_INDEX_END -->

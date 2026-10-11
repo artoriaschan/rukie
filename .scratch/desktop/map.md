@@ -47,6 +47,8 @@
 - [29: 实现交付](issues/29-ui-transcript-tools-and-permissions.md#answer)：原生 Transcript、PromptGroup 虚拟化、Markdown/高亮/ANSI/diff、权限 Dock、队列和草稿所有权已完成；当前长刻度及 portal 预览修复通过实际 Electron hover/focus/键盘/窄窗口验收。
 - [30: 实现交付](issues/30-local-macos-build.md#answer)：一条本地 macOS arm64 构建命令生成真实 ad-hoc app；sidecar/rg 外置、精确签名、fuses、strict deep codesign 与 JIT 自检通过。真实编译产物完成流式/审批/bash/rg/Transcript 和进程退出验收。
 
+- [后续存储调整](../desktop-storage/spec.md)：2026-10-11 用户确认独立应用数据根、应用库 + 每 Session SQLite、WAL/FULL、完整工具输出入库、加密凭证与终端配置全面隔离；模型服务沿用 rukie.pen M17/C10–C17/P01–P08；旧数据不导入，实施票 01–06 尚待实现。
+
 ## Not yet specified
 
 <!-- 目的地已到达：[spec.md](spec.md) 与实现工单 21–30 已切出（2026-10-10）。原 fog 全部归入 spec：DESIGN.md 与 tech-stack 修订、beUI 组件改造进 27 与 29，本地测试与交付规则进 23，打包遗留进 30，待实测项进 27–29 的 GUI 浏览器验证，虚拟列表无障碍记为 spec 已知限制，会话内搜索移出 MVP。 -->

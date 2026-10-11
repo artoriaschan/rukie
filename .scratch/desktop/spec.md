@@ -4,6 +4,10 @@ Status: resolved
 
 术语见 `CONTEXT.md` 的 Session、Run、Turn、Transcript、Interaction、Queued Input、Permission Mode、Background Job。规划过程与各项决定见 [地图](map.md)，每条决定的依据在对应工单的 `## Answer`。MVP 只支持 macOS arm64，本地编译 ad-hoc 签名的 `.app`，不接入 GitHub Actions（[03](issues/03-mvp-scope.md#comments)）。
 
+## 后续存储调整
+
+2026-10-11 已确认[独立 SQLite 存储与模型服务录入](../desktop-storage/spec.md)，由 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md) 替代原共享 JSONL 决定。本文件 resolved 状态保留已交付 MVP 的证据；下文共享存储与“设置界面不在 MVP”描述属于该版本历史，新存储和模型服务实施按独立规格 01–06 推进。
+
 ## Problem Statement
 
 Rukie 现在只能在终端里用：TUI 或 Headless CLI。用户想在桌面窗口里管理多个项目的 Session，看流式回复、工具调用和 diff，点按钮审批权限，而不必一直开着终端。桌面端还要和 TUI 共用同一份 Session，在终端里开始的工作能在窗口里接着做，反过来也一样。
@@ -136,7 +140,7 @@ Rukie 现在只能在终端里用：TUI 或 Headless CLI。用户想在桌面窗
 - Interaction 桥接：server 给 `createSession` 提供 `onPermissionAsk` 回调，挂起的 Promise 存在按 `InteractionIdentity.epoch` 索引的 pending 表里。MVP 只桥接权限 Interaction，其余回调省略，依赖它们的工具保持隐藏。
 - Session 生命周期：有 Run、挂起的 Interaction、排队的输入或运行中的 Background Job 时，Session 保持打开。空闲且没有订阅超过 10 分钟后才 `close()`，释放 lease。连接断开不触发关闭。
 - 收到 SIGTERM 时，server 关闭所有打开的 Session（这会清理 Background Job 进程组），然后退出（[18](issues/18-orphan-background-jobs.md#answer)）。
-- 桌面端注册表放在 `homeDir/.rukie/desktop/registry.json`，由 server 独占读写：项目列表（绝对路径和显示名）、置顶的 Session id，以及侧栏的排序与分组显示偏好。默认工作区目录是 `homeDir/.rukie/desktop/workspace/`，首次使用时创建。Agent Core 和 store 的格式不变（[10](issues/10-wire-protocol-messages.md#answer)、[ADR-0032](../../docs/adr/0032-desktop-shares-jsonl-store.md)）。
+- 已交付 MVP 的桌面端注册表放在 `homeDir/.rukie/desktop/registry.json`，由 server 独占读写：项目列表（绝对路径和显示名）、置顶的 Session id，以及侧栏的排序与分组显示偏好。默认工作区目录是 `homeDir/.rukie/desktop/workspace/`，首次使用时创建。Agent Core 和 store 的格式不变（[10](issues/10-wire-protocol-messages.md#answer)、[ADR-0032](../../docs/adr/0032-desktop-shares-jsonl-store.md)）。
 - 列举 Session 时，对每个注册的 cwd 调用 `listSessions`，单个目录失败不影响其他目录。
 
 ### wire 协议与鉴权

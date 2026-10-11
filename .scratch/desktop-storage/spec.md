@@ -1,0 +1,97 @@
+Status: ready-for-agent
+
+# Spec: 桌面端独立 SQLite 存储与模型服务录入
+
+## Problem Statement
+
+已交付的[桌面 MVP](../desktop/spec.md) 使用终端的 JSONL Session、配置与供应商环境凭证。桌面端需要独立管理会话、项目、置顶、配置与加密凭证，工具完整输出存入数据库。用户已于 2026-10-11 确认全部设计分叉，并指定供应商录入采用 `rukie.pen` 的模型服务流程。本规格只代表设计已接受，运行代码尚未调整。
+
+## Solution
+
+权威决定为 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)。Electron main 确定独立数据根并负责 safeStorage，Bun sidecar 独占业务 SQLite 写入；Core 的存储、配置与输出能力通过注入接缝复用，TUI/Headless 默认路径不变。
+
+```text
+<app userData>/data/
+  app.sqlite
+  sessions/<id>/session.sqlite
+  attachments/
+  file-history/
+  workspace/
+  rules/
+  skills/
+  agents/
+```
+
+布局为拟议实现路径。WAL/SHM 和执行 lease 属于所属数据库的资源，不作为另一套持久化事实。API Key、OAuth token/client_secret、授权临时秘密与 MCP header 认证秘密仅以密文落盘；图片等附件及恢复文件历史单独存文件。桌面用户级 MCP、hooks、权限和项目信任存 app.sqlite，规则/skills/agents 内容由同一数据根内的文件承载。
+
+## Implementation Decisions
+
+- 独立数据根与真实 OS home 分离；禁止通过替换 homeDir 改变 `~/` 的工具及权限含义。桌面不扫描 OS home 的用户配置、规则、skills、agents、MCP、凭证、缓存、Session 或文件历史。
+- 项目级输入继续遵守现有信任规则，项目不能定义供应商凭证。工具正常继承系统环境，供应商认证不读取终端 API Key，桌面凭证不自动注入工具环境。
+- 应用索引/配置一库，每独立根 Session/Harness 一库；子代理继续在根 Harness 内保存 Conversation 与任务 ownership；沿用 pi-durable 原生事务、documents/tasks/Transcript 和恢复，不增加第二套调度或重放。
+- WAL + FULL；分块输出仅承诺已提交内容。所有 Bash、后台 Job 和截断前完整输出入库，原有字节游标、模型截断和中断语义不变；去除桌面输出的临时日志路径权威引用，持久化失败不能表现为执行成功。
+- 相对文件引用限制在数据根，保留历史分支引用；异常写入与孤立文件清理可重复执行。仅声明完整备份范围，不新增备份 UI。
+- 当前读入口包括 `createSession`、`listSessions`、`readSessionStorage`/只读 snapshot、子代理、恢复与清理，必须全部选择相同后端，busy 只读不能取得执行权。
+- Electron 单实例和 Session 执行 lease 分别验证；SQLite WAL 不等于跨进程执行独占。退出排空输出、关闭 Session 与数据库，重启恢复已提交状态。
+- 不导入或迁移旧桌面/TUI 数据，不回退共享目录。应用配置、供应商和模型重启后保留；无凭证仍可查看历史，发送前配置有效模型。
+- 配置修改影响后续采用新配置的执行；当前已开始的模型请求保留其配置快照，删除供应商不删除历史会话。会话引用不可用模型时显示重新选择要求，禁止隐式采用其他供应商。
+
+## 模型服务录入
+
+设计源是用户维护的 `rukie.pen`。2026-10-11 经 Pencil MCP 读取 M17（`qYVTA`）、C10–C17 和 P01–P08；记录画板标识与流程，不在仓库约束中写入个人绝对路径，也不修改设计源。
+
+| 画板      | 流程与合同                                                                                                                       |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| P01 / C10 | 模型服务总览，供应商列表与详情，添加供应商入口；保留已有聊天布局                                                                 |
+| P02 / C13 | 添加供应商目录，选择目录项或创建自定义供应商；目录是模板来源，不自动发现终端账号；返回箭头回到详情，新建供应商立即出现在左侧     |
+| P03 / C11 | 新供应商、模型空状态；录入名称、Base URL、API 格式、遮罩 API Key；没有模型时显示空状态                                           |
+| P04 / C14 | API 格式：Anthropic Messages、Chat Completions、Responses；明确路由与 Base URL 拼接，匹配已锁定模型适配器                        |
+| P05 / C16 | 添加/编辑模型：模型 ID、上下文窗口、最大输出 Token、智能配置、高级配置、输入类型、模型能力、推理等级与参数映射、重置、取消、保存 |
+| P06 / C12 | 已配置模型行显示模型 ID、上下文和能力徽标，支持连接验证、编辑、删除与启用；编辑复用 P05，启用且可认证的模型进入聊天目录          |
+| P07 / C15 | 供应商操作菜单：重命名、删除                                                                                                     |
+| P08 / C17 | 删除供应商确认，取消不修改持久化数据，确认原子移除配置和密文；历史 Transcript 保留                                               |
+
+画板中的供应商、模型 ID、URL 和能力徽标是示例，不硬编码为真实可用目录。C16 的视频、PDF、结构化输出、原生联网、对话中系统消息、推理参数映射必须核对 pi-ai 的真实输入和协议能力；不能把不支持的字段显示为已可用，也不能为满足画板静默丢弃保存字段。票据 05 先核对智能配置与高级字段的实际合同，再实施完整模型服务流程，发现需要产品取舍的能力缺口须显式提出。连接验证使用该流程的配置状态反馈，不替换为另一套简化录入向导。
+
+API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar 通道保存密文；会话 WS 只传脱敏模型目录和非敏感状态。renderer 不取回已有明文、不拥有解密能力。加密不可用、授权取消、解密失败保持数据完整并展示重试/重新配置，不明文回退。数据库写失败保留表单输入且不报告保存成功，取消不覆盖已有配置。正常启动不因未使用 Cookie 访问钥匙串，显式凭证操作允许真实系统授权提示。
+
+本轮仅实现模型服务设置，画板设置导航里的其他设置分类不因此成为已授权功能；沿用共享导航结构，只开放有对应能力的入口。
+
+浏览器开发模式使用隔离数据根与脚本化非生产凭证实现，不调用真实账号或模拟生产加密验收成功。打包 macOS 验收使用实际 safeStorage 和正常启动参数。
+
+## Implementation Tickets
+
+| 票据                                                      | 依赖           | 内容                                  |
+| --------------------------------------------------------- | -------------- | ------------------------------------- |
+| [01](issues/01-desktop-data-root-and-config-isolation.md) | 无             | 数据根、用户级配置与真实 home 分离    |
+| [02](issues/02-native-sqlite-session-store.md)            | 01             | 原生 SQLite store、单写者与所有读入口 |
+| [03](issues/03-app-database-and-secret-storage.md)        | 01             | 应用数据库、索引与 safeStorage 密文   |
+| [04](issues/04-tool-output-database-storage.md)           | 02             | 完整工具/Job 输出分块入库             |
+| [05](issues/05-model-services-pencil-flow.md)             | 03             | rukie.pen 模型服务流程与认证接线      |
+| [06](issues/06-integration-and-packaged-acceptance.md)    | 02, 03, 04, 05 | 集成、恢复、隔离及真实打包验收        |
+
+## Acceptance Criteria
+
+- 旧 TUI 配置中放入哨兵供应商、信任和 Session；桌面不列举、不认证、不采用这些规则，不写旧目录。相同项目的 TUI 与桌面同时运行各自 Session，互不争抢执行 lease。
+- 用真实 Session/fake model 验证新建、流式、工具输出、abort、resume、排队、子代理与只读 busy snapshot。超过当前内存截断阈值的完整输出重启后仍可按游标读取，恢复不重跑非 safe 外部副作用。
+- 应用索引和各 Session 库跨重启一致；建库/索引之间崩溃或失败不会隐藏可发现已提交 Session，不扫描旧目录或启动恢复执行。FULL/WAL 配置和单写者隔离可观察验证。
+- 真实 macOS safeStorage 的录入、遮罩、重启认证、替换、删除、失败/取消行为通过；测试与日志不输出真实密钥，会话网络没有明文凭证。
+- P01–P08 流程与可用模型目录一致，保存失败、输入取消、缺失模型和配置被删除可操作；zh/en、键盘/焦点、Light/Dark、窄窗口按 DESIGN.md 验收。
+- TUI/Headless 的既有 JSONL、配置读取和完整工具输出行为不变；附件与文件历史引用可恢复，应用退出后无本轮启动的遗留进程或数据库连接。
+
+## ADR Coverage
+
+| 决定                           | 归属                                                                             | 理由                                                         |
+| ------------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 独立数据根、SQLite、输出与凭证 | 新增 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)          | 替代共享持久化，明确事务、隔离与资源所有权                   |
+| 原生恢复和重放                 | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                 | 更换后端不更换执行语义                                       |
+| MCP 生命周期                   | 部分替代并沿用 [ADR-0019](../../docs/adr/0019-mcp-oauth-credential-ownership.md) | 改密文落盘，保留身份、授权和项目信任                         |
+| Cookie 与钥匙串                | 部分替代并沿用 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md)    | 禁用未使用 Cookie，允许显式凭证加解密                        |
+| UI、server、desktop 所有权     | 沿用 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)                | main 管宿主加密，server 组合，Core 拥有执行                  |
+| 模型服务布局与组件             | 无需额外 ADR                                                                     | 用户指定既有画板流程，遵守 DESIGN.md；协议缺口由实施调查核实 |
+
+## Delivery Evidence
+
+设计访谈已完成，所有存储分叉经用户确认。领域复核保留 CONTEXT.md 的 Session、Transcript、Run、Turn、Interaction、Model Selection 含义；SQLite、应用数据根和凭证密文属于实现选择，不为它们新增领域术语。原 MVP resolved 记录保留历史交付证据，新功能状态按本规格 01–06 更新，不把文档确认当作实现完成。
+
+文档交付检查：`bun run docs:update`、`bun run check:docs`、`bun run check:scratch`、修改文件的 `oxfmt --check` 与 `git diff --check` 通过。只读事实复核补齐 OAuth client_secret/认证 header 的加密范围，以及只读 SQLite 不得触发 schema migration。未运行行为测试或生产加密验收；六张实施票保持 ready-for-agent。
