@@ -4,6 +4,48 @@ import { render } from "vitest-browser-react";
 import { App } from "../../src/app";
 import "../../src/theme.css";
 
+test("titlebar keeps its blank space draggable and its controls clickable at narrow widths", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const region = (element: Element) =>
+    getComputedStyle(element).getPropertyValue("-webkit-app-region");
+  try {
+    await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
+    for (const width of [1280, 420]) {
+      await page.viewport(width, 800);
+      const header = document.querySelector("header")!;
+      expect(region(header)).toBe("drag");
+      for (const section of header.children) expect(region(section)).not.toBe("no-drag");
+      const toggle = screen
+        .getByRole("banner")
+        .getByRole("button", { name: "Toggle sidebar", exact: true });
+      expect(region(toggle.element())).toBe("no-drag");
+      const previous = toggle.element().getAttribute("aria-pressed");
+      await toggle.click();
+      await expect.element(toggle).toHaveAttribute("aria-pressed", String(previous !== "true"));
+      await toggle.click();
+    }
+    await userEvent.keyboard("{Control>}1{/Control}");
+    const title = screen.getByRole("heading", { name: "Fix compiler", exact: true });
+    await expect.element(title).toBeVisible();
+    expect(getComputedStyle(title.element()).userSelect).toBe("none");
+    for (const control of document.querySelectorAll("header button, header [tabindex]"))
+      expect(region(control)).toBe("no-drag");
+    await screen.getByRole("button", { name: "Session actions" }).click();
+    await expect.element(screen.getByRole("menuitem", { name: "Copy", exact: true })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await screen.getByRole("button", { name: "Session summary", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: "Session summary", exact: true }))
+      .toHaveAttribute("aria-expanded", "true");
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+    await page.viewport(1280, 900);
+  }
+});
+
 test("sidebar searches projects, selects a welcome target and creates a Session on first send", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();

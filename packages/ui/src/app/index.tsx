@@ -401,13 +401,8 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       .join("\n\n") ?? "";
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-card text-ui-base text-foreground">
-      <header className="flex h-11 shrink-0 items-center [-webkit-app-region:drag]">
-        <div
-          className={cn(
-            "flex h-full shrink-0 items-center gap-1 px-3 [-webkit-app-region:no-drag]",
-            sidebar && "md:w-76",
-          )}
-        >
+      <header className="flex h-11 shrink-0 select-none items-center [-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag]">
+        <div className={cn("flex h-full shrink-0 items-center gap-1 px-3", sidebar && "md:w-76")}>
           <span aria-hidden="true" className="w-16" />
           <Tooltip content={t("app.toggle-sidebar")}>
             <Button
@@ -423,7 +418,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         </div>
         <div
           className={cn(
-            "flex h-full min-w-0 flex-1 items-center gap-2 px-3 [-webkit-app-region:no-drag]",
+            "flex h-full min-w-0 flex-1 items-center gap-2 px-3",
             sidebar && "md:border-l md:border-border",
           )}
         >
@@ -434,7 +429,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   tabIndex={0}
                   role="img"
                   aria-label={currentProject?.name ?? t("app.conversations")}
-                  className="rounded-md p-1 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="rounded-md p-1 text-muted-foreground outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {currentProject ? (
                     <Folder className="size-4" />
