@@ -4,13 +4,28 @@
 
 Blocked by: 21, 23
 
-Status: ready-for-agent
+Status: resolved
 
-- [ ] 只监听 `127.0.0.1` 随机端口，stdout 输出 `{port, token}`；Host、Origin、token 任一不符都拒绝升级，`rukie.v1` 为回显的 subprotocol
-- [ ] 开发标志下额外放行 Vite 地址，非开发模式拒绝
-- [ ] 桌面端注册表 `homeDir/.rukie/desktop/registry.json`：`projects.list`、`project.add`、默认工作区目录首次使用时创建
-- [ ] `sessions.list` 汇总各注册 cwd，单个目录失败不影响其余
-- [ ] `session.create` 一步创建并发送首条消息；`session.subscribe` 先发 snapshot 再转发实时事件；按 Session id 单飞打开并共享
-- [ ] `prompt`（空闲时 run）、`abort`、`response` 与错误码；`session_busy` 由 21 的错误码映射
-- [ ] 新连接接管，旧连接以 `superseded` 关闭；WS 断开不中断 Run
-- [ ] 接缝：进程内启动 server + 真实 WS 客户端 + `fakeModel`，`bun:test`
+- [x] 只监听 `127.0.0.1` 随机端口，stdout 输出 `{port, token}`；Host、Origin、token 任一不符都拒绝升级，`rukie.v1` 为回显的 subprotocol
+- [x] 开发标志下额外放行 Vite 地址，非开发模式拒绝
+- [x] 桌面端注册表 `homeDir/.rukie/desktop/registry.json`：`projects.list`、`project.add`、默认工作区目录首次使用时创建
+- [x] `sessions.list` 汇总各注册 cwd，单个目录失败不影响其余
+- [x] `session.create` 一步创建并发送首条消息；`session.subscribe` 先发 snapshot 再转发实时事件；按 Session id 单飞打开并共享
+- [x] `prompt`（空闲时 run）、`abort`、`response` 与错误码；`session_busy` 由 21 的错误码映射
+- [x] 新连接接管，旧连接以 `superseded` 关闭；WS 断开不中断 Run
+- [x] 接缝：进程内启动 server + 真实 WS 客户端 + `fakeModel`，`bun:test`
+
+## Implementation evidence
+
+- `startServer` exports a loopback Hono listener, stdout handshake, one Effect ManagedRuntime with Agent Core / registry / Run Layers, and server-owned FiberMap. `src/main.ts` handles SIGTERM/SIGINT.
+- Real WS acceptance uses isolated homeDir and fakeModel; auth, persisted project registry, new Session/live events, snapshot-first takeover, missing/invalid commands, disconnected Run retention and abort covered.
+- Red: initial public server test failed because startServer did not exist. Green: `bun test packages/server/tests` passes 8 tests, 26 assertions (~287 ms). Every added case runs below 1 second.
+- `bun run check:dev` passed including TypeScript, Knip, docs, test policy and package boundary checks. No full suite run.
+- ADR coverage: follows 0029–0032 without changing decisions. Permission/queued-input/idle lifecycle are issue25. Current session.create response has sessionId; requestId responses are explicitly pending issue25.
+- Status remains claimed pending integration review and final acceptance.
+
+## Answer
+
+随机 loopback 端口、Host/Origin/token 校验、单连接接管、Session 单飞与 snapshot 订阅已接入，真实 WS 鉴权和断连继续测试通过。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。

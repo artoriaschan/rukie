@@ -8,43 +8,47 @@ import { createUserVisibleError } from "@rukie/shared";
 import { start } from "../helpers/app";
 
 test.each([
-  ["zh", "会话记录需要修复，无法以只读方式查看。"],
-  ["en", "Session history requires repair and cannot be viewed read-only."],
-] as const)("%s resume list localizes refused storage repair", async (locale, expected) => {
-  let path = "";
-  let before: Uint8Array<ArrayBuffer>;
-  const app = await start([], {
-    columns: 160,
-    env: { LANG: locale },
-    prepare: async (root) => {
-      const store = createJsonlStore({ cwd: root, homeDir: root });
-      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
-      const session = await createSession({
-        cwd: root,
-        homeDir: root,
-        store,
-        model: fake.getModel(),
-        models: auxiliaryModels((model, context, options) =>
-          fake.provider.streamSimple(model, context, options),
-        ),
-      });
-      await session.close();
-      path = join(store.key(session.id), "main.jsonl");
-      await appendFile(path, '{"torn":');
-      before = await Bun.file(path).bytes();
-    },
-  });
-  try {
-    await app.waitFor(() => app.screen().join("\n").includes("❯"));
-    app.stdin.write("/resume\r");
-    await app.waitFor(() => app.screen().join("\n").includes(expected));
-    expect(app.screen().join("\n")).not.toContain("Session observation is read-only.");
-    expect(await Bun.file(path).bytes()).toEqual(before!);
-    expect(app.calls).toHaveLength(0);
-  } finally {
-    await app.cleanup();
-  }
-});
+  ["zh", "暂无可恢复的会话"],
+  ["en", "No sessions to resume"],
+] as const)(
+  "%s resume list skips unreadable history and reports a warning",
+  async (locale, expected) => {
+    let path = "";
+    let before: Uint8Array<ArrayBuffer>;
+    const app = await start([], {
+      columns: 160,
+      env: { LANG: locale },
+      prepare: async (root) => {
+        const store = createJsonlStore({ cwd: root, homeDir: root });
+        const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
+        const session = await createSession({
+          cwd: root,
+          homeDir: root,
+          store,
+          model: fake.getModel(),
+          models: auxiliaryModels((model, context, options) =>
+            fake.provider.streamSimple(model, context, options),
+          ),
+        });
+        await session.close();
+        path = join(store.key(session.id), "main.jsonl");
+        await appendFile(path, '{"torn":');
+        before = await Bun.file(path).bytes();
+      },
+    });
+    try {
+      await app.waitFor(() => app.screen().join("\n").includes("❯"));
+      app.stdin.write("/resume\r");
+      await app.waitFor(() => app.screen().join("\n").includes(expected));
+      expect(app.stderr()).toContain("Could not read Session");
+      expect(app.stderr()).toContain("Session history requires repair");
+      expect(await Bun.file(path).bytes()).toEqual(before!);
+      expect(app.calls).toHaveLength(0);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
 
 test.each([
   ["zh", "未配置模型。", "en"],
@@ -73,11 +77,16 @@ test.each([
 );
 
 test.each([
-  ["zh", "内置 ripgrep 不可用。"],
-  ["en", "Bundled ripgrep is unavailable."],
+  ["zh", "内置 ripgrep 不可用。", "恢复完整的 Rukie 安装", "执行权限"],
+  [
+    "en",
+    "Bundled ripgrep is unavailable.",
+    "Restore the complete Rukie installation",
+    "execution permissions",
+  ],
 ] as const)(
   "%s live tool error translates coded details while the model sees English",
-  async (locale, expected) => {
+  async (locale, expected, recovery, permissions) => {
     const app = await start(["search"], { columns: 300, env: { LANG: locale } });
     try {
       await app.waitFor(() => app.calls.length === 1);
@@ -91,7 +100,8 @@ test.each([
         spawn.mockRestore();
       }
       await app.waitFor(() => app.screen().join("\n").includes(expected));
-      expect(app.screen().join("\n")).toContain("optionalDependencies");
+      expect(app.screen().join("\n")).toContain(recovery);
+      expect(app.screen().join("\n")).toContain(permissions);
       expect(app.screen().join("\n")).toContain("test binary unavailable");
       expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
         role: "toolResult",
@@ -338,3 +348,35 @@ test.each([
     }
   },
 );
+
+test.each(["zh", "en"] as const)("%s startup reports a busy Session clearly", async (locale) => {
+  const argv: string[] = [];
+  let owner: Awaited<ReturnType<typeof createSession>> | undefined;
+  const app = await start(argv, {
+    env: { LANG: locale },
+    prepare: async (root) => {
+      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
+      owner = await createSession({
+        cwd: root,
+        homeDir: root,
+        model: fake.getModel(),
+        models: auxiliaryModels((model, context, options) =>
+          fake.provider.streamSimple(model, context, options),
+        ),
+      });
+      argv.push("--resume", owner.id);
+    },
+  });
+  try {
+    expect(await app.exit).toBe(1);
+    expect(app.stderr()).toBe(
+      locale === "zh"
+        ? `Session 已被打开：${owner!.id}。请先关闭其他窗口或进程中的会话。\n`
+        : `Session already open: ${owner!.id}. Close it in the other window or process first.\n`,
+    );
+    expect(app.calls).toHaveLength(0);
+  } finally {
+    await owner?.close();
+    await app.cleanup();
+  }
+});

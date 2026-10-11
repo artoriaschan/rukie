@@ -48,4 +48,4 @@ rtk proxy cat brand/standard.ansi
 rtk proxy python3 brand/export-icons.py
 ```
 
-当前仓库没有 desktop 包或打包配置；这些文件可用于后续打包，尚未接入应用安装包。`rukie-character-design.png` 保留当前角色设计稿，`rukie-avatar.png` 继续由 TUI 头部使用；字符回退的 `frames.json`、ANSI、PNG 对照图与预览仍属于同一版角色。
+[桌面构建脚本](../scripts/desktop/build.ts)直接将 `rukie-app-icon.icns` 用作 macOS 应用图标；构建方法见 [desktop README](../packages/desktop/README.md#本地构建)。当前仅打包 macOS arm64，`rukie-app-icon.ico` 保留为 Windows 素材，尚未接入 Windows 打包。`rukie-character-design.png` 保留当前角色设计稿，`rukie-avatar.png` 继续由 TUI 头部使用；字符回退的 `frames.json`、ANSI、PNG 对照图与预览仍属于同一版角色。

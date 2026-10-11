@@ -51,7 +51,7 @@ Background Job 仍是宿主 OS 进程资源，关闭清理进程和输出，Resu
 ### 替代关系
 
 - 完整替代 [ADR-0002](0002-reuse-pi-agent-core-harness.md) 的旧 harness 复用决定。
-- 部分替代 [ADR-0003](0003-dual-session-store.md) 的 session repo 接口、单文件 JSONL 和关闭边界；保留 JSONL 的选型及未来 SQLite 后端方向，本次不实现桌面存储。
+- 部分替代 [ADR-0003](0003-dual-session-store.md) 的 session repo 接口、单文件 JSONL 和关闭边界；保留 JSONL 的选型及当时的未来 SQLite 后端方向，本次不实现桌面存储；后续 [ADR-0032](0032-desktop-shares-jsonl-store.md) 改为桌面端共用 JSONL。
 - 部分替代 [ADR-0009](0009-subagent-resume-outcomes.md) 的恢复不续跑及缺失结果修复策略；保留活动、Run Outcome 和委派任务验收的区别。
 - 部分替代 [ADR-0010](0010-own-bash-tool-for-background-jobs.md) 的退出和子 Run 收尾协调；保留自研 bash、Job ownership、进程清理与不恢复 OS 进程。
 - 扩展 [ADR-0015](0015-frontend-interactions-and-plan-mode.md) 的跨进程交互恢复；保留 Frontend 回调、安全默认、晚到回复无效及 Plan Mode 独立性。

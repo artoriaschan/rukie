@@ -24,7 +24,28 @@ export function checkTestSource(file: string, text: string): string[] {
     const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
     failures.push(`${file}:${line}: ${message}`);
   }
+  function checkRunner(module: string) {
+    const desktopRunner = /(?:^|\/)packages\/(?:ui|desktop)\//.test(file.replaceAll("\\", "/"));
+    if (desktopRunner && module === "bun:test")
+      failures.push(`${file}: ui/desktop tests must use Vitest`);
+    if (!desktopRunner && (module === "vitest" || module.startsWith("vitest/")))
+      failures.push(`${file}: Bun runtime tests must use bun:test`);
+  }
   function visit(node: ts.Node) {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    )
+      checkRunner(node.moduleSpecifier.text);
+    if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        node.expression.getText(source) === "require")
+    ) {
+      const argument = node.arguments[0];
+      if (argument && ts.isStringLiteral(argument)) checkRunner(argument.text);
+    }
     if (ts.isCallExpression(node)) {
       const expression = node.expression;
       const name = expression.getText(source);

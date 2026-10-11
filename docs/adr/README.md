@@ -61,5 +61,7 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0030 桌面端 server 用 Hono 接入，Effect 只在 server 内部](0030-desktop-server-hono-and-effect.md) — `accepted`
 - [0031 桌面端 wire 协议：单条 WebSocket 复用多个 Session，token 与 Origin 双重校验](0031-desktop-wire-protocol-and-local-auth.md) — `accepted`
 - [0032 桌面端与 TUI 共用 JSONL Session store，项目与置顶由桌面端注册表维护](0032-desktop-shares-jsonl-store.md) — `accepted`
+- [0033 Agent Core 拥有 Run 完成，server FiberMap 只等待输入回执](0033-desktop-request-receipt-ownership.md) — `accepted`
+- [0034 桌面端不使用 Cookie 存储，关闭未使用的 Cookie Encryption 初始化](0034-desktop-cookie-free-startup.md) — `accepted`
 
 <!-- ADR_INDEX_END -->

@@ -1,0 +1,77 @@
+import { expect, test, vi } from "vitest";
+import { render } from "vitest-browser-react";
+import { Button, ButtonLink } from "../../src/components/motion/button/base";
+import { StatefulButton } from "../../src/components/motion/button/stateful";
+import { Input } from "../../src/components/motion/input";
+import "../../src/theme.css";
+
+test("shared controls render compact geometry and grow with interface text", async () => {
+  const screen = await render(
+    <div>
+      <Button size="sm">Small</Button>
+      <Button>Standard</Button>
+      <Button size="lg">Large</Button>
+      <Button size="icon" aria-label="Icon">
+        +
+      </Button>
+      <ButtonLink href="#target">Link</ButtonLink>
+      <Input label="Field" defaultValue="Value" />
+      <span className="text-ui-caption">Caption</span>
+    </div>,
+  );
+  try {
+    for (const [name, height] of [
+      ["Small", 28],
+      ["Standard", 32],
+      ["Large", 36],
+      ["Icon", 32],
+    ] as const) {
+      const element = screen.getByRole("button", { name, exact: true }).element();
+      expect(element.getBoundingClientRect().height).toBe(height);
+      expect(getComputedStyle(element).fontSize).toBe("14px");
+      expect(getComputedStyle(element).borderRadius).toBe("8px");
+    }
+    expect(
+      screen.getByRole("link", { name: "Link" }).element().getBoundingClientRect().height,
+    ).toBe(32);
+    const field = screen.getByRole("textbox", { name: "Field" }).element();
+    expect(field.parentElement?.getBoundingClientRect().height).toBe(32);
+    expect(getComputedStyle(field).fontSize).toBe("14px");
+    expect(getComputedStyle(screen.getByText("Caption").element()).fontSize).toBe("13px");
+    expect(getComputedStyle(screen.getByText("Caption").element()).lineHeight).toBe("20px");
+    screen
+      .getByText("Caption")
+      .element()
+      .parentElement?.style.setProperty("--ui-font-size", "20px");
+    const standard = screen.getByRole("button", { name: "Standard", exact: true }).element();
+    expect(standard.getBoundingClientRect().height).toBeGreaterThan(32);
+    expect(standard.scrollHeight).toBeLessThanOrEqual(standard.clientHeight);
+    expect(field.parentElement?.getBoundingClientRect().height).toBeGreaterThan(32);
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("stateful labels and validation remain readable and actionable", async () => {
+  const action = vi.fn();
+  const screen = await render(
+    <div style={{ width: 320 }}>
+      <StatefulButton state="error" errorText="请检查设置并重新执行这个操作" onClick={action}>
+        Retry
+      </StatefulButton>
+      <Input label="Token" defaultValue="invalid" error="请检查令牌" />
+    </div>,
+  );
+  try {
+    const retry = screen.getByRole("button", { name: "请检查设置并重新执行这个操作" });
+    await expect.element(retry).toBeVisible();
+    await retry.click();
+    expect(action).toHaveBeenCalledOnce();
+    await expect.element(screen.getByRole("alert")).toHaveTextContent("请检查令牌");
+    await expect
+      .element(screen.getByRole("textbox", { name: "Token" }))
+      .toHaveAttribute("aria-invalid", "true");
+  } finally {
+    await screen.unmount();
+  }
+});

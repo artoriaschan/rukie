@@ -179,7 +179,10 @@ test("missing or non-executable shipped ripgrep produces an actionable platform 
         "grep files",
       ]);
       expect(result.code).toBe(0);
-      expect(JSON.stringify(server.requests[1]!.body)).toContain("platform package is incomplete");
+      const modelRequest = JSON.stringify(server.requests[1]!.body);
+      expect(modelRequest).toContain("Bundled ripgrep is unavailable.");
+      expect(modelRequest).toContain("Restore the complete Rukie installation");
+      expect(modelRequest).toContain("execution permissions");
       expect(result.stdout).toContain("ripgrep-unavailable");
     } finally {
       if (mode === "missing") await rename(`${rg}.hidden`, rg);

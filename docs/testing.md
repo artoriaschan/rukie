@@ -51,3 +51,9 @@ Bun 的文件 worker、CI 的四个 shard 和独立测试进程可能并行。�
 静态门禁只检测上述语法，不能证明间接 helper、shell 脚本、资源清理或断言的意义。审查仍须逐项确认：真实入口、外部结果、完成信号、资源 owner、故障清理、全局恢复、平台条件、distinct cases 和时间断言的必要性。审计记录必须区分全量扫描与人工核查，列出范围、发现、修改、保留理由和未验证环境；不能把扫描通过描述为所有用例都稳定。
 
 本地最终验证与需要完整运行的条件遵循[根规则](../AGENTS.md#tests-and-verification)。普通 PR 在受影响测试和静态检查通过后交接，CI 负责最终全量验收；交付证据区分本地通过、CI 待验收与最新提交 CI 已通过。检查失败时查看完整日志，pending、失败、取消、跳过或已被替代的运行不算验收成功。
+
+## 桌面测试入口
+
+`packages/ui` 和 `packages/desktop` 用 Vitest，由 Node 执行。ui 的 React DOM 测试使用 Playwright Chromium browser mode，纯 store/client 测试使用 Node；desktop main/preload 使用 Node 环境。ui 的浏览器测试命名为 `*.browser.test.ts(x)`，Node 测试为其他 `*.test.ts`，各自的 include/exclude 由包内 `vitest.config.ts` 定义。Bun 包继续使用 `bun:test`；`check:test-policy` 拒绝跨 runner 导入，根 `bunfig.toml` 排除 ui/desktop，普通、parallel 和 shard 收集都遵循该边界。
+
+本地先执行 `bunx --no -- playwright install --only-shell chromium`，再执行 `bun run test:desktop`；浏览器不在 postinstall 自动下载。PATH 上需要支持 Vitest 的 Node，禁止 `--bun`。缺失浏览器会令测试失败，安装后再运行。`test:desktop` 接入本地 `check`，不接入 `check:dev` 或 GitHub Actions；涉及 ui/desktop 的 PR 交付证据必须附本地结果。Chromium browser mode 验证浏览器 DOM 行为，不能替代打包后 Electron 的冒烟验证。

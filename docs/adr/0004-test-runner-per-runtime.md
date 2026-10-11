@@ -10,7 +10,7 @@ status: accepted
 
 ## 决定
 
-运行在 Bun 上的包（agent、cli、server）用 `bun:test`，这样 Bun 专有 API 可以直接测，不必让 Vitest 跑在 Bun 上而碰到兼容问题。Electron main 和渲染进程用 Vitest 5，因为渲染进程测试需要 Vite 插件和 browser mode，main 进程则运行在 Node 上。两种 runner 按运行时分开；Vitest 等桌面端开工时再引入，当前仓库使用 Bun。
+运行在 Bun 上的包（agent、cli、server）用 `bun:test`，这样 Bun 专有 API 可以直接测，不必让 Vitest 跑在 Bun 上而碰到兼容问题。Electron main 和渲染进程用 Vitest 5，因为渲染进程测试需要 Vite 插件和 browser mode，main 进程则运行在 Node 上。两种 runner 按运行时分开；仓库分别通过 Bun 与 Vitest 入口执行这些测试。
 
 桌面端的接入方式：`@rukie/ui` 用 Vitest browser mode（Playwright Chromium），其中不依赖 React 的 `store` 与 `client` 用 Node 环境；`@rukie/desktop` main 用 Node 环境并替换 Electron API。根目录 `bunfig.toml` 让 `bun test` 不收集这两个包的测试，`check:test-policy` 禁止跨 runner 导入。版本与命令见[桌面端 spec](../../.scratch/desktop/spec.md)。
 
@@ -20,4 +20,4 @@ status: accepted
 
 ## 影响
 
-按生产运行时维护测试入口。当前使用 Bun；Vitest 是桌面端目标选型，尚未引入。桌面端测试只在本地 `check` 中运行，不进入 CI。
+按生产运行时维护测试入口。Bun 与 Vitest 已分别接入。桌面端测试只在本地 `check` 中运行，不进入 CI。

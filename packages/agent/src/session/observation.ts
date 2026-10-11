@@ -1,3 +1,8 @@
+import {
+  PendingInputFactsDoc,
+  queuedInputProjection,
+  type PendingInputFacts,
+} from "./queued-inputs.ts";
 import { ToolTask, ToolResultEntry } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type {
@@ -54,7 +59,7 @@ export interface ConversationObservationOptions {
   publish(events: readonly SessionEvent[]): void;
 }
 
-function parts(view: ConversationView) {
+function parts(view: Pick<ConversationView, "docs">) {
   // Durable creates and validates these reserved documents with its public built-in
   // tokens. ConversationView preserves their JSON representation and immutable frame.
   return {
@@ -96,7 +101,10 @@ function adoptView(view: ConversationView, publication: CommitPublication): Conv
     )
       continue;
     const kind = change.record.kind;
-    if (!["pi.live", "pi.inbox", "pi.agent", "pi.usage"].includes(kind)) continue;
+    if (
+      !["pi.live", "pi.inbox", "pi.agent", "pi.usage", "rukie.pending-input-facts"].includes(kind)
+    )
+      continue;
     const next = { ...docs };
     if (change.value === null) delete next[kind];
     else next[kind] = change.value;
@@ -158,7 +166,12 @@ function unknownOutcome(
 
 async function readUnknownOutcomes(
   entries: readonly EntryRecord[],
-  harness: Harness,
+  harness: {
+    getTask(
+      id: TaskId,
+      context: Context,
+    ): Promise<TaskRecord<JsonValue, JsonValue, unknown> | undefined>;
+  },
   context: Context,
 ) {
   const outcomes = new Set<string>();
@@ -180,7 +193,12 @@ async function readUnknownOutcomes(
 export async function projectCommittedOutcomeFacts(
   messages: readonly TranscriptMessage[],
   entries: readonly EntryRecord[],
-  harness: Harness,
+  harness: {
+    getTask(
+      id: TaskId,
+      context: Context,
+    ): Promise<TaskRecord<JsonValue, JsonValue, unknown> | undefined>;
+  },
   context: Context,
 ): Promise<readonly TranscriptMessage[]> {
   const outcomes = await readUnknownOutcomes(entries, harness, context);
@@ -198,7 +216,14 @@ export async function createConversationObservation(options: ConversationObserva
   // Chord values deliver asynchronously, so later revisions come from the public
   // commit records themselves, never a potentially lagging state.value getter.
   const state = await conversation.viewState(BACKGROUND_CONTEXT);
-  let current = state.value;
+  const inputFacts = await harness.snapshot(
+    PendingInputFactsDoc,
+    conversation.id,
+    BACKGROUND_CONTEXT,
+  );
+  let current = inputFacts
+    ? { ...state.value, docs: { ...state.value.docs, "rukie.pending-input-facts": inputFacts } }
+    : state.value;
   let transcriptEntries = options.history ? await options.history() : current.entries;
   const unknownOutcomes = await readUnknownOutcomes(transcriptEntries, harness, BACKGROUND_CONTEXT);
   let projectedEntries: readonly EntryRecord[] | undefined;
@@ -274,31 +299,9 @@ export async function createConversationObservation(options: ConversationObserva
     return messagesByEntry.get(String(entry.id)) ?? [];
   }
   function capture(view: ConversationView): Snapshot {
-    const { live, inbox, agent, usage } = parts(view);
-    return {
-      type: "snapshot",
-      sessionId,
-      entries: view.entries,
-      messages,
-      ...(live.run ? { run: { inputs: live.run.inputs } } : {}),
-      ...(live.generation
-        ? {
-            generation: {
-              ...live.generation,
-              ...(live.generation.message
-                ? { message: liveAssistant(live.generation.message) }
-                : {}),
-            },
-          }
-        : {}),
-      tools: live.tools ?? [],
-      compactions: live.compactions ?? [],
-      inbox: queued(inbox),
-      agent,
-      usage,
-      ...facts,
-    };
+    return committedSnapshot(sessionId, view, messages, facts, liveAssistant);
   }
+
   project(current);
   let snapshot = capture(current);
 
@@ -504,6 +507,20 @@ export async function createConversationObservation(options: ConversationObserva
     submissions.sort((a, b) => a.value.id - b.value.id);
     for (const change of submissions) emit({ type: "submission", record: change.value });
     if (now.inbox !== was.inbox) emit({ type: "inbox_update", items: queued(now.inbox) });
+    const inputs = queuedInputProjection(
+      parts(current).inbox,
+      current.docs["rukie.pending-input-facts"] as PendingInputFacts | undefined,
+    );
+    if (
+      !isDeepStrictEqual(
+        inputs,
+        queuedInputProjection(
+          parts(before).inbox,
+          before.docs["rukie.pending-input-facts"] as PendingInputFacts | undefined,
+        ),
+      )
+    )
+      emit({ type: "queued_inputs_update", items: inputs });
     if (now.agent !== was.agent) emit({ type: "agent_changed", agent: now.agent });
     if (now.usage !== was.usage) emit({ type: "usage_changed", usage: now.usage });
     for (const item of compactions)
@@ -620,5 +637,41 @@ export async function createConversationObservation(options: ConversationObserva
       stop();
       unsubscribeClose();
     },
+  };
+}
+
+/** Shared snapshot frame for live observation and lease-free committed reads. */
+export function committedSnapshot(
+  sessionId: string,
+  view: Pick<ConversationView, "entries" | "docs">,
+  messages: readonly TranscriptMessage[],
+  facts: Facts,
+  assistant: (message: AssistantMessage) => TranscriptAssistantMessage = (message) => message,
+): Snapshot {
+  const { live, inbox, agent, usage } = parts(view);
+  return {
+    type: "snapshot",
+    sessionId,
+    entries: view.entries,
+    messages,
+    ...(live.run ? { run: { inputs: live.run.inputs } } : {}),
+    ...(live.generation
+      ? {
+          generation: {
+            ...live.generation,
+            ...(live.generation.message ? { message: assistant(live.generation.message) } : {}),
+          },
+        }
+      : {}),
+    tools: live.tools ?? [],
+    compactions: live.compactions ?? [],
+    inbox: queued(inbox),
+    queuedInputs: queuedInputProjection(
+      inbox,
+      view.docs["rukie.pending-input-facts"] as PendingInputFacts | undefined,
+    ),
+    agent,
+    usage,
+    ...facts,
   };
 }

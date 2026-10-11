@@ -1,6 +1,6 @@
 # Rukie
 
-Rukie 是 coding agent。Agent Core 组合原生 durable 执行、工具、MCP、skills 和上下文注入；Headless CLI、TUI 和以后的桌面端都是驱动它的 frontend。
+Rukie 是 coding agent。Agent Core 组合原生 durable 执行、工具、MCP、skills 和上下文注入；Headless CLI、TUI 和桌面端本机 server 都是驱动它的 frontend。
 
 ## Language
 
@@ -11,7 +11,7 @@ Rukie 是 coding agent。Agent Core 组合原生 durable 执行、工具、MCP�
 _Avoid_: engine, backend
 
 **Frontend**:
-驱动 Agent Core 并把 run 呈现给用户的程序：Headless CLI、TUI，以后还有桌面端。
+驱动 Agent Core 并把 run 呈现给用户的程序：Headless CLI、TUI，以及为桌面界面提供网络接口的本机 server。
 _Avoid_: client, UI
 
 **Headless CLI**:
@@ -91,7 +91,7 @@ _Avoid_: snapshot, backup, undo point
 _Avoid_: undo, revert, rollback
 
 **Session Store**:
-Transcript、documents、任务与父子 ownership 的持久化位置。Headless CLI 和 TUI 使用启用 fsync 的原生 JSONL 目录；宿主保证单个写者，关闭或进程退出释放租约。新目录和索引与旧 Session 文件隔离，不自动导入旧数据。列表与只读查询不启动模型或调度恢复；SQLite 数据后端属于未来桌面方向。
+Transcript、documents、任务与父子 ownership 的持久化位置。Headless CLI、TUI 和桌面端本机 server 共用启用 fsync 的原生 JSONL 目录；宿主保证单个写者，关闭或进程退出释放租约。新目录和索引与旧 Session 文件隔离，不自动导入旧数据。列表与只读查询不启动模型或调度恢复。桌面端的项目、置顶与侧栏偏好由独立注册表保存，不属于 SessionStore；见 [ADR-0032](docs/adr/0032-desktop-shares-jsonl-store.md)。
 _Avoid_: database, history store
 
 **Locale**:
