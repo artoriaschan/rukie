@@ -83,7 +83,7 @@ _Avoid_: tool card, tool presentation
 _Avoid_: task list, plan
 
 **Checkpoint**:
-某条真实 user prompt 之前、文件工具 `write` / `edit` 首次写入每个文件前的原样内容。每条真实 user prompt 一个；内部续跑与通知不另建。以 prompt 的 transcript entry id 为锚点，文件路径经权限相同的 realpath 规范化，引用作为 Tool State `checkpoint` 持久化。备份存放在 Session 的 homeDir 下 `~/.rukie/file-history/<sessionId>/`；bash 与 MCP 工具造成的改动不在其中。子代理与父 Session 共用记录器，备份引用归父级当前 Checkpoint document；工具消息留在实际执行的子对话中。子 Session 不建自己的 Checkpoint。
+某条真实 user prompt 之前、文件工具 `write` / `edit` 首次写入每个文件前的原样内容。每条真实 user prompt 一个；内部续跑与通知不另建。以 prompt 的 transcript entry id 为锚点，文件路径经权限相同的 realpath 规范化，引用作为 Tool State `checkpoint` 持久化。Headless CLI 和 TUI 的备份存放在 `homeDir/.rukie/file-history/<sessionId>/`；桌面端备份存放在独立数据根下的 `file-history/<sessionId>/`，document 保存相对引用，清理保留仍被历史分支引用的文件。bash 与 MCP 工具造成的改动不在其中。子代理与父 Session 共用记录器，备份引用归父级当前 Checkpoint document；工具消息留在实际执行的子对话中。子 Session 不建自己的 Checkpoint。
 _Avoid_: snapshot, backup, undo point
 
 **Rewind**:
@@ -91,7 +91,7 @@ _Avoid_: snapshot, backup, undo point
 _Avoid_: undo, revert, rollback
 
 **Session Store**:
-Transcript、documents、任务与父子 ownership 的持久化位置。Headless CLI、TUI 和桌面端本机 server 共用启用 fsync 的原生 JSONL 目录；宿主保证单个写者，关闭或进程退出释放租约。新目录和索引与旧 Session 文件隔离，不自动导入旧数据。列表与只读查询不启动模型或调度恢复。桌面端的项目、置顶与侧栏偏好由独立注册表保存，不属于 SessionStore；见 [ADR-0032](docs/adr/0032-desktop-shares-jsonl-store.md)。
+Transcript、documents、任务与父子 ownership 的持久化位置。Headless CLI 和 TUI 默认使用启用 fsync 的原生 JSONL 目录；桌面端本机 server 使用独立应用数据根下每个根 Session 的原生 SQLite Storage，同一根 Session 的子代理共用该存储。宿主保证单个写者，关闭或进程退出释放租约。桌面端与终端的 Session、配置及凭据隔离，不自动导入或回退到旧数据。列表与只读查询只观察已提交状态，不取得执行租约、不启动模型或调度恢复。桌面端的项目、Session 索引、置顶与偏好由独立应用数据库保存，不属于 Session 的执行事实；见 [ADR-0035](docs/adr/0035-desktop-isolated-sqlite-storage.md)。
 _Avoid_: database, history store
 
 **Locale**:
