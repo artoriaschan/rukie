@@ -214,19 +214,18 @@ function TraceRow({ item }: { item: AgentActivityTrace }) {
   return (
     <div
       className={cn(
-        "grid min-h-8 items-center gap-2.5 rounded-md px-1.5 py-0.5",
+        "grid min-h-7 items-center gap-2 rounded-md text-ui-sm text-muted-foreground",
         showIcon ? "grid-cols-[1rem_auto_minmax(0,1fr)]" : "grid-cols-[auto_minmax(0,1fr)]",
       )}
     >
       {showIcon ? (
-        <span
-          aria-hidden="true"
-          className="grid size-4 place-items-center text-muted-foreground/70"
-        >
+        <span aria-hidden="true" className="grid size-4 place-items-center text-muted-foreground">
           {item.icon ?? <TraceIcon kind={item.kind} />}
         </span>
       ) : null}
-      <div className={cn("min-w-0 font-medium text-foreground/90", !item.detail && "col-span-2")}>
+      <div
+        className={cn("min-w-0 font-normal text-muted-foreground", !item.detail && "col-span-2")}
+      >
         {item.collapsible ? (
           <button
             id={triggerId}

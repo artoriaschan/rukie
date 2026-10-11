@@ -12,6 +12,7 @@ import { Markdown } from "./markdown";
 import { ToolRow } from "./tool-row";
 import { ToolApproval, ToolApprovalCode } from "./agents/tool-approval";
 import { AgentActivity, type AgentActivityItem } from "./agents/agent-activity";
+import { ThinkingShimmer } from "./agents/loading-states/thinking-shimmer";
 import { StreamingResponse } from "./agents/streaming-response";
 function Group({
   group,
@@ -84,11 +85,13 @@ function Group({
           )}
         </span>
       ) : null}
-      <span>
-        {t(group.status === "running" ? "conversation.processing" : "conversation.elapsed", {
-          duration: elapsed,
-        })}
-      </span>
+      {group.status === "running" ? (
+        <ThinkingShimmer className="text-ui-sm font-normal">
+          {t("conversation.processing", { duration: elapsed })}
+        </ThinkingShimmer>
+      ) : (
+        <span>{t("conversation.elapsed", { duration: elapsed })}</span>
+      )}
     </span>
   );
   const sections: Array<
@@ -213,7 +216,7 @@ function Group({
     });
   }
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-3 px-5 py-4">
+    <div className="mx-auto flex max-w-3xl flex-col gap-2 px-5 py-3">
       {user ? (
         <MessageBubble align="end">
           <MessageBubbleContent>
@@ -251,7 +254,7 @@ function Group({
         renderWorkingStatus={() => title}
         renderCompletedStatus={() => title}
         renderContent={({ expanded: activityOpen, contentId, triggerId }) => (
-          <div id={contentId} role="region" aria-labelledby={triggerId} className="space-y-3 py-2">
+          <div id={contentId} role="region" aria-labelledby={triggerId} className="space-y-2 py-1">
             {sections.map((section, index) => {
               if (section.type === "message") return <div key={section.id}>{section.content}</div>;
               const working = group.status === "running" && index === sections.length - 1;
@@ -295,7 +298,7 @@ function Group({
                     ? Wrench
                     : Sparkles;
               const label = (
-                <span className="flex items-center gap-2 text-ui-sm">
+                <span className="flex items-center gap-2 text-ui-sm font-normal text-muted-foreground">
                   <Icon aria-hidden="true" className="size-4 shrink-0" />
                   {summary}
                 </span>
@@ -312,7 +315,7 @@ function Group({
                     maxHeight={null}
                     renderWorkingStatus={() => label}
                     renderCompletedStatus={() => label}
-                    contentClassName="ml-2 border-l border-border pl-2"
+                    contentClassName="py-1"
                   />
                 </AgentDisclosure>
               );

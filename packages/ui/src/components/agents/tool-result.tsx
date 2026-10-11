@@ -235,7 +235,7 @@ export function ToolResult({
         aria-expanded={currentOpen}
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
-        className="group flex min-h-9 w-full items-center gap-2 rounded-md py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="group flex min-h-7 w-full items-center gap-2 rounded-md text-ui-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <span
           aria-hidden="true"
@@ -244,7 +244,7 @@ export function ToolResult({
           {icon ?? <KindIcon kind={kind} />}
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="min-w-0 truncate font-mono text-foreground/90">
+          <span className="min-w-0 truncate font-mono text-muted-foreground">
             <ActionSwapRollText value={titleKey}>{title}</ActionSwapRollText>
           </span>
           {meta ? (

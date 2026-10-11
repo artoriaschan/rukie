@@ -41,12 +41,19 @@ test("App shows committed and streaming replies, with failed tool output expande
       },
     });
     await expect.element(screen.getByText("parser", { exact: true })).toBeVisible();
+    expect(
+      screen
+        .getByRole("article", { name: "Response 1", exact: true })
+        .element()
+        .querySelector(".beui-text-shimmer"),
+    ).not.toBeNull();
     const assistant = {
       role: "assistant",
       entryId: "a",
       timestamp: 2,
       content: [
         { type: "text", text: "Checking **parser**" },
+        { type: "thinking", thinking: "Checking execution" },
         {
           type: "toolCall",
           id: "call",
@@ -92,6 +99,28 @@ test("App shows committed and streaming replies, with failed tool output expande
     const tool = screen.getByRole("button", { name: /check Ran command/ }).element();
     const traceRow = tool.closest('[role="listitem"]')!;
     expect(traceRow.querySelectorAll(".lucide-square-terminal")).toHaveLength(1);
+    const reasoning = screen.getByRole("button", { name: "Reasoning", exact: true }).element();
+    expect(reasoning.getAttribute("aria-expanded")).toBe("false");
+    const thinkingIcon = reasoning.closest('[role="listitem"]')!.querySelector(".lucide-sparkles")!;
+    const toolIcon = tool.querySelector(".lucide-square-terminal")!;
+    expect(thinkingIcon.getBoundingClientRect().left).toBe(toolIcon.getBoundingClientRect().left);
+    expect(reasoning.getBoundingClientRect().left).toBe(toolIcon.getBoundingClientRect().right + 8);
+    expect(getComputedStyle(reasoning).fontSize).toBe("12px");
+    expect(getComputedStyle(tool).fontSize).toBe("12px");
+    expect(getComputedStyle(reasoning).color).toBe(
+      getComputedStyle(tool.querySelector(".font-mono")!).color,
+    );
+    expect(tool.getBoundingClientRect().height).toBeCloseTo(28);
+    const activity = reasoning.closest('[data-content="trace"]')!;
+    const list = activity.querySelector('[role="list"]')!;
+    expect(getComputedStyle(list).borderLeftWidth).toBe("0px");
+    expect(getComputedStyle(list).paddingLeft).toBe("0px");
+    expect(getComputedStyle(list).paddingTop).toBe("4px");
+    await userEvent.click(activity.querySelector("button")!);
+    expect(activity.querySelector("button")!.getAttribute("aria-expanded")).toBe("false");
+    expect(getComputedStyle(list).borderLeftWidth).toBe("0px");
+    await userEvent.click(activity.querySelector("button")!);
+
     expect(
       getComputedStyle(screen.getByText("Parser failed", { exact: true }).element()).color,
     ).toBe("rgb(7, 14, 21)");
@@ -120,6 +149,12 @@ test("App shows committed and streaming replies, with failed tool output expande
     });
     await expect.element(screen.getByRole("alert")).toHaveTextContent("Provider unavailable");
     await expect.element(screen.getByRole("feed")).toHaveAttribute("aria-busy", "false");
+    expect(
+      screen
+        .getByRole("article", { name: "Response 1", exact: true })
+        .element()
+        .querySelector(".beui-text-shimmer"),
+    ).toBeNull();
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
