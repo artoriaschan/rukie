@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { FileText, Sparkles, SquareTerminal, Wrench } from "lucide-react";
 import { AgentDisclosure } from "./agents/agent-disclosure";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -364,16 +364,20 @@ function Group({
   );
 }
 export function Transcript({
+  viewportRef,
   state,
   decisions,
   waiting,
 }: {
+  viewportRef?: RefObject<HTMLDivElement | null>;
   state: TranscriptState;
   decisions: PermissionDecision[];
   waiting: boolean;
 }) {
   const t = useAppText();
-  const viewport = useRef<HTMLDivElement>(null);
+  const ownViewport = useRef<HTMLDivElement>(null);
+  const viewport = viewportRef ?? ownViewport;
+  const feedId = useId();
   const [following, setFollowing] = useState(true);
   const currentGroup =
     state.groups.findLast((group) => group.status === "running") ?? state.groups.at(-1);
@@ -391,11 +395,12 @@ export function Transcript({
   return (
     <div className="relative flex min-h-0 flex-1">
       <div
+        id={feedId}
         role="feed"
         aria-label={t("conversation.feed")}
         aria-busy={state.active}
         ref={viewport}
-        className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain"
+        className="transcript-viewport min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain"
         onScroll={() => {
           const element = viewport.current;
           if (element)

@@ -339,3 +339,10 @@
 .dark .shiki-token {
   color: var(--shiki-dark, currentColor);
 }
+
+.transcript-viewport {
+  scrollbar-width: none;
+}
+.transcript-viewport::-webkit-scrollbar {
+  display: none;
+}

@@ -191,6 +191,9 @@ function ProgressDots({ current, ids }: { current: number; ids: string[] }) {
 }
 
 export function ApprovalCard({
+  disabled = false,
+  rejectLabel,
+  secondaryAction,
   title: titleProp,
   description,
   children,
@@ -278,7 +281,8 @@ export function ApprovalCard({
       question.multiple ||
       question.autoAdvance === false ||
       currentStep >= questions.length - 1 ||
-      busy
+      busy ||
+      disabled
     ) {
       return;
     }
@@ -343,6 +347,7 @@ export function ApprovalCard({
               <button
                 type="button"
                 aria-label={componentText("component.dismiss")}
+                disabled={busy || disabled}
                 onClick={onDismiss}
                 className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
@@ -367,7 +372,7 @@ export function ApprovalCard({
                   <QuestionOptions
                     question={question}
                     answer={currentAnswer}
-                    disabled={busy}
+                    disabled={busy || disabled}
                     onChange={updateCurrentAnswer}
                     onSingleSelect={queueAutoAdvance}
                   />
@@ -390,7 +395,7 @@ export function ApprovalCard({
                       variant="ghost"
                       size="icon"
                       aria-label={componentText("component.previous-question")}
-                      disabled={busy || currentStep === 0}
+                      disabled={busy || disabled || currentStep === 0}
                       onClick={() => setStep(currentStep - 1)}
                       className="rounded-full"
                     >
@@ -406,7 +411,7 @@ export function ApprovalCard({
                       ? componentText("component.submit-response")
                       : componentText("component.next-question")
                   }
-                  disabled={busy || !isAnswered(currentAnswer)}
+                  disabled={busy || disabled || !isAnswered(currentAnswer)}
                   onClick={continueQuestion}
                   className="ml-auto rounded-full"
                 >
@@ -424,14 +429,21 @@ export function ApprovalCard({
               </div>
             ) : (
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Button size="sm" disabled={busy} onClick={onApprove} className="rounded-full">
+                <Button
+                  data-permission-primary
+                  size="sm"
+                  disabled={busy || disabled}
+                  onClick={onApprove}
+                  className="rounded-full"
+                >
                   {approveLabel}
                 </Button>
+                {secondaryAction}
                 {onRequestChanges ? (
                   <Button
                     variant="secondary"
                     size="sm"
-                    disabled={busy}
+                    disabled={busy || disabled}
                     onClick={onRequestChanges}
                     className="rounded-full"
                   >
@@ -442,11 +454,11 @@ export function ApprovalCard({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={busy}
+                    disabled={busy || disabled}
                     onClick={onReject}
                     className="rounded-full text-muted-foreground hover:text-danger hover:text-danger"
                   >
-                    {componentText("component.reject")}
+                    {rejectLabel ?? componentText("component.reject")}
                   </Button>
                 ) : null}
               </div>

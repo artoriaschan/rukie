@@ -5,6 +5,7 @@ import {
   useState,
   useSyncExternalStore,
   type ComponentType,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import {
@@ -39,6 +40,7 @@ import { useErrorText } from "./error";
 export type AppHost = Pick<DesktopHost, "getConnection"> &
   Partial<Omit<DesktopHost, "getConnection">>;
 export interface ConversationProps {
+  footer: (approval?: ReactNode) => ReactNode;
   sessionId: string;
   view: SessionViewState;
   connected: boolean;
@@ -399,6 +401,108 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             : "";
       })
       .join("\n\n") ?? "";
+  const footer = (approval?: ReactNode) => (
+    <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-2 px-3 pb-4 sm:px-6">
+      {!state.selected ? (
+        <Menu.DropdownMenu>
+          <Menu.DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="self-start">
+              <Folder className="size-4" />
+              {targetProject?.name ?? t("app.workspace")}
+            </Button>
+          </Menu.DropdownMenuTrigger>
+          <Menu.DropdownMenuContent>
+            <Menu.DropdownMenuGroup>
+              <Menu.DropdownMenuItem onSelect={() => store.select(null, null)}>
+                {t("app.workspace")}
+              </Menu.DropdownMenuItem>
+              {state.projects.map((project) => (
+                <Menu.DropdownMenuItem
+                  key={project.id}
+                  onSelect={() => store.select(null, project.id)}
+                >
+                  {project.name}
+                </Menu.DropdownMenuItem>
+              ))}
+              <Menu.DropdownMenuItem onSelect={() => safe(addProject)}>
+                {t("app.add-project")}
+              </Menu.DropdownMenuItem>
+            </Menu.DropdownMenuGroup>
+          </Menu.DropdownMenuContent>
+        </Menu.DropdownMenu>
+      ) : null}
+      {!connected ? (
+        <div role="status" className="rounded-lg border border-border bg-card p-3">
+          <div className="flex items-center gap-2">
+            {state.connection === "reconnecting" ? (
+              <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <WifiOff className="size-4" />
+            )}
+            <span>
+              {t(state.connection === "reconnecting" ? "app.reconnecting" : "app.disconnected")}
+            </span>
+            {state.connection === "disconnected" ? (
+              <Button size="sm" variant="secondary" onClick={() => safe(() => client.connect())}>
+                {t("app.retry")}
+              </Button>
+            ) : null}
+          </div>
+          <p className="mt-1 text-ui-sm text-muted-foreground">{t("app.connection-explanation")}</p>
+        </div>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-ui-sm text-danger">
+          {error}
+        </p>
+      ) : null}
+      {approval ??
+        (view.busy ? (
+          <div
+            role="status"
+            className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3"
+          >
+            <p>{t("app.busy")}</p>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!connected}
+              onClick={() => state.selected && safe(() => select(state.selected!))}
+            >
+              {t("app.retry")}
+            </Button>
+          </div>
+        ) : (
+          <Composer
+            draft={draft}
+            images={images}
+            onDraft={setDraft}
+            onImages={setImages}
+            disabled={!connected}
+            submitting={sending}
+            running={Boolean(view.running)}
+            permissionMode={view.permissionMode ?? permission}
+            onPermission={setMode}
+            models={state.models}
+            model={
+              state.selected
+                ? view.snapshot?.model
+                : model
+                  ? `${model.provider}/${model.modelId}`
+                  : state.models.find((model) => model.authenticated)?.spec
+            }
+            thinkingLevel={view.thinkingLevel ?? model?.thinkingLevel}
+            contextReport={view.contextReport}
+            openingContext={view.openingContext}
+            compactionPoints={view.snapshot?.compactions.length}
+            onModel={setSelection}
+            onSend={() => safe(send)}
+            onStop={() => safe(stop)}
+          />
+        ))}
+    </div>
+  );
+
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-card text-ui-base text-foreground">
       <header className="flex h-11 shrink-0 select-none items-center [-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag]">
@@ -562,6 +666,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 {Conversation ? (
                   <Conversation
                     key={state.selected}
+                    footer={footer}
                     sessionId={state.selected}
                     view={view}
                     connected={connected}
@@ -612,114 +717,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 </h1>
               </div>
             )}
-            <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-2 px-3 pb-4 sm:px-6">
-              {!state.selected ? (
-                <Menu.DropdownMenu>
-                  <Menu.DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="self-start">
-                      <Folder className="size-4" />
-                      {targetProject?.name ?? t("app.workspace")}
-                    </Button>
-                  </Menu.DropdownMenuTrigger>
-                  <Menu.DropdownMenuContent>
-                    <Menu.DropdownMenuGroup>
-                      <Menu.DropdownMenuItem onSelect={() => store.select(null, null)}>
-                        {t("app.workspace")}
-                      </Menu.DropdownMenuItem>
-                      {state.projects.map((project) => (
-                        <Menu.DropdownMenuItem
-                          key={project.id}
-                          onSelect={() => store.select(null, project.id)}
-                        >
-                          {project.name}
-                        </Menu.DropdownMenuItem>
-                      ))}
-                      <Menu.DropdownMenuItem onSelect={() => safe(addProject)}>
-                        {t("app.add-project")}
-                      </Menu.DropdownMenuItem>
-                    </Menu.DropdownMenuGroup>
-                  </Menu.DropdownMenuContent>
-                </Menu.DropdownMenu>
-              ) : null}
-              {!connected ? (
-                <div role="status" className="rounded-lg border border-border bg-card p-3">
-                  <div className="flex items-center gap-2">
-                    {state.connection === "reconnecting" ? (
-                      <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <WifiOff className="size-4" />
-                    )}
-                    <span>
-                      {t(
-                        state.connection === "reconnecting"
-                          ? "app.reconnecting"
-                          : "app.disconnected",
-                      )}
-                    </span>
-                    {state.connection === "disconnected" ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => safe(() => client.connect())}
-                      >
-                        {t("app.retry")}
-                      </Button>
-                    ) : null}
-                  </div>
-                  <p className="mt-1 text-ui-sm text-muted-foreground">
-                    {t("app.connection-explanation")}
-                  </p>
-                </div>
-              ) : null}
-              {error ? (
-                <p role="alert" className="text-ui-sm text-danger">
-                  {error}
-                </p>
-              ) : null}
-              {view.busy ? (
-                <div
-                  role="status"
-                  className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3"
-                >
-                  <p>{t("app.busy")}</p>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={!connected}
-                    onClick={() => state.selected && safe(() => select(state.selected!))}
-                  >
-                    {t("app.retry")}
-                  </Button>
-                </div>
-              ) : (
-                <Composer
-                  draft={draft}
-                  images={images}
-                  onDraft={setDraft}
-                  onImages={setImages}
-                  disabled={!connected}
-                  submitting={sending}
-                  running={Boolean(view.running)}
-                  permissionMode={view.permissionMode ?? permission}
-                  onPermission={setMode}
-                  models={state.models}
-                  model={
-                    state.selected
-                      ? view.snapshot?.model
-                      : model
-                        ? `${model.provider}/${model.modelId}`
-                        : state.models.find((model) => model.authenticated)?.spec
-                  }
-                  thinkingLevel={view.thinkingLevel ?? model?.thinkingLevel}
-                  contextReport={view.contextReport}
-                  openingContext={view.openingContext}
-                  compactionPoints={view.snapshot?.compactions.length}
-                  onModel={setSelection}
-                  onSend={() => safe(send)}
-                  onStop={() => safe(stop)}
-                />
-              )}
-            </div>
+            {!state.selected ? footer() : null}
           </main>
         </div>
       </div>

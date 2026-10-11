@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import type { PresentedPermissionRequest } from "../lib/transcript";
 import type { QueuedInput } from "@rukie/agent";
 import type { SubagentPresentation } from "../lib/transcript";
-import { ToolApproval, ToolApprovalCode } from "./agents/tool-approval";
+import { ApprovalCard } from "./agents/approval-card";
+import { ToolApprovalCode } from "./agents/tool-approval";
 import { TodoList, type TodoItem } from "./agents/todo-list";
 import { Button } from "./motion/button/base";
 import { useAppText } from "../lib/i18n";
@@ -92,45 +93,49 @@ export function PermissionDock({
     return () => window.removeEventListener("keydown", key, true);
   }, [first, connected, pending, shortcutsEnabled, onReply]);
   return (
-    <div ref={region} className="mx-auto w-full max-w-3xl shrink-0 px-5">
-      {requests.map((request) => (
+    <div ref={region} className="w-full shrink-0">
+      {first ? (
         <section
-          key={request.identity.epoch}
+          key={first.identity.epoch}
+          role="region"
           aria-label={t("conversation.permission")}
           className="py-2"
         >
-          <ToolApproval
-            tool={request.toolName}
-            title={t("conversation.permission-title", { tool: request.toolName })}
+          <ApprovalCard
+            title={t("conversation.permission-title", { tool: first.toolName })}
+            description={first.reason}
             approveLabel={t("conversation.permission-allow")}
-            sessionAllowLabel={t("conversation.permission-session")}
-            denyLabel={t("conversation.permission-deny")}
-            description={request.reason}
+            rejectLabel={t("conversation.permission-deny")}
+            secondaryAction={
+              first.sessionAllow ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!connected || pending !== null}
+                  onClick={() => onReply(first, "allow-session")}
+                >
+                  {t("conversation.permission-session")}
+                </Button>
+              ) : null
+            }
             disabled={!connected || pending !== null}
-            status={pending === request.identity.epoch ? "approving" : "pending"}
-            defaultOpen
-            parameters={[
-              {
-                id: "command",
-                label: request.origin?.description ?? request.toolName,
-                value: (
-                  <ToolApprovalCode
-                    code={
-                      request.callView?.card === "terminal"
-                        ? request.callView.command
-                        : (JSON.stringify(request.args, null, 2) ?? "")
-                    }
-                    language="json"
-                  />
-                ),
-              },
-            ]}
-            onApprove={() => onReply(request, "allow")}
-            onAlwaysAllow={() => onReply(request, "allow-session")}
-            onDeny={() => onReply(request, "deny")}
-          />
+            status={pending === first.identity.epoch ? "submitting" : "pending"}
+            onApprove={() => onReply(first, "allow")}
+            onReject={() => onReply(first, "deny")}
+          >
+            <div className="max-h-40 overflow-y-auto">
+              <ToolApprovalCode
+                code={
+                  first.callView?.card === "terminal"
+                    ? first.callView.command
+                    : (JSON.stringify(first.args, null, 2) ?? "")
+                }
+                language={first.callView?.card === "terminal" ? "bash" : "json"}
+              />
+            </div>
+          </ApprovalCard>
         </section>
-      ))}
+      ) : null}
     </div>
   );
 }

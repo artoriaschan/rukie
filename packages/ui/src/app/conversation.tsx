@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PresentedPermissionRequest } from "../lib/transcript";
 import type { ConversationProps } from "./index";
 import { WireError } from "../client";
+import { TranscriptScrollbar } from "../components/transcript-scrollbar";
 import { Transcript } from "../components/transcript";
 import { PermissionDock, QueuedInputs, Summary } from "../components/conversation-dock";
 import { useAppText } from "../lib/i18n";
@@ -28,6 +29,7 @@ function queued(value: unknown): value is QueuedInput {
   );
 }
 export function AppConversation({
+  footer,
   sessionId,
   view,
   connected,
@@ -38,6 +40,20 @@ export function AppConversation({
   onImages,
   onInteractionResolved,
 }: ConversationProps) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const hadApproval = useRef(false);
+  const approvalCount = Object.keys(view.interactions).length;
+  useEffect(() => {
+    if (
+      hadApproval.current &&
+      approvalCount === 0 &&
+      document.activeElement === document.body &&
+      !document.querySelector('[role="dialog"][aria-modal="true"], [role="menu"]')
+    )
+      panel.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+    hadApproval.current = approvalCount > 0;
+  }, [approvalCount]);
   const t = useAppText();
   const errorText = useErrorText();
   const [pending, setPending] = useState<string | null>(null);
@@ -87,10 +103,11 @@ export function AppConversation({
     }
   };
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div ref={panel} className="relative flex min-h-0 flex-1 flex-col">
       {state ? (
         <div className={summaryOpen ? "flex min-h-0 flex-1 md:pr-80" : "flex min-h-0 flex-1"}>
           <Transcript
+            viewportRef={viewport}
             state={state}
             decisions={Object.values(view.permissionDecisions ?? {})}
             waiting={Object.keys(view.interactions).length > 0}
@@ -109,15 +126,6 @@ export function AppConversation({
           onClose={onCloseSummary}
         />
       ) : null}
-      <PermissionDock
-        requests={Object.values(view.interactions)}
-        connected={connected}
-        pending={pending}
-        shortcutsEnabled={!summaryOpen}
-        onReply={(permission, answer) => {
-          void reply(permission, answer);
-        }}
-      />
       {state ? (
         <QueuedInputs
           items={state.queued}
@@ -130,6 +138,20 @@ export function AppConversation({
           }}
         />
       ) : null}
+      {footer(
+        Object.keys(view.interactions).length ? (
+          <PermissionDock
+            requests={Object.values(view.interactions)}
+            connected={connected}
+            pending={pending}
+            shortcutsEnabled={!summaryOpen}
+            onReply={(permission, answer) => {
+              void reply(permission, answer);
+            }}
+          />
+        ) : undefined,
+      )}
+      {state ? <TranscriptScrollbar viewport={viewport} /> : null}
     </div>
   );
 }

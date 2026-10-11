@@ -1274,3 +1274,117 @@ test("navigation previews escape the scroll rail and current response stays high
     await commands.stopWire(connection.port);
   }
 });
+
+test("approval queue replaces the composer and the full edge scrollbar maps transcript endpoints", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const send = async (facts: object) => {
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "one", ...facts }),
+    });
+  };
+  const identity = (epoch: string) => ({ epoch, requestId: epoch, taskId: 1, conversationId: 1 });
+  const ask = (epoch: string) =>
+    send({
+      type: "interaction_requested",
+      identity: identity(epoch),
+      request: {
+        identity: identity(epoch),
+        toolName: "bash",
+        toolCallId: epoch,
+        args: { command: epoch },
+        mode: "ask",
+        reason: epoch,
+        sessionAllow: { kind: "tool", rule: "bash" },
+      },
+    });
+  try {
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    await send({
+      type: "snapshot",
+      model: "test/script",
+      compactions: [],
+      messages: [
+        { role: "user", entryId: "prompt", timestamp: 1, content: "Long conversation" },
+        {
+          role: "assistant",
+          entryId: "reply",
+          timestamp: 2,
+          content: [
+            {
+              type: "text",
+              text: Array.from(
+                { length: 40 },
+                (_, index) => `Paragraph ${index} of conversation content.`,
+              ).join("\n\n"),
+            },
+          ],
+        },
+      ],
+      toolStates: {},
+      run: { inputs: [] },
+    });
+    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Preserved draft");
+    await ask("First approval");
+    await ask("Second approval");
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Permission required" }).elements()).toHaveLength(1);
+    await expect
+      .element(screen.getByText("Second approval", { exact: true }))
+      .not.toBeInTheDocument();
+    const feed = screen.getByRole("feed").element();
+    expect(feed.querySelector('[aria-label="Permission required"]')).toBeNull();
+    await screen.getByRole("button", { name: "Allow ↵", exact: true }).click();
+    await expect.element(screen.getByText("Second approval", { exact: true })).toBeVisible();
+    await screen.getByRole("button", { name: "Deny Esc", exact: true }).click();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toHaveValue("Preserved draft");
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toHaveFocus();
+    const scrollbar = screen.getByRole("scrollbar", { name: "Conversation scroll position" });
+    await expect.element(scrollbar).toBeVisible();
+    const track = scrollbar.element();
+    const thumb = track.firstElementChild!;
+    const verifyBottom = async () => {
+      track.focus();
+      await userEvent.keyboard("{End}");
+      await expect
+        .poll(() =>
+          Math.abs(thumb.getBoundingClientRect().bottom - track.getBoundingClientRect().bottom),
+        )
+        .toBeLessThan(1);
+      expect(feed.scrollTop + feed.clientHeight).toBeGreaterThanOrEqual(feed.scrollHeight - 1);
+    };
+    await verifyBottom();
+    expect(track.getBoundingClientRect().height).toBeGreaterThan(
+      feed.getBoundingClientRect().height,
+    );
+    await userEvent.keyboard("{Home}");
+    await expect.poll(() => feed.scrollTop).toBe(0);
+    await expect
+      .poll(() => Math.abs(thumb.getBoundingClientRect().top - track.getBoundingClientRect().top))
+      .toBeLessThan(1);
+    await userEvent.keyboard("{PageDown}");
+    await expect.poll(() => feed.scrollTop).toBeGreaterThan(0);
+    await page.viewport(420, 700);
+    await expect.poll(() => feed.clientWidth).toBeLessThanOrEqual(420);
+    await expect
+      .poll(() => Number(track.getAttribute("aria-valuemax")))
+      .toBe(Math.round(feed.scrollHeight - feed.clientHeight));
+    await verifyBottom();
+    expect(feed.scrollWidth).toBe(feed.clientWidth);
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});

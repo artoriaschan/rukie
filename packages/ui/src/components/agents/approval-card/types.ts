@@ -49,6 +49,9 @@ export interface ApprovalCardProps {
   onReject?: () => void;
   onRequestChanges?: () => void;
   onDismiss?: () => void;
+  disabled?: boolean;
+  rejectLabel?: ReactNode;
+  secondaryAction?: ReactNode;
   approveLabel?: ReactNode;
   submitLabel?: ReactNode;
   result?: ReactNode;

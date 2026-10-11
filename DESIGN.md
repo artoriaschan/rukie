@@ -177,3 +177,9 @@ ANSI output preserves color meaning through `ansi-*` theme tokens. Bright varian
 | `--ansi-bright-white`   | `#1f2328` | `#f0f6fc` |
 | `--diff-added-fg`       | `#116329` | `#aff5b4` |
 | `--diff-removed-fg`     | `#82071e` | `#ffdcd7` |
+
+## Conversation scrolling
+
+The conversation scrollbar occupies the full right edge of the chat panel, including the input or approval dock, and maps only the Transcript viewport's scroll range. Its thumb uses the muted foreground token, a 12px hit track, and a minimum 24px thumb. Native Transcript scrollbars are hidden to avoid duplicate controls. The scrollbar supports pointer dragging, track clicks, arrow and page keys, Home and End, with visible keyboard focus. This custom mapping is needed because a standard ScrollArea track is constrained to its scroll viewport and cannot include a separate fixed input dock.
+
+Pending permissions replace the input dock with one beUI Approval Card at a time; remaining permissions stay queued by their Interaction identity. Resolved permissions remain chronological Tool Approval entries in the Trace.
