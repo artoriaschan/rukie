@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
+import { App } from "../../src/app";
 import { ModelServices } from "../../src/app/model-services";
 import { UiLocaleProvider } from "../../src/lib/i18n";
 import type { ModelServiceSummary } from "@rukie/shared";
@@ -272,5 +273,34 @@ test("provider API changes accept compatible models and preserve incompatible dr
       .toHaveTextContent("Anthropic Messages (/v1/messages)");
   } finally {
     await incompatible.unmount();
+  }
+});
+
+test("settings returns keyboard focus and preserves chat geometry and draft", async () => {
+  const connection = await commands.startWire();
+  const services = { list: async () => [], save: async () => {}, delete: async () => {} };
+  const screen = await render(
+    <App host={{ getConnection: async () => connection, modelServices: services }} />,
+  );
+  try {
+    const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    await prompt.fill("preserved draft");
+    const main = screen.getByRole("main").element();
+    const baseline = main.getBoundingClientRect();
+    await screen.getByRole("button", { name: "Model services", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: "Back to app", exact: true }))
+      .toHaveFocus();
+    await screen.getByRole("button", { name: "Back to app", exact: true }).click();
+    await expect.element(prompt).toHaveValue("preserved draft");
+    await expect
+      .element(screen.getByRole("button", { name: "Model services", exact: true }))
+      .toHaveFocus();
+    const restored = main.getBoundingClientRect();
+    for (const key of ["left", "top", "width", "height"] as const)
+      expect(Math.abs(restored[key] - baseline[key])).toBeLessThanOrEqual(1);
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
   }
 });

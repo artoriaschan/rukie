@@ -82,6 +82,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [client] = useState(() => createWireClient(host));
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpener = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!settingsOpen) settingsOpener.current?.focus();
+  }, [settingsOpen]);
   const [sidebar, setSidebar] = useState(() => matchMedia("(min-width: 768px)").matches);
   const [ctrl, setCtrl] = useState(false);
   const [search, setSearch] = useState(false);
@@ -656,7 +660,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               size="icon"
               variant="ghost"
               aria-label={t("services.title")}
-              onClick={() => setSettingsOpen(true)}
+              onClick={(event) => {
+                settingsOpener.current = event.currentTarget;
+                setSettingsOpen(true);
+              }}
             >
               <Settings className="size-4" />
             </Button>
