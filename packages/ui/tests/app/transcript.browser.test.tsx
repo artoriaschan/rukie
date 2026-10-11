@@ -1212,6 +1212,7 @@ test("new-session creation hands edited input to the created Session without sel
 });
 
 test("navigation previews escape the scroll rail and current response stays highlighted after jumping elsewhere", async () => {
+  const wasDark = document.documentElement.classList.contains("dark");
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
   const screen = await render(<App host={{ getConnection: async () => connection }} />);
@@ -1244,9 +1245,35 @@ test("navigation previews escape the scroll rail and current response stays high
     const current = screen.getByRole("button", { name: "Jump to response 2", exact: true });
     await expect.element(current).toHaveAttribute("aria-current", "location");
     const old = screen.getByRole("button", { name: "Jump to response 1", exact: true });
+    const nav = screen.getByRole("navigation", { name: "Response navigation", exact: true });
+    const panel = screen.getByRole("feed").element().parentElement!.parentElement!.parentElement!;
+    const railBounds = () => nav.element().getBoundingClientRect();
+    const panelBounds = () => panel.getBoundingClientRect();
+    await expect.poll(() => railBounds().left - panelBounds().left).toBe(20);
+    await expect
+      .poll(() =>
+        Math.abs(
+          railBounds().top +
+            railBounds().height / 2 -
+            (panelBounds().top + panelBounds().height / 2),
+        ),
+      )
+      .toBeLessThan(1);
+    expect(railBounds().height).toBe(16);
+    const tick = (button: Element) =>
+      button.querySelector<HTMLElement>('[data-slot="preview-rail-tick"]')!;
+    await expect.poll(() => tick(current.element()).getBoundingClientRect().width).toBe(24);
+    expect(getComputedStyle(tick(current.element())).color).not.toBe(
+      getComputedStyle(tick(old.element())).color,
+    );
     await old.click();
     await userEvent.keyboard("{Tab}");
     old.element().focus();
+    await expect.poll(() => tick(old.element()).getBoundingClientRect().width).toBe(24);
+    expect(getComputedStyle(tick(current.element())).color).not.toBe(
+      getComputedStyle(tick(old.element())).color,
+    );
+    expect(getComputedStyle(tick(old.element())).color).toContain("0.25");
     await expect
       .poll(() => document.querySelector('[data-slot="preview-rail-card"]')?.textContent)
       .toContain("First final reply");
@@ -1268,10 +1295,78 @@ test("navigation previews escape the scroll rail and current response stays high
             .querySelector('[data-slot="preview-rail-tick"]')!
             .getBoundingClientRect().width,
       )
-      .toBeGreaterThan(40);
+      .toBe(24);
+    document.documentElement.classList.add("dark");
+    expect(getComputedStyle(tick(current.element())).color).not.toBe(
+      getComputedStyle(tick(old.element())).color,
+    );
+    expect(getComputedStyle(tick(old.element())).color).toContain("0.25");
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "interaction_requested",
+        sessionId: "one",
+        identity: {
+          epoch: "rail-approval",
+          requestId: "rail-approval",
+          taskId: 1,
+          conversationId: 1,
+        },
+        request: {
+          identity: {
+            epoch: "rail-approval",
+            requestId: "rail-approval",
+            taskId: 1,
+            conversationId: 1,
+          },
+          toolName: "bash",
+          toolCallId: "rail-approval",
+          args: { command: "Check Preview Rail" },
+          mode: "ask",
+          reason: "Check Preview Rail",
+          sessionAllow: { kind: "tool", rule: "bash" },
+        },
+      }),
+    });
+    await expect
+      .element(screen.getByRole("region", { name: "Permission required", exact: true }))
+      .toBeVisible();
+    await expect
+      .poll(() =>
+        Math.abs(
+          railBounds().top +
+            railBounds().height / 2 -
+            (panelBounds().top + panelBounds().height / 2),
+        ),
+      )
+      .toBeLessThan(1);
+    const feedBounds = screen.getByRole("feed").element().getBoundingClientRect();
+    expect(railBounds().top + railBounds().height / 2).toBeGreaterThan(
+      feedBounds.top + feedBounds.height / 2,
+    );
+    await screen.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
+    await page.viewport(420, 700);
+    await expect.element(current).toBeVisible();
+    const textBounds = screen
+      .getByText("First final reply", { exact: true })
+      .element()
+      .getBoundingClientRect();
+    expect(textBounds.left).toBeGreaterThan(railBounds().right);
+    await expect.poll(() => railBounds().left - panelBounds().left).toBe(20);
+    await expect
+      .poll(() =>
+        Math.abs(
+          railBounds().top +
+            railBounds().height / 2 -
+            (panelBounds().top + panelBounds().height / 2),
+        ),
+      )
+      .toBeLessThan(1);
   } finally {
+    document.documentElement.classList.toggle("dark", wasDark);
     await screen.unmount();
     await commands.stopWire(connection.port);
+    await page.viewport(1280, 900);
   }
 });
 

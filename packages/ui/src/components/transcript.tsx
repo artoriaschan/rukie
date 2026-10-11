@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { FileText, Sparkles, SquareTerminal, Wrench } from "lucide-react";
 import { AgentDisclosure } from "./agents/agent-disclosure";
@@ -365,11 +366,13 @@ function Group({
 }
 export function Transcript({
   viewportRef,
+  navigationContainer,
   state,
   decisions,
   waiting,
 }: {
   viewportRef?: RefObject<HTMLDivElement | null>;
+  navigationContainer?: HTMLElement | null;
   state: TranscriptState;
   decisions: PermissionDecision[];
   waiting: boolean;
@@ -394,6 +397,39 @@ export function Transcript({
     useAnimationFrameWithResizeObserver: true,
   });
   const items = virtual.getVirtualItems();
+  const navigation =
+    state.groups.length > 1 ? (
+      <div className="pointer-events-none absolute left-5 top-1/2 z-10 max-h-full w-6 -translate-y-1/2 overflow-y-auto">
+        <PreviewRail
+          className="pointer-events-auto min-h-0"
+          railClassName="w-6 [&_[data-slot=preview-rail-item]]:w-6 [&_[data-slot=preview-rail-tick]]:w-6 [&_[data-slot=preview-rail-tick]]:text-foreground/25 [&_[aria-current]_[data-slot=preview-rail-tick]]:text-foreground"
+          items={state.groups.map((group, index) => ({
+            id: group.id,
+            label: t("conversation.group", { index: index + 1 }),
+            ariaLabel: t("conversation.jump", { index: index + 1 }),
+            description: (
+              <div className="line-clamp-5">
+                {messageText(group.messages.find((message) => message.role === "user") ?? {})}
+                <br />
+                {messageText(
+                  group.messages.findLast((message) => message.role === "assistant") ?? {},
+                )}
+              </div>
+            ),
+          }))}
+          activeId={currentGroup?.id}
+          highlightActive
+          label={t("conversation.navigation")}
+          itemSize={8}
+          onItemSelect={(item) => {
+            virtual.scrollToIndex(
+              state.groups.findIndex((group) => group.id === item.id),
+              { align: "start" },
+            );
+          }}
+        />
+      </div>
+    ) : null;
   return (
     <div className="relative flex min-h-0 flex-1">
       <div
@@ -402,7 +438,7 @@ export function Transcript({
         aria-label={t("conversation.feed")}
         aria-busy={state.active}
         ref={viewport}
-        className="transcript-viewport min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain"
+        className={`transcript-viewport min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain${state.groups.length > 1 ? " pl-10" : ""}`}
         onScroll={() => {
           const element = viewport.current;
           if (element)
@@ -429,37 +465,7 @@ export function Transcript({
           })}
         </div>
       </div>
-      {state.groups.length > 1 ? (
-        <div className="pointer-events-none absolute bottom-12 left-0 top-3 hidden w-12 overflow-y-auto md:block">
-          <PreviewRail
-            className="pointer-events-auto min-h-0"
-            items={state.groups.map((group, index) => ({
-              id: group.id,
-              label: t("conversation.group", { index: index + 1 }),
-              ariaLabel: t("conversation.jump", { index: index + 1 }),
-              description: (
-                <div className="line-clamp-5">
-                  {messageText(group.messages.find((message) => message.role === "user") ?? {})}
-                  <br />
-                  {messageText(
-                    group.messages.findLast((message) => message.role === "assistant") ?? {},
-                  )}
-                </div>
-              ),
-            }))}
-            activeId={currentGroup?.id}
-            highlightActive
-            label={t("conversation.navigation")}
-            itemSize={12}
-            onItemSelect={(item) => {
-              virtual.scrollToIndex(
-                state.groups.findIndex((group) => group.id === item.id),
-                { align: "start" },
-              );
-            }}
-          />
-        </div>
-      ) : null}
+      {navigationContainer ? createPortal(navigation, navigationContainer) : navigation}
       {!following ? (
         <div className="absolute bottom-3 right-4">
           <Button

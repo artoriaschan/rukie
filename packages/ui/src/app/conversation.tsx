@@ -41,7 +41,7 @@ export function AppConversation({
   onInteractionResolved,
 }: ConversationProps) {
   const viewport = useRef<HTMLDivElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
+  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const hadApproval = useRef(false);
   const approvalCount = Object.keys(view.interactions).length;
   useEffect(() => {
@@ -51,9 +51,9 @@ export function AppConversation({
       document.activeElement === document.body &&
       !document.querySelector('[role="dialog"][aria-modal="true"], [role="menu"]')
     )
-      panel.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+      panel?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
     hadApproval.current = approvalCount > 0;
-  }, [approvalCount]);
+  }, [approvalCount, panel]);
   const t = useAppText();
   const errorText = useErrorText();
   const [pending, setPending] = useState<string | null>(null);
@@ -103,11 +103,12 @@ export function AppConversation({
     }
   };
   return (
-    <div ref={panel} className="relative flex min-h-0 flex-1 flex-col">
+    <div ref={setPanel} className="relative flex min-h-0 flex-1 flex-col">
       {state ? (
         <div className={summaryOpen ? "flex min-h-0 flex-1 md:pr-80" : "flex min-h-0 flex-1"}>
           <Transcript
             viewportRef={viewport}
+            navigationContainer={panel}
             state={state}
             decisions={Object.values(view.permissionDecisions ?? {})}
             waiting={Object.keys(view.interactions).length > 0}
