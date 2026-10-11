@@ -125,6 +125,7 @@ export async function buildDesktop(output: string) {
       extraResources: [{ from: sidecar, to: "sidecar", filter: ["rukie-server", "rg"] }],
       mac: {
         target: "dir",
+        icon: join(root, "brand/rukie-app-icon.icns"),
         identity: "-",
         hardenedRuntime: true,
         notarize: false,

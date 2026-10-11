@@ -28,6 +28,8 @@ Electron host 启动 Bun sidecar，通过受来源校验的 preload 向 renderer
 
 脚本构建 main、CommonJS sandbox preload、当前 UI 入口和编译 sidecar；与 CLI release 共用禁止 dotenv、bunfig、package.json、tsconfig 自动加载的 Bun 编译配置。asar 内只含 JS 与 renderer；`Contents/Resources/sidecar/` 外置 rukie-server 和锁定的 rg，不依赖系统 Bun 或 Homebrew。
 
+macOS 应用图标直接使用 [brand/rukie-app-icon.icns](../../brand/rukie-app-icon.icns)，素材说明与重新导出命令见[品牌设计](../../brand/design.md#桌面应用图标)。
+
 `mac.identity: "-"` 执行 ad-hoc hardened-runtime 签名。Electron 与 Helper 保留 disable-library-validation；afterSign 将 sidecar 收紧到仅 allow-jit、rg 清除 entitlement，然后重封外层 app。electron-builder 26.15.3 在 afterPack 之前写入 ElectronAsarIntegrity，脚本检查实际 plist 后启用完整性和 OnlyLoadAppFromAsar fuse，并关闭 RunAsNode、NODE_OPTIONS 和 Node inspect。Cookie Encryption 关闭：桌面端没有 Cookie 使用方，鉴权用 WS token，关闭未使用的加密初始化可避免 ad-hoc 构建启动时请求钥匙串密码；约束与代价见 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md)。
 
 构建验收针对最终 app：Cookie Encryption fuse 读回必须为关闭、strict deep codesign、runtime flags、sidecar/rg entitlement、实际 rg 版本和 `BUN_BE_BUN=1` DFG JIT 探针。JIT 不可用时构建失败，不按耗时猜测。此命令不调用 spctl，也不证明 Developer ID 签名、公证或分发成功。
