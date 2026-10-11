@@ -37,7 +37,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import {
-  THINKING_LEVELS,
+  MODEL_SERVICE_THINKING_LEVELS,
   modelServiceThinkingLevels,
   parseModelServiceSave,
   ModelCompatSchemas,
@@ -71,6 +71,16 @@ const protocols = {
   "anthropic-messages": "Anthropic Messages",
   "openai-completions": "Chat Completions",
   "openai-responses": "Responses",
+};
+const reasoningLabels = {
+  off: "关闭",
+  automatic: "自动",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "XHigh",
+  max: "Max",
 };
 const defaultModel: ServiceModel = {
   id: "",
@@ -649,7 +659,7 @@ export function ModelServices({
                         draft.models.map((item, index) => (
                           <div key={item.id} className="model-services-model-row">
                             <div className="min-w-0 flex-1">
-                              <p className="truncate font-mono">{item.id}</p>
+                              <p className="truncate font-mono">{item.name || item.id}</p>
                               <p className="model-services-model-metadata text-ui-xs text-muted-foreground">
                                 <span>
                                   {new Intl.NumberFormat("en", {
@@ -796,10 +806,8 @@ export function ModelServices({
                 <div className="model-services-basic-columns">
                   <Input
                     label={t("services.displayName")}
-                    value={model.id}
-                    disabled
-                    title={t("services.unsupportedFields")}
-                    aria-describedby="model-services-unavailable-fields"
+                    value={model.name ?? ""}
+                    onChange={(name) => setModel({ ...model, name })}
                   />
                   <Input
                     label={t("services.context")}
@@ -809,9 +817,6 @@ export function ModelServices({
                     onChange={(value) => setModel({ ...model, contextWindow: Number(value) })}
                   />
                 </div>
-                <p className="sr-only" id="model-services-unavailable-fields">
-                  {t("services.unsupportedFields")}
-                </p>
               </section>
               <section className="model-services-reasoning">
                 <h3 id="model-services-reasoning-label" className="text-ui-base">
@@ -838,18 +843,23 @@ export function ModelServices({
                   <div>
                     <p className="text-ui-sm text-muted-foreground">{t("services.levels")}</p>
                     <div className="model-services-chips">
-                      {THINKING_LEVELS.map((level) => (
+                      {MODEL_SERVICE_THINKING_LEVELS.map((level) => (
                         <Checkbox
                           key={level}
-                          label={t(`services.${level}`)}
+                          label={reasoningLabels[level]}
                           checked={model.reasoning === true && supportedLevels.includes(level)}
                           disabled={!model.reasoning}
                           onCheckedChange={(enabled) => {
-                            const map = {
-                              ...model.thinkingLevelMap,
-                              [level]: enabled ? level : null,
-                            };
-                            const next = { ...model, thinkingLevelMap: map };
+                            const next =
+                              level === "automatic"
+                                ? { ...model, automaticReasoning: enabled }
+                                : {
+                                    ...model,
+                                    thinkingLevelMap: {
+                                      ...model.thinkingLevelMap,
+                                      [level]: enabled ? level : null,
+                                    },
+                                  };
                             if (
                               next.defaultThinkingLevel &&
                               !modelServiceThinkingLevels(next).includes(next.defaultThinkingLevel)
@@ -876,29 +886,24 @@ export function ModelServices({
                     <Select
                       open={defaultReasoningOpen}
                       onOpenChange={setDefaultReasoningOpen}
-                      value={model.defaultThinkingLevel ?? "automatic"}
+                      value={model.defaultThinkingLevel ?? ""}
                       disabled={!model.reasoning}
                       onValueChange={(value) => {
-                        const next = { ...model };
-                        if (value === "automatic") delete next.defaultThinkingLevel;
-                        else {
-                          const level = supportedLevels.find((item) => item === value);
-                          if (!level) return;
-                          next.defaultThinkingLevel = level;
-                        }
+                        const level = supportedLevels.find((item) => item === value);
+                        if (!level) return;
+                        const next = { ...model, defaultThinkingLevel: level };
                         setModel(next);
                       }}
                     >
                       <SelectTrigger aria-label={t("services.defaultReasoning")}>
                         {model.defaultThinkingLevel
-                          ? t(`services.${model.defaultThinkingLevel}`)
-                          : t("services.defaultAutomatic")}
+                          ? reasoningLabels[model.defaultThinkingLevel]
+                          : t("services.selectReasoning")}
                       </SelectTrigger>
                       <SelectContent className="model-services-menu model-services-reasoning-menu">
-                        <SelectItem value="automatic">{t("services.defaultAutomatic")}</SelectItem>
                         {supportedLevels.map((level) => (
                           <SelectItem key={level} value={level}>
-                            {t(`services.${level}`)}
+                            {reasoningLabels[level]}
                           </SelectItem>
                         ))}
                       </SelectContent>

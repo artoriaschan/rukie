@@ -51,7 +51,7 @@ export const WireCommandSchema = Type.Union([
         {
           provider: id,
           modelId: id,
-          thinkingLevel: Type.Optional(Type.Enum([...THINKING_LEVELS])),
+          thinkingLevel: Type.Optional(Type.Enum(["automatic", ...THINKING_LEVELS])),
         },
         { additionalProperties: false },
       ),
@@ -77,7 +77,7 @@ export const WireCommandSchema = Type.Union([
     ...session,
     provider: id,
     modelId: id,
-    thinkingLevel: Type.Optional(Type.Enum([...THINKING_LEVELS])),
+    thinkingLevel: Type.Optional(Type.Enum(["automatic", ...THINKING_LEVELS])),
   }),
   command("session.set_permission_mode", {
     ...session,

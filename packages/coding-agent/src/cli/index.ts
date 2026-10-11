@@ -1,11 +1,6 @@
 import { parseArgs } from "node:util";
 import { parsePermissionRules } from "@rukie/agent";
-import {
-  PERMISSION_MODES,
-  THINKING_LEVELS,
-  type PermissionMode,
-  type ThinkingLevel,
-} from "@rukie/shared";
+import { PERMISSION_MODES, THINKING_LEVELS, type PermissionMode } from "@rukie/shared";
 import { createTuiI18n, formatError } from "../view/i18n";
 
 const options = {
@@ -91,7 +86,7 @@ export function parseCli(argv: string[], t: ReturnType<typeof createTuiI18n>) {
     throw new Error(t("argv.yolo-conflict"));
   if (values.model !== undefined && !/^[^/]+\/.+/.test(values.model))
     throw new Error(t("argv.model", { model: values.model }));
-  if (values.thinking !== undefined && !THINKING_LEVELS.includes(values.thinking as ThinkingLevel))
+  if (values.thinking !== undefined && !THINKING_LEVELS.some((level) => level === values.thinking))
     throw new Error(t("argv.thinking", { values: THINKING_LEVELS.join(", ") }));
   return { values, prompt, mode };
 }

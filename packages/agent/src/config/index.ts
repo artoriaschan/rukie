@@ -304,4 +304,6 @@ export async function listModelCatalog(
     .sort((a, b) => a.spec.localeCompare(b.spec));
 }
 
-export { supportedThinkingLevel } from "./model-selection.ts";
+export { supportedThinkingLevel, nativeThinkingLevel } from "./model-selection.ts";
+
+export { withAutomaticReasoning } from "./automatic-reasoning.ts";

@@ -77,7 +77,7 @@ export function Logo({
         <ThemedText wrap="truncate">
           {model}
           {thinking !== undefined && (
-            <ThemedText color="subtle">{` · ${t(`logo.effort.${thinking}`)}`}</ThemedText>
+            <ThemedText color="subtle">{` · ${thinking === "automatic" ? "Automatic" : t(`logo.effort.${thinking}`)}`}</ThemedText>
           )}
         </ThemedText>
         <ThemedText color="subtle" wrap="truncate">

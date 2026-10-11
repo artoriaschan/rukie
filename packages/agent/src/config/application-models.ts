@@ -52,7 +52,7 @@ export function createApplicationModels(options: {
             .filter((model) => model.enabled !== false)
             .map((model) => ({
               ...model,
-              name: model.id,
+              name: model.name ?? "",
               api: provider.api,
               provider: provider.id,
               baseUrl: provider.baseUrl,
@@ -88,6 +88,7 @@ export function applicationModelTemplates(): ModelService[] {
           baseUrl: entries[0]!.baseUrl,
           models: entries.map((model) => ({
             id: model.id,
+            name: model.name,
             input: model.input,
             reasoning: model.reasoning,
             contextWindow: model.contextWindow,

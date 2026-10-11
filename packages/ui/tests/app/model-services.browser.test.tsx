@@ -1079,6 +1079,7 @@ test("model default reasoning is selectable, saved and restricted to supported l
       models: [
         {
           id: "reasoner",
+          name: "Separate display name",
           reasoning: true,
           contextWindow: 128000,
           maxTokens: 16384,
@@ -1104,26 +1105,76 @@ test("model default reasoning is selectable, saved and restricted to supported l
   );
   try {
     await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Display name", exact: true }))
+      .toBeEnabled();
+    await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("changed-id");
+    await expect
+      .element(screen.getByRole("textbox", { name: "Display name", exact: true }))
+      .toHaveValue("Separate display name");
+    await screen
+      .getByRole("textbox", { name: "Display name", exact: true })
+      .fill("Independent label");
+    await expect
+      .element(screen.getByRole("textbox", { name: "Model ID", exact: true }))
+      .toHaveValue("changed-id");
+    const chips = [
+      ...document.querySelectorAll(".model-services-reasoning .model-services-chips label > span"),
+    ];
+    expect(chips.map((chip) => chip.textContent)).toEqual([
+      "关闭",
+      "自动",
+      "Minimal",
+      "Low",
+      "Medium",
+      "High",
+      "XHigh",
+      "Max",
+    ]);
     const field = document.querySelector<HTMLElement>(".model-services-default-reasoning")!;
     await expect.poll(() => field.getBoundingClientRect().width).toBe(188);
     await expect.poll(() => field.getBoundingClientRect().height).toBe(60);
     await screen.getByRole("button", { name: "Default reasoning level", exact: true }).click();
     await expect.element(screen.getByRole("option", { name: "Low", exact: true })).toBeVisible();
-    expect(screen.getByRole("option", { name: "Extra high", exact: true }).query()).toBeNull();
+    expect(screen.getByRole("option", { name: "XHigh", exact: true }).query()).toBeNull();
+    expect(
+      [...document.querySelectorAll(".model-services-reasoning-menu [role=option]")].map(
+        (option) => option.textContent,
+      ),
+    ).toEqual(["关闭", "Minimal", "Low", "Medium", "High"]);
     await screen.getByRole("option", { name: "High", exact: true }).click();
     await screen.getByRole("button", { name: "Save model", exact: true }).click();
     await expect.poll(() => providers[0]!.models[0]!.defaultThinkingLevel).toBe("high");
+    expect(providers[0]!.models[0]!.id).toBe("changed-id");
+    expect(providers[0]!.models[0]!.name).toBe("Independent label");
     expect(providers[0]!.models[0]!.thinkingLevelMap?.high).toBe("deep");
     await screen.getByRole("button", { name: "Edit", exact: true }).click();
     await expect
       .element(screen.getByRole("button", { name: "Default reasoning level", exact: true }))
       .toHaveTextContent("High");
+    await screen.getByRole("textbox", { name: "Display name", exact: true }).fill("");
     await screen.getByRole("checkbox", { name: "High", exact: true }).click();
     await screen.getByRole("button", { name: "Default reasoning level", exact: true }).click();
     expect(screen.getByRole("option", { name: "High", exact: true }).query()).toBeNull();
     await userEvent.keyboard("{Escape}");
     await screen.getByRole("button", { name: "Save model", exact: true }).click();
     await expect.poll(() => providers[0]!.models[0]!.defaultThinkingLevel).toBeUndefined();
+    expect(providers[0]!.models[0]!.name).toBe("");
+    expect(providers[0]!.models[0]!.id).toBe("changed-id");
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Display name", exact: true }))
+      .toHaveValue("");
+    await screen.getByRole("checkbox", { name: "自动", exact: true }).click();
+    await screen.getByRole("button", { name: "Default reasoning level", exact: true }).click();
+    expect(
+      [...document.querySelectorAll(".model-services-reasoning-menu [role=option]")].map(
+        (option) => option.textContent,
+      ),
+    ).toEqual(["关闭", "自动", "Minimal", "Low", "Medium"]);
+    await screen.getByRole("option", { name: "自动", exact: true }).click();
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    await expect.poll(() => providers[0]!.models[0]!.defaultThinkingLevel).toBe("automatic");
   } finally {
     await screen.unmount();
   }

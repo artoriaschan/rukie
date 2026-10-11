@@ -87,6 +87,8 @@ test("desktop model defaults survive provider restart and reject unsupported lev
     models: [
       {
         id: "m",
+        name: "Distinct",
+        automaticReasoning: true,
         reasoning: true,
         defaultThinkingLevel: "high" as const,
         thinkingLevelMap: { high: "deep", max: null },
@@ -105,6 +107,18 @@ test("desktop model defaults survive provider restart and reject unsupported lev
       ),
     ).rejects.toThrow("Unsupported default thinking level");
     expect((await app.providers())[0]!.models[0]!.defaultThinkingLevel).toBe("high");
+    await app.saveProvider(
+      { ...provider, models: [{ ...provider.models[0]!, defaultThinkingLevel: "automatic" }] },
+      { type: "keep" },
+    );
+    await app.close();
+    app = await AppDatabase.open(root);
+    expect((await app.providers())[0]!.models[0]).toMatchObject({
+      id: "m",
+      name: "Distinct",
+      defaultThinkingLevel: "automatic",
+      automaticReasoning: true,
+    });
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });

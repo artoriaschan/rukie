@@ -4,6 +4,7 @@ export {
   ModelServiceSaveSchema,
   parseModelServiceSave,
   modelServiceThinkingLevels,
+  MODEL_SERVICE_THINKING_LEVELS,
   type ModelService,
   type ModelServiceSummary,
   type ModelServiceSave,

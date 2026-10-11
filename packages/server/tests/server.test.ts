@@ -207,14 +207,19 @@ test("private provider management persists a redacted catalog without reading te
             name: "Local",
             api: "openai-completions",
             baseUrl: "http://localhost/v1",
-            models: [{ id: "m" }],
+            models: [{ id: "m", name: "Independent label" }],
           },
           credential: { type: "replace", ciphertext: "opaque-ciphertext" },
         })
       ).status,
     ).toBe(200);
     expect((await client.command("models.list")).result).toEqual([
-      expect.objectContaining({ providerId: "local", id: "m", authenticated: true }),
+      expect.objectContaining({
+        providerId: "local",
+        id: "m",
+        name: "Independent label",
+        authenticated: true,
+      }),
     ]);
     expect(JSON.stringify(client.messages)).not.toContain("opaque-ciphertext");
     client.socket.close();
@@ -222,7 +227,12 @@ test("private provider management persists a redacted catalog without reading te
     server = await startServer({ homeDir, managementToken, onHandshake: () => {} });
     client = await connect(server);
     expect((await client.command("models.list")).result).toEqual([
-      expect.objectContaining({ providerId: "local", authenticated: true }),
+      expect.objectContaining({
+        providerId: "local",
+        id: "m",
+        name: "Independent label",
+        authenticated: true,
+      }),
     ]);
     expect((await manage({ type: "delete", id: "local" })).status).toBe(200);
     expect((await client.command("models.list")).result).toEqual([]);
@@ -350,6 +360,47 @@ test("encrypted desktop model requests use selected configuration and deletion p
     ).toBeUndefined();
     await client.next((message) => message.type === "result");
     expect(efforts.at(-1)).toBe("light");
+    expect(
+      (
+        await client.command("session.set_model", {
+          sessionId,
+          provider: "local",
+          modelId: "desktop-model",
+          thinkingLevel: "automatic",
+        })
+      ).result,
+    ).toMatchObject({ thinkingLevel: "automatic" });
+    client.messages.length = 0;
+    expect(
+      (await client.command("prompt", { sessionId, text: "provider decides" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(efforts.at(-1)).toBeUndefined();
+    client.socket.close();
+    await server.close();
+    server = await startServer({ homeDir, managementToken, encryption, onHandshake: () => {} });
+    client = await connect(server);
+    expect(
+      (await client.command("prompt", { sessionId, text: "resume automatic" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(efforts.at(-1)).toBeUndefined();
+    expect(
+      (
+        await client.command("session.set_model", {
+          sessionId,
+          provider: "local",
+          modelId: "desktop-model",
+          thinkingLevel: "off",
+        })
+      ).result,
+    ).toMatchObject({ thinkingLevel: "off" });
+    client.messages.length = 0;
+    expect(
+      (await client.command("prompt", { sessionId, text: "explicitly disabled" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(efforts.at(-1)).toBe("none");
     expect(JSON.stringify(client.messages)).not.toContain("desktop-fixture-key");
     expect((await manage({ type: "delete", id: "local" })).status).toBe(200);
     expect((await client.command("prompt", { sessionId, text: "again" })).error).toEqual({
@@ -369,7 +420,7 @@ test("encrypted desktop model requests use selected configuration and deletion p
           message.type === "snapshot" && JSON.stringify(message).includes("desktop answer"),
       ),
     ).toBe(true);
-    expect(captured).toHaveLength(3);
+    expect(captured).toHaveLength(6);
     expect(
       (
         await manage({

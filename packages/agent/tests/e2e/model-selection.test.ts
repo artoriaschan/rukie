@@ -175,3 +175,38 @@ test("resume reads v1 model facts and migrates the mirror from native Model Sele
   await resumed.run("question");
   expect(fake.requested).toEqual([{ model: "full", thinking: "high" }]);
 });
+
+test("automatic Model Selection survives rewind and cold resume without adopting global settings", async () => {
+  dirs = await tempDirs();
+  const fake = selectionModels([
+    fauxAssistantMessage("first"),
+    fauxAssistantMessage("second"),
+    fauxAssistantMessage("resumed"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, settings: { thinking: "automatic" } });
+  sessions.push(session);
+  expect(session.thinkingLevel).toBe("automatic");
+  await session.run("first");
+  await session.setModelSelection({ thinkingLevel: "high" });
+  await session.run("second");
+  await session.rewind(session.checkpoints()[0]!.promptEntryId, {
+    code: false,
+    conversation: true,
+  });
+  expect(session.thinkingLevel).toBe("automatic");
+  await session.close();
+  const resumed = await createSession({
+    ...dirs,
+    ...fake,
+    settings: { thinking: "low" },
+    resumeId: session.id,
+  });
+  sessions.push(resumed);
+  expect(resumed.thinkingLevel).toBe("automatic");
+  expect(resumed.toolState("model")).toEqual({
+    model: "selection/full",
+    thinkingLevel: "automatic",
+  });
+  await resumed.run("resumed");
+  expect(fake.requested.map((request) => request.thinking)).toEqual([undefined, "high", undefined]);
+});

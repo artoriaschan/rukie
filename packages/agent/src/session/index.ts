@@ -25,6 +25,9 @@ import {
 } from "@earendil-works/pi-ai";
 import {
   Harness,
+  ProviderDoc,
+  type Cursor,
+  type ConversationId,
   configure,
   createRegistry,
   defineDoc,
@@ -73,6 +76,8 @@ import {
   isTrustedProject,
   modelState,
   supportedThinkingLevel,
+  nativeThinkingLevel,
+  withAutomaticReasoning,
 } from "../config/index.ts";
 import {
   createSessionStore,
@@ -505,10 +510,39 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    const harness = await Harness.open(
+    const providerConversations = new Map<string, ConversationId>();
+    const harness: Harness = await Harness.open(
       observedStorage,
       {
-        models,
+        models: withAutomaticReasoning(models, async (sessionId) => {
+          const known = providerConversations.get(sessionId);
+          if (known !== undefined) {
+            const choice = await harness.snapshot(modelState.document, known, context);
+            return Boolean(
+              choice?.value &&
+              typeof choice.value === "object" &&
+              !Array.isArray(choice.value) &&
+              choice.value.thinkingLevel === "automatic",
+            );
+          }
+          let cursor: Cursor | undefined;
+          do {
+            const page = await lease.storage.scanConversations({}, 100, cursor, context);
+            for (const row of page.items) {
+              const identity = await harness.snapshot(ProviderDoc, row.id, context);
+              if (identity) providerConversations.set(identity.sessionId, row.id);
+              if (identity?.sessionId !== sessionId) continue;
+              const choice = await harness.snapshot(modelState.document, row.id, context);
+              return choice?.value &&
+                typeof choice.value === "object" &&
+                !Array.isArray(choice.value)
+                ? choice.value.thinkingLevel === "automatic"
+                : false;
+            }
+            cursor = page.next;
+          } while (cursor !== undefined);
+          return false;
+        }),
         registry,
         env: () => env,
         settings: {
@@ -545,10 +579,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         model: { provider: model.provider, modelId: model.id },
         cwd,
         instructions: SYSTEM_PROMPT,
-        thinkingLevel,
+        thinkingLevel: nativeThinkingLevel(thinkingLevel),
       },
       init: async (tx, id) => {
         await tx.appendEntry(id, { kind: "rukie.initial" });
+        (await tx.doc(modelState.document, id)).value = {
+          model: `${model.provider}/${model.id}`,
+          thinkingLevel,
+        };
       },
     });
     let metadata = await harness.snapshot(SessionMetadataDoc, context);
@@ -580,9 +618,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       await conversation.configure(
         {
           model: { provider: next.provider, modelId: next.id },
-          thinkingLevel: supportedThinkingLevel(
-            next,
-            options.resumeModelSelection.thinkingLevel ?? thinkingLevel,
+          thinkingLevel: nativeThinkingLevel(
+            supportedThinkingLevel(
+              next,
+              options.resumeModelSelection.thinkingLevel ?? thinkingLevel,
+            ),
           ),
         },
         context,
@@ -596,9 +636,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         throw new Error(`Unknown restored model: ${savedModel.provider}/${savedModel.modelId}`);
       model = restored;
     }
-    thinkingLevel = supportedThinkingLevel(model, savedAgent.thinkingLevel);
-    if (thinkingLevel !== savedAgent.thinkingLevel)
-      await conversation.configure({ thinkingLevel }, context);
+    const productModel = await harness.snapshot(modelState.document, conversation.id, context);
+    const savedAutomatic =
+      productModel?.value &&
+      typeof productModel.value === "object" &&
+      !Array.isArray(productModel.value) &&
+      productModel.value.thinkingLevel === "automatic";
+    thinkingLevel = supportedThinkingLevel(
+      model,
+      options.resumeModelSelection?.thinkingLevel ??
+        (savedAutomatic ? "automatic" : savedAgent.thinkingLevel),
+    );
+    if (nativeThinkingLevel(thinkingLevel) !== savedAgent.thinkingLevel)
+      await conversation.configure({ thinkingLevel: nativeThinkingLevel(thinkingLevel) }, context);
     modelFact = `${model.provider}/${model.id}`;
     const subagentsDefinition = subagentsState(lease.id);
     const definitions = [
@@ -1290,7 +1340,47 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           await applyChildHook(result, "hook:Notification");
         };
         const childState = await createToolState(definitions, harness, child, context);
+        const childRecord = await lease.storage.conversation(child.id, context);
+        const parentChoice = childRecord?.owner
+          ? await harness.snapshot(modelState.document, childRecord.owner.conversationId, context)
+          : undefined;
+        const inheritedAutomatic =
+          parentChoice?.value &&
+          typeof parentChoice.value === "object" &&
+          !Array.isArray(parentChoice.value) &&
+          parentChoice.value.thinkingLevel === "automatic";
+        const parentConversation = childRecord?.owner
+          ? await harness.conversation(childRecord.owner.conversationId, context)
+          : undefined;
+        const parentLevel = parentConversation
+          ? (await parentConversation.agent(context)).thinkingLevel
+          : "off";
+        const currentChoice = childState.get("model");
+        const retainedAutomatic =
+          currentChoice &&
+          typeof currentChoice === "object" &&
+          "thinkingLevel" in currentChoice &&
+          currentChoice.thinkingLevel === "automatic";
+        const currentNativeLevel = (await child.agent(context)).thinkingLevel;
+        const childThinking = supportedThinkingLevel(
+          selected,
+          selection.retained
+            ? retainedAutomatic
+              ? "automatic"
+              : currentNativeLevel
+            : type.name === "fork"
+              ? (settings.thinking ?? (inheritedAutomatic ? "automatic" : parentLevel))
+              : !type.model && !settings.subagentModel
+                ? inheritedAutomatic
+                  ? "automatic"
+                  : parentLevel
+                : (settings.thinking ?? "off"),
+        );
         await child.commit(async (tx) => {
+          (await tx.doc(modelState.document, child.id)).value = {
+            model: `${selected.provider}/${selected.id}`,
+            thinkingLevel: childThinking,
+          };
           const facts = await tx.doc(ChildFactsDoc, child.id);
           facts.title ||= description;
           facts.description = description;
@@ -1727,11 +1817,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }
         return {
           model: { provider: selected.provider, modelId: selected.id },
-          ...(type.name === "fork"
-            ? settings.thinking
-              ? { thinkingLevel: settings.thinking }
-              : {}
-            : { thinkingLevel: supportedThinkingLevel(selected, settings.thinking ?? "off") }),
+          thinkingLevel: nativeThinkingLevel(childThinking),
           cwd,
           instructions: SYSTEM_PROMPT,
           extensions: [extension],
@@ -2901,7 +2987,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           await conversation.commit(async (tx) => {
             await configure(tx, conversation.id, {
               model: { provider: next.provider, modelId: next.id },
-              thinkingLevel: nextThinkingLevel,
+              thinkingLevel: nativeThinkingLevel(nextThinkingLevel),
             });
             (await tx.doc(modelState.document, conversation.id)).value = {
               model: spec,
@@ -3149,7 +3235,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           const restoredAgent = await conversation.agent(context);
           if (restoredAgent.model)
             model = selectedModel(`${restoredAgent.model.provider}/${restoredAgent.model.modelId}`);
-          thinkingLevel = restoredAgent.thinkingLevel;
+          const rewoundModel = await harness.snapshot(
+            modelState.document,
+            conversation.id,
+            context,
+          );
+          const rewoundAutomatic =
+            rewoundModel?.value &&
+            typeof rewoundModel.value === "object" &&
+            !Array.isArray(rewoundModel.value) &&
+            rewoundModel.value.thinkingLevel === "automatic";
+          thinkingLevel = rewoundAutomatic ? "automatic" : restoredAgent.thinkingLevel;
           modelFact = `${model.provider}/${model.id}`;
           runSummaries = readRunSummaries(await fullHistory());
           await writeMetadata();

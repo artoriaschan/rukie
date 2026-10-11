@@ -174,3 +174,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 用户要求增加 `dev:desktop` 调试命令，开发所依赖的状态与正式版完全隔离，开发数据不影响正式数据。由 [15](issues/15-isolated-desktop-development.md) 新代理实施；开发身份、业务数据与 Electron 状态分离，真实工具 home 保留，生产来源校验/凭据策略不被开发便利削弱。
 
 15 本地实现完成于 `7414cb96`：根命令重建当前 main/preload/UI/compiled sidecar，使用固定 `.desktop-dev` 路径和独立开发应用身份，打开 DevTools，关闭后重跑更新源码。独占启动锁、持久化树链接拒绝及所属进程组退出确认保护正式数据与开发产物。独立 Spec 零阻止项；Standards 的子进程残留和内部链接两项 P1、父代理发现的无效 cache API 均已集中修正并只读复核关闭。新增受控进程/路径三例 3 pass（92ms）、bootstrap mock 三例 3 pass（133ms），此前启动/产物/锁与源码构建证据复用；相关类型、格式、lint、Knip、文档和测试策略检查通过。新 merger 快进集成不重复验证。ADR Coverage 核对更新 ADR-0035、沿用 ADR-0034/0029，不改变 Core 或正式包安全合同。开发 bundle 缓存创建、签名、真实启动和系统凭据尚未原生验收；未启动 Electron、未重跑整套，用户旧预览保持。15/spec 同步 resolved，以本地实现证据交付，PR 未合并。
+
+## 独立模型名称与设计源等级
+
+由 [16](issues/16-independent-model-name-reasoning-labels.md) 的新代理实施，模型 ID/名称独立保存；菜单严格对应勾选的 C16 固定八层名称。用户进一步确认“自动”可选、保存且执行为不附加显式推理参数，由供应商决定。产品持久 Model Selection 保存自动事实，拥有 Models 边界覆盖生成及原生压缩；普通子代理、fork 和 retained 使用各自有效选择，显式会话选择、恢复与 Rewind 保留合同。最小本地证据由实施代理单一记录，父代理复用，未启动真实 Electron/钥匙串或等待 CI。

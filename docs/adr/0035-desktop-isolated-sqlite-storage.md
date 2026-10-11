@@ -62,3 +62,9 @@ API Key、OAuth token、OAuth client_secret 及持久化的授权临时秘密（
 `dev:desktop` 固定使用 checkout 内 `.desktop-dev` 的独立业务数据、Electron userData、session/cache 与构建路径，并保留真实工具 home。开发名称为 `rukie-desktop-development`，bundle identity 为 `dev.rukie.desktop.development`，在 ready 前设置名称与路径；单实例锁使用独立 userData，开发不会驱动正式应用的现有窗口。当前源码每次重新构建，稳定缓存的开发 bundle 与正式打包产物分开，Cookie Encryption 继续关闭，不以 mock keychain 代替实际凭证行为。
 
 [Electron 41.0.3 的 macOS 初始化实现](https://github.com/electron/electron/blob/v41.0.3/shell/browser/electron_browser_main_parts.cc#L469-L510) 在 main 执行后将 Keychain service 设置为 `Browser::GetName() + " Safe Storage"`，account 为同一 app name。因此开发的 manifest、pre-ready name 与 bundle identity 都与正式版分离；仅设置不同 userData 不能达到这个目的。显式开发凭证操作使用自己的系统身份，失败或取消继续遵守现有凭证合同；此源代码证据不代替独立授权的真实系统钥匙串验收。使用和退出流程由[桌面 README](../../packages/desktop/README.md#桌面开发调试)维护。
+
+### 模型名称与自动推理选择
+
+模型 ID 是请求与配置身份，显示名称是独立的可选展示元数据，保存和修改互不回填。桌面默认推理选择包含 `automatic`，会话明确选择优先；恢复已有会话保持其已提交选择。`automatic` 表示请求不指定推理等级、开关或预算，让供应商采用自己的默认行为，与明确关闭不同。
+
+锁定 Harness 的原生 AgentDoc 仍保持七种等级；`automatic` 由会话的可回退、按分支复制的模型选择 document 保存，原生 `off` 仅承担 Harness 类型载体。Core 的模型请求边界通过原生 ProviderDoc 的独立会话身份读取已提交产品选择，在 pi-ai 的 `onPayload` 中移除推理参数；Generation 的流式调用与 Compaction 的完整调用共用该边界。明确等级仍走原有协议映射，回退和恢复不把自动选择改成关闭或全局默认；不替换原生执行、任务或提交机制。标题等独立辅助请求维持自己的模型合同。
