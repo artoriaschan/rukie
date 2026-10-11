@@ -7,6 +7,56 @@ import { UiLocaleProvider } from "../../src/lib/i18n";
 import type { ModelServiceSummary } from "@rukie/shared";
 import "../../src/theme.css";
 
+test("Pencil model numeric fields hide native steppers while retaining numeric keyboard input", async () => {
+  await page.viewport(1280, 900);
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "https://example.com/v1",
+              hasCredential: false,
+              models: [{ id: "numeric", contextWindow: 128000, maxTokens: 16384 }],
+            },
+          ],
+          save: async () => {},
+          delete: async () => {},
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await screen.getByRole("button", { name: /Advanced settings/ }).click();
+    for (const [name, original] of [
+      ["Context window", "128000"],
+      ["Maximum output tokens", "16384"],
+    ] as const) {
+      const field = screen.getByRole("spinbutton", { name });
+      const input = field.element() as HTMLInputElement;
+      expect(getComputedStyle(input).appearance).toBe("textfield");
+      expect(input.type).toBe("number");
+      expect(input.min).toBe("1");
+      await expect.poll(() => input.parentElement!.getBoundingClientRect().height).toBe(36);
+      await field.click();
+      await userEvent.keyboard("{ArrowUp}");
+      await expect.element(field).toHaveValue(Number(original) + 1);
+      await field.fill("0");
+      expect(input.validity.rangeUnderflow).toBe(true);
+      await field.fill("1");
+      expect(input.validity.valid).toBe(true);
+    }
+  } finally {
+    await screen.unmount();
+  }
+});
+
 test("model services creates a provider and preserves input when encrypted save fails", async () => {
   await page.viewport(1280, 900);
   const originalRootStyle = document.documentElement.getAttribute("style");

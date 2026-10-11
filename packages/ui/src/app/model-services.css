@@ -920,6 +920,14 @@
 .model-services-model-fields input {
   height: 34px;
 }
+.model-services-model-fields input[type="number"] {
+  appearance: textfield;
+}
+.model-services-model-fields input[type="number"]::-webkit-inner-spin-button,
+.model-services-model-fields input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
 .model-services-model-fields [data-state="idle"],
 .model-services-model-fields [data-state="focused"] {
   min-height: 36px;

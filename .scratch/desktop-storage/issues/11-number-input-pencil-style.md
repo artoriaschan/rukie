@@ -14,3 +14,9 @@ Blocked by: 10
 ## Implementation evidence
 
 由新的 numeric_spinner11_fresh 子代理在独立工作树实施。继续使用已安装 beUI Input，不把其内部 HTML input 当作组件来源替换；只处理浏览器原生 type=number 外观。
+
+独立工作树 `/private/tmp/rukie-number-input-fix`，分支 `fix/model-number-inputs`，起点 d3defa71 并快进文档集成 7ee31e65。仅模型弹窗 CSS 隐藏数字输入浏览器增减按钮，保留 number/min=1、键盘 ArrowUp 和 36px 外框；不修改共享 Input 或其他页面。DESIGN.md 先登记数字呈现合同。新增一例公开 DOM 回归同时覆盖上下文窗口与最大输出 Token：原样式 appearance auto 的 red 已复现；两次测试断言自身错误（Chromium 内部伪元素不可 introspect、number matcher 值类型）在同例修正，最终 1 pass /14 skipped，命令 1.28s，完整记录归 `/tmp/rukie-number-input-evidence/verification.md`，失败历史保留。
+
+受影响区域 Chromium/mock Light/Dark 1280×900 和 420×900 hover/focus 验收完成，两输入均 textfield/36px，无原生按钮。console 仅 Vite/React 信息；资源200，fixture favicon404。自己的浏览器/fixture已退出，用户预览未动。既有 10 的默认等级、保存、server 请求与静态证据继续有效；102 desktop 仅作为此前基线，不称最新整套通过。本票不重复文件/包/aggregate/check:dev，不启动 Electron。
+
+ADR Coverage：局部设置 CSS，无数据、Session、凭据或包边界变更；沿用 ADR-0029/0035，无需新 ADR。父代理直接复核本票小范围差异后完成关闭与交付。
