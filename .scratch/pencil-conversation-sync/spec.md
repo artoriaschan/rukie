@@ -55,3 +55,7 @@ Status: resolved
 - 双轴审查发现局部取消C08裁切导致初始/关闭视觉残留及扩大点击区。新增初始隐藏、Escape、二次trigger和外部点击公开回归，复现失败（15.84s）；控制open状态并限制实际panel命中区后，Composer其余4用例通过，但外部点击测试中心落在面板覆盖区，修正为文本框左侧实际外部位置后，该用例通过（1.10s）。长耗时来自失败边界，不保留任何固定等待。Standards复核无新发现。
 - agent-browser使用真实App/mock DesktopHost和scripted wire验收：1280×900 Light/Dark及420×900窄屏；C05测量376×148，Dark橙色#ff8a30；C09测量752px/8px圆角/32px行，窄屏388px、x16无横向溢出；C08真实三类报告面板348×317、bar316×6且y108，窄屏无横向溢出。C08修复后专门复验初始hidden、二次trigger关闭和Escape hidden，明暗/窄屏截图覆盖最新结果。无页面错误、console仅Vite/React提示、网络请求200。浏览器、wire、Vite已退出，临时验收入口已删除。
 - 最新截图保存在本任务Codex visualization的pencil-conversation-sync目录：context-light.png、context-dark.png、context-narrow-final.png、permission-dark.png、tools-dark.png、tools-narrow.png、model-narrow-final.png。C08三类统计与C09仅图片动作保持已确认的真实能力范围；不宣称五类统计或全部插件能力已经接入。ADR coverage沿用上表，不涉及协议/Core行为。实现完成，继续PR #16待审阅。
+
+### 用户请求本地验证
+
+用户明确要求本地验证；对提交 f34de7d0 执行一次完整 desktop 包级验收，补齐上次失败后尚未重新取得的完整通过结果。当前工作区无产品改动；复用最新静态和 GUI 明暗/窄屏证据。`env -u NO_COLOR bun run test:desktop` 通过：28文件、122用例全部通过，17.04s，日志 /tmp/rukie-pencil-local-desktop.log。此次是对 f34de7d0 的完整本地 desktop 通过证据；保留前次失败与增量修复历史。后续仅文档记录提交不使该证据失效。
