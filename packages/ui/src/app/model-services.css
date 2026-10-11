@@ -935,7 +935,7 @@
 }
 .model-services-reasoning-columns {
   display: grid;
-  grid-template-columns: minmax(0, 2.3fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 188px;
   gap: 12px;
   align-items: end;
 }
@@ -1134,4 +1134,31 @@
 }
 .model-services-option-card .model-services-basic-columns {
   gap: 10px;
+}
+
+.model-services-default-reasoning {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.model-services-default-reasoning button[aria-haspopup="listbox"] {
+  height: 36px;
+  min-height: 36px;
+}
+.model-services-reasoning-menu button[role="option"] {
+  min-height: 28px;
+  height: 28px;
+  padding-inline: 6px;
+}
+
+/* This field is near the dialog footer; open its options into the form body. */
+.model-services-default-reasoning > p {
+  line-height: 18px;
+}
+.model-services-reasoning-menu {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0 !important;
+  margin-bottom: 4px !important;
 }

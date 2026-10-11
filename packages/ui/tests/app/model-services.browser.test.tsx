@@ -303,7 +303,7 @@ test("Pencil advanced settings contains only reference fields and preserves hidd
     await expect.poll(() => providers[0]!.models[0]!.maxTokens).toBe(14000);
     expect(providers[0]!.models[0]!.thinkingLevelMap).toEqual({
       ...original.thinkingLevelMap,
-      low: "low",
+      low: null,
     });
     expect(providers[0]!.models[0]!.compat).toEqual(original.compat);
   } finally {
@@ -853,5 +853,67 @@ test("expanded model form uses custom scrollbars at narrow widths", async () => 
   } finally {
     await screen.unmount();
     await page.viewport(1280, 900);
+  }
+});
+
+test("model default reasoning is selectable, saved and restricted to supported levels", async () => {
+  await page.viewport(1280, 900);
+  let providers: ModelServiceSummary[] = [
+    {
+      id: "local",
+      name: "Local",
+      api: "openai-completions",
+      baseUrl: "https://example.com/v1",
+      hasCredential: true,
+      models: [
+        {
+          id: "reasoner",
+          reasoning: true,
+          contextWindow: 128000,
+          maxTokens: 16384,
+          thinkingLevelMap: { high: "deep", xhigh: null, max: null },
+        },
+      ],
+    },
+  ];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          list: async () => providers,
+          save: async (input) => {
+            providers = [{ ...input.provider, hasCredential: true }];
+          },
+          delete: async () => {},
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    const field = document.querySelector<HTMLElement>(".model-services-default-reasoning")!;
+    await expect.poll(() => field.getBoundingClientRect().width).toBe(188);
+    await expect.poll(() => field.getBoundingClientRect().height).toBe(60);
+    await screen.getByRole("button", { name: "Default reasoning level", exact: true }).click();
+    await expect.element(screen.getByRole("option", { name: "Low", exact: true })).toBeVisible();
+    expect(screen.getByRole("option", { name: "Extra high", exact: true }).query()).toBeNull();
+    await screen.getByRole("option", { name: "High", exact: true }).click();
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    await expect.poll(() => providers[0]!.models[0]!.defaultThinkingLevel).toBe("high");
+    expect(providers[0]!.models[0]!.thinkingLevelMap?.high).toBe("deep");
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: "Default reasoning level", exact: true }))
+      .toHaveTextContent("High");
+    await screen.getByRole("checkbox", { name: "High", exact: true }).click();
+    await screen.getByRole("button", { name: "Default reasoning level", exact: true }).click();
+    expect(screen.getByRole("option", { name: "High", exact: true }).query()).toBeNull();
+    await userEvent.keyboard("{Escape}");
+    await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    await expect.poll(() => providers[0]!.models[0]!.defaultThinkingLevel).toBeUndefined();
+  } finally {
+    await screen.unmount();
   }
 });

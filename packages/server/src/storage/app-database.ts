@@ -10,6 +10,7 @@ import {
   WirePreferencesSchema,
   ModelServiceSchema,
   ModelCompatSchemas,
+  modelServiceThinkingLevels,
   type Settings,
   type ModelService,
   type ModelServiceSummary,
@@ -128,6 +129,11 @@ export class AppDatabase {
   async saveProvider(provider: ModelService, credential: CredentialChange): Promise<void> {
     if (!Value.Check(ModelServiceSchema, provider)) throw new Error("Invalid provider");
     for (const model of provider.models) {
+      if (
+        model.defaultThinkingLevel &&
+        !modelServiceThinkingLevels(model).includes(model.defaultThinkingLevel)
+      )
+        throw new Error("Unsupported default thinking level");
       if (
         model.compat !== undefined &&
         !Value.Check(ModelCompatSchemas[provider.api], model.compat)

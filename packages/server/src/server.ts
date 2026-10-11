@@ -104,6 +104,11 @@ export async function startServer(options: ServerOptions) {
           save: (key, value) => database.saveCapability(key, value),
         },
       });
+    // Defaults are desktop provider metadata; Session persists the adopted choice.
+    const modelDefault = async (provider: string, modelId: string) =>
+      (await database.providers())
+        .find((item) => item.id === provider)
+        ?.models.find((item) => item.id === modelId)?.defaultThinkingLevel;
     const applicationModels = await configuredModels();
     const refreshModels = async () => {
       const next = await configuredModels();
@@ -221,9 +226,21 @@ export async function startServer(options: ServerOptions) {
             ? {
                 ...settings,
                 model: `${initial.modelSelection.provider}/${initial.modelSelection.modelId}`,
-                thinking: initial.modelSelection.thinkingLevel,
+                thinking:
+                  initial.modelSelection.thinkingLevel ??
+                  (await modelDefault(
+                    initial.modelSelection.provider,
+                    initial.modelSelection.modelId,
+                  )) ??
+                  settings.thinking,
               }
-            : settings,
+            : !resumeId && selected
+              ? {
+                  ...settings,
+                  thinking:
+                    (await modelDefault(selected.provider, selected.id)) ?? settings.thinking,
+                }
+              : settings,
           model: selected ?? options.sessionOptions?.model,
           permissionMode: initial?.permissionMode,
           cwd,
@@ -585,14 +602,16 @@ export async function startServer(options: ServerOptions) {
             !applicationModels.getModel(command.provider, command.modelId)
           )
             throw new CommandError("model_unavailable");
+          const thinkingLevel =
+            command.thinkingLevel ?? (await modelDefault(command.provider, command.modelId));
           const session = await find(command.sessionId, {
             model: `${command.provider}/${command.modelId}`,
-            thinkingLevel: command.thinkingLevel,
+            thinkingLevel,
           });
           if (session.running) throw new CommandError("session_busy");
           const result = await session.setModelSelection({
             model: `${command.provider}/${command.modelId}`,
-            thinkingLevel: command.thinkingLevel,
+            thinkingLevel,
           });
           subscribe(socket, session);
           state(socket, session);

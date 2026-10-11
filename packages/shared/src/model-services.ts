@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { CustomModelSchema } from "./settings.ts";
+import { THINKING_LEVELS, type ThinkingLevel, CustomModelSchema } from "./settings.ts";
 import { Value } from "typebox/value";
 
 /** Desktop configuration has no environment-variable authentication. */
@@ -15,6 +15,7 @@ export const ModelServiceSchema = Type.Object(
           ...CustomModelSchema.properties,
           id: Type.String({ minLength: 1, maxLength: 256 }),
           enabled: Type.Optional(Type.Boolean()),
+          defaultThinkingLevel: Type.Optional(Type.Enum([...THINKING_LEVELS])),
         },
         { additionalProperties: false },
       ),
@@ -40,5 +41,21 @@ export const ModelServiceSaveSchema = Type.Object(
 );
 export type ModelServiceSave = Static<typeof ModelServiceSaveSchema>;
 export function parseModelServiceSave(input: unknown): ModelServiceSave | undefined {
-  return Value.Check(ModelServiceSaveSchema, input) ? input : undefined;
+  return Value.Check(ModelServiceSaveSchema, input) &&
+    input.provider.models.every(
+      (model) =>
+        model.defaultThinkingLevel === undefined ||
+        modelServiceThinkingLevels(model).includes(model.defaultThinkingLevel),
+    )
+    ? input
+    : undefined;
+}
+
+/** Desktop model editing follows pi-ai's base and opt-in extended level contract. */
+export function modelServiceThinkingLevels(model: ModelService["models"][number]): ThinkingLevel[] {
+  if (!model.reasoning) return ["off"];
+  return THINKING_LEVELS.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level];
+    return mapped !== null && ((level !== "xhigh" && level !== "max") || mapped !== undefined);
+  });
 }

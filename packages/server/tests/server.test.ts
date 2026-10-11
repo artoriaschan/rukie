@@ -287,6 +287,7 @@ test("encrypted desktop model requests use selected configuration and deletion p
               {
                 id: "desktop-model",
                 reasoning: true,
+                defaultThinkingLevel: "high",
                 thinkingLevelMap: { off: "none", low: "light", high: "deep" },
               },
             ],
@@ -309,7 +310,7 @@ test("encrypted desktop model requests use selected configuration and deletion p
     const created = await client.command("session.create", {
       project: null,
       text: "hello",
-      modelSelection: { provider: "local", modelId: "desktop-model", thinkingLevel: "high" },
+      modelSelection: { provider: "local", modelId: "desktop-model" },
     });
     expect(created.error).toBeUndefined();
     const sessionId = (created.result as { sessionId: string }).sessionId;
@@ -320,6 +321,35 @@ test("encrypted desktop model requests use selected configuration and deletion p
       { authorization: "Bearer desktop-fixture-key", model: "desktop-model" },
     ]);
     expect(efforts).toContain("deep");
+    expect(
+      (
+        await client.command("session.set_model", {
+          sessionId,
+          provider: "local",
+          modelId: "desktop-model",
+        })
+      ).result,
+    ).toMatchObject({ thinkingLevel: "high" });
+    expect(
+      (
+        await client.command("session.set_model", {
+          sessionId,
+          provider: "local",
+          modelId: "desktop-model",
+          thinkingLevel: "low",
+        })
+      ).result,
+    ).toMatchObject({ thinkingLevel: "low" });
+    client.socket.close();
+    await server.close();
+    server = await startServer({ homeDir, managementToken, encryption, onHandshake: () => {} });
+    client = await connect(server);
+    expect((await manage({ type: "list" })).status).toBe(200);
+    expect(
+      (await client.command("prompt", { sessionId, text: "resume saved choice" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(efforts.at(-1)).toBe("light");
     expect(JSON.stringify(client.messages)).not.toContain("desktop-fixture-key");
     expect((await manage({ type: "delete", id: "local" })).status).toBe(200);
     expect((await client.command("prompt", { sessionId, text: "again" })).error).toEqual({
@@ -339,7 +369,7 @@ test("encrypted desktop model requests use selected configuration and deletion p
           message.type === "snapshot" && JSON.stringify(message).includes("desktop answer"),
       ),
     ).toBe(true);
-    expect(captured).toHaveLength(2);
+    expect(captured).toHaveLength(3);
     expect(
       (
         await manage({

@@ -75,3 +75,38 @@ test("application state survives restart and failed provider replacement preserv
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("desktop model defaults survive provider restart and reject unsupported levels", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rukie-default-model-"));
+  let app = await AppDatabase.open(root);
+  const provider = {
+    id: "local",
+    name: "Local",
+    api: "openai-completions" as const,
+    baseUrl: "https://example.com/v1",
+    models: [
+      {
+        id: "m",
+        reasoning: true,
+        defaultThinkingLevel: "high" as const,
+        thinkingLevelMap: { high: "deep", max: null },
+      },
+    ],
+  };
+  try {
+    await app.saveProvider(provider, { type: "keep" });
+    await app.close();
+    app = await AppDatabase.open(root);
+    expect((await app.providers())[0]!.models[0]).toEqual(provider.models[0]);
+    await expect(
+      app.saveProvider(
+        { ...provider, models: [{ ...provider.models[0]!, defaultThinkingLevel: "max" }] },
+        { type: "keep" },
+      ),
+    ).rejects.toThrow("Unsupported default thinking level");
+    expect((await app.providers())[0]!.models[0]!.defaultThinkingLevel).toBe("high");
+  } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

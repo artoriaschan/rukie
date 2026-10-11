@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import {
   THINKING_LEVELS,
+  modelServiceThinkingLevels,
   parseModelServiceSave,
   ModelCompatSchemas,
   type ModelService,
@@ -109,8 +110,10 @@ export function ModelServices({
   const [model, setModel] = useState<ServiceModel>(defaultModel);
   const [modelError, setModelError] = useState("");
   const [advanced, setAdvanced] = useState(false);
+  const [defaultReasoningOpen, setDefaultReasoningOpen] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [rename, setRename] = useState("");
+  const supportedLevels = modelServiceThinkingLevels(model);
   const selected = providers.find((provider) => provider.id === draft?.id);
   const dirty = Boolean(
     draft &&
@@ -783,7 +786,12 @@ export function ModelServices({
                   orientation="horizontal"
                   value={model.reasoning ? "reasoning" : "off"}
                   onValueChange={(value) =>
-                    setModel({ ...model, reasoning: value === "reasoning" })
+                    setModel({
+                      ...model,
+                      reasoning: value === "reasoning",
+                      defaultThinkingLevel:
+                        value === "reasoning" ? model.defaultThinkingLevel : undefined,
+                    })
                   }
                 >
                   <RadioGroupItem value="off" label={t("services.noReasoning")} />
@@ -798,30 +806,68 @@ export function ModelServices({
                         <Checkbox
                           key={level}
                           label={t(`services.${level}`)}
-                          checked={
-                            model.reasoning === true &&
-                            model.thinkingLevelMap?.[level] !== undefined &&
-                            model.thinkingLevelMap?.[level] !== null
-                          }
+                          checked={model.reasoning === true && supportedLevels.includes(level)}
                           disabled={!model.reasoning}
                           onCheckedChange={(enabled) => {
                             const map = {
                               ...model.thinkingLevelMap,
                               [level]: enabled ? level : null,
                             };
-                            setModel({ ...model, thinkingLevelMap: map });
+                            const next = { ...model, thinkingLevelMap: map };
+                            if (
+                              next.defaultThinkingLevel &&
+                              !modelServiceThinkingLevels(next).includes(next.defaultThinkingLevel)
+                            )
+                              delete next.defaultThinkingLevel;
+                            setModel(next);
                           }}
                         />
                       ))}
                     </div>
                   </div>
-                  <Input
-                    label={t("services.defaultReasoning")}
-                    value=""
-                    disabled
-                    title={t("services.unsupportedFields")}
-                    aria-describedby="model-services-unavailable-fields"
-                  />
+                  <div
+                    className="model-services-default-reasoning"
+                    onKeyDownCapture={(event) => {
+                      if (event.key === "Escape" && defaultReasoningOpen) {
+                        event.stopPropagation();
+                        setDefaultReasoningOpen(false);
+                      }
+                    }}
+                  >
+                    <p className="text-ui-sm text-muted-foreground">
+                      {t("services.defaultReasoning")}
+                    </p>
+                    <Select
+                      open={defaultReasoningOpen}
+                      onOpenChange={setDefaultReasoningOpen}
+                      value={model.defaultThinkingLevel ?? "automatic"}
+                      disabled={!model.reasoning}
+                      onValueChange={(value) => {
+                        const next = { ...model };
+                        if (value === "automatic") delete next.defaultThinkingLevel;
+                        else {
+                          const level = supportedLevels.find((item) => item === value);
+                          if (!level) return;
+                          next.defaultThinkingLevel = level;
+                        }
+                        setModel(next);
+                      }}
+                    >
+                      <SelectTrigger aria-label={t("services.defaultReasoning")}>
+                        {model.defaultThinkingLevel
+                          ? t(`services.${model.defaultThinkingLevel}`)
+                          : t("services.defaultAutomatic")}
+                      </SelectTrigger>
+                      <SelectContent className="model-services-menu model-services-reasoning-menu">
+                        <SelectItem value="automatic">{t("services.defaultAutomatic")}</SelectItem>
+                        {supportedLevels.map((level) => (
+                          <SelectItem key={level} value={level}>
+                            {t(`services.${level}`)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </section>
               <section className="model-services-multimodal">
