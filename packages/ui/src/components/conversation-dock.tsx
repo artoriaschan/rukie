@@ -2,8 +2,7 @@ import { useEffect, useRef } from "react";
 import type { PresentedPermissionRequest } from "../lib/transcript";
 import type { QueuedInput } from "@rukie/agent";
 import type { SubagentPresentation } from "../lib/transcript";
-import { ApprovalCard } from "./agents/approval-card";
-import { ToolApprovalCode } from "./agents/tool-approval";
+import { ToolApproval, ToolApprovalCode } from "./agents/tool-approval";
 import { TodoList, type TodoItem } from "./agents/todo-list";
 import { Button } from "./motion/button/base";
 import { useAppText } from "../lib/i18n";
@@ -101,39 +100,36 @@ export function PermissionDock({
           aria-label={t("conversation.permission")}
           className="py-2"
         >
-          <ApprovalCard
-            title={t("conversation.permission-title", { tool: first.toolName })}
+          <ToolApproval
+            tool={first.toolName}
             description={first.reason}
+            parameters={[
+              {
+                id: "arguments",
+                label: first.toolName,
+                value: (
+                  <div className="max-h-40 overflow-y-auto">
+                    <ToolApprovalCode
+                      code={
+                        first.callView?.card === "terminal"
+                          ? first.callView.command
+                          : (JSON.stringify(first.args, null, 2) ?? "")
+                      }
+                      language={first.callView?.card === "terminal" ? "bash" : "json"}
+                    />
+                  </div>
+                ),
+              },
+            ]}
             approveLabel={t("conversation.permission-allow")}
-            rejectLabel={t("conversation.permission-deny")}
-            secondaryAction={
-              first.sessionAllow ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!connected || pending !== null}
-                  onClick={() => onReply(first, "allow-session")}
-                >
-                  {t("conversation.permission-session")}
-                </Button>
-              ) : null
-            }
+            sessionAllowLabel={t("conversation.permission-session")}
+            denyLabel={t("conversation.permission-deny")}
             disabled={!connected || pending !== null}
-            status={pending === first.identity.epoch ? "submitting" : "pending"}
+            status={pending === first.identity.epoch ? "approving" : "pending"}
             onApprove={() => onReply(first, "allow")}
-            onReject={() => onReply(first, "deny")}
-          >
-            <div className="max-h-40 overflow-y-auto">
-              <ToolApprovalCode
-                code={
-                  first.callView?.card === "terminal"
-                    ? first.callView.command
-                    : (JSON.stringify(first.args, null, 2) ?? "")
-                }
-                language={first.callView?.card === "terminal" ? "bash" : "json"}
-              />
-            </div>
-          </ApprovalCard>
+            onAlwaysAllow={first.sessionAllow ? () => onReply(first, "allow-session") : undefined}
+            onDeny={() => onReply(first, "deny")}
+          />
         </section>
       ) : null}
     </div>

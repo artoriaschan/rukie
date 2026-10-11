@@ -112,7 +112,7 @@ function Group({
     else sections.push({ id: item.id, type: "trace", items: [activity] });
   };
   const approvals = decisions
-    .filter((item) => item.request.placement?.groupId === group.id)
+    .filter((item) => item.reply === "deny" && item.request.placement?.groupId === group.id)
     .map((item) => {
       const placement = item.request.placement!;
       const anchor = group.messages.find((candidate) =>
@@ -141,7 +141,7 @@ function Group({
           <ToolApproval
             tool={request.toolName}
             title={t("conversation.decision", { decision: t(`conversation.${item.reply}`) })}
-            status={item.reply === "deny" ? "denied" : "approved"}
+            status="denied"
             description={request.origin?.description ?? request.reason}
             parameters={[
               {
