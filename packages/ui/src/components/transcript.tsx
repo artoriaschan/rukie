@@ -402,7 +402,7 @@ export function Transcript({
       <div className="pointer-events-none absolute left-5 top-1/2 z-10 max-h-full w-6 -translate-y-1/2 overflow-y-auto">
         <PreviewRail
           className="pointer-events-auto min-h-0"
-          railClassName="w-6 [&_[data-slot=preview-rail-item]]:w-6 [&_[data-slot=preview-rail-tick]]:w-6 [&_[data-slot=preview-rail-tick]]:text-foreground/25 [&_[aria-current]_[data-slot=preview-rail-tick]]:text-foreground"
+          railClassName="w-6 [&_[data-slot=preview-rail-item]]:w-6 [&_[data-slot=preview-rail-tick]]:w-6 [&_[data-slot=preview-rail-tick]]:text-foreground/25 [&_[data-slot=preview-rail-tick][data-highlighted]]:text-foreground"
           items={state.groups.map((group, index) => ({
             id: group.id,
             label: t("conversation.group", { index: index + 1 }),
@@ -418,7 +418,7 @@ export function Transcript({
             ),
           }))}
           activeId={currentGroup?.id}
-          highlightActive
+          highlightActiveColor
           label={t("conversation.navigation")}
           itemSize={8}
           onItemSelect={(item) => {

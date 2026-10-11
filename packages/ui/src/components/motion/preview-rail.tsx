@@ -39,6 +39,8 @@ export interface PreviewRailProps {
   showPreview?: boolean;
   previewSide?: "before" | "after";
   highlightActive?: boolean;
+  /** Color the current item at rest without expanding its tick. */
+  highlightActiveColor?: boolean;
   itemSize?: number;
   children?: ReactNode;
   className?: string;
@@ -79,6 +81,7 @@ export function PreviewRail({
   showPreview = true,
   previewSide = "after",
   highlightActive = false,
+  highlightActiveColor = highlightActive,
   itemSize = 24,
   children,
   className,
@@ -163,6 +166,7 @@ export function PreviewRail({
         {items.map((item, index) => {
           const selected = item.id === selectedId;
           const highlighted = item.id === highlightedId;
+          const colored = item.id === (displayedId || (highlightActiveColor ? selectedId : ""));
           const distance =
             displayedIndex < 0 ? Number.POSITIVE_INFINITY : Math.abs(index - displayedIndex);
           const scale =
@@ -178,13 +182,14 @@ export function PreviewRail({
             <>
               <motion.span
                 data-slot="preview-rail-tick"
+                data-highlighted={colored ? "" : undefined}
                 aria-hidden="true"
                 animate={isHorizontal ? { scaleY: scale } : { scaleX: scale }}
                 transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
                 className={cn(
                   "block bg-current",
                   isHorizontal ? "h-12 w-0.5 origin-bottom" : "h-0.5 w-12 origin-left",
-                  highlighted ? "text-foreground" : undefined,
+                  colored ? "text-foreground" : undefined,
                 )}
               />
             </>

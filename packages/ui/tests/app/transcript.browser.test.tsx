@@ -1221,7 +1221,7 @@ test("new-session creation hands edited input to the created Session without sel
   }
 });
 
-test("navigation previews escape the scroll rail and current response stays highlighted after jumping elsewhere", async () => {
+test("navigation uses equal resting ticks and highlights only the previewed response", async () => {
   const wasDark = document.documentElement.classList.contains("dark");
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
@@ -1272,10 +1272,20 @@ test("navigation previews escape the scroll rail and current response stays high
     expect(railBounds().height).toBe(16);
     const tick = (button: Element) =>
       button.querySelector<HTMLElement>('[data-slot="preview-rail-tick"]')!;
-    await expect.poll(() => tick(current.element()).getBoundingClientRect().width).toBe(24);
+    await expect.poll(() => tick(current.element()).getBoundingClientRect().width).toBe(6);
+    await expect.poll(() => tick(old.element()).getBoundingClientRect().width).toBe(6);
     expect(getComputedStyle(tick(current.element())).color).not.toBe(
       getComputedStyle(tick(old.element())).color,
     );
+    await old.hover();
+    await expect.poll(() => tick(old.element()).getBoundingClientRect().width).toBe(24);
+    expect(getComputedStyle(tick(current.element())).color).toContain("0.25");
+    expect(getComputedStyle(tick(old.element())).color).not.toContain("0.25");
+    await screen.getByRole("feed").hover();
+    await expect.poll(() => tick(current.element()).getBoundingClientRect().width).toBe(6);
+    await expect.poll(() => tick(old.element()).getBoundingClientRect().width).toBe(6);
+    expect(getComputedStyle(tick(old.element())).color).toContain("0.25");
+    expect(getComputedStyle(tick(current.element())).color).not.toContain("0.25");
     await old.click();
     await userEvent.keyboard("{Tab}");
     old.element().focus();
@@ -1283,7 +1293,8 @@ test("navigation previews escape the scroll rail and current response stays high
     expect(getComputedStyle(tick(current.element())).color).not.toBe(
       getComputedStyle(tick(old.element())).color,
     );
-    expect(getComputedStyle(tick(old.element())).color).toContain("0.25");
+    expect(getComputedStyle(tick(old.element())).color).not.toContain("0.25");
+    expect(getComputedStyle(tick(current.element())).color).toContain("0.25");
     await expect
       .poll(() => document.querySelector('[data-slot="preview-rail-card"]')?.textContent)
       .toContain("First final reply");
@@ -1305,7 +1316,7 @@ test("navigation previews escape the scroll rail and current response stays high
             .querySelector('[data-slot="preview-rail-tick"]')!
             .getBoundingClientRect().width,
       )
-      .toBe(24);
+      .toBe(6);
     document.documentElement.classList.add("dark");
     expect(getComputedStyle(tick(current.element())).color).not.toBe(
       getComputedStyle(tick(old.element())).color,
