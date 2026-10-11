@@ -1,4 +1,4 @@
-Status: resolved
+Status: claimed
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -195,3 +195,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 用户指出遮罩字符过疏、显示隐藏无效并要求该按钮无 hover 动效，由 [19](issues/19-api-key-visibility.md) 的新代理实施。保持现有组件、字段布局与凭据边界，仅用假的 Key 在 Chromium/mock 验证；真实 Electron/Keychain 不在本次授权范围。
 
 19 最终关闭于 `d7d74130`：已保存 Key 主动展示经精确供应商主 frame IPC 和私有 management 通道读取，隐藏/切换/保存/退出清除临时明文，取消及过期结果不进入页面，展示值不混入替换保存。遮罩为等宽紧凑 8 点，beUI 眼睛按钮无 hover 动效，保留 pointer 和键盘焦点；字段高度 30px 保持。UI 两例 1.57s、desktop mock 两例 343ms、server 私有 HTTP 单例最终 17.17ms/196ms，以及相关类型和静态检查通过。Light/en、Dark/zh、420px 实际 Chromium/mock 通过，无控制台错误，遮罩实测 67.43px；浏览器和临时服务已清理。两轴 P2 旧合同与测试资源清理集中修正，父代理复核关闭，fresh merger 仅快进复用记录。ADR Coverage 同步 ADR-0035 的用户明确批准的主动展示用途，普通启动/列表不解密和私有凭据边界保持。19/spec 同步 resolved，未运行真实 Electron/Keychain、包级/全量或 CI，原生系统验收未完成，用户预览保持，PR 未合并。
+
+## 高级设置表单编辑
+
+用户报告 C16 高级设置表单无法填写，由 [20](issues/20-model-advanced-editing.md) 新代理修复实际输入和持久化合同，保持设计字段与布局；验证限受影响接缝，普通 Chromium/mock，不启动 Electron。
