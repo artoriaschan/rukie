@@ -49,6 +49,35 @@ test("model services creates a provider and preserves input when encrypted save 
     await expect.element(screen.getByRole("checkbox", { name: "Video" })).toBeDisabled();
     await expect.element(screen.getByRole("checkbox", { name: "PDF" })).toBeDisabled();
     await expect
+      .element(screen.getByRole("checkbox", { name: "Video" }))
+      .toHaveAccessibleDescription(
+        "Video, PDF, structured output and native web search are unavailable in the current request adapter.",
+      );
+    await expect
+      .poll(
+        () =>
+          screen
+            .getByRole("button", { name: "Input capabilities information" })
+            .element()
+            .getBoundingClientRect().width,
+      )
+      .toBeCloseTo(14, 1);
+    await expect
+      .poll(
+        () =>
+          screen
+            .getByRole("button", { name: "Input capabilities information" })
+            .element()
+            .getBoundingClientRect().height,
+      )
+      .toBeCloseTo(14, 1);
+    await screen.getByRole("button", { name: "Input capabilities information" }).click();
+    await expect
+      .element(page.getByRole("tooltip"))
+      .toHaveTextContent(
+        "Video, PDF, structured output and native web search are unavailable in the current request adapter.",
+      );
+    await expect
       .element(screen.getByRole("checkbox", { name: "Structured output" }))
       .toBeDisabled();
     await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("script-model");
@@ -449,6 +478,108 @@ test("saved overview stays compact; dirty credentials and invalid mapping remain
     await mapping.fill('{"high":"maximum"}');
     await screen.getByRole("button", { name: "Save model", exact: true }).click();
     await expect.poll(() => providers[0]!.models[0]!.thinkingLevelMap?.high).toBe("maximum");
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("keyboard Cancel preserves provider and credential while confirmation deletes", async () => {
+  const provider: ModelServiceSummary = {
+    id: "keyboard",
+    name: "Keyboard",
+    api: "openai-completions",
+    baseUrl: "https://api.example.com/v1",
+    hasCredential: true,
+    models: [],
+  };
+  let providers = [provider];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          list: async () => providers,
+          save: async () => {},
+          delete: async () => {
+            providers = [];
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    await expect.element(screen.getByRole("heading", { name: "Keyboard" })).toBeVisible();
+    for (const key of ["{Enter}", " "]) {
+      await screen.getByRole("button", { name: "Provider actions" }).click();
+      await screen.getByRole("menuitem", { name: "Delete provider" }).click();
+      await expect
+        .element(screen.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }))
+        .toBeVisible();
+      screen
+        .getByRole("dialog")
+        .getByRole("button", { name: "Cancel", exact: true })
+        .element()
+        .focus();
+      await userEvent.keyboard(key);
+      await expect.element(screen.getByRole("dialog")).not.toBeInTheDocument();
+      expect(providers).toEqual([provider]);
+      expect((await Promise.resolve(providers))[0]?.hasCredential).toBe(true);
+    }
+    await screen.getByRole("button", { name: "Provider actions" }).click();
+    await screen.getByRole("menuitem", { name: "Delete provider" }).click();
+    await expect
+      .element(
+        screen.getByRole("dialog").getByRole("button", { name: "Confirm delete", exact: true }),
+      )
+      .toBeVisible();
+    screen
+      .getByRole("dialog")
+      .getByRole("button", { name: "Confirm delete", exact: true })
+      .element()
+      .focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.poll(() => providers.length).toBe(0);
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("provider directory offers every returned template and preserves the custom path", async () => {
+  const templates = ["Anthropic", "OpenAI"].map((name) => ({
+    id: name.toLowerCase(),
+    name,
+    api: "openai-completions" as const,
+    baseUrl: "https://api.example.com/v1",
+    models: [],
+  }));
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          list: async () => [],
+          templates: async () => templates,
+          save: async () => {},
+          delete: async () => {},
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    await screen.getByRole("button", { name: "Add provider", exact: true }).first().click();
+    await expect
+      .element(screen.getByRole("button", { name: "Create custom provider" }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Anthropic", exact: true }))
+      .toBeVisible();
+    await screen.getByRole("button", { name: "OpenAI", exact: true }).click();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Base URL" }))
+      .toHaveValue("https://api.example.com/v1");
+    await expect.element(screen.getByRole("heading", { name: "OpenAI" })).toBeVisible();
   } finally {
     await screen.unmount();
   }

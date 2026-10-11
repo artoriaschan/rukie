@@ -1,3 +1,4 @@
+import { ownResources } from "./helpers/owned-resources.ts";
 import FakeTimers from "@sinonjs/fake-timers";
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -11,51 +12,66 @@ const startServer = (options: Omit<ServerOptions, "dataRoot">) =>
   startServerImpl({ ...options, dataRoot: join(options.homeDir, "desktop-data") });
 
 test("startup catalog and history never unlock encrypted execution configuration", async () => {
-  const homeDir = await mkdtemp(join(tmpdir(), "rukie-startup-keychain-"));
-  const history = await createSession({
-    homeDir,
-    dataRoot: join(homeDir, "desktop-data"),
-    cwd: join(homeDir, "desktop-data", "workspace"),
-    ...fakeModel([fauxAssistantMessage("stored history")], { model: { reasoning: true } }),
-    settings: { thinking: "high" },
-  });
-  await history.run("history");
-  await history.close();
-  const mutex = Bun.file(
-    join(homeDir, "desktop-data", "sessions", history.id, "host-lease.sqlite"),
-  );
-  const mutexBytes = await mutex.bytes();
-  const database = await AppDatabase.open(join(homeDir, "desktop-data"));
-  await database.saveSettings({ permissionMode: "full-access" });
-  for (const identity of [
-    "configuration:hooks",
-    "configuration:mcp",
-    "oauth:fixture",
-    "provider:fixture",
-  ])
-    await database.saveCredential(identity, { type: "replace", ciphertext: "opaque" });
-  await database.close();
-  let decryptions = 0;
-  let authorized = false;
-  const server = await startServer({
-    homeDir,
-    sessionOptions: fakeModel([fauxAssistantMessage("continued history")], {
-      model: { reasoning: true },
-    }),
-    encryption: {
-      async encrypt() {
-        throw new Error("unexpected encryption");
-      },
-      async decrypt() {
-        decryptions++;
-        if (!authorized) throw new Error("system authorization required");
-        return "{}";
-      },
-    },
-    onHandshake: () => {},
-  });
-  const client = await connect(server);
+  const owner = ownResources();
   try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-startup-keychain-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const history = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+          ...fakeModel([fauxAssistantMessage("stored history")], { model: { reasoning: true } }),
+          settings: { thinking: "high" },
+        }),
+      (resource) => resource.close(),
+    );
+    await history.run("history");
+    await history.close();
+    const mutex = Bun.file(
+      join(homeDir, "desktop-data", "sessions", history.id, "host-lease.sqlite"),
+    );
+    const mutexBytes = await mutex.bytes();
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (resource) => resource.close(),
+    );
+    await database.saveSettings({ permissionMode: "full-access" });
+    for (const identity of [
+      "configuration:hooks",
+      "configuration:mcp",
+      "oauth:fixture",
+      "provider:fixture",
+    ])
+      await database.saveCredential(identity, { type: "replace", ciphertext: "opaque" });
+    await database.close();
+    let decryptions = 0;
+    let authorized = false;
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("continued history")], {
+            model: { reasoning: true },
+          }),
+          encryption: {
+            async encrypt() {
+              throw new Error("unexpected encryption");
+            },
+            async decrypt() {
+              decryptions++;
+              if (!authorized) throw new Error("system authorization required");
+              return "{}";
+            },
+          },
+          onHandshake: () => {},
+        }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
     expect((await client.command("models.list")).error).toBeUndefined();
     expect((await client.command("sessions.list")).result).toEqual([
       expect.objectContaining({ id: history.id }),
@@ -71,14 +87,18 @@ test("startup catalog and history never unlock encrypted execution configuration
     });
     expect(decryptions).toBe(0);
     expect(await mutex.bytes()).toEqual(mutexBytes);
-    const owner = await createSession({
-      homeDir,
-      dataRoot: join(homeDir, "desktop-data"),
-      cwd: join(homeDir, "desktop-data", "workspace"),
-      resumeId: history.id,
-      ...fakeModel([]),
-    });
-    await owner.close();
+    const writer = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+          resumeId: history.id,
+          ...fakeModel([]),
+        }),
+      (resource) => resource.close(),
+    );
+    await writer.close();
     // Starting execution still requires the encrypted configuration and fails closed on denial.
     expect((await client.command("session.create", { project: null, text: "run" })).error).toEqual({
       code: "internal",
@@ -94,14 +114,15 @@ test("startup catalog and history never unlock encrypted execution configuration
     expect(client.messages.some((message) => message.type === "session_state")).toBe(true);
     expect(decryptions).toBeGreaterThan(1);
   } finally {
-    client.socket.close();
-    await server.close();
-    await rm(homeDir, { recursive: true, force: true });
+    await owner.close();
   }
 });
-
 test("failed server startup closes its acquired listener and application database", async () => {
-  const homeDir = await mkdtemp(join(tmpdir(), "rukie-startup-failure-"));
+  const owner = ownResources();
+  const homeDir = await owner.acquire(
+    () => mkdtemp(join(tmpdir(), "rukie-startup-failure-")),
+    (directory) => rm(directory, { recursive: true, force: true }),
+  );
   let port = 0;
   try {
     await expect(
@@ -114,14 +135,17 @@ test("failed server startup closes its acquired listener and application databas
       }),
     ).rejects.toThrow("handshake failed");
     await expect(fetch(`http://127.0.0.1:${port}/private/model-services`)).rejects.toThrow();
-    const database = await AppDatabase.open(join(homeDir, "desktop-data"));
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (resource) => resource.close(),
+    );
     try {
       expect(await database.registry()).toEqual({ projects: [], pinned: [], preferences: {} });
     } finally {
       await database.close();
     }
   } finally {
-    await rm(homeDir, { recursive: true, force: true });
+    await owner.close();
   }
 });
 
@@ -394,11 +418,23 @@ test("authenticated clients use the public registry over a real WebSocket", asyn
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { fakeModel } from "../../agent/tests/helpers/fake-model.ts";
 
-async function connect(server: { port: number; token: string }, origin = "app://rukie") {
+async function connect(
+  server: { port: number; token: string },
+  origin = "app://rukie",
+  owner?: ReturnType<typeof ownResources>,
+) {
   const socket = new WebSocket(`ws://127.0.0.1:${server.port}/ws`, {
     protocols: ["rukie.v1", `rukie.auth.${server.token}`],
     headers: { Origin: origin },
   });
+  owner?.add(
+    () =>
+      new Promise<void>((resolve) => {
+        if (socket.readyState === WebSocket.CLOSED) return resolve();
+        socket.addEventListener("close", () => resolve(), { once: true });
+        socket.close();
+      }),
+  );
   const messages: Record<string, unknown>[] = [];
   const waits = new Set<() => void>();
   socket.addEventListener("message", (event) => {
@@ -625,44 +661,60 @@ test("project registration survives restart and a removed project cannot hide ot
 }, 5000);
 
 test("an application-root Session held by another owner permits only a read-only desktop snapshot", async () => {
-  const homeDir = await mkdtemp(join(tmpdir(), "rukie-busy-"));
-  const fake = fakeModel([fauxAssistantMessage("held writer reply")]);
-  const server = await startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} });
-  const owned = await createSession({
-    ...fake,
-    homeDir,
-    dataRoot: join(homeDir, "desktop-data"),
-    cwd: join(homeDir, "desktop-data", "workspace"),
-  });
-  await owned.run("held writer prompt");
-  await owned.close();
-  // The child holds a real cross-process kernel mutex; parent virtual clocks cannot model it.
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      join(import.meta.dir, "../../agent/tests/helpers/session-store-worker.ts"),
-      "hold",
-      join(homeDir, "desktop-data", "workspace"),
-      homeDir,
-      owned.id,
-      join(homeDir, "desktop-data"),
-    ],
-    { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
-  );
-  const reader = child.stdout.getReader();
-  const log = Bun.file(
-    join(
-      createSessionStore({
-        homeDir,
-        dataRoot: join(homeDir, "desktop-data"),
-        cwd: join(homeDir, "desktop-data", "workspace"),
-      }).key(owned.id),
-      "session.sqlite",
-    ),
-  );
-  let client: Awaited<ReturnType<typeof connect>> | undefined;
+  const owner = ownResources();
   try {
-    client = await connect(server);
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-busy-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const fake = fakeModel([fauxAssistantMessage("held writer reply")]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const owned = await owner.acquire(
+      () =>
+        createSession({
+          ...fake,
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+        }),
+      (resource) => resource.close(),
+    );
+    await owned.run("held writer prompt");
+    await owned.close();
+    // The child holds a real cross-process kernel mutex; parent virtual clocks cannot model it.
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        join(import.meta.dir, "../../agent/tests/helpers/session-store-worker.ts"),
+        "hold",
+        join(homeDir, "desktop-data", "workspace"),
+        homeDir,
+        owned.id,
+        join(homeDir, "desktop-data"),
+      ],
+      { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+    );
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    owner.add(async () => {
+      child.kill();
+      await child.exited;
+      reader?.releaseLock();
+    });
+    reader = child.stdout.getReader();
+    const log = Bun.file(
+      join(
+        createSessionStore({
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+        }).key(owned.id),
+        "session.sqlite",
+      ),
+    );
+    const client = await connect(server, "app://rukie", owner);
     expect(new TextDecoder().decode((await reader.read()).value)).toStartWith("READY ");
     const committed = await log.bytes();
     expect((await client.command("session.subscribe", { sessionId: owned.id })).error).toEqual({
@@ -680,25 +732,22 @@ test("an application-root Session held by another owner permits only a read-only
       (await client.command("session.subscribe", { sessionId: owned.id })).result,
     ).toMatchObject({ readonly: true });
     // Successful observation immediately rolls back its probe, permitting a later writer.
-    const reopened = await createSession({
-      ...fakeModel([]),
-      homeDir,
-      dataRoot: join(homeDir, "desktop-data"),
-      cwd: join(homeDir, "desktop-data", "workspace"),
-      resumeId: owned.id,
-    });
+    const reopened = await owner.acquire(
+      () =>
+        createSession({
+          ...fakeModel([]),
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+          resumeId: owned.id,
+        }),
+      (resource) => resource.close(),
+    );
     await reopened.close();
   } finally {
-    client?.socket.close();
-    child.kill();
-    await child.exited;
-    reader.releaseLock();
-    await owned.close();
-    await server.close();
-    await rm(homeDir, { recursive: true, force: true });
+    await owner.close();
   }
 }, 5000);
-
 test("permission epochs survive takeover and settle once, with session rules applying to later calls", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-permission-wire-"));
   const fake = fakeModel([

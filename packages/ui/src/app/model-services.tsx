@@ -52,6 +52,7 @@ import { Input } from "../components/motion/input";
 import { Checkbox } from "../components/motion/checkbox";
 import { Select, SelectTrigger, SelectContent, SelectItem } from "../components/motion/select";
 import { MorphingModal } from "../components/motion/morphing-modal";
+import { Tooltip } from "../components/motion/tooltip";
 import { Switch } from "../components/motion/switch";
 import { Textarea } from "../components/ui/textarea";
 import "@fontsource-variable/noto-sans-sc";
@@ -531,6 +532,19 @@ export function ModelServices({
                     {t("services.create")}
                     <ChevronRight className="ml-auto size-3.5" />
                   </Button>
+                  {templates.map((template) => (
+                    <Button
+                      key={template.id}
+                      variant="secondary"
+                      className="model-services-template-tile"
+                      aria-label={template.name}
+                      onClick={() => create(template)}
+                    >
+                      <Box className="size-6" />
+                      <span className="truncate">{template.name}</span>
+                      <ChevronRight className="ml-auto size-3.5" />
+                    </Button>
+                  ))}
                 </div>
               ) : draft ? (
                 <div className="model-services-provider-form">
@@ -868,7 +882,17 @@ export function ModelServices({
               <div className="model-services-advanced" hidden={!advanced}>
                 <p className="model-services-help-label">
                   {t("services.inputs")}
-                  <Info aria-hidden="true" />
+                  <Tooltip content={t("services.unsupported")}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="model-services-capability-help"
+                      aria-label={t("services.inputsInfo")}
+                      aria-describedby="model-services-unsupported"
+                    >
+                      <Info aria-hidden="true" />
+                    </Button>
+                  </Tooltip>
                 </p>
                 <div className="model-services-chips">
                   <Checkbox
@@ -889,30 +913,44 @@ export function ModelServices({
                     checked={false}
                     disabled
                     label={t("services.video")}
+                    aria-describedby="model-services-unsupported"
                     onCheckedChange={() => {}}
                   />
                   <Checkbox
                     checked={false}
                     disabled
                     label={t("services.pdf")}
+                    aria-describedby="model-services-unsupported"
                     onCheckedChange={() => {}}
                   />
                 </div>
                 <p className="model-services-help-label">
                   {t("services.capabilities")}
-                  <Info aria-hidden="true" />
+                  <Tooltip content={t("services.unsupported")}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="model-services-capability-help"
+                      aria-label={t("services.capabilitiesInfo")}
+                      aria-describedby="model-services-unsupported"
+                    >
+                      <Info aria-hidden="true" />
+                    </Button>
+                  </Tooltip>
                 </p>
                 <div className="model-services-chips">
                   <Checkbox
                     checked={false}
                     disabled
                     label={t("services.structured")}
+                    aria-describedby="model-services-unsupported"
                     onCheckedChange={() => {}}
                   />
                   <Checkbox
                     checked={false}
                     disabled
                     label={t("services.web")}
+                    aria-describedby="model-services-unsupported"
                     onCheckedChange={() => {}}
                   />
                   <Checkbox
@@ -1056,17 +1094,7 @@ export function ModelServices({
               {t("services.deleteTitle", { name: draft?.name ?? "" })}
             </h2>
             <p className="text-ui-sm text-muted-foreground">{t("services.deleteNote")}</p>
-            <div
-              className="model-services-delete-footer flex justify-end gap-2"
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  event.currentTarget
-                    .querySelector<HTMLButtonElement>("[data-confirm-delete]")
-                    ?.click();
-                }
-              }}
-            >
+            <div className="model-services-delete-footer flex justify-end gap-2">
               <Button
                 variant="secondary"
                 aria-label={t("services.cancel")}
