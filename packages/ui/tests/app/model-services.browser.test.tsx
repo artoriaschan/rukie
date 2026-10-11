@@ -71,6 +71,24 @@ test("model services creates a provider and preserves input when encrypted save 
             .getBoundingClientRect().height,
       )
       .toBeCloseTo(14, 1);
+    await expect
+      .element(screen.getByRole("radiogroup", { name: "Reasoning capabilities" }))
+      .toBeVisible();
+    const off = screen.getByRole("radio", { name: "No reasoning" });
+    off.element().focus();
+    await userEvent.keyboard("{ArrowRight}");
+    await expect
+      .element(screen.getByRole("radio", { name: "Configurable reasoning" }))
+      .toHaveAttribute("aria-checked", "true");
+    await expect
+      .element(screen.getByRole("radio", { name: "Configurable reasoning" }))
+      .toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    await expect.element(off).toHaveFocus();
+    await expect.element(off).toHaveAttribute("aria-checked", "true");
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard(" ");
+    await expect.element(off).toHaveAttribute("aria-checked", "true");
     await screen.getByRole("button", { name: "Input capabilities information" }).click();
     await expect
       .element(page.getByRole("tooltip"))
@@ -82,6 +100,26 @@ test("model services creates a provider and preserves input when encrypted save 
       .element(screen.getByRole("checkbox", { name: "Structured output" }))
       .toBeDisabled();
     await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("script-model");
+    const help = screen.getByRole("button", { name: "Intelligent configuration information" });
+    expect(help.element().getBoundingClientRect().width).toBe(24);
+    expect(help.element().querySelector("svg")!.getBoundingClientRect().width).toBe(14);
+    expect(help.element().getBoundingClientRect().height).toBe(24);
+    const cancelBox = screen
+      .getByRole("dialog")
+      .getByRole("button", { name: "Cancel", exact: true })
+      .element()
+      .getBoundingClientRect();
+    const saveBox = screen
+      .getByRole("button", { name: "Save model", exact: true })
+      .element()
+      .getBoundingClientRect();
+    expect(saveBox.left - cancelBox.right).toBe(8);
+    help.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect
+      .element(page.getByRole("tooltip"))
+      .toHaveTextContent("Use a matching locked catalog template. Unknown IDs remain manual.");
+    await screen.getByRole("textbox", { name: "Model ID", exact: true }).click();
     await screen.getByRole("button", { name: "Save model", exact: true }).click();
     await expect.poll(() => providers[0]?.models[0]?.id).toBe("script-model");
     await screen.getByRole("button", { name: "Provider actions" }).click();
@@ -467,6 +505,11 @@ test("saved overview stays compact; dirty credentials and invalid mapping remain
     await screen.getByRole("button", { name: "Save provider", exact: true }).click();
     await expect.poll(() => saved.length).toBe(1);
     expect(saved[0]!.credential.type).toBe("keep");
+    for (const control of screen.getByRole("switch").elements()) {
+      expect(control.getBoundingClientRect().width).toBe(32);
+      expect(control.getBoundingClientRect().height).toBe(18);
+      expect(control.firstElementChild!.getBoundingClientRect().height).toBe(14);
+    }
     await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
     await expect.poll(() => providers[0]!.models[0]!.enabled).toBe(false);
     await screen.getByRole("button", { name: "Edit", exact: true }).click();
@@ -593,6 +636,12 @@ test("provider directory offers only the custom path even when templates exist",
     await expect
       .element(screen.getByRole("button", { name: "Z.ai Coding Plan", exact: true }))
       .not.toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("button", { name: "Create custom provider" })
+        .element()
+        .getBoundingClientRect().height,
+    ).toBe(44);
     await screen.getByRole("button", { name: "Create custom provider" }).click();
     await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("");
     await expect.element(screen.getByRole("heading", { name: "New provider" })).toBeVisible();

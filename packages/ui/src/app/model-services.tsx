@@ -828,8 +828,11 @@ export function ModelServices({
                 </p>
               </section>
               <section className="model-services-reasoning">
-                <h3 className="text-ui-base">{t("services.reasoningCapabilities")}</h3>
+                <h3 id="model-services-reasoning-label" className="text-ui-base">
+                  {t("services.reasoningCapabilities")}
+                </h3>
                 <RadioGroup
+                  aria-labelledby="model-services-reasoning-label"
                   orientation="horizontal"
                   value={model.reasoning ? "reasoning" : "off"}
                   onValueChange={(value) =>
@@ -941,7 +944,15 @@ export function ModelServices({
                   <div className="model-services-intelligent">
                     <span>{t("services.intelligent")}</span>
                     <Tooltip content={t("services.templateNote")}>
-                      <Info className="size-3.5 text-muted-foreground" />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="model-services-capability-help"
+                        aria-label={t("services.intelligentInfo")}
+                        type="button"
+                      >
+                        <Info aria-hidden="true" />
+                      </Button>
                     </Tooltip>
                     <Switch
                       checked={intelligent}
