@@ -620,7 +620,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         </div>
         <div
           className={cn(
-            "flex h-full min-w-0 flex-1 items-center gap-2 px-3",
+            "app-titlebar-content flex h-full min-w-0 flex-1 items-center gap-2 px-3",
             !settingsOpen && sidebar && "md:border-l md:border-border",
           )}
         >

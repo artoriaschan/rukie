@@ -17,10 +17,10 @@ Blocked by: 13
 
 ## Implementation evidence
 
-C01 单一壳色与44px标题栏，C02/C03统一52px左轨/268px中栏、12px工作区/16px外壳圆角及4px右下inset；删除外壳left/top多余border，中栏仅保留right divider。设置仍使用既有C03与provider工作区，标题栏不展示Session标题/分割线/侧栏toggle；首页/Session保留标题与会话操作。既有beUI Button增加真实Back/Forward，恢复Session/项目/new-chat草稿与设置视图；导航不改变已运行Session行为。标题栏图标中心y22，macOS窗口选项显式trafficLightPosition x16/y16，源于C01原生按钮参考；未启动真实Electron，未宣称原生几何验收。H09中的独立标签/Side Pane功能当前未实现，沿用DESIGN条件合同；既有Session summary联动保持。
+C01 单一壳色与44px标题栏，C02/C03统一52px左轨/268px中栏、12px工作区/16px外壳圆角及4px右下inset；删除外壳left/top多余border，中栏仅保留right divider，壳独立divider使用Pencil Dark #ffffff1a / Light #0d0d0d1a，统一C02/C03及title divider。设置仍使用既有C03与provider工作区，标题栏不展示Session标题/分割线/侧栏toggle；首页/Session保留标题与会话操作。既有beUI Button增加真实Back/Forward，恢复Session/项目/new-chat草稿与设置视图；导航不改变已运行Session行为。标题栏图标中心y22，macOS窗口选项显式trafficLightPosition x16/y16，源于C01原生按钮参考；未启动真实Electron，未宣称原生几何验收。H09中的独立标签/Side Pane功能当前未实现，沿用DESIGN条件合同；既有Session summary联动保持。
 
 验证记录由实施代理单独维护在外部verification.md。复用已有desktop包验收与静态基线，仅失效消费者局部验证：layout browser2例通过（深浅/1280与420、字体14/18、sidebar开关、Transcript滚动/resize及composer保留）；titlebar drag与菜单1例通过；新增Back/Forward跨两个Session与设置、独立草稿1例通过。Node BrowserWindow mock既有IPC合同1例通过（7 filtered，336ms）。UI/desktop类型检查及任务TS lint通过；最后导航cleanup测试修改仅该例增量验证通过。未运行包级全套、Core、CI或原生。
 
-一次agent-browser Chromium/mock壳验收涵盖Light/Dark首页、Session、settings宽屏，以及Session/settings窄屏；浏览器错误为空，仅QA favicon404。Back/Forward、sidebar overlay和键盘Tab可见focus通过；自有QA/browser/wire子进程均已关闭，用户Electron保留。截图与日志放在外部证据目录。初始命令project discovery错误、Tooltip wrapper定位与新断言文案错误分别记录；修正后只复验失效scope，未放宽断言。
+一次完整agent-browser Chromium/mock壳验收涵盖Light/Dark首页、Session、settings宽屏，以及Session/settings窄屏；浏览器错误为空，仅QA favicon404。Back/Forward、sidebar overlay和键盘Tab可见focus通过；自有QA/browser/wire子进程均已关闭，用户Electron保留。最终父代理发现Session divider仍用了GitHub全局border，按Pencil精确stroke追加壳独立token后，只复验layout颜色断言及实际Session分割线深浅区域；其他GUI/导航/类型/Node证据复用。GUI Session截图使用空mock Transcript，消息/composer滚动保留由公开layout测试验证。截图与日志放在外部证据目录。初始命令project discovery错误、Tooltip wrapper定位与新断言文案错误分别记录；修正后只复验失效scope，未放宽断言。
 
 Standards/Spec独立只读复核完成；Standards建议新导航test应在获得wire后立即注册onTestFinished cleanup，已修改，render/unmount失败仍独立stopWire与恢复viewport。Spec无明确偏差。ADR Coverage：壳样式、前端临时view history和窗口坐标属于既有ADR-0029/0035责任边界，没有改变存储/IPC/Session执行架构，无需新ADR。保持claimed，等待集成后父代理同步关闭工单和spec。

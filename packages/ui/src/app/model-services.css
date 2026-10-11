@@ -1244,3 +1244,7 @@
 .model-services-navigation {
   background: var(--layout-sidebar);
 }
+
+.model-services-navigation {
+  border-right-color: var(--layout-divider);
+}

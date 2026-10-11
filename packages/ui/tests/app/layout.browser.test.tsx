@@ -109,6 +109,9 @@ test.each([
           );
           expect(getComputedStyle(sidebar).borderLeftWidth).toBe("0px");
           expect(getComputedStyle(sidebar).borderRightWidth).toBe("1px");
+          expect(getComputedStyle(sidebar).borderRightColor).toBe(
+            dark ? "rgba(255, 255, 255, 0.1)" : "rgba(13, 13, 13, 0.1)",
+          );
         }
       };
 
@@ -169,6 +172,10 @@ test.each([
         expect(root.scrollHeight).toBeLessThanOrEqual(height);
       };
       assertConversation();
+      if (width >= 768)
+        expect(getComputedStyle(header.lastElementChild!).borderLeftColor).toBe(
+          dark ? "rgba(255, 255, 255, 0.1)" : "rgba(13, 13, 13, 0.1)",
+        );
       await toggle.click();
       await expect.element(toggle).toHaveAttribute("aria-pressed", String(!selectedSidebarOpen));
       assertConversation(!selectedSidebarOpen);

@@ -456,12 +456,14 @@
   --layout-titlebar: #e8e9e9;
   --layout-sidebar: #f8f7f7;
   --layout-content: #ffffff;
+  --layout-divider: #0d0d0d1a;
 }
 .dark {
   --layout-rail: #2b2827;
   --layout-titlebar: #282928;
   --layout-sidebar: #1f1e1e;
   --layout-content: #181818;
+  --layout-divider: #ffffff1a;
 }
 [data-workspace-shell] {
   background: var(--layout-rail);
@@ -515,7 +517,10 @@
   width: 268px;
   background: var(--layout-sidebar);
   border-radius: 12px 0 0 12px;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--layout-divider);
+}
+.app-titlebar-content {
+  border-color: var(--layout-divider);
 }
 @media (min-width: 768px) {
   .app-titlebar-navigation[data-sidebar-open="true"] {
