@@ -56,3 +56,9 @@ API Key、OAuth token、OAuth client_secret 及持久化的授权临时秘密（
 桌面端与终端不能直接接力同一个 Session；两者在同一项目工作也各自拥有会话、信任与配置。Core 的 Frontend 无关执行接口保留，增加实际存储与配置来源的接缝。模型录入成为桌面首次使用的必要能力，已配置供应商和模型在重启后保留；删除配置不能破坏历史 Transcript，后续执行缺少有效模型时要求重新选择。
 
 当前源码已实现上述 SQLite、独立配置与输出、系统加密通道和模型服务流程。逐项验证、真实系统加密和打包验收状态归[存储调整规格及工单](../../.scratch/desktop-storage/spec.md)；源码实现不代表已发布或生产验收完成。
+
+### 开发环境隔离
+
+`dev:desktop` 固定使用 checkout 内 `.desktop-dev` 的独立业务数据、Electron userData、session/cache 与构建路径，并保留真实工具 home。开发名称为 `rukie-desktop-development`，bundle identity 为 `dev.rukie.desktop.development`，在 ready 前设置名称与路径；单实例锁使用独立 userData，开发不会驱动正式应用的现有窗口。当前源码每次重新构建，稳定缓存的开发 bundle 与正式打包产物分开，Cookie Encryption 继续关闭，不以 mock keychain 代替实际凭证行为。
+
+[Electron 41.0.3 的 macOS 初始化实现](https://github.com/electron/electron/blob/v41.0.3/shell/browser/electron_browser_main_parts.cc#L469-L510) 在 main 执行后将 Keychain service 设置为 `Browser::GetName() + " Safe Storage"`，account 为同一 app name。因此开发的 manifest、pre-ready name 与 bundle identity 都与正式版分离；仅设置不同 userData 不能达到这个目的。显式开发凭证操作使用自己的系统身份，失败或取消继续遵守现有凭证合同；此源代码证据不代替独立授权的真实系统钥匙串验收。使用和退出流程由[桌面 README](../../packages/desktop/README.md#桌面开发调试)维护。

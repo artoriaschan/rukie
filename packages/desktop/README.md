@@ -26,6 +26,22 @@ macOS 启动时通过用户的登录交互 shell 读取环境变量，使 Finder
 
 从仓库根运行 `bunx --no -- playwright install --only-shell chromium` 后运行 `bun run test:desktop`。main/preload 的 Node Vitest 测试 mock Electron；sidecar 生命周期驱动真实的假进程，父进程超时用虚拟时钟，cleanup 等实际 exit。打包 Electron smoke 不由这些测试代替。
 
+## 桌面开发调试
+
+在 macOS arm64、Bun 1.4.2、Node 与 Xcode Command Line Tools 环境中，安装锁定依赖后，从仓库根运行：
+
+```sh
+bun run dev:desktop
+```
+
+命令每次构建当前 main、sandbox preload、UI 与 sidecar，在独立的 **Rukie Development** 中打开 DevTools。源码修改后关闭开发应用，再重新运行命令；当前入口不提供自动热更新。main/preload 与 UI 附 source map。renderer 仍由 `app://rukie` 加载，沿用正式版的 CSP、sandbox、preload 来源与 IPC 校验，不开放 HTTP 调试服务或远程调试端口。
+
+开发状态固定在当前 checkout 的 `.desktop-dev/`，已加入 Git ignore：`data/` 保存业务 SQLite、凭证密文、Session 与附件；`electron/` 保存 Electron userData 和单实例锁；`session/` 保存 Chromium session/storage；`cache/` 缓存独立开发 app，Chromium 的 cache 由独立 sessionData 归属；`build/` 保存本次构建。目录、构建产物、业务数据完整树与缓存 app 不接受符号链接。Electron userData/session 的其他持久化树同样拒绝链接；仅 Chromium 的 SingletonLock/Cookie/Socket 链接不跟随目标，确认其原进程已退出并取得开发入口锁后只移除这些原生 IPC 链接，允许正常重启。开发入口在构建前取得独占 launcher 锁，已有开发命令运行时拒绝第二次构建；异常崩溃遗留锁时，只在确认其所有进程退出后手动移除 `.desktop-dev/launcher.lock`。重启保留开发数据，开发版不读取、迁移或覆盖正式应用或终端的配置、凭证与 Session，工具仍使用真实 OS home。
+
+开发 app 使用 `rukie-desktop-development` 名称和 `dev.rukie.desktop.development` bundle identity。首次运行缓存锁定 Electron；若依赖尚无原生 runtime，调用锁定包的安装入口下载。开发 bundle 关闭 Cookie Encryption 并 ad-hoc 签名；后续启动校验身份、fuse 与签名，源码产物在 bundle 外重建，不因每次源码修改重新签名。macOS safeStorage 的 service/account 来源及原生验收边界见 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)。显式保存凭证可能请求开发身份的系统钥匙串授权；独立数据目录本身不能证明系统凭证行为已验收。
+
+入口拒绝继承 `RUKIE_DESKTOP_*`、`NODE_OPTIONS`、`BUN_OPTIONS`、`BUN_BE_BUN`、`DYLD_*` 与 `ELECTRON_*` 启动覆盖项，提示先移除变量，不接受正式数据路径的参数。sidecar 每次从当前源码编译，禁用 dotenv、bunfig、package.json 与 tsconfig 自动加载，避免开发运行采用用户 Bun 配置或隐式凭据。`Ctrl+C`、`SIGTERM` 或关闭开发窗口时等待所属进程退出；优雅退出失败才按有界退出探测终止所属进程组，并确认组中已无可继续工作的成员；不能确认清理完成时以非零状态失败并保留 launcher 锁，保留开发数据。构建或启动失败以非零状态退出，不影响已打开的正式应用或其他预览窗口。
+
 ## 本地构建
 
 前置条件是 macOS arm64、Bun 1.4.2、支持 Vite 的 Node、Xcode Command Line Tools（codesign / plutil），以及 `bun install --frozen-lockfile`。从根目录运行 `bun run desktop:build --out /absolute/task-owned/output`，输出 `package/mac-arm64/Rukie.app` 和 `desktop-build.json`；输出目录的 staging 属于构建脚本，会在下一次构建时清理。默认输出为 `dist/desktop`。
