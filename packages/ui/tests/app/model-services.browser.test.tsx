@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { App } from "../../src/app";
@@ -513,6 +513,10 @@ test.each([
   "API option hover stays neutral and preserves selection and geometry in $theme",
   async ({ dark, background, foreground }) => {
     const originalRootClass = document.documentElement.className;
+    const restoreRootClass = () => {
+      document.documentElement.className = originalRootClass;
+    };
+    onTestFinished(restoreRootClass);
     document.documentElement.classList.toggle("dark", dark);
     const screen = await render(
       <UiLocaleProvider locale="en">
@@ -558,8 +562,11 @@ test.each([
       expect(hovered.height).toBe(28);
       expect(menu.getBoundingClientRect().height).toBe(96);
     } finally {
-      await screen.unmount();
-      document.documentElement.className = originalRootClass;
+      try {
+        await screen.unmount();
+      } finally {
+        restoreRootClass();
+      }
     }
   },
 );
