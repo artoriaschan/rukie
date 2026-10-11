@@ -10,6 +10,8 @@ status: accepted
 
 ## 决定
 
+开发版的配置共享范围由 [ADR-0036](0036-shared-development-configuration.md) 部分替代；正式应用与终端隔离规则继续有效。
+
 ### 数据归属与隔离
 
 本决定整份替代 ADR-0032，部分替代 [ADR-0019](0019-mcp-oauth-credential-ownership.md) 的桌面凭据落盘方式和 [ADR-0034](0034-desktop-cookie-free-startup.md) 中由 Core 默认用户目录保存桌面配置的规则。ADR-0019 的 OAuth 生命周期、服务器身份隔离与项目信任继续有效；ADR-0034 的 Cookie-free 和关闭未使用 Cookie Encryption 规则继续有效。[ADR-0024](0024-adopt-pi-durable-harness.md) 的原生执行、事务、恢复、任务 ownership 与 replay 语义继续有效，终端默认 JSONL 不变。

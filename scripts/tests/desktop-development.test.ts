@@ -1,5 +1,14 @@
 import { expect, test, onTestFinished } from "bun:test";
-import { mkdtemp, mkdir, rm, symlink, realpath, writeFile, readlink } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  rm,
+  symlink,
+  realpath,
+  writeFile,
+  readlink,
+  readdir,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { watch } from "node:fs";
@@ -18,7 +27,7 @@ import {
 test("desktop development paths stay inside the checkout and reject inherited production overrides", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-dev-")));
   onTestFinished(() => rm(root, { recursive: true, force: true }));
-  const paths = await developmentPaths(root);
+  const paths = await developmentPaths(root, root);
   expect(paths.data).toBe(join(root, ".desktop-dev/data"));
   expect(paths.userData).toBe(join(root, ".desktop-dev/electron"));
   expect(paths.sessionData).toBe(join(root, ".desktop-dev/session"));
@@ -32,7 +41,7 @@ test("desktop development paths stay inside the checkout and reject inherited pr
   await rm(paths.sessionData, { recursive: true });
   await mkdir(join(root, "outside"));
   await symlink(join(root, "outside"), paths.sessionData);
-  await expect(developmentPaths(root)).rejects.toThrow("symbolic link");
+  await expect(developmentPaths(root, root)).rejects.toThrow("symbolic link");
 });
 
 test("developer launcher waits for cancellation cleanup and reports startup or process failure", async () => {
@@ -70,14 +79,14 @@ test("developer launcher waits for cancellation cleanup and reports startup or p
 test("developer artifacts reject redirected builds and cached apps, and an active launcher excludes another", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-dev-artifacts-")));
   onTestFinished(() => rm(root, { recursive: true, force: true }));
-  const paths = await developmentPaths(root);
+  const paths = await developmentPaths(root, root);
   const outside = join(root, "outside");
   await mkdir(outside);
   await writeFile(join(outside, "sentinel"), "production untouched");
   for (const name of ["main.js", "preload.cjs", "rukie-server", "rg"]) {
     const artifact = join(paths.build, name);
     await symlink(join(outside, "sentinel"), artifact);
-    await expect(developmentPaths(root)).rejects.toThrow("symbolic link");
+    await expect(developmentPaths(root, root)).rejects.toThrow("symbolic link");
     await rm(artifact);
   }
   for (const artifact of [
@@ -86,7 +95,7 @@ test("developer artifacts reject redirected builds and cached apps, and an activ
     join(paths.cache, "electron-41.0.3.json"),
   ]) {
     await symlink(outside, artifact);
-    await expect(developmentPaths(root)).rejects.toThrow("symbolic link");
+    await expect(developmentPaths(root, root)).rejects.toThrow("symbolic link");
     await rm(artifact);
   }
   expect(await readFile(join(outside, "sentinel"), "utf8")).toBe("production untouched");
@@ -113,16 +122,16 @@ test("developer artifacts reject redirected builds and cached apps, and an activ
 test("development never follows existing business database or session links into production data", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-dev-business-")));
   onTestFinished(() => rm(root, { recursive: true, force: true }));
-  const paths = await developmentPaths(root);
+  const paths = await developmentPaths(root, root);
   const outside = join(root, "formal");
   await mkdir(outside);
   await writeFile(join(outside, "app.sqlite"), "formal database untouched");
   await symlink(join(outside, "app.sqlite"), join(paths.data, "app.sqlite"));
-  await expect(developmentPaths(root)).rejects.toThrow("persistent data");
+  await expect(developmentPaths(root, root)).rejects.toThrow("persistent data");
   await rm(join(paths.data, "app.sqlite"));
   await mkdir(join(paths.data, "sessions"));
   await symlink(outside, join(paths.data, "sessions/nested"));
-  await expect(developmentPaths(root)).rejects.toThrow("persistent data");
+  await expect(developmentPaths(root, root)).rejects.toThrow("persistent data");
   expect(await readFile(join(outside, "app.sqlite"), "utf8")).toBe("formal database untouched");
 });
 
@@ -149,12 +158,12 @@ test("developer launcher waits for a descendant after its direct parent has exit
 test("developer native persistent storage rejects redirected cache while allowing only Chromium IPC links", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-dev-native-data-")));
   onTestFinished(() => rm(root, { recursive: true, force: true }));
-  const paths = await developmentPaths(root);
+  const paths = await developmentPaths(root, root);
   const outside = join(root, "formal");
   await mkdir(outside);
   for (const directory of [paths.userData, paths.sessionData]) {
     await symlink(outside, join(directory, "Cache"));
-    await expect(developmentPaths(root)).rejects.toThrow("persistent data");
+    await expect(developmentPaths(root, root)).rejects.toThrow("persistent data");
     await rm(join(directory, "Cache"));
     for (const name of ["SingletonLock", "SingletonCookie", "SingletonSocket"])
       await symlink(
@@ -162,7 +171,7 @@ test("developer native persistent storage rejects redirected cache while allowin
         join(directory, name),
       );
   }
-  expect((await developmentPaths(root)).sessionData).toBe(paths.sessionData);
+  expect((await developmentPaths(root, root)).sessionData).toBe(paths.sessionData);
 });
 
 test("development runtime keeps framework links inside its independent app copy", async () => {
@@ -239,4 +248,36 @@ test("development entry loads the current external ESM main before bootstrap com
   await rm(join(app, "bootstrap.mjs"));
   await symlink(join(build, "main.js"), join(app, "bootstrap.mjs"));
   await expect(validateDevelopmentEntry(app, build)).rejects.toThrow("symbolic link");
+});
+
+test("development configuration has one home-owned path across checkouts", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-shared-path-")));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "a"));
+  await mkdir(join(root, "b"));
+  const a = await developmentPaths(join(root, "a"), root);
+  const b = await developmentPaths(join(root, "b"), root);
+  expect(a.configuration).toBe(
+    join(root, "Library/Application Support/Rukie Development/configuration"),
+  );
+  expect(b.configuration).toBe(a.configuration);
+  expect(b.data).not.toBe(a.data);
+  await rm(a.configuration, { recursive: true });
+  await symlink(a.data, a.configuration);
+  await expect(developmentPaths(join(root, "b"), root)).rejects.toThrow("symbolic link");
+});
+
+test("redirected configuration parent is rejected before creating anything in its target", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-shared-parent-")));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "checkout"));
+  await mkdir(join(root, "Library"));
+  await mkdir(join(root, "Library/Application Support"));
+  const target = join(root, "production");
+  await mkdir(target);
+  await writeFile(join(target, "sentinel"), "unchanged");
+  await symlink(target, join(root, "Library/Application Support/Rukie Development"));
+  await expect(developmentPaths(join(root, "checkout"), root)).rejects.toThrow("symbolic link");
+  expect(await readdir(target)).toEqual(["sentinel"]);
+  expect(await readFile(join(target, "sentinel"), "utf8")).toBe("unchanged");
 });

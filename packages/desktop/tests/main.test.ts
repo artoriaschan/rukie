@@ -383,3 +383,36 @@ test("model prices authorize the main frame and reject arbitrary lookup inputs b
     await owner.stop();
   }
 });
+
+test("development main forwards shared configuration separately from workspace data", async () => {
+  const owner = await startDesktop({
+    rendererDirectory: "/tmp",
+    preload: "/tmp/preload.cjs",
+    dataRoot: "/tmp/workspace-data",
+    configurationRoot: "/tmp/shared-configuration",
+    sidecar: {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./helpers/sidecar.mjs", import.meta.url)), "--data-root-token"],
+    },
+  });
+  try {
+    const connection = await electron.handlers.get("rukie:getConnection")!({
+      sender: electron.window.webContents,
+      senderFrame: electron.window.webContents.mainFrame,
+    });
+    if (
+      typeof connection !== "object" ||
+      connection === null ||
+      !("token" in connection) ||
+      typeof connection.token !== "string"
+    )
+      throw new Error("Invalid connection");
+    expect(JSON.parse(connection.token)).toEqual({
+      dataRoot: "/tmp/workspace-data",
+      configurationRoot: "/tmp/shared-configuration",
+      homeDir: userInfo().homedir,
+    });
+  } finally {
+    await owner.stop();
+  }
+});

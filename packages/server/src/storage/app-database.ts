@@ -49,7 +49,9 @@ export class AppDatabase {
     await mkdir(root, { recursive: true, mode: 0o700 });
     const db = await openBunSqliteDatabase(join(root, "app.sqlite"));
     try {
-      await db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;");
+      await db.exec(
+        "PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
+      );
       await db.exec(`CREATE TABLE IF NOT EXISTS documents (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS providers (id TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS models (provider TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE, id TEXT NOT NULL, PRIMARY KEY(provider,id));
@@ -83,6 +85,31 @@ export class AppDatabase {
   async saveRegistry(value: ApplicationRegistry): Promise<void> {
     if (!Value.Check(RegistrySchema, value)) throw new Error("Invalid application registry");
     await this.db.transaction((tx) => this.putDocument(tx, "registry", value));
+  }
+  async preferences(): Promise<Static<typeof WirePreferencesSchema>> {
+    const value = (await this.document("preferences")) ?? {};
+    if (!Value.Check(WirePreferencesSchema, value))
+      throw new Error("Invalid application preferences");
+    return value;
+  }
+  /** Merge in the transaction so another workspace's preference changes are retained. */
+  async updatePreferences(
+    patch: Static<typeof WirePreferencesSchema>,
+  ): Promise<Static<typeof WirePreferencesSchema>> {
+    if (!Value.Check(WirePreferencesSchema, patch))
+      throw new Error("Invalid application preferences");
+    return this.db.transaction(async (tx) => {
+      const row = await tx.get<{ value: string }>(
+        "SELECT value FROM documents WHERE key = ?",
+        "preferences",
+      );
+      const value: unknown = row ? JSON.parse(row.value) : {};
+      if (!Value.Check(WirePreferencesSchema, value))
+        throw new Error("Invalid application preferences");
+      const next = { ...value, ...patch };
+      await this.putDocument(tx, "preferences", next);
+      return next;
+    });
   }
   async settings(): Promise<Settings> {
     const value = (await this.document("settings")) ?? {};

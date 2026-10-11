@@ -1500,3 +1500,83 @@ test("explicit private credential reveal is provider scoped and catalog access n
     await owner.close();
   }
 });
+
+test("development workspaces share configuration and preferences while keeping history and projects local", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-shared-dev-")),
+      (root) => rm(root, { recursive: true, force: true }),
+    );
+    const configurationRoot = join(homeDir, "configuration");
+    const dataA = join(homeDir, "a");
+    const dataB = join(homeDir, "b");
+    const settings = await owner.acquire(
+      () => AppDatabase.open(configurationRoot),
+      (db) => db.close(),
+    );
+    await settings.saveSettings({ permissionMode: "full-access" });
+    await settings.saveProvider(
+      {
+        id: "shared",
+        name: "Shared",
+        api: "openai-completions",
+        baseUrl: "https://example.com/v1",
+        models: [{ id: "m" }],
+      },
+      { type: "replace", ciphertext: "opaque-shared" },
+    );
+    const history = await owner.acquire(
+      () => createSession({ homeDir, dataRoot: dataA, cwd: homeDir, ...fakeModel([]) }),
+      (session) => session.close(),
+    );
+    await history.close();
+    const start = (dataRoot: string) =>
+      owner.acquire(
+        () => startServerImpl({ homeDir, dataRoot, configurationRoot, onHandshake: () => {} }),
+        (server) => server.close(),
+      );
+    const a = await start(dataA);
+    const b = await start(dataB);
+    const clientA = await connect(a, "app://rukie", owner);
+    const clientB = await connect(b, "app://rukie", owner);
+    for (const client of [clientA, clientB]) {
+      expect((await client.command("models.list")).result).toEqual([
+        expect.objectContaining({ providerId: "shared", authenticated: true }),
+      ]);
+    }
+    expect((await clientA.command("sessions.list")).result).toEqual([
+      expect.objectContaining({ id: history.id }),
+    ]);
+    expect((await clientB.command("sessions.list")).result).toEqual([]);
+    await clientA.command("project.add", { path: homeDir });
+    expect((await clientB.command("projects.list")).result).toEqual([]);
+    expect(
+      (await clientA.command("preferences.set", { preferences: { showPinned: true } })).result,
+    ).toEqual({ showPinned: true });
+    expect(
+      (await clientB.command("preferences.set", { preferences: { sort: "created" } })).result,
+    ).toEqual({ showPinned: true, sort: "created" });
+    await a.close();
+    const restarted = await start(dataA);
+    const client = await connect(restarted, "app://rukie", owner);
+    await client.command("project.add", { path: homeDir });
+    const changed = await client.next((message) => message.type === "sessions_changed");
+    expect(changed.preferences).toEqual({ showPinned: true, sort: "created" });
+    expect((await client.command("sessions.list")).result).toEqual([
+      expect.objectContaining({ id: history.id }),
+    ]);
+    const local = await owner.acquire(
+      () => AppDatabase.open(dataA),
+      (db) => db.close(),
+    );
+    expect(await local.providers()).toEqual([]);
+    expect(await local.settings()).toEqual({});
+    expect((await local.registry()).preferences).toEqual({});
+    expect(await settings.credential("provider:shared")).toBe("opaque-shared");
+    expect(await settings.settings()).toEqual({ permissionMode: "full-access" });
+    expect(await settings.sessions()).toEqual([]);
+  } finally {
+    await owner.close();
+  }
+});

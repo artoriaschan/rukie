@@ -14,6 +14,7 @@ import {
   readdir,
   readlink,
 } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -31,7 +32,7 @@ export const developmentIdentity = {
 } as const;
 
 /** Fixed local state; reject symlinks rather than following developer state into another environment. */
-export async function developmentPaths(checkout: string) {
+export async function developmentPaths(checkout: string, home = homedir()) {
   const root = await realpath(checkout);
   const local = join(root, ".desktop-dev");
   const paths = {
@@ -40,6 +41,10 @@ export async function developmentPaths(checkout: string) {
     build: join(local, "build"),
     renderer: join(local, "build/renderer"),
     data: join(local, "data"),
+    configuration: join(
+      await realpath(home),
+      "Library/Application Support/Rukie Development/configuration",
+    ),
     userData: join(local, "electron"),
     sessionData: join(local, "session"),
     cache: join(local, "cache"),
@@ -75,6 +80,23 @@ export async function developmentPaths(checkout: string) {
     await checkedFile(path);
   await checkedFile(paths.renderer, true);
   await checkedFile(join(paths.cache, "Rukie Development.app"), true);
+  // Check each parent before creating its child; recursive mkdir would follow a redirected parent.
+  let configurationDirectory = await realpath(home);
+  for (const name of ["Library", "Application Support", "Rukie Development", "configuration"]) {
+    configurationDirectory = join(configurationDirectory, name);
+    try {
+      const info = await lstat(configurationDirectory);
+      if (info.isSymbolicLink())
+        throw new Error("Desktop development configuration cannot be a symbolic link");
+      if (!info.isDirectory())
+        throw new Error("Desktop development configuration must be a directory");
+    } catch (error) {
+      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT")
+        throw error;
+      await mkdir(configurationDirectory, { mode: 0o700 });
+    }
+  }
+  await checkPersistentData(paths.configuration);
   await checkPersistentData(paths.data);
   await checkPersistentData(paths.userData, true);
   await checkPersistentData(paths.sessionData, true);
@@ -459,7 +481,10 @@ export async function buildDevelopmentSources(checkout: string, signal: AbortSig
       outdir: paths.build,
       naming: name,
       sourcemap: "linked",
-      define: { RUKIE_DESKTOP_DEVELOPMENT_ROOT: JSON.stringify(paths.root) },
+      define: {
+        RUKIE_DESKTOP_DEVELOPMENT_ROOT: JSON.stringify(paths.root),
+        RUKIE_DESKTOP_DEVELOPMENT_CONFIGURATION_ROOT: JSON.stringify(paths.configuration),
+      },
     });
     if (!result.success) throw new AggregateError(result.logs, `${entry} compilation failed`);
   }

@@ -1,0 +1,100 @@
+# Pencil 会话界面同步
+
+Status: resolved
+
+## 已确认范围
+
+用户确认按桌面 rukie.pen 的深浅色稿同步已有会话功能，优先 C04 模型触发器、C06 模型列表、C07 模型详情与推理。真实配置决定模型、供应商、输入能力、上下文和支持的推理档位；示例模型不写入产品。宽屏列表与详情并排，窄屏上下排列。会话其余已有功能对照 C04/C05/C08/H08，同步视觉差异，缺失功能不增加占位入口。
+
+## Implementation Decisions
+
+- 复用已安装 beUI PromptInput/Button、shadcn DropdownMenu/ScrollArea；保留现有模型默认推理和显式选择语义。
+- C06 为 332px、32px 行、2px 间距、4px 内边距；C07 为 280px 独立表面，仅输入、上下文与真实推理档位。
+- Pencil 的品牌路径来自组件本身，按明确供应商身份匹配；未知自定义供应商使用通用图标，不根据模型名称猜测品牌。
+- 模型局部 Pencil 主题不改变应用外壳、Transcript、审批卡布局；窄屏与字号放大允许内容增长。
+
+## ADR Coverage
+
+| 决定或修改                           | 归属                                                              | 理由                                      |
+| ------------------------------------ | ----------------------------------------------------------------- | ----------------------------------------- |
+| 前端展示真实模型能力、原有 wire 选择 | 沿用 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md) | UI 仅消费配置事实，协议及 Core 所有权不变 |
+| Pencil 几何、主题及响应式样式        | 无需 ADR                                                          | 可逆的组件呈现调整，约束归 DESIGN.md      |
+
+## 验证记录
+
+基线提交：0c177d0ef6f936de39f3caeba53e369194bc0ef4。开发分支 feat/pencil-conversation-sync 从已获取 origin/main 创建。只由主代理执行验证；其他代理仅调查事实。
+
+尚无本任务通过的验证证据。首次验证：现有 shell/Transcript/dock/composer 布局用例和新增真实 Composer 布局保护用例建立基线，再用公开 Composer 菜单用例复现 C06/C07 差异。随后完成受影响 Chromium 用例、一次 desktop 包级验收、check:dev 和 agent-browser Light/Dark/窄屏验收。浏览器使用脚本 wire 和 mock DesktopHost，不启动真实 Electron。
+
+### 已运行
+
+- 初始根目录 `vitest run --project ui-browser ...` 未收集测试：根配置嵌套项目未匹配该筛选。改为 packages/ui 目录的直接 Vitest 配置，不改变 runner；日志 `/tmp/rukie-pencil-baseline.log` 最终保存正常基线运行。
+- 基线：packages/ui 下 `env -u NO_COLOR ../../node_modules/.bin/vitest run --project ui-browser tests/app/shell.browser.test.tsx tests/app/transcript.browser.test.tsx tests/components/conversation-dock.browser.test.tsx tests/components/compact-composer.browser.test.tsx`，4 文件/31 用例通过，8.77s，修改前布局与交互基线。
+- 公开 Composer 复现：`tests/components/composer.browser.test.tsx`，2 失败/1 通过，1.16s；缺 332px 模型表面和初始化详情。日志 `/tmp/rukie-pencil-repro.log`。
+- 实现后局部验证发现默认菜单 zoom 动画影响几何、space-y 默认给并排面板增加额外间隙；模型专用容器改为稳定几何与显式 4px gap。已有 shell 12 用例通过。ThinkingLevel 含 automatic，触发器补充双语文案。日志 `/tmp/rukie-pencil-focused.log` 与 `/tmp/rukie-pencil-types.log`。
+- 第二/三次局部运行：几何修复后模型布局/窄屏正常，但 Vitest browser 文本 matcher 对内联内容的处理不适合该子串断言，改为已可见元素 textContent 的精确子串断言；保留真实内容验证。日志 `/tmp/rukie-pencil-focused2.log` 和 `/tmp/rukie-pencil-focused3.log`。
+- 第四次局部：模型三用例通过，新增权限几何用例在进场动画中测量提前；改为有界 expect.poll 等待实际宽度，不加固定延迟。日志 `/tmp/rukie-pencil-focused4.log`。权限动画保留。
+- `bun run check:dev` 通过：格式、lint、tsc、Knip、tracker、docs、层次边界、测试策略、字阶。日志 `/tmp/rukie-pencil-static.log`。后续局部 CSS、测试和文档修改只增量检查失效项。
+- 最终受影响 Chromium 范围（同基线四文件加真实 Composer）：5 文件/35 用例通过，8.53s，日志 `/tmp/rukie-pencil-acceptance.log`。覆盖模型键盘/取消/选择、详情、真实数据、长列表、自定义图标、主题、窄屏、权限和上下文；会话宽度与气泡调整后的外壳、审批、滚动用例保持通过。接下来首次 desktop 包级运行补齐 UI 共享呈现消费者证据，之后不重复此范围。
+- `env -u NO_COLOR bun run test:desktop`：27 文件通过/1 文件失败，119 用例通过/2 失败，16.78s，日志 `/tmp/rukie-pencil-desktop.log`。两失败均为 layout.browser.test.tsx 的旧输入框宽度期望（720px），与用户确认的 C04 752px 冲突；只将 composer dock 上限由 768 改为 800（保留两侧 24px、其它区域及 1px 精度），没有放宽断言。其余包级证据继续有效。
+- 双轴只读审查：Spec 无发现；Standards 找到非首推理档位键盘不可达、宽矮窗口详情无滚动和按钮 cursor 缺失。修复芯片键盘轮巡、详情 ScrollArea 约束、cursor/disabled/pressed/focus，补相应公开行为断言。
+- 最小增量 `composer.browser.test.tsx + layout.browser.test.tsx`：6 通过/1 失败，2.06s，日志 `/tmp/rukie-pencil-incremental.log`。布局两用例和原模型用例通过；新增短窗口（1280×320、18px 字体）暴露 Radix 默认无碰撞留边，设置模型菜单 collisionPadding=16 后只重验该单例：1 通过/4 跳过，791ms，日志 `/tmp/rukie-pencil-short.log`。
+- 审查修改后的 `oxlint`（3 个受影响 TS 文件）和 `tsc -b` 通过；文档检查与变更文件格式通过。只读审查和后续证据更新不要求重复已通过的包级测试。GUI 开始一次 agent-browser 验收，mock DesktopHost 与脚本 wire，端口随机分配。
+- Standards 修复复核无新发现，Spec 轴无发现。ADR Coverage 复核完成：UI 显示/样式没有引入 Core 行为、权限、协议或持久化改变，沿用 ADR-0029；局部 Pencil 角色归 DESIGN.md，无新增 ADR。
+- agent-browser 验收：真实 App + mock DesktopHost + 脚本 wire，1280×900 明暗与 420×900 窄屏；测量 composer 752×100、C06 332px、C07 280×184、间距4px，窄屏同宽上下排列、无横向溢出。操作模型键盘预览/选择与 Escape、权限菜单、上下文详情；上下文面板实测348px且保留真实统计。控制台无产品异常、无页面错误；开发验收临时 HTML 无 favicon，唯一404为 favicon.ico。宽转窄时既有侧栏覆盖模型入口，关闭侧栏后正常操作，保留原遮罩行为。截图在外部证据目录 pencil-conversation-sync/light.png、dark.png、narrow.png（Codex visualization 本任务目录）。浏览器、Vite、wire 父子进程已退出，临时验收入口移除，端口63230/5173无监听。
+- 本地交付证据为首次 desktop 包级119通过/2布局旧期望失败，加后续受影响布局、模型与新增短窗口通过；未把初次失败的包级运行改称全绿，未重复无失效证据的包级测试。最新 PR CI 待外部验收，尚未合并。
+- 最后品牌映射改为 Map，避免自定义供应商名称命中对象原型属性；仅重验模型公开行为单例（包括品牌、选择、取消、键盘High与焦点）：1通过/4跳过，1.03s，日志 `/tmp/rukie-pencil-model-final.log`。屏幕正常视觉未变化，复用浏览器截图。增量 lint、tsc、docs、tracker、test-policy、格式和 diff 检查通过。
+
+### C04–C09 精确样式补齐
+
+用户要求逐元素严格匹配 C04–C09；继续同一分支和 PR #16。已读当前 Pencil 深浅色源节点并建立已有 Composer 几何基线。新增颜色、圆角、图标坐标、C08 图例和用量行、C09 附件菜单断言，先复现偏差。C08 保留真实三类统计和压缩次数，C09 只呈现已支持的图片附件；没有数据的五类统计和未接入功能不造假。外壳/审批布局证据复用，仅 Composer 和相关交互失效。
+
+- 新增精确样式公开回归先失败：发送圆角6px不符8px（`/tmp/rukie-pencil-precise-red.log`，732ms）。修复后 Composer5用例通过（1.56s）；包括 C05图标x10/y16、376×148面板、Light橙色、C08标题/容量条y108和真实统计、C09附件菜单752px/32px行。C07额外属性y56/y80及芯片y146单例通过（1.12s）。
+- `check:dev` 的格式/lint/tsc/Knip通过，随后tracker因误用active状态失败；修正为合法claimed后补跑tracker/docs/boundaries/test-policy/typography全部通过。最终受影响TS lint/tsc增量通过；没有重复无失效的包级验证。
+- Composer/layout/shell三文件首次18通过/1失败（20.67s）：shell仍期望旧上下文计数字符串。替换为新K/M和独立百分比展示的精确期望后，只重验对应shell用例通过（1.66s）。其余布局/交互证据保留。
+- 双轴审查发现局部取消C08裁切导致初始/关闭视觉残留及扩大点击区。新增初始隐藏、Escape、二次trigger和外部点击公开回归，复现失败（15.84s）；控制open状态并限制实际panel命中区后，Composer其余4用例通过，但外部点击测试中心落在面板覆盖区，修正为文本框左侧实际外部位置后，该用例通过（1.10s）。长耗时来自失败边界，不保留任何固定等待。Standards复核无新发现。
+- agent-browser使用真实App/mock DesktopHost和scripted wire验收：1280×900 Light/Dark及420×900窄屏；C05测量376×148，Dark橙色#ff8a30；C09测量752px/8px圆角/32px行，窄屏388px、x16无横向溢出；C08真实三类报告面板348×317、bar316×6且y108，窄屏无横向溢出。C08修复后专门复验初始hidden、二次trigger关闭和Escape hidden，明暗/窄屏截图覆盖最新结果。无页面错误、console仅Vite/React提示、网络请求200。浏览器、wire、Vite已退出，临时验收入口已删除。
+- 最新截图保存在本任务Codex visualization的pencil-conversation-sync目录：context-light.png、context-dark.png、context-narrow-final.png、permission-dark.png、tools-dark.png、tools-narrow.png、model-narrow-final.png。C08三类统计与C09仅图片动作保持已确认的真实能力范围；不宣称五类统计或全部插件能力已经接入。ADR coverage沿用上表，不涉及协议/Core行为。实现完成，继续PR #16待审阅。
+
+### 用户请求本地验证
+
+用户明确要求本地验证；对提交 f34de7d0 执行一次完整 desktop 包级验收，补齐上次失败后尚未重新取得的完整通过结果。当前工作区无产品改动；复用最新静态和 GUI 明暗/窄屏证据。`env -u NO_COLOR bun run test:desktop` 通过：28文件、122用例全部通过，17.04s，日志 /tmp/rukie-pencil-local-desktop.log。此次是对 f34de7d0 的完整本地 desktop 通过证据；保留前次失败与增量修复历史。后续仅文档记录提交不使该证据失效。
+
+### 开发配置共享（本地启动反馈）
+
+用户确认供应商、凭证和设置共用，会话按工作区隔离。延续当前桌面交付分支；新增配置根接线、公共 SQLite preferences 与工作区项目/Session 分离。旧 5bcc 的 DeepSeek 数据由本次显式操作恢复，不在启动器加入扫描或迁移。配置存储与启动接线证据失效，UI 布局与浏览器证据继续有效。待运行 server 公共 wire 回归、启动器路径和 desktop main 用例、静态检查。
+
+- 共享配置公开 wire 回归通过，64.94ms；加强跨工作区偏好补丁保留后 server 整文件25用例通过，2.03s。启动器与 AppDatabase 11用例通过，504ms；desktop main/development 13用例通过，693ms。最初 desktop 命令使用错误相对 Vitest 路径，未执行测试；改用根安装的 Node Vitest 后通过。check:dev 全部通过（格式/lint/types/Knip/文档/tracker/边界/test-policy/字阶）。
+- 新增 main 到真实测试子进程的双根传递用例；共享配置影响 server 生命周期、事务与 desktop 启动边界，最终执行一次本地 aggregate check 验证跨包风险，保留日志。原 UI 浏览器呈现未改变，复用已有 GUI 验收证据。ADR Coverage：ADR-0036 部分替代 ADR-0035 的开发 checkout 配置隔离规则，正式应用与终端隔离沿用 ADR-0035。
+
+- 双轴审查发现公共配置父目录链接会被 recursive mkdir 提前触碰；改为逐级检查/创建路径，新增父目录链接拒绝且目标 sentinel 不变的回归。启动器10用例通过，450ms；增量格式/lint/tsc通过，双轴只读复核均无新发现。main双根真实子进程接线11用例通过，848ms，development3用例证据有效。
+- `env -u NO_COLOR bun run check` 实际失败：静态通过；Bun 3453通过/25失败，333文件，177.10s，随后 desktop 未执行。19项发布/恢复失败来自本机npm11.19.1低于要求11.21.0；发布单例独立复现同一版本错误（6.78s）。4项既有Core/TUI模型用例分别涉及旧document版本、旧toolState期望和供应商切换断言；安装版MCP OAuth PTY超时及依赖其验收的下载原件用例失败。MCP PTY单例独立复现（19.57s）。这些文件及运行路径未被本次修改，不扩大修复范围；不得将本次完整check称为通过。日志 `/tmp/rukie-shared-config-check.log`，最小复现日志 `/tmp/rukie-shared-config-unrelated.log`、`/tmp/rukie-shared-config-pty.log`、`/tmp/rukie-shared-config-baseline-failures.log`。
+- 本地显式恢复：从已知旧5bcc SQLite一致读取供应商、模型和凭证密文，将配置与当前工作区偏好写入空公共库；源保持原样、不解密、不进入仓库。公共库含1供应商/2模型。已授权原生开发应用重启，模型服务页面实际可见DeepSeek、两个模型及已保存密钥状态；未发送真实模型请求或显示密钥。launcher日志 `/tmp/rukie-shared-config-start.log`。应用为用户保留运行，临时测试资源已清理。
+
+### 模型详情按 hover 展示
+
+用户纠正交互：打开只展示模型列表，hover模型选项后展示该模型详情；键盘导航仍可预览/进入推理档位。首次与重开详情均隐藏，列表在详情出现时位置稳定。修改前新增公开回归复现；本轮仅模型交互、受影响Composer与浏览器验收失效，复用其它证据。
+
+- 公开回归先复现首次详情可见（15.73s失败边界）；去除初始化预览后，仅列表初开/重开、hover与键盘预览通过。审查进一步发现窄屏以及不同高度模型会使列表跳动：隐藏详情保留实际布局、aria-hidden/inert/visibility禁止访问和命中，C07固定184px设计高度，长内容使用已有ScrollArea。新增窄屏有/无推理往返及短窗口18px字号几何断言。最终Composer5用例通过（2.06s），tsc/lint/docs/test-policy与格式增量通过，双轴复核无新发现。先前尝试不支持的Radix focus props被类型检查发现并移除，未保留类型断言。
+- agent-browser实际Composer假catalog验收明暗1280×900与420×900：初开无可见详情、hover显示、移入High芯片选择正常；默认截图几何保持。最终ModelPicker假catalog补验420×900的first→second无推理→first布局：列表始终x48/y566/332×74，详情184px，无横向溢出。新会话console仅Vite/React提示，无页面错误；前一开发会话记录过临时QA入口HMR重复createRoot警告及删除入口的reload错误，来源为临时harness，最终新会话已排除。截图list-only-light.png、hover-detail-light.png、hover-detail-dark.png、hover-detail-narrow.png位于原证据目录。临时入口/浏览器/Vite清理；原生开发app按最终代码重启，用户配置保持不变。复用未失效的包级/其它静态证据，不重复此前失败的全量检查。
+
+### H14 模型选择定位
+
+用户要求参考 H14 更新模型交互。已读取 Pencil H14/L-H14 实际节点：C06 332×312，C07 280×184，水平间隔4，顶部对齐；完整列表底部距入口顶部42px，列表右边比入口右边向左76px，详情向右延伸。沿用现有菜单、ScrollArea和hover/键盘交互，只改变模型浮层定位；视口碰撞与窄屏仍优先保证可达。先增加公开 Composer 几何回归复现，再验证受影响5用例及明暗/窄屏。复用之前其它静态与desktop证据。
+
+- 新增H14公开回归复现原4px间距（预期42px）；将模型专用Radix sideOffset设42、alignOffset设-208后，Composer6用例通过，2.15s，日志 `/tmp/rukie-h14-red.log`、`/tmp/rukie-h14-green.log`。测试最初在根目录未收集、随后因打开菜单使背景入口inert而查询不到，改在打开前保存入口几何；最终红绿复现覆盖真实位置。增量tsc/lint/docs通过，双轴只读审查无发现。
+- agent-browser真实Composer假catalog验收1887×1346明暗及420×900窄屏：初开详情hidden；hover列表位置不变，列表332×312、详情280×184、间距4、顶部相同；选择High更新入口并关闭；窄屏同宽上下排列、无横向溢出。页面无错误，console只有Vite/React提示，网络200。截图h14-list-light.png、h14-hover-light.png、h14-hover-dark.png、h14-narrow.png在原外部证据目录。浏览器/Vite退出，临时入口已删除；复用其余有效证据，不重复既有失败的全量check。ADR coverage仍沿用ADR-0029，纯定位无架构变化。
+
+### 模型列表紧贴入口（截图纠正）
+
+用户截图指出短列表远离入口。原H14静态坐标误用为固定offset，且隐藏C07参与菜单高度，导致两模型列表大幅抬高。本轮以实际列表为入口锚定表面：列表底部距入口4px、右对齐；详情独立定位，不参与列表尺寸，优先右侧顶部对齐，碰撞翻到左侧，窄屏在列表上方排列。保留hover/键盘选择与184px详情滚动。新增两模型与长列表公开几何复现；仅模型相关证据失效，其余复用。
+
+- 公开两模型回归首先失败：旧隐藏详情及42px offset产生152px间距，日志 `/tmp/rukie-attached-red.log`；改为列表独立Radix锚点与详情FloatingUI定位后，初次6用例5通过/1失败（旧top对齐断言忽略短列表接近窗口底部时详情必须上移）。更新为碰撞约束断言，最终6用例通过2.18s，日志 `/tmp/rukie-attached-reviewed.log`；类型/lint/docs/test-policy通过。复用已有组件，FloatingUI是已安装定位依赖，无新增依赖。审查发现size middleware过期计算仍可写高度，已加相同revision/cleanup检查并复核通过。
+- agent-browser实际Composer假catalog，1280×900明暗：两模型列表332×74，底部778/入口顶部782，右边968相同；hover列表位置不变，详情宽280高184、间隔4，无横向溢出；High选择关闭并更新。420×900窄屏详情同宽置于列表上方，间隔4，列表继续贴入口；800×900详情正常翻到左侧。无页面错误、console仅Vite/React提示、网络日志 `/tmp/rukie-attached-network.log`。截图attached-list-light.png、attached-hover-light.png、attached-hover-dark.png、attached-narrow.png在原外部证据目录。临时入口/浏览器/Vite清理。ADR coverage仍为UI呈现规则，无架构或配置更改。
+
+### 推理档位采用设计稿名称
+
+用户指出模型详情的Low/High/Max被通用i18n翻译。沿用C16现有固定档位映射并供会话控件复用，详情与入口显示相同名称；标题/属性继续正常本地化。增补中文Composer档位精确断言，更新受影响shell的Max查询，先复现后最小验证。模型几何与其余证据有效，仅档位呈现和相关浏览器证据失效。
+
+- 中文精确档位回归先复现低/高/最高（881ms失败），最终Composer6用例通过2.18s；shell模型选择单例通过1.26s，settings默认推理单例通过2.61s。日志 `/tmp/rukie-reasoning-label-red.log`、`/tmp/rukie-reasoning-label-green.log`、`/tmp/rukie-reasoning-label-shell.log`、`/tmp/rukie-labels-settings.log`。类型/lint/docs/test-policy及双轴只读审查通过；设置映射值原样抽取，无协议/Core或依赖变化，ADR coverage沿用原UI决定。
+- agent-browser实际ModelPicker假catalog中文验收1280×900明暗及420×900：详情可见Low/High/Max，标题推理模式正常中文，选择High后入口同步显示High，无横向溢出、无页面错误，console仅Vite/React提示。截图labels-light.png、labels-dark.png、labels-narrow.png在原外部目录；网络日志 `/tmp/rukie-labels-network.log`。浏览器/Vite和临时入口清理，最新源码重建开发app供本地验证。

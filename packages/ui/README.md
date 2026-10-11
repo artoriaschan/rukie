@@ -20,6 +20,8 @@ wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `
 
 ## 模型服务
 
+会话输入框的模型入口按 Pencil C06/C07 展示已认证的模型目录、供应商品牌图标、名称和当前选择。打开时预览当前模型或首个可用模型；悬停和方向键聚焦仅更新输入能力、上下文容量与支持的推理档位。Right Arrow 进入推理按钮，Left Arrow 返回模型行；点击模型采用配置默认推理，点击档位显式选择模型与该档位，Escape 关闭并保留原选择。打开时只显示模型列表，hover 或键盘聚焦模型后展示对应详情，重新打开清除预览。详情出现时列表位置保持稳定；宽屏并排、窄屏上下排列，长列表使用已有 ScrollArea；尺寸、主题和字体由 [DESIGN.md](../../DESIGN.md#conversation-model-controls) 约束。未知自定义供应商使用通用图标。上下文面板只显示现有 ContextReport 事实，不展示尚未提供的五类消息统计或压缩阈值。
+
 宿主提供 `modelServices` 时，左侧导航开放模型服务设置；返回应用恢复原聊天布局与草稿。设置复用 beUI 字段、选择器、按钮、复选框和模态框，以及 shadcn 菜单，组合供应商总览、自定义供应商创建、详情、模型编辑与删除确认；添加入口只提供自定义供应商。模型 ID 与基础参数由用户填写；高级设置按当前 C16 展示自动压缩、运行参数与价格卡片，可选字段可填写或清空。协议更改保留全部模型参数，保存前校验目标协议的兼容字段，不匹配时要求编辑或移除相关模型。
 
 供应商名称、Base URL、API 格式和模型配置通过宿主保存；已有密钥默认显示紧凑遮罩；主动点击显示时，宿主按指定供应商返回 API Key 到当前详情的临时内存。隐藏、切换供应商、保存和退出清除展示，过期请求不更新页面；展示本身不改变保存语义，留空保留，替换与删除明确提交。Electron main 负责受信任 IPC 与系统加密，renderer 不取得任意解密能力。保存失败保留输入；取消不提交。供应商删除确认同时移除配置与密文，历史 Transcript 保留，引用不可用模型的 Session 必须重新选择。保存后刷新聊天模型目录，启用且可认证的模型可以选择；连接验证显式发送一个短请求，失败展示安全文案，不暴露凭证或底层响应。
@@ -41,3 +43,5 @@ Transcript 呈现按用户输入分组（`PromptGroup`），组内保留多次 T
 待审批请求在底部输入框原位置以 beUI Tool Approval 默认样式逐张展示，参数详情默认收起，同时到达的请求按 Interaction epoch 排队；处理当前请求后显示下一张，队列清空后恢复草稿、附件与输入焦点。权限停靠卡以 epoch 关联回复；Esc 拒绝、A 在 Session 内允许、Enter 允许，编辑文本、组合输入与菜单/模态框不触发这些快捷键。断连禁用回复；settled 与 stale 删除对应 epoch，重新订阅时使用 server 补发的新请求。同意与 Session 内允许不会在 Trace 中添加批准卡；拒绝决定使用 Tool Approval 的 denied 样式保留在当前窗口活动区，参数详情默认收起；重启窗口后以已提交工具结果事实为准。摘要显示当前 Todo 与子代理状态。
 
 权限请求到达时按 Interaction epoch 保存当前 PromptGroup 与活动位置；拒绝后，Tool Approval 结果卡位于对应工具执行卡之前，子代理请求保留其父活动位置，不会随后续活动或复用的 provider call ID 移到 Run 末尾。长命令在参数详情中换行，窄窗口将参数标签与内容纵向排列。断连期间保留停靠卡并禁用按钮，恢复连接时清除旧 epoch，重新订阅后接受补发；待审批及提交应答期间保留草稿和附件并隐藏输入框，审批按钮在命令应答前禁用；断线说明和重试入口保持可见。
+
+The conversation Plus opens the Pencil C09 attachment menu and keeps image picking, paste and drop on their existing path. Context details use the Pencil C08 usage/legend layout with the current System, Messages and Tools report estimates; displayed percentages divide by used tokens, while the capacity bar divides by the model window. Opening context and compaction count remain separate facts. Unsupported plugin actions and finer message category totals are not fabricated.
