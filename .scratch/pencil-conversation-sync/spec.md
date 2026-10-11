@@ -44,3 +44,14 @@ Status: resolved
 - agent-browser 验收：真实 App + mock DesktopHost + 脚本 wire，1280×900 明暗与 420×900 窄屏；测量 composer 752×100、C06 332px、C07 280×184、间距4px，窄屏同宽上下排列、无横向溢出。操作模型键盘预览/选择与 Escape、权限菜单、上下文详情；上下文面板实测348px且保留真实统计。控制台无产品异常、无页面错误；开发验收临时 HTML 无 favicon，唯一404为 favicon.ico。宽转窄时既有侧栏覆盖模型入口，关闭侧栏后正常操作，保留原遮罩行为。截图在外部证据目录 pencil-conversation-sync/light.png、dark.png、narrow.png（Codex visualization 本任务目录）。浏览器、Vite、wire 父子进程已退出，临时验收入口移除，端口63230/5173无监听。
 - 本地交付证据为首次 desktop 包级119通过/2布局旧期望失败，加后续受影响布局、模型与新增短窗口通过；未把初次失败的包级运行改称全绿，未重复无失效证据的包级测试。最新 PR CI 待外部验收，尚未合并。
 - 最后品牌映射改为 Map，避免自定义供应商名称命中对象原型属性；仅重验模型公开行为单例（包括品牌、选择、取消、键盘High与焦点）：1通过/4跳过，1.03s，日志 `/tmp/rukie-pencil-model-final.log`。屏幕正常视觉未变化，复用浏览器截图。增量 lint、tsc、docs、tracker、test-policy、格式和 diff 检查通过。
+
+### C04–C09 精确样式补齐
+
+用户要求逐元素严格匹配 C04–C09；继续同一分支和 PR #16。已读当前 Pencil 深浅色源节点并建立已有 Composer 几何基线。新增颜色、圆角、图标坐标、C08 图例和用量行、C09 附件菜单断言，先复现偏差。C08 保留真实三类统计和压缩次数，C09 只呈现已支持的图片附件；没有数据的五类统计和未接入功能不造假。外壳/审批布局证据复用，仅 Composer 和相关交互失效。
+
+- 新增精确样式公开回归先失败：发送圆角6px不符8px（`/tmp/rukie-pencil-precise-red.log`，732ms）。修复后 Composer5用例通过（1.56s）；包括 C05图标x10/y16、376×148面板、Light橙色、C08标题/容量条y108和真实统计、C09附件菜单752px/32px行。C07额外属性y56/y80及芯片y146单例通过（1.12s）。
+- `check:dev` 的格式/lint/tsc/Knip通过，随后tracker因误用active状态失败；修正为合法claimed后补跑tracker/docs/boundaries/test-policy/typography全部通过。最终受影响TS lint/tsc增量通过；没有重复无失效的包级验证。
+- Composer/layout/shell三文件首次18通过/1失败（20.67s）：shell仍期望旧上下文计数字符串。替换为新K/M和独立百分比展示的精确期望后，只重验对应shell用例通过（1.66s）。其余布局/交互证据保留。
+- 双轴审查发现局部取消C08裁切导致初始/关闭视觉残留及扩大点击区。新增初始隐藏、Escape、二次trigger和外部点击公开回归，复现失败（15.84s）；控制open状态并限制实际panel命中区后，Composer其余4用例通过，但外部点击测试中心落在面板覆盖区，修正为文本框左侧实际外部位置后，该用例通过（1.10s）。长耗时来自失败边界，不保留任何固定等待。Standards复核无新发现。
+- agent-browser使用真实App/mock DesktopHost和scripted wire验收：1280×900 Light/Dark及420×900窄屏；C05测量376×148，Dark橙色#ff8a30；C09测量752px/8px圆角/32px行，窄屏388px、x16无横向溢出；C08真实三类报告面板348×317、bar316×6且y108，窄屏无横向溢出。C08修复后专门复验初始hidden、二次trigger关闭和Escape hidden，明暗/窄屏截图覆盖最新结果。无页面错误、console仅Vite/React提示、网络请求200。浏览器、wire、Vite已退出，临时验收入口已删除。
+- 最新截图保存在本任务Codex visualization的pencil-conversation-sync目录：context-light.png、context-dark.png、context-narrow-final.png、permission-dark.png、tools-dark.png、tools-narrow.png、model-narrow-final.png。C08三类统计与C09仅图片动作保持已确认的真实能力范围；不宣称五类统计或全部插件能力已经接入。ADR coverage沿用上表，不涉及协议/Core行为。实现完成，继续PR #16待审阅。

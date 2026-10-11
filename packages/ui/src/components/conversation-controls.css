@@ -1,5 +1,8 @@
 .conversation-pencil {
   --foreground: #262626;
+  --conversation-placeholder: #26262666;
+  --conversation-warning: #e07b00;
+  --conversation-blue: #0b7fff;
   --muted-foreground: #26262699;
   --menu: #fff;
   --menu-hover: #0d0d0d0d;
@@ -14,7 +17,7 @@
 }
 .conversation-composer {
   min-height: 100px;
-  padding: 12px 12px 8px;
+  padding: 11px 11px 7px;
   border-color: var(--border);
   background: var(--menu);
 }
@@ -24,7 +27,7 @@
 }
 .conversation-composer > div:last-child {
   min-height: 28px;
-  margin-top: 8px;
+  margin-top: 10px;
   gap: 8px;
 }
 .conversation-composer > div:last-child > div {
@@ -51,7 +54,7 @@
   padding: 4px;
 }
 .conversation-composer button[type="submit"] {
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--conversation-chip);
   color: var(--conversation-chip-text);
 }
@@ -62,15 +65,19 @@
 .conversation-permission-menu {
   width: 376px;
   min-height: 148px;
+  padding: 7px 9px;
+  animation: none;
+  box-shadow: 0 4px 6px #0000001a;
   border-radius: 12px;
 }
 .conversation-permission-option {
   min-height: 44px;
-  padding: 2px 26px 2px 6px;
+  padding: 0 24px 0 0;
+  align-items: start;
   gap: 8px;
 }
 .conversation-permission-option > svg {
-  margin-top: 2px;
+  margin-top: 8px;
 }
 .conversation-permission-option .font-medium {
   font-weight: 400;
@@ -81,13 +88,17 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--menu);
-  padding: 12px 16px;
+  padding: 0;
+  box-shadow: 0 4px 6px #0000001a;
 }
 .conversation-context-panel h2 {
   margin-bottom: 4px;
 }
 .dark .conversation-pencil {
   --foreground: #d4d4d4;
+  --conversation-placeholder: #d4d4d44d;
+  --conversation-warning: #ff8a30;
+  --conversation-blue: #4099ff;
   --muted-foreground: #d4d4d499;
   --menu: #2b2b2b;
   --menu-hover: #ffffff1a;
@@ -146,10 +157,11 @@
 }
 .conversation-model-option {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 72px 16px;
+  grid-template-columns: 26px minmax(0, 1fr) 78px 16px;
   min-height: 32px;
-  padding: 5px 6px 5px 10px;
-  gap: 10px;
+  padding: 5.5px 6px 5.5px 10px;
+  gap: 0;
+  column-gap: 0;
   cursor: pointer;
   color: var(--foreground);
 }
@@ -161,6 +173,7 @@
   font-size: var(--text-ui-sm);
   color: var(--muted-foreground);
   text-align: right;
+  padding-right: 6px;
 }
 .conversation-model-option[data-selected="true"],
 .conversation-model-option[data-highlighted],
@@ -193,7 +206,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
   gap: 6px 12px;
-  padding: 12px 15px 14px;
+  padding: 13px 15px 12px;
   font-size: var(--text-ui-sm);
 }
 .conversation-model-facts dt {
@@ -205,7 +218,7 @@
 }
 .conversation-model-reasoning {
   border-top: 1px solid var(--border);
-  padding: 10px 15px 9px;
+  padding: 11px 15px 9px;
 }
 .conversation-model-reasoning > p {
   margin-bottom: 6px;
@@ -263,4 +276,225 @@
   .conversation-model-trigger {
     max-width: 200px;
   }
+}
+
+.conversation-composer textarea::placeholder {
+  color: var(--conversation-placeholder);
+}
+.conversation-composer > div:last-child {
+  padding-left: 4px;
+}
+.conversation-composer .conversation-add-trigger {
+  width: 16px;
+  min-width: 16px;
+  padding: 0;
+  color: var(--muted-foreground);
+  margin-right: 8px;
+}
+.conversation-permission-trigger {
+  padding: 0;
+  gap: 6px;
+  font-weight: 400;
+}
+.conversation-full-access,
+.conversation-full-access .text-muted-foreground,
+.conversation-full-access[data-highlighted],
+.conversation-full-access[data-highlighted] * {
+  color: var(--conversation-warning);
+}
+.conversation-permission-menu [data-slot="dropdown-menu-radio-group"] {
+  margin: 0;
+}
+.conversation-permission-menu [data-slot="dropdown-menu-radio-group"] > * {
+  margin-block: 0;
+}
+.conversation-permission-option {
+  cursor: pointer;
+}
+.conversation-permission-option > svg {
+  flex-shrink: 0;
+}
+.conversation-permission-copy > span:first-child {
+  line-height: 1.5;
+  margin-bottom: 1px;
+}
+.conversation-permission-copy > span:last-child {
+  line-height: 1.5;
+}
+.conversation-permission-option [data-slot="dropdown-menu-radio-item-indicator"] {
+  top: 10px;
+  right: 0;
+  width: 16px;
+  height: 16px;
+}
+.conversation-permission-option [data-slot="dropdown-menu-radio-item-indicator"] svg {
+  width: 16px;
+  height: 16px;
+}
+.conversation-model-trigger {
+  padding: 0;
+  font-size: var(--text-ui-base);
+  font-weight: 400;
+}
+.conversation-model-level {
+  color: var(--muted-foreground);
+  margin-left: -6px;
+}
+.conversation-model-trigger > svg {
+  color: var(--muted-foreground);
+}
+.conversation-ring-track {
+  color: var(--border);
+}
+.conversation-ring-value {
+  color: var(--conversation-blue);
+}
+.conversation-context-scroll {
+  max-height: calc(100dvh - 32px);
+  border-radius: 11px;
+}
+.conversation-context-scroll > [data-slot="scroll-area-viewport"] {
+  max-height: inherit;
+}
+.conversation-context-content {
+  padding: 11px 15px 10px;
+}
+.conversation-context-content h2 {
+  margin: 0 0 5px;
+  font-size: var(--text-ui-base);
+  font-weight: 500;
+  line-height: 1.5;
+}
+.conversation-context-model {
+  font-size: var(--text-ui-sm);
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  margin-bottom: 16px;
+  overflow-wrap: anywhere;
+}
+.conversation-context-usage {
+  display: flex;
+  align-items: center;
+  min-height: 21px;
+  margin-bottom: 15px;
+}
+.conversation-context-usage strong {
+  flex: 0 0 100px;
+  font-size: var(--text-ui-base);
+  font-weight: 500;
+}
+.conversation-context-usage > span {
+  font-size: var(--text-ui-sm);
+  color: var(--muted-foreground);
+}
+.conversation-context-bar {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--border);
+  margin-bottom: 12px;
+}
+.conversation-context-category {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 42px;
+  font-size: var(--text-ui-sm);
+  line-height: 1.5;
+}
+.conversation-context-category dt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted-foreground);
+}
+.conversation-context-category dd,
+.conversation-context-footer dd {
+  font-family: "JetBrains Mono Variable", monospace;
+  text-align: right;
+}
+.conversation-context-category p {
+  grid-column: 1 / -1;
+  padding-left: 20px;
+  font-size: var(--text-ui-xs);
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  align-self: start;
+  margin-top: 2px;
+  margin-bottom: 7px;
+}
+[data-context-legend] {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+[data-context-category="0"] > [data-context-legend],
+[data-context-category="0"] [data-context-legend],
+.conversation-context-bar [data-context-category="0"] {
+  background: var(--muted-foreground);
+}
+[data-context-category="1"] [data-context-legend],
+.conversation-context-bar [data-context-category="1"] {
+  background: var(--conversation-blue);
+}
+[data-context-category="2"] [data-context-legend],
+.conversation-context-bar [data-context-category="2"] {
+  background: var(--conversation-warning);
+}
+.conversation-context-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 11px;
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 6px 10px;
+  font-size: var(--text-ui-sm);
+}
+.conversation-context-footer dt {
+  color: var(--muted-foreground);
+}
+.conversation-tools-menu {
+  width: 752px;
+  border-radius: 8px;
+  padding: 0;
+  animation: none;
+  box-shadow: 0 4px 6px #0000001a;
+}
+.conversation-tools-scroll {
+  max-height: min(352px, calc(var(--radix-dropdown-menu-content-available-height) - 2px));
+}
+.conversation-tools-scroll > [data-slot="scroll-area-viewport"] {
+  max-height: inherit;
+}
+.conversation-tools-scroll [data-slot="dropdown-menu-label"] {
+  padding: 9px 15px 10px;
+  min-height: 37px;
+  font-weight: 400;
+}
+.conversation-tool-option {
+  margin: 0 5px 5px;
+  min-height: 32px;
+  padding: 5px 10px;
+  gap: 10px;
+  cursor: pointer;
+}
+.conversation-tool-option svg {
+  color: var(--muted-foreground);
+}
+
+/* Pencil C08 is an independent surface; retain the beUI dismissal and focus owner. */
+[data-popover-portal]:has(.conversation-context-panel) > [aria-hidden] {
+  display: none;
+}
+[data-popover-portal]:has(.conversation-context-panel) > div:last-child > div {
+  pointer-events: none !important;
+}
+[data-popover-portal]:has(.conversation-context-open) > div:last-child > div {
+  clip-path: none !important;
+}
+.conversation-context-panel:not(.conversation-context-open) {
+  visibility: hidden;
+}
+.conversation-context-open {
+  pointer-events: auto;
 }

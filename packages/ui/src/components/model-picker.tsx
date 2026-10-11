@@ -9,12 +9,7 @@ import { ProviderIcon } from "./provider-icon";
 import { useAppText } from "../lib/i18n";
 import "@fontsource-variable/noto-sans-sc";
 import "./conversation-controls.css";
-
-function capacity(tokens: number) {
-  if (tokens >= 1_000_000) return `${Number((tokens / 1_000_000).toFixed(2))}M`;
-  if (tokens >= 1_000) return `${Number((tokens / 1_000).toFixed(2))}K`;
-  return String(tokens);
-}
+import { formatCapacity } from "../lib/format-capacity";
 
 export function ModelPicker({
   models,
@@ -59,9 +54,9 @@ export function ModelPicker({
         >
           <span className="truncate">{selected?.name || model || t("app.model")}</span>
           {thinkingLevel ? (
-            <span className="shrink-0 text-ui-sm">· {t(`app.${thinkingLevel}`)}</span>
+            <span className="conversation-model-level shrink-0">· {t(`app.${thinkingLevel}`)}</span>
           ) : null}
-          <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
+          <ChevronDown aria-hidden="true" className="size-3 shrink-0" />
         </Button>
       </Menu.DropdownMenuTrigger>
       <Menu.DropdownMenuContent
@@ -136,7 +131,7 @@ export function ModelPicker({
                 <dd>{detail.input.map((input) => t(`app.model-input-${input}`)).join(" / ")}</dd>
                 <dt>{t("app.model-context")}</dt>
                 <dd title={detail.contextWindow.toLocaleString()}>
-                  {capacity(detail.contextWindow)}
+                  {formatCapacity(detail.contextWindow)}
                 </dd>
               </dl>
               {detail.thinkingLevels.length ? (

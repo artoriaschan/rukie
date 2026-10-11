@@ -332,7 +332,7 @@ test("sidebar preferences, native context facts and readonly-busy Retry remain u
       .element(screen.getByRole("heading", { name: "Explore ideas", exact: true }))
       .toBeVisible();
     await screen.getByRole("button", { name: "Context usage 25%", exact: true }).click();
-    await expect.element(screen.getByText("2,500 / 10,000 (25%)")).toBeVisible();
+    await expect.element(screen.getByText("2.5K / 10K · share of used")).toBeVisible();
     await expect.element(screen.getByText("Opening context", { exact: true })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await fetch(`http://127.0.0.1:${connection.port}/busy`);

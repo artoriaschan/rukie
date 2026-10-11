@@ -85,6 +85,13 @@ test("Pencil model panels preserve the composer layout and show catalog facts", 
     const panel = detail.element().getBoundingClientRect();
     expect(panel.width).toBe(280);
     expect(panel.height).toBe(184);
+    const facts = detail.element().querySelectorAll("dt");
+    expect(facts[0]!.getBoundingClientRect().top - panel.top).toBe(56);
+    expect(facts[1]!.getBoundingClientRect().top - panel.top).toBe(80);
+    expect(
+      detail.element().querySelector("[data-model-reasoning] button")!.getBoundingClientRect().top -
+        panel.top,
+    ).toBe(146);
     expect(panel.left - list.getBoundingClientRect().right).toBe(4);
     expect(panel.top).toBe(list.getBoundingClientRect().top);
     expect(first.element().getAttribute("data-selected")).toBe("true");
@@ -169,8 +176,13 @@ test("Pencil composer, permission and context controls retain their real actions
   try {
     const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true }).element();
     const form = prompt.closest("form")!;
+    await expect
+      .element(document.querySelector<HTMLElement>(".conversation-context-panel")!)
+      .not.toBeVisible();
     expect(form.getBoundingClientRect().width).toBe(736);
     expect(form.getBoundingClientRect().height).toBe(100);
+    expect(getComputedStyle(form.querySelector('button[type="submit"]')!).borderRadius).toBe("8px");
+    expect(getComputedStyle(prompt, "::placeholder").color).toBe("rgba(38, 38, 38, 0.4)");
     const trigger = screen.getByRole("button", { name: "Permission mode", exact: true });
     expect(trigger.element().getBoundingClientRect().height).toBe(28);
     await trigger.click();
@@ -181,15 +193,67 @@ test("Pencil composer, permission and context controls retain their real actions
       .toBe(376);
     expect(mode.element().getBoundingClientRect().height).toBe(44);
     expect(mode.element().querySelector("svg")).not.toBeNull();
+    const menuBounds = mode.element().closest('[role="menu"]')!.getBoundingClientRect();
+    expect(menuBounds.height).toBe(148);
+    const iconBounds = mode.element().querySelector(":scope > svg")!.getBoundingClientRect();
+    expect(iconBounds.left - menuBounds.left).toBe(10);
+    expect(iconBounds.top - menuBounds.top).toBe(16);
+    const full = screen.getByRole("menuitemradio", { name: /Allow tools without asking/ });
+    expect(getComputedStyle(full.element()).color).toBe("rgb(224, 123, 0)");
     await userEvent.keyboard("{Escape}");
     await expect.element(trigger).toHaveFocus();
     await screen.getByRole("button", { name: "Context usage 25%", exact: true }).click();
     const context = document.querySelector<HTMLElement>(".conversation-context-panel")!;
     await expect.poll(() => Math.round(context.getBoundingClientRect().width)).toBe(348);
     expect(context.textContent).toContain("First model");
-    expect(context.textContent).toContain("250,000 / 1,000,000 (25%)");
+    expect(context.textContent).toContain("250K / 1M");
+    expect(context.textContent).toContain("25% used");
+    const contextBounds = context.getBoundingClientRect();
+    expect(context.querySelector("h2")!.getBoundingClientRect().left - contextBounds.left).toBe(16);
+    expect(context.querySelector("h2 svg")).toBeNull();
+    expect(
+      context.querySelector("[data-context-bar]")!.getBoundingClientRect().top - contextBounds.top,
+    ).toBe(108);
+    expect(context.querySelectorAll("[data-context-legend]").length).toBe(3);
     expect(context.textContent).toContain("Opening context");
     await userEvent.keyboard("{Escape}");
+    await expect
+      .element(document.querySelector<HTMLElement>(".conversation-context-panel")!)
+      .not.toBeVisible();
+    const contextTrigger = screen.getByRole("button", { name: "Context usage 25%", exact: true });
+    await contextTrigger.click();
+    await expect
+      .element(document.querySelector<HTMLElement>(".conversation-context-panel")!)
+      .toBeVisible();
+    await contextTrigger.click();
+    await expect
+      .element(document.querySelector<HTMLElement>(".conversation-context-panel")!)
+      .not.toBeVisible();
+    await contextTrigger.click();
+    await expect
+      .element(document.querySelector<HTMLElement>(".conversation-context-panel")!)
+      .toBeVisible();
+    await screen
+      .getByRole("textbox", { name: "Prompt", exact: true })
+      .click({ position: { x: 4, y: 4 } });
+    await expect
+      .element(document.querySelector<HTMLElement>(".conversation-context-panel")!)
+      .not.toBeVisible();
+    await screen.getByRole("button", { name: "Attach images", exact: true }).click();
+    const attachment = screen.getByRole("menuitem", { name: "Attach images", exact: true });
+    await expect.element(attachment).toBeVisible();
+    const toolsMenu = attachment.element().closest('[role="menu"]')!;
+    expect(toolsMenu.getBoundingClientRect().width).toBe(752);
+    expect(getComputedStyle(toolsMenu).borderRadius).toBe("8px");
+    expect(attachment.element().getBoundingClientRect().height).toBe(32);
+    const file = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const openFile = vi.spyOn(file, "click").mockImplementation(() => {});
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    expect(openFile).toHaveBeenCalledOnce();
+    openFile.mockRestore();
+    await expect
+      .element(screen.getByRole("button", { name: "Attach images", exact: true }))
+      .toHaveFocus();
   } finally {
     await screen.unmount();
   }

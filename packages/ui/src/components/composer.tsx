@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import "@fontsource-variable/jetbrains-mono";
+import { useRef, useState } from "react";
 import {
   Plus,
   X,
@@ -6,7 +7,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   ChevronDown,
-  CircleGauge,
+  Paperclip,
   Square,
 } from "lucide-react";
 import {
@@ -23,6 +24,8 @@ import { Tooltip } from "./motion/tooltip";
 import { Popover, PopoverTrigger, PopoverContent } from "./motion/popover";
 import * as Menu from "./ui/dropdown-menu";
 import { useAppText, useComponentText } from "../lib/i18n";
+import { ScrollArea } from "./ui/scroll-area";
+import { formatCapacity } from "../lib/format-capacity";
 import { cn } from "../lib/utils";
 import { ModelPicker } from "./model-picker";
 
@@ -56,6 +59,7 @@ export function Composer(props: ComposerProps) {
   const t = useAppText();
   const componentText = useComponentText();
   const file = useRef<HTMLInputElement>(null);
+  const [contextOpen, setContextOpen] = useState(false);
   const selected = props.models.find((model) => model.spec === props.model);
   const permissionIcons = { ask: Hand, "auto-review": ShieldCheck, "full-access": ShieldAlert };
   const PermissionIcon = permissionIcons[props.permissionMode];
@@ -156,6 +160,7 @@ export function Composer(props: ComposerProps) {
             void addImages(event.dataTransfer.files);
           }
         }}
+        placeholder={t("app.prompt-placeholder")}
         aria-label={t("app.prompt")}
         disabled={props.disabled}
         submitting={props.submitting}
@@ -164,17 +169,37 @@ export function Composer(props: ComposerProps) {
         onSubmit={props.onSend}
         leadingAction={
           <>
-            <Tooltip content={t("app.attach")}>
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={props.disabled}
-                aria-label={t("app.attach")}
-                onClick={() => file.current?.click()}
+            <Menu.DropdownMenu>
+              <Tooltip content={t("app.attach")}>
+                <Menu.DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={props.disabled}
+                    aria-label={t("app.attach")}
+                    className="conversation-add-trigger"
+                  >
+                    <Plus className="size-4" />
+                  </Button>
+                </Menu.DropdownMenuTrigger>
+              </Tooltip>
+              <Menu.DropdownMenuContent
+                side="top"
+                collisionPadding={16}
+                className="conversation-tools-menu conversation-pencil"
               >
-                <Plus className="size-4" />
-              </Button>
-            </Tooltip>
+                <ScrollArea className="conversation-tools-scroll" viewportLabel={t("app.add")}>
+                  <Menu.DropdownMenuLabel>{t("app.add")}</Menu.DropdownMenuLabel>
+                  <Menu.DropdownMenuItem
+                    className="conversation-tool-option"
+                    onSelect={() => file.current?.click()}
+                  >
+                    <Paperclip className="size-4" aria-hidden="true" />
+                    <span>{t("app.attach")}</span>
+                  </Menu.DropdownMenuItem>
+                </ScrollArea>
+              </Menu.DropdownMenuContent>
+            </Menu.DropdownMenu>
             <Menu.DropdownMenu>
               <Menu.DropdownMenuTrigger asChild>
                 <Button
@@ -183,13 +208,13 @@ export function Composer(props: ComposerProps) {
                   disabled={props.disabled}
                   aria-label={t("app.permission")}
                   className={cn(
-                    "min-w-0",
-                    props.permissionMode === "full-access" && "text-warning",
+                    "conversation-permission-trigger min-w-0",
+                    props.permissionMode === "full-access" && "conversation-full-access",
                   )}
                 >
                   <PermissionIcon className="size-4 shrink-0" />
                   <span className="max-sm:sr-only">{t(`app.${props.permissionMode}`)}</span>
-                  <ChevronDown className="size-4 shrink-0" aria-hidden="true" />
+                  <ChevronDown className="size-3 shrink-0" aria-hidden="true" />
                 </Button>
               </Menu.DropdownMenuTrigger>
               <Menu.DropdownMenuContent
@@ -211,11 +236,11 @@ export function Composer(props: ComposerProps) {
                         value={mode}
                         className={cn(
                           "conversation-permission-option",
-                          mode === "full-access" && "text-warning",
+                          mode === "full-access" && "conversation-full-access",
                         )}
                       >
                         <Icon className="size-4 shrink-0" aria-hidden="true" />
-                        <span>
+                        <span className="conversation-permission-copy">
                           <span className="block font-medium">{t(`app.${mode}`)}</span>
                           <span className="block text-ui-sm text-muted-foreground">
                             {t(`app.${mode}-description`)}
@@ -244,7 +269,7 @@ export function Composer(props: ComposerProps) {
                 </Button>
               </Tooltip>
             )}
-            <Popover side="top" align="end">
+            <Popover side="top" align="end" open={contextOpen} onOpenChange={setContextOpen}>
               <Tooltip content={t("app.context")}>
                 <PopoverTrigger>
                   <Button
@@ -252,14 +277,18 @@ export function Composer(props: ComposerProps) {
                     size="icon"
                     aria-label={`${t("app.context")} ${percent}%`}
                   >
-                    <svg className="size-5 -rotate-90" viewBox="0 0 24 24" aria-hidden="true">
+                    <svg
+                      className="conversation-context-ring size-4 -rotate-90"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
                       <circle
                         cx="12"
                         cy="12"
                         r="9"
                         fill="none"
                         stroke="currentColor"
-                        className="text-border"
+                        className="conversation-ring-track"
                         strokeWidth="3"
                       />
                       <circle
@@ -268,7 +297,7 @@ export function Composer(props: ComposerProps) {
                         r="9"
                         fill="none"
                         stroke="currentColor"
-                        className="text-accent"
+                        className="conversation-ring-value"
                         strokeWidth="3"
                         pathLength="100"
                         strokeDasharray={`${percent} 100`}
@@ -278,57 +307,94 @@ export function Composer(props: ComposerProps) {
                 </PopoverTrigger>
               </Tooltip>
               <PopoverContent
-                aria-label={t("app.context")}
-                className="conversation-context-panel conversation-pencil"
-              >
-                <h2 className="mb-3 flex items-center gap-2 text-ui-base font-medium">
-                  <CircleGauge className="size-4" />
-                  {t("app.context")}
-                </h2>
-                {report ? (
-                  <>
-                    <p className="mb-4 text-ui-sm text-muted-foreground">
-                      {selected?.name || props.model} · {report.window.toLocaleString()}{" "}
-                      {t("app.model-context")}
-                    </p>
-                    <p className="mb-4 flex justify-between text-ui-sm">
-                      {report.used.toLocaleString()} / {report.window.toLocaleString()} ({percent}%)
-                    </p>
-                    <div
-                      className="mb-3 flex h-1.5 overflow-hidden rounded-full bg-muted"
-                      aria-hidden="true"
-                    >
-                      <span
-                        className="bg-primary"
-                        style={{ width: `${(systems / report.window) * 100}%` }}
-                      />
-                      <span
-                        className="bg-violet"
-                        style={{ width: `${(tools / report.window) * 100}%` }}
-                      />
-                      <span
-                        className="bg-neon"
-                        style={{ width: `${(messages / report.window) * 100}%` }}
-                      />
-                    </div>
-                    <dl className="grid grid-cols-2 gap-2 text-ui-sm">
-                      {[
-                        [t("app.system"), systems],
-                        [t("app.tools"), tools],
-                        [t("app.messages"), messages],
-                        [t("app.opening"), props.openingContext ?? systems + tools],
-                        [t("app.compactions"), props.compactionPoints ?? 0],
-                      ].map(([name, value]) => (
-                        <div key={name} className="contents">
-                          <dt className="text-muted-foreground">{name}</dt>
-                          <dd className="text-right font-mono">{value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </>
-                ) : (
-                  <p className="text-ui-sm text-muted-foreground">{t("app.no-context")}</p>
+                ariaLabel={t("app.context")}
+                className={cn(
+                  "conversation-context-panel conversation-pencil",
+                  contextOpen && "conversation-context-open",
                 )}
+              >
+                <ScrollArea
+                  className="conversation-context-scroll"
+                  viewportLabel={t("app.context")}
+                >
+                  <div className="conversation-context-content">
+                    <h2>{t("app.context")}</h2>
+                    {report ? (
+                      <>
+                        <p className="conversation-context-model">
+                          {selected?.name || props.model} · {formatCapacity(report.window)}{" "}
+                          {t("app.model-context")}
+                        </p>
+                        <div className="conversation-context-usage">
+                          <strong>{t("app.context-used", { percent })}</strong>
+                          <span>
+                            {formatCapacity(report.used)} / {formatCapacity(report.window)} ·{" "}
+                            {t("app.context-share")}
+                          </span>
+                        </div>
+                        <div
+                          data-context-bar
+                          className="conversation-context-bar"
+                          aria-hidden="true"
+                        >
+                          {[systems, messages, tools].map((tokens, index) => (
+                            <span
+                              key={index}
+                              data-context-category={index}
+                              style={{
+                                width: `${report.window > 0 ? Math.min(100, (tokens / report.window) * 100) : 0}%`,
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <dl className="conversation-context-categories">
+                          {(
+                            [
+                              ["system", systems, "context-system-description"],
+                              ["messages", messages, "context-messages-description"],
+                              ["tools", tools, "context-tools-description"],
+                            ] satisfies [
+                              "system" | "messages" | "tools",
+                              number,
+                              (
+                                | "context-system-description"
+                                | "context-messages-description"
+                                | "context-tools-description"
+                              ),
+                            ][]
+                          ).map(([name, value, description], index) => (
+                            <div
+                              key={name}
+                              className="conversation-context-category"
+                              data-context-category={index}
+                            >
+                              <dt>
+                                <span data-context-legend />
+                                {t(`app.${name}`)}
+                              </dt>
+                              <dd>
+                                {formatCapacity(Number(value))} ·{" "}
+                                {report.used > 0
+                                  ? ((Number(value) / report.used) * 100).toFixed(2)
+                                  : "0.00"}
+                                %
+                              </dd>
+                              <p>{t(`app.${description}`)}</p>
+                            </div>
+                          ))}
+                        </dl>
+                        <dl className="conversation-context-footer">
+                          <dt>{t("app.opening")}</dt>
+                          <dd>{formatCapacity(props.openingContext ?? systems + tools)}</dd>
+                          <dt>{t("app.compactions")}</dt>
+                          <dd>{props.compactionPoints ?? 0}</dd>
+                        </dl>
+                      </>
+                    ) : (
+                      <p className="text-ui-sm text-muted-foreground">{t("app.no-context")}</p>
+                    )}
+                  </div>
+                </ScrollArea>
               </PopoverContent>
             </Popover>
             <ModelPicker

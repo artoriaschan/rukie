@@ -43,3 +43,5 @@ Transcript 呈现按用户输入分组（`PromptGroup`），组内保留多次 T
 待审批请求在底部输入框原位置以 beUI Tool Approval 默认样式逐张展示，参数详情默认收起，同时到达的请求按 Interaction epoch 排队；处理当前请求后显示下一张，队列清空后恢复草稿、附件与输入焦点。权限停靠卡以 epoch 关联回复；Esc 拒绝、A 在 Session 内允许、Enter 允许，编辑文本、组合输入与菜单/模态框不触发这些快捷键。断连禁用回复；settled 与 stale 删除对应 epoch，重新订阅时使用 server 补发的新请求。同意与 Session 内允许不会在 Trace 中添加批准卡；拒绝决定使用 Tool Approval 的 denied 样式保留在当前窗口活动区，参数详情默认收起；重启窗口后以已提交工具结果事实为准。摘要显示当前 Todo 与子代理状态。
 
 权限请求到达时按 Interaction epoch 保存当前 PromptGroup 与活动位置；拒绝后，Tool Approval 结果卡位于对应工具执行卡之前，子代理请求保留其父活动位置，不会随后续活动或复用的 provider call ID 移到 Run 末尾。长命令在参数详情中换行，窄窗口将参数标签与内容纵向排列。断连期间保留停靠卡并禁用按钮，恢复连接时清除旧 epoch，重新订阅后接受补发；待审批及提交应答期间保留草稿和附件并隐藏输入框，审批按钮在命令应答前禁用；断线说明和重试入口保持可见。
+
+The conversation Plus opens the Pencil C09 attachment menu and keeps image picking, paste and drop on their existing path. Context details use the Pencil C08 usage/legend layout with the current System, Messages and Tools report estimates; displayed percentages divide by used tokens, while the capacity bar divides by the model window. Opening context and compaction count remain separate facts. Unsupported plugin actions and finer message category totals are not fabricated.
