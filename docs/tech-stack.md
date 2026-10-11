@@ -8,7 +8,7 @@
 | ------------------ | ------------------------------------------------------------------------------------------- |
 | 包管理、workspaces | Bun 1.4.2                                                                                   |
 | 语言               | TypeScript 6.0.3，Bun 类型 @types/bun 1.4.2                                                 |
-| 测试               | ⚠️ 按运行时选择（ADR-0004）：Bun 代码用 `bun:test`；Electron main 和渲染进程用 Vitest 5.0.1 |
+| 测试               | ⚠️ 按运行时选择（ADR-0004）：Bun 代码用 `bun:test`；Electron main 和渲染进程用 Vitest 5.0.3 |
 
 ## Agent
 
@@ -36,6 +36,7 @@
 | HTTP      | ⚠️ Hono 4.13.12（原清单为 4.13.9）                                                                                                                                 |
 | WebSocket | ⚠️ `@hono/bun` 1.0.0（peer 依赖 `hono >=4.13.9`）。从它引入 `upgradeWebSocket` 和 `websocket`；不要用 `hono/bun` 子路径，它从 4.13.10 起已标记弃用，Hono v5 会移除 |
 | 输入校验  | ⚠️ typebox 跟随 pi 的版本，目前是 1.3.27，不用 1.3.34。保证依赖树里只有一份，否则 schema 类型对不上                                                                |
+| 业务编排  | Effect 4.0.2，仅 server 内使用 ManagedRuntime、Layer 与 FiberMap（[ADR-0030](adr/0030-desktop-server-hono-and-effect.md)）                                         |
 | 存储      | 原生 durable JSONL（启用 fsync）；`bun:sqlite` 独占事务持有宿主 lease（[ADR-0024](adr/0024-adopt-pi-durable-harness.md)）                                          |
 
 Pi 的直接依赖和解析到的支撑包统一为 1.0.4，TypeBox 为 1.3.27；根 `overrides` 约束上游宽版本声明，`bun.lock` 保存实际解析。当前依赖树不包含 pi-agent-core 或 pi-coding-agent。JSONL 保存 Session 数据；SQLite 事务仅持有宿主写者 lease，不是已实现的桌面数据后端。
@@ -60,10 +61,10 @@ Pi 的直接依赖和解析到的支撑包统一为 1.0.4，TypeBox 为 1.3.27�
 | 样式     | Tailwind CSS 4.3.3                                                                                                                              |
 | 组件原语 | beUI 优先 + shadcn 补位：beUI 提供组件、原语、默认风格、动效与 Agent 执行反馈，beUI 未覆盖的角色用 shadcn；均经 shadcn CLI 安装                 |
 | 类名工具 | class-variance-authority 0.7.1 处理变体；clsx 2.1.1 加 tailwind-merge 3.7.0 组成 `cn()`；用 `extendTailwindMerge` 让 `text-ui-*` 也参与冲突合并 |
-| 图标     | lucide-react 1.48.0                                                                                                                             |
+| 图标     | lucide-react 1.55.0                                                                                                                             |
 | Markdown | micromark 解析 + 自研的 mdast→React 渲染 + shiki/katex                                                                                          |
 | 图表     | mermaid                                                                                                                                         |
-| 状态管理 | Zustand 5.0.12 + Immer 10.2.0                                                                                                                   |
+| 状态管理 | Zustand 5.0.15（已安装）；Immer 10.2.0 为后续选型，当前未安装                                                                                   |
 | 国际化   | 自研 `@rukie/i18n`：运行时无关的 zh / en locale 解析、通用文案、字典组合与插值、时长格式化；frontend 读取配置并选择 locale（ADR-0008）          |
 
 ## coding-agent 终端渲染器（ADR-0013）
@@ -121,7 +122,7 @@ Headless CLI、TUI 与 renderer 的依赖统一归 `packages/coding-agent/packag
 | `type-fest`                | `5.10.0` |
 | `wrap-ansi`                | `10.0.2` |
 
-类型依赖：`@types/lodash-es` 4.17.12、`@types/semver` 7.8.0、`@types/stack-utils` 2.0.3。测试使用已有 `@xterm/headless` 6.0.0；原生渲染组合计时测试使用仅开发依赖 `@sinonjs/fake-timers` 15.4.0（自带类型），以零时推进完成 xterm I/O 时保持虚拟截止时间。
+类型依赖：`@types/lodash-es` 4.17.12、`@types/semver` 7.8.0、`@types/stack-utils` 2.0.3。测试使用已有 `@xterm/headless` 6.0.0；原生渲染组合计时测试使用仅开发依赖 `@sinonjs/fake-timers` 15.4.0（自带类型），以零时推进完成 xterm I/O 时保持虚拟截止时间；server 的空闲 lease 回收测试也使用该开发依赖验证截止前和截止时。
 
 ## npm CLI 分发工具链
 
@@ -130,3 +131,19 @@ Headless CLI、TUI 与 renderer 的依赖统一归 `packages/coding-agent/packag
 Release PR 使用精确锁定的 `release-please@17.3.0`，由 Bun 执行官方 Manifest/Strategy/Changelog API；GitHub Actions 的不可变 commit 和工具版本见[版本准备 workflow](../.github/workflows/release-prepare.yml)。当前 commit CI 门槛、GitHub App 配置和 beta/稳定切换见[版本准备](release-preparation.md)。
 
 CI 与发布 workflows 的官方 Actions 使用 Node.js 24 runtime：checkout 7.0.1、setup-node 7.1.0、upload-artifact 7.0.2、download-artifact 8.0.2，均固定到完整 commit SHA。该 runtime 与 setup-node 为源码和安装包验收配置的 Node.js 版本分别由 Actions 声明和 workflow 输入决定。
+
+## 桌面测试与骨架的已安装依赖
+
+桌面三个 workspace 的协议与检查骨架已接入。测试工具为根 devDependency：vitest 5.0.3、@vitest/browser-playwright 5.0.3、playwright 1.64.0、vitest-browser-react 2.3.0、@vitejs/plugin-react 6.1.2、vite 8.3.1 和 @types/node 24.19.2。ui 精确声明 react/react-dom 19.3.0 的 peerDependencies，类型为 @types/react 19.3.0。server 与 ui 的 schema 测试复用 typebox 1.3.27。
+
+上述桌面壳、服务框架和其余 GUI 选型表包含后续实现的目标依赖；已安装 Electron 41.0.3、Hono 和 Effect；其他目标依赖按相应工单接入。以各包 manifest 和 lockfile 为已安装事实，测试准备和运行边界见[测试策略](testing.md#桌面测试入口)。
+
+### UI registry runtime
+
+`packages/ui` installs complete beUI source and shadcn dropdown-menu through shadcn CLI 4.21.4. Runtime dependencies are motion 14.1.0, @floating-ui/dom 1.8.0, shiki 4.5.0, radix-ui 1.7.0, tw-animate-css 1.4.0, clsx 2.1.1, tailwind-merge 3.7.0, lucide-react 1.55.0 and Tailwind CSS 4.3.3. The Vite Tailwind plugin is 4.3.3; React DOM declarations are @types/react-dom 19.2.3. Code highlighting shares shiki/core with the JavaScript raw engine, @shikijs/langs-precompiled 4.5.0 and GitHub Light/Dark themes; streaming uses @shikijs/stream 4.5.0. Transcript virtualization uses @tanstack/react-virtual 3.14.14, ANSI output uses anser 2.3.5, unified diff uses diff 8.0.4, and React Markdown parsing uses mdast-util-from-markdown 2.1.0 with @types/mdast 4.0.4.
+
+ui 状态使用 Zustand vanilla store，React 订阅由 app 层的 `useSyncExternalStore` 接线，遵循 ADR-0029 的无 React store 边界。
+
+## 本地桌面打包
+
+本地 macOS arm64 构建使用 electron-builder **26.15.3** 和 @electron/fuses **2.0.0**。Electron **41.0.3** 与 Bun **1.4.2** 为运行时，sidecar 的原生搜索资源来自 @vscode/ripgrep-darwin-arm64 **1.18.0**。这些是已安装的构建依赖；桌面打包不进入 GitHub Actions。命令与签名验收见 [desktop README](../packages/desktop/README.md#本地构建)。

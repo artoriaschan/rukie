@@ -8,6 +8,24 @@ const [mode, cwd, homeDir, argument] = process.argv.slice(2);
 if (!cwd || !homeDir || !argument) throw new Error("Missing worker arguments");
 const fake = recordedNativeModel();
 const bound = withAbortSignal(AbortSignal.timeout(5000), BACKGROUND_CONTEXT);
+if (mode === "queued-input") {
+  process.stdin.resume();
+  const session = await createSession({ cwd, homeDir, ...fake });
+  void session.run("before crash");
+  await fake.until(() => fake.calls.length === 1, bound);
+  await session.followUp("after crash one", {
+    images: [
+      {
+        data: "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+        mimeType: "image/gif",
+        name: "recovered.gif",
+      },
+    ],
+  });
+  const requestId = await session.followUp("after crash two");
+  process.stdout.write(`READY ${JSON.stringify({ sessionId: session.id, requestId })}\n`);
+  await new Promise<never>(() => {});
+}
 if (mode === "crash") {
   process.stdin.resume();
   if (!["child-done", "report-admitted", "report-processing", "report-answered"].includes(argument))

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 桌面端 MVP
 
@@ -131,7 +131,7 @@ Rukie 现在只能在终端里用：TUI 或 Headless CLI。用户想在桌面窗
 ### server
 
 - Hono 负责 HTTP 与 WebSocket 接入、中间件和校验。Effect 4.0.2 只在 server 内部做业务编排、依赖注入、错误与资源生命周期，不越过 server 边界：Agent Core 和 ui 都不依赖 effect（[01](issues/01-packages-and-effect-boundary.md#answer)、[04](issues/04-research-effect-on-bun.md#answer)、[ADR-0030](../../docs/adr/0030-desktop-server-hono-and-effect.md)）。暂不引入 `@effect/platform-bun`。
-- 整个进程只有一个 `ManagedRuntime`，Agent Core、注册表和 Run registry 以 Layer 注入。Run 存在 server 级的 `FiberMap` 里，按 Session 区分：WS 关闭不会中断 Run，abort 命令会移除对应 Fiber，graceful shutdown 时释放整个 runtime。
+- 整个进程只有一个 `ManagedRuntime`，Agent Core、注册表和输入回执 registry 以 Layer 注入。Agent Core 拥有 Run 与完成记录；server 的 `FiberMap` 按 requestId 等待 `waitForRequest` 回执，完成后自动移除。WS 关闭只释放订阅，abort 调用并等待 Session.abort 的结算与输入交还；graceful shutdown 先等待各 Session abort，再释放 runtime（[ADR-0033](../../docs/adr/0033-desktop-request-receipt-ownership.md) 部分替代 ADR-0030 的 Run Fiber 所有权规则）。
 - 直接 import `@rukie/agent`，按 Session 传入 `cwd` 和 `homeDir`。server 按 Session id 单飞打开，在订阅者之间共享同一个 Session，并传入 `onWarning` 接入 server 日志（[12](issues/12-research-agent-core-in-server.md#answer)）。
 - Interaction 桥接：server 给 `createSession` 提供 `onPermissionAsk` 回调，挂起的 Promise 存在按 `InteractionIdentity.epoch` 索引的 pending 表里。MVP 只桥接权限 Interaction，其余回调省略，依赖它们的工具保持隐藏。
 - Session 生命周期：有 Run、挂起的 Interaction、排队的输入或运行中的 Background Job 时，Session 保持打开。空闲且没有订阅超过 10 分钟后才 `close()`，释放 lease。连接断开不触发关闭。
@@ -339,24 +339,60 @@ host 接口只有四个方法：`getConnection()`、`pickProjectFolder()`、`rev
   - Playwright 的 Chromium（156）和 Electron 41.0.3 内置的 Chromium（146）版本不同，browser mode 测试不能代替 Electron renderer 的验证。
 - **ad-hoc 签名**：
   - 本地构建产物没有 quarantine 属性，可以直接打开；拷到别的机器上，或经浏览器下载后会被 Gatekeeper 拦截。
-  - ad-hoc 签名的 `.app` 启动时会打印一条「Keychain lookup failed」，不影响功能。
+  - 隔离 HOME 的验收启动曾在 Chromium Keychain 初始化阶段等待系统授权；验收使用 `--use-mock-keychain` 测试启动参数，生产 Cookie Encryption 保持启用。不能据此保证所有环境的钥匙串提示均不影响启动。
 - 实现工单见 `issues/21` 到 `issues/30`。
 
 ## ADR Coverage
 
-| 决定或修改                                                        | 归属                                                                                                                                       | 理由                                                         |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| 新建 ui/server/desktop 三包，GUI 不复用 `view/`                   | 新增 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)，部分替代 [ADR-0012](../../docs/adr/0012-single-coding-agent-package.md) | 推翻「view 抽成 UI 包」，包边界难以逆转                      |
-| ui 五层与 lint 边界                                               | 新增 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)                                                                          | 与包结构同一取舍，单向依赖由 oxlint 强制                     |
-| Hono 接入、Effect 只在 server 内                                  | 新增 [ADR-0030](../../docs/adr/0030-desktop-server-hono-and-effect.md)                                                                     | 仓库唯一使用 Effect 的包，缺上下文会意外                     |
-| 单 WS 复用、TypeBox 命令、epoch 关联、本机鉴权                    | 新增 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md)                                                               | 协议契约与安全边界                                           |
-| 与 TUI 共用 JSONL store、桌面端注册表                             | 新增 [ADR-0032](../../docs/adr/0032-desktop-shares-jsonl-store.md)，整份替代 [ADR-0003](../../docs/adr/0003-dual-session-store.md)         | 推翻「桌面端用 SQLite」                                      |
-| Agent 在 Bun sidecar，sidecar 单文件编译放在 `Resources/sidecar/` | 沿用并更新 [ADR-0001](../../docs/adr/0001-agent-runs-in-bun-sidecar.md) 的事实                                                             | 决定不变，补充实现形态                                       |
-| Vitest browser mode、`bunfig.toml` 排除、本地 `test:desktop`      | 沿用并更新 [ADR-0004](../../docs/adr/0004-test-runner-per-runtime.md) 的事实                                                               | runner 按运行时划分不变，补充接入方式                        |
-| Durable 执行、lease 与恢复                                        | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                           | server 直接调用 Agent Core，不改变执行与持久化语义           |
-| Agent Core 前置改动的模块归属                                     | 沿用 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)                                                                             | busy 错误归 store，Queued Input 归 Session，不新增跨能力依赖 |
-| zh/en 字典在 ui 包内                                              | 沿用 [ADR-0008](../../docs/adr/0008-locale-agnostic-agent-core.md)                                                                         | Agent Core 保持 locale 无关，frontend 自带字典               |
-| 只支持 macOS arm64、本地 ad-hoc 构建、不接 CI                     | 无需 ADR                                                                                                                                   | effort 范围限定，记在 03 与本 spec，扩大平台时再立 ADR       |
-| 孤儿 Background Job 作为已知限制                                  | 无需 ADR                                                                                                                                   | 维持现有语义，日后补回收不难逆转                             |
-| 签名、fuses、JIT 检查细节                                         | 无需 ADR                                                                                                                                   | 构建配置，随工具版本调整                                     |
-| 专用库与 beUI 安装方式                                            | 无需 ADR                                                                                                                                   | 依赖选型记在 tech-stack 与 DESIGN.md，可替换                 |
+| 决定或修改                                                        | 归属                                                                                                                                                  | 理由                                                                                  |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 新建 ui/server/desktop 三包，GUI 不复用 `view/`                   | 新增 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)，部分替代 [ADR-0012](../../docs/adr/0012-single-coding-agent-package.md)            | 推翻「view 抽成 UI 包」，包边界难以逆转                                               |
+| ui 五层与 lint 边界                                               | 新增 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)                                                                                     | 与包结构同一取舍，单向依赖由 oxlint 强制                                              |
+| Hono 接入、Effect 只在 server 内                                  | 新增 [ADR-0030](../../docs/adr/0030-desktop-server-hono-and-effect.md)                                                                                | 仓库唯一使用 Effect 的包，缺上下文会意外                                              |
+| Session 完成所有权与 requestId 回执 Fiber                         | 新增 [ADR-0033](../../docs/adr/0033-desktop-request-receipt-ownership.md)，部分替代 [ADR-0030](../../docs/adr/0030-desktop-server-hono-and-effect.md) | 一个 Run 可含多个输入；server 等待 Core 完成，不以 Fiber 移除代替 abort 结算          |
+| 单 WS 复用、TypeBox 命令、epoch 关联、本机鉴权                    | 新增 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md)                                                                          | 协议契约与安全边界                                                                    |
+| 与 TUI 共用 JSONL store、桌面端注册表                             | 新增 [ADR-0032](../../docs/adr/0032-desktop-shares-jsonl-store.md)，整份替代 [ADR-0003](../../docs/adr/0003-dual-session-store.md)                    | 推翻「桌面端用 SQLite」                                                               |
+| Agent 在 Bun sidecar，sidecar 单文件编译放在 `Resources/sidecar/` | 沿用并更新 [ADR-0001](../../docs/adr/0001-agent-runs-in-bun-sidecar.md) 的事实                                                                        | 决定不变，补充实现形态                                                                |
+| Vitest browser mode、`bunfig.toml` 排除、本地 `test:desktop`      | 沿用并更新 [ADR-0004](../../docs/adr/0004-test-runner-per-runtime.md) 的事实                                                                          | runner 按运行时划分不变，补充接入方式                                                 |
+| Durable 执行、lease 与恢复                                        | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                                      | server 直接调用 Agent Core，不改变执行与持久化语义                                    |
+| Agent Core 前置改动的模块归属                                     | 沿用 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)                                                                                        | busy 错误归 store，Queued Input 归 Session，不新增跨能力依赖                          |
+| 人类 follow-up 与 run 共用完成记录                                | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md) 与 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)                         | Session 保存结果与摘要，Ledger 继续拥有因果结算，server 不合成 Core 事件              |
+| busy Session 的单次只读 snapshot                                  | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md) 与 [ADR-0032](../../docs/adr/0032-desktop-shares-jsonl-store.md)                     | 从打开时载入的同一已提交 storage frame 读取，不取得写者 lease、不恢复任务、不修复文件 |
+| UI 回答组、工具呈现身份与 Session 草稿修订号                      | 沿用 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)                                                                                     | frontend 拥有呈现与未提交输入；PromptGroup 保留组内 Turn，不改变 Core 领域语义或存储  |
+| creation 排序取 Session 目录 birthtime                            | 无需 ADR                                                                                                                                              | 只读派生展示事实，不新增持久化格式；目录重建或复制会改变该事实，局限写在 Agent README |
+| zh/en 字典在 ui 包内                                              | 沿用 [ADR-0008](../../docs/adr/0008-locale-agnostic-agent-core.md)                                                                                    | Agent Core 保持 locale 无关，frontend 自带字典                                        |
+| 只支持 macOS arm64、本地 ad-hoc 构建、不接 CI                     | 无需 ADR                                                                                                                                              | effort 范围限定，记在 03 与本 spec，扩大平台时再立 ADR                                |
+| 孤儿 Background Job 作为已知限制                                  | 无需 ADR                                                                                                                                              | 维持现有语义，日后补回收不难逆转                                                      |
+| 签名、fuses、JIT 检查细节                                         | 无需 ADR                                                                                                                                              | 构建配置，随工具版本调整                                                              |
+| 专用库与 beUI 安装方式                                            | 无需 ADR                                                                                                                                              | 依赖选型记在 tech-stack 与 DESIGN.md，可替换                                          |
+
+## Delivery evidence
+
+2026-10-11：21–30 每个工单均由新的实现子代理执行，独立 worktree 按依赖顺序集成至 `feat/desktop-mvp`；没有复用工单实现代理。代码集成提交 `8af81b85`，PR [#13](https://github.com/artoriaschan/rukie/pull/13) 待最终推送与 CI 验收，未合并。
+
+### Review and corrections
+
+固定比较基点 `3e89e0bc`，规范与 spec 由两个新的独立子代理评审。规范轴发现 wire 错误和组件可访问名称未本地化，以及 Fiber 所有权文档不一致；spec 轴发现后台侧栏状态遗漏/陈旧、Turn 预览裁切和当前刻度未持续加长。六项均由一个新的修复子代理集中修正，公开回归与真实浏览器/Electron 验收通过；favicon 404 也已消除。
+
+首轮 aggregate 为失败，实际结果是 3,392 pass / 26 fail，165.78 秒，desktop 阶段未执行。失败归因：四处旧 ripgrep 文案消费者（含完整安装验收的嵌套失败）、一次 TUI abort/close 竞争、两次继承 DeepSeek 凭据导致的 provider-tab 假设，以及十九次本机 npm 11.19.1 不满足既有 11.21.0 条件。聚焦组合另暴露窄屏断言依赖中间帧；基点组合通过、当前组合失败的对照已记录，修正为通知所在物理行和相邻下一行的完整文本断言，不平坦化全屏、不增加超时。TUI stop 现在等待自己拥有的显式中断完成后关闭 Session。没有以聚焦通过改写首次 aggregate 结果，也没有在相同代码状态重复全套。
+
+### Local verification
+
+- 最终 `coding-agent` 整包：隔离 HOME、清除 NO_COLOR 和继承 DeepSeek 凭据，1,524 pass / 0 fail、10,731 assertions、179 files，67.28 秒；覆盖共用 stop 生命周期的全部 TUI/CLI/renderer 消费者。
+- 最终修复聚焦六文件：53 pass / 1,259 assertions，14.86 秒；额外 main/退出恢复 57 pass、timeout cleanup 4 pass。收窄通知断言后的原失败组合 9 pass / 1,048 assertions，1.15 秒。
+- server 16 pass；桌面 Vitest 50 pass / 14 files，6.86 秒；对应合并树与被验证源码树一致，后续仅 TUI/测试/交付文档变化，复用结果。各实现及修复提交的 `check:dev`、diff checks 和 hooks 通过。
+- 本机 npm 未全局改动；临时目录的 npm 11.21.0 使原样的 publication/recovery 聚焦测试 20 pass / 0 fail，110.52 秒。原始基点与当前集成树的模型选择文件在隔离凭据后均 5 pass。
+
+### Packaged acceptance
+
+保留 app `/tmp/rukie-desktop-artifacts/package/mac-arm64/Rukie.app`，`desktop-build.json` 对应干净源码 `1374619a`。最新代码对该产物的 Agent/shared/i18n/ui/server/desktop/编译与构建输入没有差异；后续唯一生产修复位于 TUI Conversation。strict deep codesign、runtime/entitlement、实际 ElectronAsarIntegrity/fuses 和 DFG JIT count=1 均通过，禁用 JIT 的负向探针按预期退出 1。
+
+真实 Electron 验收使用编译 sidecar、隔离 HOME/user-data 及现有 fakeModel 的外部传输桥接：原始工单覆盖原生文件夹 picker；修复后复验流式 partial、后台运行/审批状态、实际 bash 文件写入与 bundled rg、第二次回答、轨道 hover/focus/Enter/Esc、Light/Dark/480px/reduced-motion 和重载摘要。实际退出后公开只读 snapshot 保存 11 messages / 2 successful Run Summaries，Electron/Helpers/sidecar 与桥接均退出，隔离目录已清理。最终 evidence `/tmp/rukie-desktop-evidence/review-fixes/acceptance.md`；console/errors 空，捕获范围内资源请求成功，Vite 大 chunk warning 保留。
+
+### ADR coverage review
+
+对照最终 diff 和实施票核对模块所有权、依赖方向、授权/信任、持久化/恢复、资源生命周期和 wire 协议。ADR-0029–0032 覆盖三包、五层、Hono/Effect、loopback 认证与共享 JSONL；ADR-0033 部分替代 ADR-0030 的 Session-keyed Run Fiber 规则，明确 Core 完成、请求回执等待和 Session.abort。其余表列取舍与最终实现一致，替代关系和链接完整，没有交付依赖的未确认决定。局部 consumer/文案/中断等待修复没有新增持久化格式或架构边界，无需额外 ADR。
+
+21–30 与 spec 在本次同一变更设为 resolved，含义仅为实现、受影响文档、评审修复和适用本地验证完成。最终推送的 CI 仍待验收，结果保留于 PR checks/描述与交付回复；本记录不证明 CI、公证、分发或合并。
+
+2026-10-11 — 启动钥匙串修正：之前 Cookie Encryption 导致的提示已通过关闭未使用的 fuse 处理；普通启动参数验收的首页、生产 sidecar 握手与退出通过，不再用 mock keychain 代替启动验收。长期 Cookie-free 存储约束由 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md) 覆盖，详细证据见 [issue 30](issues/30-local-macos-build.md)。

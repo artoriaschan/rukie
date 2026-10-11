@@ -80,9 +80,22 @@ test("/model opens a focused picker, Escape preserves the model and Enter select
     app.stdin.write("/model\r");
     await app.waitFor(() => screen(app).includes("Select model"));
     app.stdin.write("\x1b[B\r");
+    // At 40 columns the committed model-change notice wraps the model spec.
+    // Read adjacent rendered cells rather than an intermediate unwrapped frame.
+    const renderedNotice = () => {
+      const lines = app.screen();
+      const noticeRow = lines.findIndex((line) =>
+        line.startsWith("─ Model changed to second (test-model/"),
+      );
+      if (noticeRow === -1) return "";
+      return lines[noticeRow]!.trimEnd() + (lines[noticeRow + 1]?.trimEnd() ?? "");
+    };
     await app.waitFor(
-      () => !screen(app).includes("Select model") && screen(app).includes("test-model/second"),
+      () =>
+        !screen(app).includes("Select model") &&
+        renderedNotice().includes("Model changed to second (test-model/second)"),
     );
+    expect(renderedNotice()).toContain("Model changed to second (test-model/second)");
     expect(app.calls).toHaveLength(0);
   } finally {
     await app.cleanup();

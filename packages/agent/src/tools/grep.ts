@@ -87,9 +87,7 @@ export function createGrepTool(cwd: string): PresentedTool<typeof schema> {
         signal?.throwIfAborted();
         const cause = error instanceof Error ? error.message : String(error);
         throw createUserVisibleError(
-          compiled
-            ? `Bundled ripgrep is unavailable: the macOS arm64 platform package is incomplete. Reinstall @rukie/coding-agent with optional dependencies enabled and check binary execution permissions. Cause: ${cause}`
-            : `Bundled ripgrep is unavailable. Reinstall Rukie dependencies (including optionalDependencies) and check platform compatibility or binary execution permissions. Cause: ${cause}`,
+          `Bundled ripgrep is unavailable. Restore the complete Rukie installation and check bundled binary execution permissions. Cause: ${cause}`,
           { code: "ripgrep-unavailable", params: { cause } },
           { cause: error },
         );

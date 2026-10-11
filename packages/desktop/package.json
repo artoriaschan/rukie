@@ -1,0 +1,13 @@
+{
+  "name": "@rukie/desktop",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@rukie/shared": "workspace:*",
+    "@rukie/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "41.0.3"
+  }
+}

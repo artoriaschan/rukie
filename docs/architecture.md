@@ -4,7 +4,7 @@
 
 ## 运行组成
 
-Rukie 的 Headless CLI 与 TUI 都运行在 Bun 中，直接调用 `@rukie/agent`。Agent Core 通过 `createSession` 组合原生 Harness、模型、工具、权限、hooks、MCP、上下文与存储。Session 是 frontend 使用的运行接口，frontend 负责输入和呈现。
+Rukie 的 Headless CLI、TUI 与桌面端本机 server 都运行在 Bun 中，直接调用 `@rukie/agent`。桌面界面运行在 Electron renderer 或浏览器中，经带鉴权的 WebSocket 调用本机 server；Electron main 负责窗口、宿主操作与 Bun sidecar 生命周期。Agent Core 通过 `createSession` 组合原生 Harness、模型、工具、权限、hooks、MCP、上下文与存储。Session 是 frontend 使用的运行接口，frontend 负责输入和呈现。
 
 pi-durable 拥有 Generation、ToolTask、Conversation、Submission、ownership、原子提交与恢复；pi-ai 提供模型协议，pi-mcp 提供 MCP 客户端。Rukie 的配置、授权、能力状态和宿主资源由所属模块维护，Session 负责组合；责任边界见 [ADR-0024](adr/0024-adopt-pi-durable-harness.md)。
 
@@ -15,6 +15,10 @@ flowchart TD
   CLI[Headless CLI] --> Core[Agent Core / Session]
   TUI[TUI frontend] --> Core
   TUI --> Renderer[Terminal renderer / design system]
+  GUI[React DOM UI] --> Server[Local server / WebSocket]
+  Server --> Core
+  Desktop[Electron main / preload] --> Server
+  GUI --> Desktop
   Core --> Pi[pi-durable / Harness]
   Core --> AI[pi-ai / model calls]
   Core --> MCP[pi-mcp / MCP clients]
@@ -28,7 +32,9 @@ flowchart TD
 | `@rukie/shared`       | 提供运行时无关的公共类型、schema 与纯函数                                                                      |
 | `@rukie/i18n`         | 提供运行时无关的通用文案与 locale 能力，只依赖 shared                                                          |
 
-公共内部包直接导出 TypeScript 源码，跨包消费者通过工作区包名导入；coding-agent 包内使用相对路径，TUI 只经 `ink/index.ts` 使用终端能力。具体依赖与脚本由各包 `package.json` 定义；技术版本由 [tech-stack.md](tech-stack.md) 维护。
+桌面端分为 `@rukie/ui`、`@rukie/server`、`@rukie/desktop` 三个 workspace。ui 的 app/components/store/client/host 分层由 lint 约束，组件消费呈现数据，client 处理连接和 wire 协议，host 提供本机操作接口。server 校验 shared 的 TypeBox wire 命令，并通过公开 Session API 管理执行和订阅；Effect 只用于 server 内部编排。desktop 通过 preload 注入 host，并管理 sidecar 与 `app://rukie` 的静态资源。包方向见 [ADR-0029](adr/0029-desktop-package-structure.md)，测试运行时见 [ADR-0004](adr/0004-test-runner-per-runtime.md)。
+
+公共内部包直接导出 TypeScript 源码，跨包消费者通过工作区包名导入；coding-agent 包内使用相对路径，TUI 只经 `ink/index.ts` 使用终端能力。桌面端的宿主与资源生命周期见 [desktop README](../packages/desktop/README.md)，网络入口与注册表见 [server README](../packages/server/README.md)，窗口接线与浏览器开发入口见 [ui README](../packages/ui/README.md)。具体依赖与脚本由各包 `package.json` 定义；技术版本由 [tech-stack.md](tech-stack.md) 维护。
 
 ## 应用启动与 Session
 

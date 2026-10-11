@@ -1,3 +1,6 @@
+import { readTranscript, readRunSummaries } from "./history.ts";
+import { PendingInputFactsDoc, queuedInputProjection, type QueuedInput } from "./queued-inputs.ts";
+export type { QueuedInput } from "./queued-inputs.ts";
 import { createConversationRuntime, createConversationRuntimePool } from "./conversation/index.ts";
 import { readGoalReceipt } from "../tools/goal/index.ts";
 import { readSubagentReceipt } from "../tools/subagents/index.ts";
@@ -30,11 +33,11 @@ import {
   CompactionTask,
   ToolTask,
   LiveDoc,
+  InboxDoc,
   type TaskId,
   type EntryDraft,
   type Storage,
   type EntryRecord,
-  type Cursor,
   ROOT_CONVERSATION_ID,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
@@ -187,8 +190,18 @@ export interface SessionOptions {
 export interface Session {
   /** Foreground admission, native parent Runs and manual Compaction; background children are independent. */
   readonly running: boolean;
-  /** Cancels the current run, including one started without a frontend controller. */
-  abort(): Promise<void>;
+  /** Cancel the current Run and return atomically withdrawn queued inputs in admission order. */
+  abort(): Promise<QueuedInput[]>;
+  /** Current durable user inputs awaiting placement; includes original attachment names. */
+  readonly queuedInputs: readonly QueuedInput[];
+  /** Admit a durable user input after the current Run answers; each input starts its own Run. */
+  followUp(prompt: string, options?: { images?: PromptImage[] }): Promise<string>;
+  /** Withdraw only before placement; a missing, placed or previously withdrawn identity is not_queued. */
+  withdraw(
+    requestId: string,
+  ): Promise<{ status: "withdrawn"; input: QueuedInput } | { status: "not_queued" }>;
+  /** Place a selected queued input after the current tool round instead of the final boundary. */
+  steerNow(requestId: string): Promise<{ status: "steered" | "not_queued" }>;
   /** Queue another user instruction for the current Run, including Skill Invocation. */
   steer(prompt: string, options?: { images?: PromptImage[] }): Promise<void>;
   /** Receive a committed snapshot followed by live updates, including active startup autoruns. */
@@ -337,14 +350,6 @@ const JobStopsDoc = defineDoc<{ pending: Record<string, string> }>({
   fork: "initial",
   initial: () => ({ pending: {} }),
 });
-const PendingInputFactsDoc = defineDoc<{ inputs: Record<string, Record<string, JsonValue>> }>({
-  kind: "rukie.pending-input-facts",
-  version: 1,
-  scope: "conversation",
-  history: "latest",
-  fork: "initial",
-  initial: () => ({ inputs: {} }),
-});
 const ChildHookContextDoc = defineDoc<{ pending: { source: string; content: string }[] }>({
   kind: "rukie.child-hook-context",
   version: 1,
@@ -446,7 +451,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let manualCompaction = false;
     let manualCompactionTask: TaskId | undefined;
     let goalRound = false;
-    const steeringAdmissions = new Set<Promise<void>>();
+    const steeringAdmissions = new Set<Promise<unknown>>();
+    let queuedAdmission: Promise<unknown> = Promise.resolve();
     let checkingStop: number | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
@@ -768,16 +774,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         "hook:Notification",
       );
     };
-    const fullHistory = async (id = conversation.id) => {
-      const entries: EntryRecord[] = [];
-      let cursor: Cursor | undefined;
-      do {
-        const page = await lease.storage.scanEntries({ conversationId: id }, 256, cursor, context);
-        entries.push(...page.items);
-        cursor = page.next;
-      } while (cursor);
-      return entries.reverse();
-    };
+    const fullHistory = (id = conversation.id) => readTranscript(lease.storage, id, context);
     const promptFacts = new Map<string, string>();
     const rememberPrompts = (entries: readonly EntryRecord[]) => {
       for (const entry of entries) {
@@ -787,27 +784,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     };
     const initialHistory = await fullHistory();
     rememberPrompts(initialHistory);
-    const readRunSummaries = (entries: readonly EntryRecord[]): RunSummaryFact[] =>
-      entries.flatMap((entry) => {
-        const value = entry.data;
-        return entry.kind === "rukie.run-summary" &&
-          value &&
-          typeof value === "object" &&
-          !Array.isArray(value) &&
-          typeof value.afterMessage === "number" &&
-          typeof value.durationMs === "number" &&
-          typeof value.endedAt === "number" &&
-          typeof value.success === "boolean"
-          ? [
-              {
-                afterMessage: value.afterMessage,
-                durationMs: value.durationMs,
-                endedAt: value.endedAt,
-                success: value.success,
-              },
-            ]
-          : [];
-      });
     runSummaries = readRunSummaries(initialHistory);
     const checkpoints = createCheckpoints({
       homeDir: options.homeDir,
@@ -1692,7 +1668,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }),
             publish: (events) => {
               for (const event of events)
-                if (event.type !== "request_settled")
+                if (event.type !== "request_settled" && event.type !== "queued_inputs_update")
                   custom({
                     type: "subagent_event",
                     agentId: childId,
@@ -2694,8 +2670,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       if (requestKind(requestId) !== "goal-round") ledger.setForeground(requestId);
       await ledger.registerSubmission(requestId, submitted.id);
       const record = await submitted.status(context);
-      if (images.length || invocation || !(requestKind(requestId) === "human")) {
+      {
         const facts: Record<string, JsonValue> = {
+          requestId,
           ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
           ...(invocation ? { skillInvocation: invocation } : {}),
           ...(!(requestKind(requestId) === "human")
@@ -2721,6 +2698,65 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }, context);
       }
       return submitted;
+    }
+    const humanCompletions = new Map<string, Promise<RequestResult>>();
+    const completedBoundaries = new Set<number>();
+    let completionWrites = Promise.resolve();
+    function completeHumanRequest(
+      requestId: string,
+      submissionId: Parameters<typeof ledger.resultFor>[1],
+    ) {
+      const existing = humanCompletions.get(requestId);
+      if (existing) return existing;
+      const completion = ledger.resultFor(requestId, submissionId).then(async (result) => {
+        const record = await lease.storage.submission(submissionId, context);
+        // Withdrawal before placement is a queue outcome, never a completed Turn.
+        if (!record?.entry) return result;
+        const history = await fullHistory();
+        const nextInput = history.find(
+          (entry) => entry.id > record.entry! && entry.kind === "input",
+        );
+        const end =
+          record.status === "done" && record.type === "input" ? record.answer : nextInput?.id;
+        const finished = history.filter(
+          (entry) =>
+            end === undefined || (record.status === "done" ? entry.id <= end : entry.id < end),
+        );
+        const afterMessage = transcriptMessages(finished).length;
+        const boundary = finished.at(-1)?.id;
+        if (boundary === undefined) return result;
+        const write = completionWrites.then(async () => {
+          if (completedBoundaries.has(boundary)) return;
+          await conversation.commit(
+            (tx) =>
+              tx.appendEntry(conversation.id, {
+                kind: "rukie.run-summary",
+                data: {
+                  afterMessage,
+                  durationMs: result.durationMs,
+                  endedAt: Date.now(),
+                  success: result.success,
+                },
+              }),
+            context,
+          );
+          completedBoundaries.add(boundary);
+          await writeMetadata();
+          custom({ type: "result", ...result });
+        });
+        completionWrites = write.catch(() => {});
+        await write;
+        return result;
+      });
+      humanCompletions.set(requestId, completion);
+      void completion.then(
+        () => humanCompletions.delete(requestId),
+        (error) => {
+          humanCompletions.delete(requestId);
+          if (!closed) warn(error);
+        },
+      );
+      return completion;
     }
     function modelMessages(): readonly Message[] {
       return observation.view().entries.flatMap((entry) => entry.model ?? []);
@@ -3234,8 +3270,83 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       interruptSubagent(id) {
         return subagents.interrupt(id, context);
       },
+      get queuedInputs() {
+        return observation.snapshot().queuedInputs;
+      },
+      async followUp(prompt, input) {
+        const requestId = requestIds.human();
+        const admission = queuedAdmission.then(() =>
+          submit(prompt, input?.images, "followUp", requestId),
+        );
+        queuedAdmission = admission.catch(() => {});
+        steeringAdmissions.add(admission);
+        try {
+          const submission = await admission;
+          completeHumanRequest(requestId, submission.id);
+          await observation.flush();
+          return requestId;
+        } catch (error) {
+          if (!(error instanceof PromptHookBlocked)) throw error;
+          custom({ type: "result", ...error.result });
+          ledger.publishSettled(error.result);
+          return requestId;
+        } finally {
+          steeringAdmissions.delete(admission);
+        }
+      },
+      async withdraw(requestId) {
+        assertAvailable();
+        const record = await lease.storage.submissionByRequest(conversation.id, requestId, context);
+        if (!record) return { status: "not_queued" };
+        const input = await conversation.commit(async (tx) => {
+          const inbox = await tx.doc(InboxDoc, conversation.id);
+          const facts = await tx.doc(PendingInputFactsDoc, conversation.id);
+          const input = queuedInputProjection(inbox, facts).find(
+            (item) => item.requestId === requestId,
+          );
+          if (!input) return undefined;
+          tx.settleSubmission(record.id, { status: "unanswered", reason: "aborted" });
+          inbox.items = inbox.items.filter((item) => item.id !== record.id);
+          delete facts.inputs[String(record.id)];
+          return input;
+        }, context);
+        await observation.flush();
+        return input ? { status: "withdrawn", input } : { status: "not_queued" };
+      },
+      async steerNow(requestId) {
+        assertAvailable();
+        const record = await lease.storage.submissionByRequest(conversation.id, requestId, context);
+        if (!record) return { status: "not_queued" };
+        const changed = await conversation.commit(async (tx) => {
+          const inbox = await tx.doc(InboxDoc, conversation.id);
+          const item = inbox.items.find((item) => item.id === record.id && item.mode !== "write");
+          if (!item) return false;
+          item.mode = "steer";
+          return true;
+        }, context);
+        await observation.flush();
+        return { status: changed ? "steered" : "not_queued" };
+      },
       async abort() {
         assertAvailable();
+        await Promise.allSettled(steeringAdmissions);
+        const withdrawn = await conversation.commit(async (tx) => {
+          const inbox = await tx.doc(InboxDoc, conversation.id);
+          const facts = await tx.doc(PendingInputFactsDoc, conversation.id);
+          const inputs = queuedInputProjection(inbox, facts);
+          const ids = new Set(inputs.map((input) => input.requestId));
+          const removed = inbox.items.filter(
+            (item) =>
+              item.mode !== "write" && ids.has(String(facts.inputs[String(item.id)]?.requestId)),
+          );
+          for (const item of removed) {
+            tx.settleSubmission(item.id, { status: "unanswered", reason: "aborted" });
+            delete facts.inputs[String(item.id)];
+          }
+          const removedIds = new Set(removed.map((item) => item.id));
+          inbox.items = inbox.items.filter((item) => !removedIds.has(item.id));
+          return inputs;
+        }, context);
         notificationLifetime.abort();
         notificationLifetime = new AbortController();
         runtime.stopped = true;
@@ -3243,7 +3354,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         if (manualCompactionTask) await harness.abortTask(manualCompactionTask, context);
         await conversation.abort(context);
         await goalAbort;
+        await Promise.all(humanCompletions.values());
         await observation.flush();
+        return withdrawn;
       },
       async steer(prompt, input) {
         const parentRequestId = ledger.currentRequestId;
@@ -3297,22 +3410,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           const requestId = requestIds.human();
           preparedMcpRequestId = requestId;
           const submission = await submit(prompt, input.images, "reject", requestId, input.signal);
-          const result = await ledger.resultFor(requestId, submission.id);
-          await conversation.commit(
-            (tx) =>
-              tx.appendEntry(conversation.id, {
-                kind: "rukie.run-summary",
-                data: {
-                  afterMessage: observation.messages().length,
-                  durationMs: result.durationMs,
-                  endedAt: Date.now(),
-                  success: result.success,
-                },
-              }),
-            context,
-          );
-          await writeMetadata();
-          custom({ type: "result", ...result });
+          const result = await completeHumanRequest(requestId, submission.id);
           if (input.signal?.aborted) throw input.signal.reason;
           if (!result.success) throw new Error(result.error ?? "Run failed.");
           return result;
@@ -3332,7 +3430,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           input.signal?.removeEventListener("abort", abort);
         }
       },
-      waitForRequest: (requestId) => ledger.waitForRequest(requestId),
+      async waitForRequest(requestId) {
+        const result = await ledger.waitForRequest(requestId);
+        await humanCompletions.get(requestId);
+        return result;
+      },
       async waitForIdle() {
         // A native Run can settle before its host receipt/metadata commit releases
         // foreground admission. Readiness includes that owned completion boundary.
@@ -3340,6 +3442,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await mcpManager.waitForIdle();
         await jobAdmissions;
         await conversation.waitForIdle(context);
+        await Promise.all(humanCompletions.values());
         await observation.flush();
       },
       close(reason = "exit") {
@@ -3368,6 +3471,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await Promise.all(shutdownPublications);
           });
           await release(() => plan.settleWrites());
+          // Settled human receipts finish before storage closes; active admissions
+          // remain durable for resume rather than blocking Session.close.
+          if (!observation.running() && observation.snapshot().queuedInputs.length === 0)
+            await release(async () => {
+              await Promise.all(humanCompletions.values());
+            });
+          await release(() => completionWrites);
           await release(() => harness.close(context));
           permissionBatch.close();
           await release(() => observation.close());
@@ -3417,6 +3527,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       goalRuntime.activation.requestId,
     );
     options.initializationSignal?.throwIfAborted();
+    // Recovered admissions have the same completion owner as inputs accepted by this host.
+    const pendingHumans = (
+      await lease.storage.scanSubmissions(
+        { conversationId: conversation.id },
+        100000,
+        undefined,
+        context,
+      )
+    ).items;
+    for (const input of pendingHumans) {
+      if (
+        input.type === "input" &&
+        (input.status === "queued" || input.status === "placed") &&
+        input.requestId &&
+        requestKind(input.requestId) === "human"
+      )
+        completeHumanRequest(input.requestId, input.id);
+    }
     harness.resume();
     return session;
   } catch (error) {

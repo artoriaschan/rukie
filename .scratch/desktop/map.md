@@ -36,6 +36,17 @@
 - [19: `packages/ui` 分层](issues/19-ui-package-layering.md#answer): `app`/`components`/`store`/`client`/`host` 五层单向依赖，oxlint `no-restricted-imports` 强制；ui 只 `import type` Agent Core 类型；SessionEvent 归约、diff 行与 Markdown 在 ui 重写，不复用 `coding-agent/src/view/`；字典在 `packages/ui/src/i18n/`；host 只有连接、选文件夹、在 Finder 显示、在终端打开四项。
 - [20: ADR 清单](issues/20-adr-list.md#answer): 新增四个 ADR（桌面端包结构、server 技术栈、wire 协议与本机鉴权、桌面端存储），部分替代 ADR-0012、整份替代 ADR-0003；ADR-0001、ADR-0004 只更新事实；平台范围、孤儿 Job、签名、专用库不写 ADR。正文在 `/to-spec` 阶段与 spec 一起起草。
 
+- [21: 实现交付](issues/21-agent-core-busy-error-and-tolerant-list.md#answer)：类型化 Session busy 错误、zh/en 呈现与按单个索引容错的列举已完成；真实 lease、warnings、只读列举及恢复消费者均已验证。
+- [22: 实现交付](issues/22-agent-core-queued-input.md#answer)：Queued Input 原文、图片与 requestId 公开；followUp、立即发送、撤回及 abort 有序回填使用原生 inbox 和完成记录，恢复与同 Run steering 回归通过。
+- [23: 实现交付](issues/23-desktop-workspace-scaffold.md#answer)：ui/server/desktop workspace、五层导入和字号检查、Bun/Vitest 收集边界已接入；桌面测试仅进入本地 check，不进入 CI 分片。
+- [24: 实现交付](issues/24-server-wire-core.md#answer)：随机 loopback 端口、Host/Origin/token 校验、单连接接管、Session 单飞与 snapshot 订阅已接入，真实 WS 鉴权和断连继续测试通过。
+- [25: 实现交付](issues/25-server-interactions-queue-lifecycle.md#answer)：权限 identity/epoch 桥接、取消与规则覆盖、队列、模型/模式/注册表及空闲关闭已完成。后台权限摘要广播、Core 完成回执和 TUI 中断等待修复已集成，SIGTERM 实际进程退出与持久化均已验证。
+- [26: 实现交付](issues/26-desktop-main-and-sidecar.md#answer)：四方法 preload、app scheme/CSP/路径校验、sidecar 握手/环境剔除/重启与退出生命周期已完成。窗口关闭通过 SIGTERM shutdown 先 abort 活跃 Run，再关闭 Session；公开 signal 回归及真实打包退出证据闭合此项。
+- [27: 实现交付](issues/27-ui-theme-and-components.md#answer)：beUI 优先、shadcn 补位的组件安装与 GitHub Light/Dark、text-ui 字号、zh/en、减少动态效果已完成。剩余可访问名称本地化和真实 CSP、窄窗口验收已修正并验证。
+- [28: 实现交付](issues/28-ui-shell-sidebar-and-new-session.md#answer)：项目与 Session 侧栏、首发创建、输入/模型/权限模式、偏好及连接恢复已完成；侧栏摘要为权威状态，后台运行/审批/结算与重载回归通过。
+- [29: 实现交付](issues/29-ui-transcript-tools-and-permissions.md#answer)：原生 Transcript、PromptGroup 虚拟化、Markdown/高亮/ANSI/diff、权限 Dock、队列和草稿所有权已完成；当前长刻度及 portal 预览修复通过实际 Electron hover/focus/键盘/窄窗口验收。
+- [30: 实现交付](issues/30-local-macos-build.md#answer)：一条本地 macOS arm64 构建命令生成真实 ad-hoc app；sidecar/rg 外置、精确签名、fuses、strict deep codesign 与 JIT 自检通过。真实编译产物完成流式/审批/bash/rg/Transcript 和进程退出验收。
+
 ## Not yet specified
 
 <!-- 目的地已到达：[spec.md](spec.md) 与实现工单 21–30 已切出（2026-10-10）。原 fog 全部归入 spec：DESIGN.md 与 tech-stack 修订、beUI 组件改造进 27 与 29，本地测试与交付规则进 23，打包遗留进 30，待实测项进 27–29 的 GUI 浏览器验证，虚拟列表无障碍记为 spec 已知限制，会话内搜索移出 MVP。 -->

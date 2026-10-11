@@ -1154,6 +1154,7 @@ export function createConversation(
   const listeners = new Set<() => void>();
   let compacting = false;
   let active: { promise: Promise<unknown>; input?: AbortController } | undefined;
+  const interruptions = new Set<Promise<void>>();
   let pendingResult: { event: Extract<SessionEvent, { type: "result" }>; at: number } | undefined;
   let jobNoticeTimer: ReturnType<typeof setTimeout> | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1543,9 +1544,14 @@ export function createConversation(
       if (!active && !session.running) return;
       dispatchActivity({ type: "interrupt" });
       active?.input?.abort();
-      void session.abort().catch((error: unknown) => {
-        if (!stopped) notify(formatError(error, t), "error");
-      });
+      const interruption = session.abort().then(
+        () => {},
+        (error: unknown) => {
+          if (!stopped) notify(formatError(error, t), "error");
+        },
+      );
+      interruptions.add(interruption);
+      void interruption.finally(() => interruptions.delete(interruption));
     },
     async stop() {
       stopped = true;
@@ -1556,6 +1562,9 @@ export function createConversation(
       clearTimeout(noticeTimer);
       clearTimeout(jobNoticeTimer);
       clearTimeout(notificationTimer);
+      // Explicit interruption owns async abort work even when input admission
+      // settles first; release it before the caller closes the Session.
+      await Promise.all(interruptions);
     },
   };
 }

@@ -39,3 +39,20 @@ export {
 } from "./tool-view.ts";
 
 export { ModelCompatSchemas } from "./model-compat.ts";
+
+export {
+  WIRE_SUBPROTOCOL,
+  WireCommandSchema,
+  WirePreferencesSchema,
+  type WireCommand,
+  type WireErrorCode,
+  type WireResponse,
+  type WireProject,
+  type WireSessionSummary,
+  type WireInteractionIdentity,
+  type WirePermissionRequest,
+  type WirePreferences,
+  type WireModelCatalogEntry,
+  type WireServerMessage,
+  type WireSessionState,
+} from "./wire.ts";

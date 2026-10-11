@@ -1,0 +1,88 @@
+import type { TranscriptMessage, QueuedInput, BackgroundActivity } from "@rukie/agent";
+import type { ToolCallView, ToolResultView, WirePermissionRequest } from "@rukie/shared";
+export interface SubagentPresentation extends BackgroundActivity {
+  outcome?: string;
+}
+export interface TranscriptTool {
+  id: string;
+  name: string;
+  args: unknown;
+  callView?: ToolCallView;
+  resultView?: ToolResultView;
+  status: "running" | "success" | "error" | "cancelled";
+  output: string;
+}
+export function toolTitle(tool: TranscriptTool): string {
+  const call = tool.callView;
+  return call?.card === "terminal"
+    ? call.command
+    : call?.card === "diff"
+      ? call.diffs.map((diff) => diff.path).join(", ")
+      : call?.card === "generic"
+        ? (call.title ?? tool.name)
+        : tool.name;
+}
+export interface PromptGroup {
+  id: string;
+  messages: readonly TranscriptMessage[];
+  status: "running" | "complete" | "aborted" | "failed";
+  error?: string;
+  startedAt: number;
+  durationMs?: number;
+}
+export interface TranscriptState {
+  committed: readonly TranscriptMessage[];
+  partial?: TranscriptMessage;
+  groups: PromptGroup[];
+  tools: Record<string, TranscriptTool>;
+  activeTools: Record<string, string>;
+  queued: readonly QueuedInput[];
+  toolStates: Readonly<Record<string, unknown>>;
+  background: readonly SubagentPresentation[];
+  summaries: readonly {
+    afterMessage: number;
+    durationMs: number;
+    success: boolean;
+    endedAt: number;
+  }[];
+  active: boolean;
+  error?: string;
+}
+export function messageText(message: { content?: unknown }) {
+  if (typeof message.content === "string") return message.content;
+  return Array.isArray(message.content)
+    ? message.content
+        .flatMap((block) =>
+          typeof block === "object" &&
+          block !== null &&
+          block.type === "text" &&
+          typeof block.text === "string"
+            ? [block.text]
+            : [],
+        )
+        .join("")
+    : "";
+}
+
+export function presentationCallId(
+  message: Pick<TranscriptMessage, "entryId" | "timestamp">,
+  callId: string,
+) {
+  return `${message.entryId ?? `partial-${message.timestamp}`}:${callId}`;
+}
+
+interface PermissionPlacement {
+  groupId: string;
+  entryId?: string;
+  timestamp: number;
+  blockIndex: number;
+  before: boolean;
+}
+export interface PresentedPermissionRequest extends WirePermissionRequest {
+  /** Captured when the request arrives, before later activity can move its position. */
+  placement?: PermissionPlacement;
+}
+export interface PermissionDecision {
+  reply: "allow" | "deny" | "allow-session";
+  request: PresentedPermissionRequest;
+}

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -57,6 +57,8 @@ export interface SessionSummary {
   id: string;
   title: string;
   titleSource: TitleSource;
+  /** Birth time of the store directory; independent of subsequent Transcript updates. */
+  createdAt: number;
   updatedAt: number;
   messageCount: number;
   model: string;
@@ -69,17 +71,22 @@ export interface SessionStorageLease {
 /** Native storage ownership, never a legacy Session repository. */
 export interface SessionStore {
   open(options: { id?: string }, context: Context): Promise<SessionStorageLease>;
-  list(context: Context): Promise<SessionSummary[]>;
+  /** Skip unreadable indexes, reporting each failure without recovering or repairing storage. */
+  list(context: Context, onWarning?: (warning: string) => void): Promise<SessionSummary[]>;
   key(id: string): string;
 }
-const liveReaders = new Map<string, () => Promise<SessionSummary>>();
+const liveReaders = new Map<string, () => Promise<Omit<SessionSummary, "createdAt">>>();
 export function registerSessionReader(
   store: SessionStore,
   id: string,
-  read: () => Promise<SessionSummary>,
+  read: () => Promise<Omit<SessionSummary, "createdAt">>,
 ) {
   const key = store.key(id);
-  if (liveReaders.has(key)) throw new Error(`Session already open: ${id}`);
+  if (liveReaders.has(key))
+    throw createUserVisibleError(`Session already open: ${id}`, {
+      code: "session-busy",
+      params: { id },
+    });
   liveReaders.set(key, read);
   return () => {
     if (liveReaders.get(key) === read) liveReaders.delete(key);
@@ -152,7 +159,14 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
         lease.exec("PRAGMA busy_timeout = 0; BEGIN IMMEDIATE;");
       } catch (error) {
         lease.close();
-        throw new Error(`Session already open: ${sessionId}`, { cause: error });
+        throw createUserVisibleError(
+          `Session already open: ${sessionId}`,
+          {
+            code: "session-busy",
+            params: { id: sessionId },
+          },
+          { cause: error },
+        );
       }
       const files = new CommittedFiles({ cwd });
       try {
@@ -177,7 +191,7 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
         throw error;
       }
     },
-    async list(context) {
+    async list(context, onWarning = console.warn) {
       let directories;
       try {
         directories = await readdir(root, { withFileTypes: true });
@@ -188,54 +202,90 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
       const results: SessionSummary[] = [];
       for (const directory of directories) {
         if (!directory.isDirectory()) continue;
-        const reader = liveReaders.get(key(directory.name));
-        if (reader) {
-          results.push(await reader());
-          continue;
-        }
-        if (!(await Bun.file(join(key(directory.name), "main.jsonl")).exists())) continue;
-        const files = new NodeExecutionEnv({ cwd });
-        let nativeSession: ReturnType<typeof createNativeSession> | undefined;
         try {
-          const storage = await JsonlStorage.open(
-            key(directory.name),
-            readonlyFiles(files),
-            context,
-          );
-          // The storage kernel reads committed documents without Harness recovery,
-          // which may append retry/uncertainty facts for unfinished native work.
-          nativeSession = createNativeSession(storage);
-          const snapshot = await nativeSession.snapshot(SessionMetadataDoc, context);
-          if (!snapshot) continue;
-          const metadata = parseSessionMetadata(snapshot);
-          if (metadata.cwd !== cwd || metadata.id !== directory.name) continue;
-          results.push({
-            id: metadata.id,
-            title: metadata.title,
-            titleSource: metadata.titleSource,
-            model: metadata.model,
-            updatedAt: metadata.updatedAt,
-            messageCount: metadata.messageCount,
-          });
-        } finally {
-          try {
-            await nativeSession?.close(BACKGROUND_CONTEXT);
-          } finally {
-            await files.cleanup(BACKGROUND_CONTEXT);
+          const createdAt = (await stat(key(directory.name))).birthtimeMs;
+          const reader = liveReaders.get(key(directory.name));
+          if (reader) {
+            results.push({ ...(await reader()), createdAt });
+            continue;
           }
+          if (!(await Bun.file(join(key(directory.name), "main.jsonl")).exists())) continue;
+          const files = new NodeExecutionEnv({ cwd });
+          let nativeSession: ReturnType<typeof createNativeSession> | undefined;
+          try {
+            const storage = await JsonlStorage.open(
+              key(directory.name),
+              readonlyFiles(files),
+              context,
+            );
+            // The storage kernel reads committed documents without Harness recovery,
+            // which may append retry/uncertainty facts for unfinished native work.
+            nativeSession = createNativeSession(storage);
+            const snapshot = await nativeSession.snapshot(SessionMetadataDoc, context);
+            if (!snapshot) continue;
+            const metadata = parseSessionMetadata(snapshot);
+            if (metadata.cwd !== cwd || metadata.id !== directory.name) continue;
+            results.push({
+              id: metadata.id,
+              title: metadata.title,
+              titleSource: metadata.titleSource,
+              model: metadata.model,
+              createdAt,
+              updatedAt: metadata.updatedAt,
+              messageCount: metadata.messageCount,
+            });
+          } finally {
+            try {
+              await nativeSession?.close(BACKGROUND_CONTEXT);
+            } finally {
+              await files.cleanup(BACKGROUND_CONTEXT);
+            }
+          }
+        } catch (error) {
+          onWarning(
+            `Could not read Session ${directory.name}: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
       return results.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
     },
   };
 }
+/** Observe committed storage without acquiring a writer lease, recovery or repair. The callback must only read. */
+export async function readSessionStorage<T>(
+  options: { cwd: string; homeDir: string; id: string },
+  read: (storage: Storage) => Promise<T>,
+): Promise<T> {
+  validId(options.id);
+  const directory = createJsonlStore(options).key(options.id);
+  if (!(await Bun.file(join(directory, "main.jsonl")).exists()))
+    throw createUserVisibleError(`Session not found: ${options.id}`, {
+      code: "session-not-found",
+      params: { id: options.id },
+    });
+  const files = new NodeExecutionEnv({ cwd: options.cwd });
+  let storage: Storage | undefined;
+  try {
+    storage = await JsonlStorage.open(directory, readonlyFiles(files), BACKGROUND_CONTEXT);
+    return await read(storage);
+  } finally {
+    try {
+      await storage?.close(BACKGROUND_CONTEXT);
+    } finally {
+      await files.cleanup(BACKGROUND_CONTEXT);
+    }
+  }
+}
+
 export async function listSessions(options: {
   cwd: string;
   homeDir?: string;
   store?: SessionStore;
   settings?: Settings;
+  /** Receives failures for individual Session indexes; root directory failures still reject. */
+  onWarning?: (warning: string) => void;
 }): Promise<SessionSummary[]> {
   const store =
     options.store ?? createJsonlStore({ cwd: options.cwd, homeDir: options.homeDir ?? homedir() });
-  return store.list(BACKGROUND_CONTEXT);
+  return store.list(BACKGROUND_CONTEXT, options.onWarning);
 }
