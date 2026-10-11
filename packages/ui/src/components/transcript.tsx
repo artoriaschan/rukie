@@ -309,7 +309,7 @@ function Group({
                     items={section.items}
                     contentType="trace"
                     status={working ? "working" : "complete"}
-                    defaultOpen
+                    defaultOpen={false}
                     collapseOnComplete={false}
                     collapsibleWhileWorking
                     maxHeight={null}

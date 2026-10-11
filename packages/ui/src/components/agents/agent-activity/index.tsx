@@ -170,8 +170,8 @@ export function AgentActivity({
   }, []);
 
   useEffect(() => {
-    if (previousStatus.current === "working" && status === "complete") {
-      setOpen(!collapseOnComplete);
+    if (previousStatus.current === "working" && status === "complete" && collapseOnComplete) {
+      setOpen(false);
     }
     previousStatus.current = status;
   }, [collapseOnComplete, setOpen, status]);

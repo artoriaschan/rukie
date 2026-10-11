@@ -95,6 +95,7 @@ test("App shows committed and streaming replies, with failed tool output expande
     };
     await send({ type: "message_start", message: result });
     await send({ type: "message_end", entryId: "r", messages: [result] });
+    await screen.getByRole("button", { name: "Running commands", exact: true }).click();
     await expect.element(screen.getByText("Parser failed", { exact: true })).toBeVisible();
     const tool = screen.getByRole("button", { name: /check Ran command/ }).element();
     const traceRow = tool.closest('[role="listitem"]')!;
@@ -149,6 +150,9 @@ test("App shows committed and streaming replies, with failed tool output expande
     });
     await expect.element(screen.getByRole("alert")).toHaveTextContent("Provider unavailable");
     await expect.element(screen.getByRole("feed")).toHaveAttribute("aria-busy", "false");
+    await expect
+      .element(screen.getByRole("button", { name: "Ran commands", exact: true }))
+      .toHaveAttribute("aria-expanded", "true");
     expect(
       screen
         .getByRole("article", { name: "Response 1", exact: true })
@@ -201,6 +205,11 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
     const response = screen.getByRole("article", { name: "Response 1", exact: true });
     const running = response.getByRole("button", { name: /^Processed for/ });
     await expect.element(running).toHaveAttribute("aria-expanded", "true");
+    const analysis = response.getByRole("button", { name: "Analysis complete", exact: true });
+    await expect.element(analysis).toHaveAttribute("aria-expanded", "false");
+    analysis.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(analysis).toHaveAttribute("aria-expanded", "true");
     const reasoning = response.getByRole("button", { name: "Reasoning", exact: true });
     await expect.element(reasoning).toHaveAttribute("aria-expanded", "false");
     const reasoningContent = document.getElementById(
@@ -256,6 +265,14 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
     await title.element().focus();
     await userEvent.keyboard(" ");
     await expect.element(title).toHaveAttribute("aria-expanded", "true");
+    const completedAnalysis = response.getByRole("button", {
+      name: "Analysis complete",
+      exact: true,
+    });
+    await expect.element(completedAnalysis).toHaveAttribute("aria-expanded", "false");
+    completedAnalysis.element().focus();
+    await userEvent.keyboard(" ");
+    await expect.element(completedAnalysis).toHaveAttribute("aria-expanded", "true");
     await expect
       .element(response.getByRole("button", { name: "Reasoning", exact: true }))
       .toHaveAttribute("aria-expanded", "false");
@@ -316,6 +333,9 @@ test.each(["aborted", "error"])(
         exact: true,
       });
       await expect.element(title).toHaveAttribute("aria-expanded", "true");
+      const analysis = screen.getByRole("button", { name: "已完成分析", exact: true });
+      await expect.element(analysis).toHaveAttribute("aria-expanded", "false");
+      await analysis.click();
       const reasoning = screen.getByRole("button", { name: "推理", exact: true });
       await expect.element(reasoning).toHaveAttribute("aria-expanded", "false");
       await reasoning.click();
@@ -413,6 +433,9 @@ test("consecutive reasoning and tools form traces separated by persistent assist
       .toBeVisible();
     const traces = response.element().querySelectorAll<HTMLElement>("[data-trace-group]");
     expect(traces).toHaveLength(3);
+    for (const trace of traces) {
+      expect(trace.querySelector("button")!.getAttribute("aria-expanded")).toBe("false");
+    }
     expect(traces[0]!.querySelectorAll('[role="listitem"]')).toHaveLength(1);
     expect(traces[1]!.querySelectorAll('[role="listitem"]')).toHaveLength(3);
     expect(traces[2]!.querySelectorAll('[role="listitem"]')).toHaveLength(2);
@@ -431,9 +454,11 @@ test("consecutive reasoning and tools form traces separated by persistent assist
     expect(
       message.compareDocumentPosition(traces[1]!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    for (const button of response.getByRole("button", { name: "Reasoning", exact: true }).all()) {
-      await expect.element(button).toHaveAttribute("aria-expanded", "false");
-    }
+    await toolsTitle.click();
+    await expect.element(toolsTitle).toHaveAttribute("aria-expanded", "true");
+    await expect
+      .element(response.getByRole("button", { name: "Reasoning", exact: true }))
+      .toHaveAttribute("aria-expanded", "false");
     await toolsTitle.click();
     await expect.element(toolsTitle).toHaveAttribute("aria-expanded", "false");
     await expect
@@ -446,9 +471,8 @@ test("consecutive reasoning and tools form traces separated by persistent assist
       content: [{ type: "thinking", thinking: "Streaming analysis" }],
     };
     await send({ type: "message_update", message: pending });
-    await expect
-      .element(response.getByRole("button", { name: "Analyzing", exact: true }))
-      .toBeVisible();
+    const liveAnalysis = response.getByRole("button", { name: "Analyzing", exact: true });
+    await expect.element(liveAnalysis).toHaveAttribute("aria-expanded", "false");
     await send({
       type: "message_update",
       message: {
@@ -465,9 +489,9 @@ test("consecutive reasoning and tools form traces separated by persistent assist
         ],
       },
     });
-    await expect
-      .element(response.getByRole("button", { name: "Running commands", exact: true }))
-      .toBeVisible();
+    const liveTools = response.getByRole("button", { name: "Running commands", exact: true });
+    await expect.element(liveTools).toHaveAttribute("aria-expanded", "false");
+    await expect.element(toolsTitle).toHaveAttribute("aria-expanded", "true");
     await response.getByRole("button", { name: /^Processed for/ }).click();
     for (const trace of traces) expect(trace.inert).toBe(true);
     for (const text of [
@@ -481,6 +505,15 @@ test("consecutive reasoning and tools form traces separated by persistent assist
     await expect
       .element(response.getByRole("button", { name: "Time spent 2.0s", exact: true }))
       .toHaveAttribute("aria-expanded", "false");
+    await response.getByRole("button", { name: "Time spent 2.0s", exact: true }).click();
+    await expect.element(toolsTitle).toHaveAttribute("aria-expanded", "true");
+    const completedTools = response.getByRole("button", { name: "Ran commands", exact: true });
+    await expect.element(completedTools).toHaveAttribute("aria-expanded", "false");
+    for (const label of ["Analysis complete", "Searched files"]) {
+      await expect
+        .element(response.getByRole("button", { name: label, exact: true }))
+        .toHaveAttribute("aria-expanded", "false");
+    }
     await expect
       .element(response.getByRole("button", { name: "Message", exact: true }))
       .not.toBeInTheDocument();
@@ -684,6 +717,8 @@ test("settled Tool Approval cards stay beside their original calls when provider
     });
     await screen.getByRole("button", { name: "Allow for this Session A", exact: true }).click();
     const approval = screen.getByText("Permission: Allowed for this Session", { exact: true });
+    const response = screen.getByRole("article", { name: "Response 1", exact: true });
+    await response.getByRole("button", { name: "Running commands", exact: true }).click();
     await expect.element(approval).toBeVisible();
     await ask("second-epoch", "second-command");
     await screen.getByRole("button", { name: "Deny Esc", exact: true }).click();
