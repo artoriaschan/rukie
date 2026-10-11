@@ -16,6 +16,9 @@ const electron = vi.hoisted(() => {
     loadURL: vi.fn().mockResolvedValue(undefined),
     on: vi.fn((name: string, fn: (...args: unknown[]) => void) => events.set(name, fn)),
     destroy: vi.fn(),
+    isMinimized: vi.fn(() => false),
+    restore: vi.fn(),
+    focus: vi.fn(),
     isDestroyed: vi.fn(() => false),
   };
   return {
@@ -28,6 +31,7 @@ const electron = vi.hoisted(() => {
       whenReady: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
       quit: vi.fn(),
+      requestSingleInstanceLock: vi.fn(() => true),
       getAppPath: vi.fn(() => "/tmp"),
       getPath: vi.fn(() => "/tmp/electron-user-data"),
       setPath: vi.fn(),
@@ -55,6 +59,7 @@ import { userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
 beforeEach(() => {
   electron.app.isPackaged = false;
+  electron.app.requestSingleInstanceLock.mockReturnValue(true);
   electron.handlers.clear();
   electron.events.clear();
   vi.clearAllMocks();
@@ -277,4 +282,18 @@ test("packaged startup privately sends userData/data and real home to its sideca
   } finally {
     await owner.stop();
   }
+});
+
+test("a second desktop instance quits before opening a window or starting a sidecar", async () => {
+  electron.app.requestSingleInstanceLock.mockReturnValue(false);
+  const owner = await startDesktop({
+    dataRoot: "/tmp/isolated-second",
+    rendererDirectory: "/tmp",
+    preload: "/tmp/preload.cjs",
+    sidecar: { command: process.execPath, args: [] },
+  });
+  expect(electron.app.quit).toHaveBeenCalledOnce();
+  expect(electron.BrowserWindow).not.toHaveBeenCalled();
+  expect(electron.protocol.registerSchemesAsPrivileged).not.toHaveBeenCalled();
+  await owner.stop();
 });

@@ -67,7 +67,7 @@ test("desktop Session discovers only its own user content and tools retain real 
   });
   await session.run("change home file");
   expect(await Bun.file(join(dirs.homeDir, "target.txt")).text()).toBe("changed");
-  expect(session.checkpoints()[0]?.files[0]?.backup).toStartWith(join(dataRoot, "file-history"));
+  expect(session.checkpoints()[0]?.files[0]?.backup).toStartWith(`file-history/${session.id}/`);
   expect(warnings).not.toContainEqual(
     expect.stringContaining(join(dirs.homeDir, ".rukie/mcp.json")),
   );
@@ -98,7 +98,7 @@ test("desktop permission tilde rules match real home rather than application fil
   );
 });
 
-test("desktop startup preserves old file history pending reference-aware cleanup", async () => {
+test("desktop startup leaves another Session history to its own execution lease", async () => {
   dirs = await tempDirs();
   const dataRoot = join(dirs.homeDir, "desktop-data");
   const previousHistory = join(dataRoot, "file-history", "previous-session");

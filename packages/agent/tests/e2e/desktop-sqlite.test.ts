@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { readdir, stat } from "node:fs/promises";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { mkdir, readdir, rm, stat, symlink } from "node:fs/promises";
 import { Database } from "bun:sqlite";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createSession as createKernel } from "@earendil-works/pi-durable";
@@ -147,4 +147,91 @@ test("SQLite root Harness retains child ownership after a real process crash wit
   const db = new Database(path);
   expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
   db.close();
+});
+
+test("desktop attachments survive native read-only history and resume while orphan files are cleaned", async () => {
+  dirs = await tempDirs();
+  const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };
+  const png =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSf8AAAAASUVORK5CYII=";
+  const fake = fakeModel([fauxAssistantMessage("seen")]);
+  session = await createSession({ ...options, ...fake });
+  await session.run("inspect", {
+    images: [{ data: png, mimeType: "image/png", name: "saved.png" }],
+  });
+  const id = session.id;
+  const attachmentDirectory = join(options.dataRoot, "attachments", id);
+  expect((await readdir(attachmentDirectory)).length).toBe(1);
+  expect(JSON.stringify(fake.contexts[0]!.messages)).toContain(png);
+  await Bun.write(join(attachmentDirectory, "orphan"), "uncommitted");
+  await session.close();
+  session = undefined;
+  expect((await readdir(attachmentDirectory)).length).toBe(1);
+  const snapshot = await readSessionSnapshot({ ...options, id });
+  expect(JSON.stringify(snapshot)).toContain(png);
+  expect(JSON.stringify(snapshot)).toContain("saved.png");
+  const next = fakeModel([fauxAssistantMessage("again")]);
+  session = await createSession({ ...options, ...next, resumeId: id });
+  await session.run("continue");
+  expect(JSON.stringify(next.contexts[0]!.messages)).toContain(png);
+});
+
+test("desktop rewind keeps abandoned branch backups and reclaims only unreferenced files repeatedly", async () => {
+  dirs = await tempDirs();
+  const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };
+  await Bun.write(join(dirs.cwd, "file.txt"), "original");
+  session = await createSession({
+    ...options,
+    permissionMode: "full-access",
+    ...fakeModel([
+      fauxAssistantMessage(fauxToolCall("write", { path: "file.txt", content: "changed" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("done"),
+    ]),
+  });
+  await session.run("change");
+  const id = session.id;
+  const checkpoint = session.checkpoints()[0]!;
+  const reference = checkpoint.files[0]!.backup!;
+  expect(reference).toStartWith(`file-history/${id}/`);
+  await session.rewind(checkpoint.promptEntryId, { code: true, conversation: true });
+  expect(await Bun.file(join(dirs.cwd, "file.txt")).text()).toBe("original");
+  const directory = join(options.dataRoot, "file-history", id);
+  await Bun.write(join(directory, "orphan"), "failed write");
+  await session.close();
+  session = undefined;
+  expect(await Bun.file(join(options.dataRoot, reference)).text()).toBe("original");
+  expect(await Bun.file(join(directory, "orphan")).exists()).toBe(false);
+  session = await createSession({ ...options, ...fakeModel([]), resumeId: id });
+  await session.close();
+  session = undefined;
+  expect(await Bun.file(join(options.dataRoot, reference)).text()).toBe("original");
+});
+
+test("desktop attachment write refuses a symlink escape before submitting or invoking a model", async () => {
+  dirs = await tempDirs();
+  const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };
+  const fake = fakeModel([fauxAssistantMessage("must not run")]);
+  session = await createSession({ ...options, ...fake });
+  const root = join(options.dataRoot, "attachments");
+  await mkdir(root, { recursive: true });
+  const link = join(root, session.id);
+  await symlink(dirs.cwd, link);
+  try {
+    await expect(
+      session.run("escape", {
+        images: [
+          {
+            data: "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+            mimeType: "image/gif",
+          },
+        ],
+      }),
+    ).rejects.toThrow("escapes");
+    expect(fake.contexts).toHaveLength(0);
+    expect(await readdir(dirs.cwd)).toEqual([".keep"]);
+  } finally {
+    await rm(link);
+  }
 });

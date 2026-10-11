@@ -4,7 +4,7 @@
 
 Blocked by: 02, 03, 04, 05
 
-Status: ready-for-agent
+Status: claimed
 
 - [ ] 集成 01–05，附件原生消息块与外置文件适配不丢图片，文件历史与分支引用、失败写入/清理同步 owning modules
 - [ ] 隔离 HOME/TUI 配置和 appData，验证双端同项目独立 Session、信任/凭证/skills/MCP，桌面不写旧用户目录
@@ -12,3 +12,13 @@ Status: ready-for-agent
 - [ ] 实际签名 macOS arm64 app 正常启动，真实 safeStorage/钥匙串录入重启认证、替换删除、取消失败；不用 mock keychain 代表生产成功
 - [ ] 完成受影响消费者盘点、focused timings/static 和适用 aggregate 检查；共享配置/存储/Jobs 接缝有跨模块风险时先说明再跑一次全量
 - [ ] 同步所有当前 README/architecture/配置例子/tech-stack 与 ADR Coverage，评审和 tracker 状态按真实实施验收更新；仅文档通过不关闭本规格
+
+## Implementation Evidence
+
+Dedicated issue06 worktree/branch starts at integrated 01–05 tip `15909b8b`. Public seams authorized by the spec: real Session/storage observation/restore/cleanup and Electron startup/shutdown/credential operations; TDD and rukie-doc applied. Attachment tracer initially failed because no external bytes existed; native Storage adapter now saves root-relative content hashes, fsyncs files before commits, and hydrates original image blocks for all reads. Real readonly/resume preserve image bytes/names. Checkpoint relative references survive historical branch rewind, orphan cleanup repeats safely, and a symlink escape fails before model invocation. Cleanup is lease-owned and checks every native record and historical document revision; other Sessions are not deleted by age.
+
+Electron second-instance tracer failed before the lock was implemented; main now quits before a second window/sidecar, restores/focuses the existing window, and shares one shutdown promise through window/app close. Current owning documentation synchronized without publication claims. Tickets/spec remain claimed pending root independent review and aggregate acceptance.
+
+Focused impacted Core/server set: 105 pass, 0 fail, 8 files, 7.14s, including real crash/unsafe child recovery, output/abort/shutdown/lease, readonly/index recovery, isolation and terminal regressions. New scenarios 25–87ms; native crash integration 318ms. Expected native poisoned-session diagnostics accompany intentional attachment admission failure. `check:dev` passed; earlier Knip unused internal export fixed. Local desktop and real browser/package acceptance still running; no aggregate/CI/PR/merge claim.
+
+ADR Coverage: ADR-0035 implemented resource/reference and lifecycle constraints; ADR-0024 native execution/history, ADR-0017 rewind branches, ADR-0034 Cookie-free startup with explicit safeStorage, ADR-0029 host/server/Core ownership retained. Domain meanings remain unchanged, so no CONTEXT vocabulary or new ADR required.

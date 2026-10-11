@@ -1,9 +1,10 @@
+import { withExternalImages, cleanupExternalFiles } from "./external-files.ts";
 import { userDataDirectory, type UserDataOptions } from "../config/paths.ts";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Context } from "@earendil-works/chord";
 import {
@@ -216,7 +217,7 @@ function createStore(options: UserDataOptions & { cwd: string }, sqlite: boolean
         database = sqlite ? await openBunSqliteDatabase(join(directory, storageName)) : undefined;
         const outputs = database ? await createSqliteOutputs(database) : undefined;
         const storage = database
-          ? await SqliteStorage.open(database)
+          ? withExternalImages(await SqliteStorage.open(database), options.dataRoot!, sessionId)
           : await JsonlStorage.open(directory, files, context, { fsync: true });
         let released = false;
         return {
@@ -227,7 +228,13 @@ function createStore(options: UserDataOptions & { cwd: string }, sqlite: boolean
             if (released) return;
             released = true;
             try {
-              if (sqlite) await storage.close(BACKGROUND_CONTEXT);
+              if (database) {
+                try {
+                  await cleanupExternalFiles(database, options.dataRoot!, sessionId);
+                } finally {
+                  await storage.close(BACKGROUND_CONTEXT);
+                }
+              }
             } finally {
               try {
                 await files.cleanup(BACKGROUND_CONTEXT);
@@ -389,16 +396,20 @@ async function openReadonlySqliteStorage(
     // Reflect.construct retains native reads without duplicating its document/history engine.
     const storage: SqliteStorage = Reflect.construct(SqliteStorage, [db, nextId]);
     opened?.(db);
-    return new Proxy(storage, {
-      get(target, key) {
-        if (key === "commit" || key === "mintId")
-          return async () => {
-            throw new Error("Session observation is read-only.");
-          };
-        const value = Reflect.get(target, key);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
+    return withExternalImages(
+      new Proxy(storage, {
+        get(target, key) {
+          if (key === "commit" || key === "mintId")
+            return async () => {
+              throw new Error("Session observation is read-only.");
+            };
+          const value = Reflect.get(target, key);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }),
+      resolve(path, "../../.."),
+      dirname(path).split("/").at(-1)!,
+    );
   } catch (error) {
     await db.close();
     throw error;

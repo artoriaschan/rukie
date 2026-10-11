@@ -4,7 +4,7 @@
 
 ## 运行组成
 
-Rukie 的 Headless CLI、TUI 与桌面端本机 server 都运行在 Bun 中，直接调用 `@rukie/agent`。桌面界面运行在 Electron renderer 或浏览器中，经带鉴权的 WebSocket 调用本机 server；Electron main 负责窗口、宿主操作与 Bun sidecar 生命周期。Agent Core 通过 `createSession` 组合原生 Harness、模型、工具、权限、hooks、MCP、上下文与存储。Session 是 frontend 使用的运行接口，frontend 负责输入和呈现。
+Rukie 的 Headless CLI、TUI 与桌面端本机 server 都运行在 Bun 中，直接调用 `@rukie/agent`。桌面界面运行在 Electron renderer 或浏览器中，经带鉴权的 WebSocket 调用本机 server；Electron main 负责单实例窗口、系统凭证加密、宿主操作与 Bun sidecar 生命周期。Agent Core 通过 `createSession` 组合原生 Harness、模型、工具、权限、hooks、MCP、上下文与存储。Session 是 frontend 使用的运行接口，frontend 负责输入和呈现。
 
 pi-durable 拥有 Generation、ToolTask、Conversation、Submission、ownership、原子提交与恢复；pi-ai 提供模型协议，pi-mcp 提供 MCP 客户端。Rukie 的配置、授权、能力状态和宿主资源由所属模块维护，Session 负责组合；责任边界见 [ADR-0024](adr/0024-adopt-pi-durable-harness.md)。
 

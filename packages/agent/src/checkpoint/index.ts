@@ -1,3 +1,4 @@
+import { readExternalFile, writeExternalFile } from "../store/external-files.ts";
 import { userDataDirectory } from "../config/paths.ts";
 import { createHash } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
@@ -102,8 +103,13 @@ export function createCheckpoints({
         }
         if (bytes !== undefined) {
           const hash = createHash("sha256").update(bytes).digest("hex");
-          backup = join(userDataDirectory({ homeDir, dataRoot }), "file-history", sessionId, hash);
-          if (!(await Bun.file(backup).exists())) await Bun.write(backup, bytes);
+          if (dataRoot) {
+            backup = `file-history/${sessionId}/${hash}`;
+            await writeExternalFile(dataRoot, backup, bytes);
+          } else {
+            backup = join(userDataDirectory({ homeDir }), "file-history", sessionId, hash);
+            if (!(await Bun.file(backup).exists())) await Bun.write(backup, bytes);
+          }
         }
         current.files.push({ path, backup });
         await persist(next);
@@ -145,7 +151,10 @@ export function createCheckpoints({
         [...files].map(async ([path, backup]) => {
           if (backup === null) return { path, bytes: null };
           try {
-            return { path, bytes: await readFile(backup) };
+            return {
+              path,
+              bytes: dataRoot ? await readExternalFile(dataRoot, backup) : await readFile(backup),
+            };
           } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "ENOENT")
               throw new Error(`Checkpoint backup missing: ${backup}`);

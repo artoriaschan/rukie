@@ -22,7 +22,7 @@ SQLite Session 的完整工具文本输出和 Bash/Background Job 的 stdout/std
 
 `SessionOptions.dataRoot` 与 `loadSettings`、`listSkills`、`listSessions`、`readSessionSnapshot` 的同名参数选择显式绝对路径的应用数据根；省略时保留终端现有 home 来源。`homeDir` 始终是工具、权限规则和 Hook 工具的 `~/` 展开基准。应用来源不会扫描 home 中 `.rukie`、`.claude`、`.agents`，也不会导入或回退旧文件；项目来源和原有项目信任规则继续生效，信任只从选中用户来源读取。
 
-应用调用方通过 `loadSettings({ userSettings })` 注入权限、hooks、信任与偏好，通过 `SessionOptions.mcpPersistence` 注入用户 MCP 配置和 OAuth 存储；应用模式不读取 `settings.json`、`mcp.json` 或终端配置。桌面 sidecar 的应用数据库和加密配置适配说明见 [server README](../server/README.md)。用户规则位于 `rules/AGENTS.md`，技能和代理定义位于 `skills/`、`agents/`，文件备份位于 `file-history/`；应用根的备份不执行仅按年龄删除的终端清理，以保留持久化历史引用。应用原生 SQLite store 位于 `sessions/<id>/session.sqlite`，所有新建、只读与恢复入口使用同一后端和根。应用模型须由调用方显式提供 `model/models`；默认模型解析拒绝终端环境认证，未提供模型来源的桌面目录为空。应用 MCP OAuth 不读取终端凭证，未安装加密凭证存储时保存明确失败，绝不临时写明文文件。后端架构约束见 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)。
+应用调用方通过 `loadSettings({ userSettings })` 注入权限、hooks、信任与偏好，通过 `SessionOptions.mcpPersistence` 注入用户 MCP 配置和 OAuth 存储；应用模式不读取 `settings.json`、`mcp.json` 或终端配置。桌面 sidecar 的应用数据库和加密配置适配说明见 [server README](../server/README.md)。用户规则位于 `rules/AGENTS.md`，技能和代理定义位于 `skills/`、`agents/`，文件备份位于 `file-history/`；应用根的备份不按年龄删除。执行 lease 关闭时，检查所有原生 records 与 document revisions（包含未选中的历史分支），只清理该 Session 未引用的附件和历史文件；其他 Session 由各自 lease 清理。应用原生 SQLite store 位于 `sessions/<id>/session.sqlite`，所有新建、只读与恢复入口使用同一后端和根。应用模型须由调用方显式提供 `model/models`；默认模型解析拒绝终端环境认证，未提供模型来源的桌面目录为空。应用 MCP OAuth 不读取终端凭证，未安装加密凭证存储时保存明确失败，绝不临时写明文文件。后端架构约束见 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)。
 
 # Pending interactions
 
@@ -160,3 +160,5 @@ Frontend 创建 Session 时通过 `SessionOptions.applicationVersion` 注入自�
 `readSessionSnapshot({ cwd, homeDir, id })` 提供不取得写者 lease 的单次已提交快照，可显示其他进程占用的 Session。它复用原生只读 storage kernel 与 Transcript 投影，不启动 Harness 恢复、Hooks 或模型，不修复损坏文件；需要修复时返回错误。快照包括消息、原生 live/inbox 状态、Run Summaries 与 Todo/Plan/Goal/子代理目录，进程内 Job 和子代理活动不由只读访问重建；它不提供订阅或 Interaction 回复能力。
 
 `listSessions` 的 `createdAt` 是 Session store 目录的文件系统出生时间，与持久化元数据里的 `updatedAt` 独立；它支持桌面端按创建时间或更新时间排序，不新增 JSONL 元数据字段。复制或重建存储目录会改变这个时间。
+
+SQLite 存储在原生 Storage 边界外置图片字节，数据库保存 `attachments/<session-id>/<sha256>` 的相对引用，读取、只读观察与恢复均还原原生 image block 和附件名称，模型协议不接收文件路径。附件和代码历史先写文件、fsync 并原子替换，再提交引用；提交失败留下的孤立文件在 lease 关闭时清理，可重复执行。引用只能指向数据根，目录和文件不跟随越界符号链接，图片读取核对内容 hash；缺失或损坏明确失败，不静默丢图片。完整备份须包含一致的 app/Session SQLite 快照与 `attachments/`、`file-history/`、`rules/`、`skills/`、`agents/` 文件，不能仅复制活动数据库。

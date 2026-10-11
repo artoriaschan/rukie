@@ -35,6 +35,10 @@ export async function startDesktop(options: DesktopOptions) {
     throw new Error("Development desktop requires an explicit isolated dataRoot.");
   const dataRoot = options.dataRoot ?? join(app.getPath("userData"), "data");
   if (!isAbsolute(dataRoot)) throw new Error("Desktop dataRoot must be absolute.");
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return { window: null, async stop() {} };
+  }
   protocol.registerSchemesAsPrivileged([
     { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } },
   ]);
@@ -59,6 +63,11 @@ export async function startDesktop(options: DesktopOptions) {
       },
     });
     acquiredWindow = window;
+    app.on("second-instance", () => {
+      if (window.isDestroyed()) return;
+      if (window.isMinimized()) window.restore();
+      window.focus();
+    });
     await window.webContents.session.protocol.handle("app", (request) =>
       serveAppFile(request.url, options.rendererDirectory),
     );
@@ -188,9 +197,16 @@ export async function startDesktop(options: DesktopOptions) {
         );
       });
     });
-    const stop = async () => {
-      await sidecar.stop();
-      await secrets.close();
+    let stopped: Promise<void> | undefined;
+    const stop = () => {
+      closing = true;
+      return (stopped ??= (async () => {
+        try {
+          await sidecar.stop();
+        } finally {
+          await secrets.close();
+        }
+      })());
     };
     window.on("close", (event) => {
       if (closing) return;
