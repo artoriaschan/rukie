@@ -74,7 +74,7 @@ import {
   supportedThinkingLevel,
 } from "../config/index.ts";
 import {
-  createJsonlStore,
+  createSessionStore,
   registerSessionReader,
   SessionMetadataDoc,
   parseSessionMetadata,
@@ -417,7 +417,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   };
   const store =
     options.store ??
-    createJsonlStore({ cwd, homeDir: options.homeDir, dataRoot: options.dataRoot });
+    createSessionStore({ cwd, homeDir: options.homeDir, dataRoot: options.dataRoot });
   const lease = await store.open({ id: options.resumeId }, context);
   const failedCleanup: (() => Promise<void>)[] = [lease.release];
   try {

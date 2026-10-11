@@ -11,6 +11,11 @@ import {
   defineDoc,
   type Storage,
 } from "@earendil-works/pi-durable";
+import {
+  SqliteStorage,
+  CURRENT_SQLITE_SCHEMA_VERSION,
+} from "@earendil-works/pi-durable/storage/sqlite";
+import { openBunSqliteDatabase } from "./sqlite-database.ts";
 import { JsonlStorage } from "@earendil-works/pi-durable/storage/jsonl";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { err, ok, FileError, type FileSystem } from "@earendil-works/pi-durable/env";
@@ -135,10 +140,25 @@ function validId(id: string) {
     });
 }
 
+/** Frontends select their backend once from the explicit application root. */
+export function createSessionStore(options: UserDataOptions & { cwd: string }): SessionStore {
+  return options.dataRoot ? createSqliteStore(options) : createJsonlStore(options);
+}
 export function createJsonlStore(options: UserDataOptions & { cwd: string }): SessionStore {
+  return createStore(options, false);
+}
+export function createSqliteStore(options: UserDataOptions & { cwd: string }): SessionStore {
+  if (!options.dataRoot)
+    throw new Error("SQLite Session storage requires an application data root.");
+  return createStore(options, true);
+}
+function createStore(options: UserDataOptions & { cwd: string }, sqlite: boolean): SessionStore {
   const cwd = resolve(options.cwd);
   const project = createHash("sha256").update(cwd).digest("hex");
-  const root = join(userDataDirectory(options), "durable-sessions", project);
+  const root = sqlite
+    ? join(userDataDirectory(options), "sessions")
+    : join(userDataDirectory(options), "durable-sessions", project);
+  const storageName = sqlite ? "session.sqlite" : "main.jsonl";
   const key = (id: string) => join(root, id);
   return {
     key,
@@ -146,13 +166,13 @@ export function createJsonlStore(options: UserDataOptions & { cwd: string }): Se
       const sessionId = id ?? crypto.randomUUID();
       validId(sessionId);
       const directory = key(sessionId);
-      if (id && !(await Bun.file(join(directory, "main.jsonl")).exists()))
+      if (id && !(await Bun.file(join(directory, storageName)).exists()))
         throw createUserVisibleError(`Session not found: ${id}`, {
           code: "session-not-found",
           params: { id },
         });
       await mkdir(directory, { recursive: true });
-      // This database contains no Session records; its kernel lease protects native JSONL.
+      // This database contains no Session records; its kernel lease protects the Harness.
       // Retain its inode forever: unlinking permits a second owner to lock another inode.
       // A writer reservation excludes other hosts without competing EXCLUSIVE lock upgrades.
       const lease = new Database(join(directory, "host-lease.sqlite"), { create: true });
@@ -171,7 +191,26 @@ export function createJsonlStore(options: UserDataOptions & { cwd: string }): Se
       }
       const files = new CommittedFiles({ cwd });
       try {
-        const storage = await JsonlStorage.open(directory, files, context, { fsync: true });
+        if (sqlite && id) {
+          const reader = createNativeSession(
+            await openReadonlySqliteStorage(join(directory, storageName)),
+          );
+          try {
+            const metadata = parseSessionMetadata(
+              await reader.snapshot(SessionMetadataDoc, context),
+            );
+            if (metadata.cwd !== cwd || metadata.id !== id)
+              throw createUserVisibleError(`Session not found: ${id}`, {
+                code: "session-not-found",
+                params: { id },
+              });
+          } finally {
+            await reader.close(BACKGROUND_CONTEXT);
+          }
+        }
+        const storage = sqlite
+          ? await SqliteStorage.open(await openBunSqliteDatabase(join(directory, storageName)))
+          : await JsonlStorage.open(directory, files, context, { fsync: true });
         let released = false;
         return {
           id: sessionId,
@@ -180,9 +219,13 @@ export function createJsonlStore(options: UserDataOptions & { cwd: string }): Se
             if (released) return;
             released = true;
             try {
-              await files.cleanup(BACKGROUND_CONTEXT);
+              if (sqlite) await storage.close(BACKGROUND_CONTEXT);
             } finally {
-              lease.close();
+              try {
+                await files.cleanup(BACKGROUND_CONTEXT);
+              } finally {
+                lease.close();
+              }
             }
           },
         };
@@ -206,19 +249,17 @@ export function createJsonlStore(options: UserDataOptions & { cwd: string }): Se
         try {
           const createdAt = (await stat(key(directory.name))).birthtimeMs;
           const reader = liveReaders.get(key(directory.name));
-          if (reader) {
+          if (reader && !sqlite) {
             results.push({ ...(await reader()), createdAt });
             continue;
           }
-          if (!(await Bun.file(join(key(directory.name), "main.jsonl")).exists())) continue;
+          if (!(await Bun.file(join(key(directory.name), storageName)).exists())) continue;
           const files = new NodeExecutionEnv({ cwd });
           let nativeSession: ReturnType<typeof createNativeSession> | undefined;
           try {
-            const storage = await JsonlStorage.open(
-              key(directory.name),
-              readonlyFiles(files),
-              context,
-            );
+            const storage = sqlite
+              ? await openReadonlySqliteStorage(join(key(directory.name), storageName))
+              : await JsonlStorage.open(key(directory.name), readonlyFiles(files), context);
             // The storage kernel reads committed documents without Harness recovery,
             // which may append retry/uncertainty facts for unfinished native work.
             nativeSession = createNativeSession(storage);
@@ -258,8 +299,9 @@ export async function readSessionStorage<T>(
   read: (storage: Storage) => Promise<T>,
 ): Promise<T> {
   validId(options.id);
-  const directory = createJsonlStore(options).key(options.id);
-  if (!(await Bun.file(join(directory, "main.jsonl")).exists()))
+  const directory = createSessionStore(options).key(options.id);
+  const storageName = options.dataRoot ? "session.sqlite" : "main.jsonl";
+  if (!(await Bun.file(join(directory, storageName)).exists()))
     throw createUserVisibleError(`Session not found: ${options.id}`, {
       code: "session-not-found",
       params: { id: options.id },
@@ -267,7 +309,9 @@ export async function readSessionStorage<T>(
   const files = new NodeExecutionEnv({ cwd: options.cwd });
   let storage: Storage | undefined;
   try {
-    storage = await JsonlStorage.open(directory, readonlyFiles(files), BACKGROUND_CONTEXT);
+    storage = options.dataRoot
+      ? await openReadonlySqliteStorage(join(directory, storageName))
+      : await JsonlStorage.open(directory, readonlyFiles(files), BACKGROUND_CONTEXT);
     return await read(storage);
   } finally {
     try {
@@ -289,10 +333,113 @@ export async function listSessions(options: {
 }): Promise<SessionSummary[]> {
   const store =
     options.store ??
-    createJsonlStore({
+    createSessionStore({
       cwd: options.cwd,
       homeDir: options.homeDir ?? homedir(),
       dataRoot: options.dataRoot,
     });
   return store.list(BACKGROUND_CONTEXT, options.onWarning);
+}
+
+/** Native read semantics over a pinned WAL frame, without open()'s schema migrations. */
+async function openReadonlySqliteStorage(path: string): Promise<Storage> {
+  const db = await openBunSqliteDatabase(path, { readonly: true });
+  try {
+    const schema = await db.get<{ version: number }>(
+      "SELECT version FROM durable_schema WHERE singleton = 1",
+    );
+    if (schema?.version !== CURRENT_SQLITE_SCHEMA_VERSION)
+      throw new Error(`Unsupported read-only Session schema: ${schema?.version ?? "missing"}.`);
+    // Verify every native read table/column before exposing the locked constructor.
+    for (const sql of [
+      "SELECT next_id, next_seq FROM durable_metadata LIMIT 0",
+      "SELECT id, record_type FROM record_ids LIMIT 0",
+      "SELECT id, owner_conversation_id, owner_task_id, record FROM conversations LIMIT 0",
+      "SELECT id, conversation_id, head, commit_seq, record FROM entries LIMIT 0",
+      "SELECT id, conversation_id, kind, status, abort_requested, background, record FROM tasks LIMIT 0",
+      "SELECT id, conversation_id, request_id, status, record FROM submissions LIMIT 0",
+      "SELECT id, kind, family, key_value, scope_kind, owner_id, created_at, retired_at, record FROM documents LIMIT 0",
+      "SELECT document_id, seq, kind, version, content FROM document_revisions LIMIT 0",
+    ])
+      await db.all(sql);
+    const metadata = await db.get<{ next_id: string; next_seq: number }>(
+      "SELECT next_id, next_seq FROM durable_metadata WHERE singleton = 1",
+    );
+    const nextId = Number(metadata?.next_id);
+    if (
+      !Number.isSafeInteger(nextId) ||
+      nextId < 2 ||
+      !Number.isSafeInteger(metadata?.next_seq) ||
+      metadata!.next_seq < 1
+    )
+      throw new Error("Invalid durable SQLite metadata.");
+    // Locked pi-durable's constructor only stores (db, nextId); open() adds migrations.
+    // Reflect.construct retains native reads without duplicating its document/history engine.
+    const storage: SqliteStorage = Reflect.construct(SqliteStorage, [db, nextId]);
+    return new Proxy(storage, {
+      get(target, key) {
+        if (key === "commit" || key === "mintId")
+          return async () => {
+            throw new Error("Session observation is read-only.");
+          };
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  } catch (error) {
+    await db.close();
+    throw error;
+  }
+}
+
+/** Discover committed application Session facts even when a project is no longer registered. */
+export async function discoverSqliteSessions(
+  options: UserDataOptions & { dataRoot: string; onWarning?: (warning: string) => void },
+): Promise<(SessionSummary & { cwd: string })[]> {
+  const root = join(userDataDirectory(options), "sessions");
+  let directories;
+  try {
+    directories = await readdir(root, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const results: (SessionSummary & { cwd: string })[] = [];
+  for (const directory of directories) {
+    if (!directory.isDirectory()) continue;
+    if (!(await Bun.file(join(root, directory.name, "session.sqlite")).exists())) continue;
+    try {
+      const metadata = await readSessionStorage(
+        { ...options, cwd: "/", id: directory.name },
+        async (storage) => {
+          const kernel = createNativeSession(storage);
+          try {
+            return parseSessionMetadata(
+              await kernel.snapshot(SessionMetadataDoc, BACKGROUND_CONTEXT),
+            );
+          } finally {
+            await kernel.close(BACKGROUND_CONTEXT);
+          }
+        },
+      );
+      if (metadata.id !== directory.name)
+        throw new Error("Session metadata identity does not match storage.");
+      const { id, cwd, title, titleSource, model, updatedAt, messageCount } = metadata;
+      results.push({
+        id,
+        cwd,
+        title,
+        titleSource,
+        model,
+        updatedAt,
+        messageCount,
+        createdAt: (await stat(join(root, id))).birthtimeMs,
+      });
+    } catch (error) {
+      (options.onWarning ?? console.warn)(
+        `Could not read Session ${directory.name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  return results.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
 }

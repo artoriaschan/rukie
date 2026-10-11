@@ -12,6 +12,7 @@ export function crashUnsafeEffect(
   root: string,
   child = false,
   options: {
+    dataRoot?: string;
     priorTurns?: { prompt: string; reply: string }[];
     completedReads?: boolean;
     unsafeCall?: { name: string; args: Record<string, JsonValue> };
@@ -29,6 +30,7 @@ async function crashToolReceipt(
   root: string,
   child: boolean,
   options: {
+    dataRoot?: string;
     priorTurns?: { prompt: string; reply: string }[];
     completedReads?: boolean;
     safeDelegation: boolean;
@@ -36,7 +38,7 @@ async function crashToolReceipt(
   },
 ) {
   const script = `
-    import { createSession, createJsonlStore } from "@rukie/agent";
+    import { createSession, createSessionStore } from "@rukie/agent";
     import { createModels, fauxProvider, fauxAssistantMessage, fauxToolCall, createAssistantMessageEventStream } from "@earendil-works/pi-ai";
     import { awaitWithContext, BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
     process.stdin.resume();
@@ -60,7 +62,7 @@ async function crashToolReceipt(
     }});
     const fake = { model: provider.getModel(), models, calls };
     for (const provider of fake.models.getProviders()) fake.models.setProvider({ ...provider, streamSimple(...args) { const stream = provider.streamSimple(...args); changed(); return stream; } });
-    const store = createJsonlStore({ cwd: ${JSON.stringify(root)}, homeDir: ${JSON.stringify(root)} });
+    const store = createSessionStore({ cwd: ${JSON.stringify(root)}, homeDir: ${JSON.stringify(root)}, dataRoot: ${JSON.stringify(options.dataRoot)} });
     let session;
     let crashArmed = false;
     const wrapped = { ...store, async open(...args) {
@@ -85,7 +87,7 @@ async function crashToolReceipt(
       } }) };
     } };
     await Bun.write(${JSON.stringify(join(root, "uncertain-effect.txt"))}, "before effect");
-    session = await createSession({ cwd: ${JSON.stringify(root)}, homeDir: ${JSON.stringify(root)}, ...fake, store: wrapped, permissionMode: "full-access" });
+    session = await createSession({ cwd: ${JSON.stringify(root)}, homeDir: ${JSON.stringify(root)}, dataRoot: ${JSON.stringify(options.dataRoot)}, ...fake, store: wrapped, permissionMode: "full-access" });
     await session.rename("Native crash fixture");
     session.subscribe(changed);
     if (${!!options.completedReads}) {

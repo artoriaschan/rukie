@@ -144,7 +144,7 @@ Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它
 
 ## Transcript、Tool State 与 Rewind
 
-[`store/`](../packages/agent/src/store/index.ts)把原生 JSONL Storage 接入 SessionStore；一个目录同时保存父子对话、documents 与 tasks。宿主持有内核写者租约，拒绝重复打开，关闭或进程死亡释放；锁文件保留，恢复不删除租约文件。原生 sidecar fsync 与宿主追加 flush 共同覆盖提交确认。新目录与旧文件隔离；列表从已提交索引读取，不启动 Harness scheduler，不允许存储修复。格式决定见 [ADR-0024](adr/0024-adopt-pi-durable-harness.md)，路径、故障及调用方义务由 [Agent README](../packages/agent/README.md#session-store)维护。
+[`store/`](../packages/agent/src/store/index.ts)把原生 JSONL／SQLite Storage 接入 SessionStore；终端默认 JSONL，显式应用根选择 SQLite；一个目录同时保存父子对话、documents 与 tasks。宿主持有内核写者租约，拒绝重复打开，关闭或进程死亡释放；锁文件保留，恢复不删除租约文件。JSONL 的原生 sidecar fsync 与宿主追加 flush、SQLite 的 WAL/FULL 事务分别覆盖提交确认。新目录与旧文件隔离；列表从已提交索引读取，不启动 Harness scheduler，不允许存储修复。格式决定见 [ADR-0024](adr/0024-adopt-pi-durable-harness.md) 与 [ADR-0035](adr/0035-desktop-isolated-sqlite-storage.md)，路径、故障及调用方义务由 [Agent README](../packages/agent/README.md#session-store)维护。
 
 Tool State 由所属能力声明原生 typed documents，选择 latest 或 rewindable 历史以及 fork 策略；注册层协调已提交读写和提醒，不重放旧状态消息。版本或内容非法时打开失败。模型选择由原生 Agent document 保存，Session 索引提供展示元数据；Todo、Goal、Plan Mode、子代理目录、Checkpoint 与文件跟踪的具体策略见 [Agent README](../packages/agent/README.md#document-policies)。Rewind 要求相关原生任务已结算，按文档历史恢复 Goal 事实；fork 的激活使用 initial 策略，不继承后来的任务。
 

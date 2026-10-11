@@ -1,6 +1,10 @@
 export { loadSettings, listModelCatalog, type ModelCatalogEntry } from "./config/index.ts";
 export {
   createJsonlStore,
+  createSqliteStore,
+  createSessionStore,
+  discoverSqliteSessions,
+  readSessionStorage,
   listSessions,
   type SessionStore,
   type SessionSummary,
@@ -68,3 +72,5 @@ export type { SessionEvent } from "./session/events.ts";
 export type { InteractionIdentity } from "./interaction/index.ts";
 
 export { readSessionSnapshot } from "./session/read-only.ts";
+
+export { openBunSqliteDatabase } from "./store/sqlite-database.ts";

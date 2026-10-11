@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
 import { join } from "node:path";
-import { createSession, createJsonlStore } from "@rukie/agent";
+import { createSession, createSessionStore } from "@rukie/agent";
 import { startServer as startServerImpl, type ServerOptions } from "../src/index.ts";
 
 const startServer = (options: Omit<ServerOptions, "dataRoot">) =>
@@ -93,7 +93,7 @@ async function connect(server: { port: number; token: string }, origin = "app://
   };
 }
 
-test("a new Session streams and can be reopened from the shared JSONL store", async () => {
+test("a new Session streams and can be reopened from the isolated SQLite store", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-stream-"));
   const fake = fakeModel(
     [fauxAssistantMessage("first reply"), fauxAssistantMessage("second reply")],
@@ -290,15 +290,15 @@ test("an application-root Session held by another owner permits only a read-only
   await owned.run("held writer prompt");
   const log = Bun.file(
     join(
-      createJsonlStore({
+      createSessionStore({
         homeDir,
         dataRoot: join(homeDir, "desktop-data"),
         cwd: join(homeDir, "desktop-data", "workspace"),
       }).key(owned.id),
-      "main.jsonl",
+      "session.sqlite",
     ),
   );
-  const committed = await log.text();
+  const committed = await log.bytes();
   const client = await connect(server);
   try {
     expect((await client.command("session.subscribe", { sessionId: owned.id })).error).toEqual({
@@ -306,7 +306,7 @@ test("an application-root Session held by another owner permits only a read-only
     });
     const snapshot = await client.next((message) => message.type === "snapshot");
     expect(JSON.stringify(snapshot)).toContain("held writer reply");
-    expect(await log.text()).toBe(committed);
+    expect(await log.bytes()).toEqual(committed);
     expect(
       (await client.command("prompt", { sessionId: owned.id, text: "must not write" })).error,
     ).toEqual({ code: "session_busy" });
