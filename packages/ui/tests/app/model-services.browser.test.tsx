@@ -496,6 +496,74 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
   }
 });
 
+test.each([
+  {
+    theme: "Light",
+    dark: false,
+    background: "color(srgb 0.931373 0.931373 0.931373)",
+    foreground: "rgb(38, 38, 38)",
+  },
+  {
+    theme: "Dark",
+    dark: true,
+    background: "color(srgb 0.123529 0.123529 0.123529)",
+    foreground: "rgb(212, 212, 212)",
+  },
+])(
+  "API option hover stays neutral and preserves selection and geometry in $theme",
+  async ({ dark, background, foreground }) => {
+    const originalRootClass = document.documentElement.className;
+    document.documentElement.classList.toggle("dark", dark);
+    const screen = await render(
+      <UiLocaleProvider locale="en">
+        <ModelServices
+          services={{
+            list: async () => [
+              {
+                id: "local",
+                name: "Local",
+                api: "openai-completions",
+                baseUrl: "https://api.example.com/v1",
+                hasCredential: true,
+                models: [],
+              },
+            ],
+            save: async () => {},
+            delete: async () => {},
+          }}
+          onClose={() => {}}
+          onChanged={async () => {}}
+        />
+      </UiLocaleProvider>,
+    );
+    try {
+      await screen.getByRole("button", { name: "API format", exact: true }).click();
+      const menu = screen.getByRole("listbox").element();
+      await expect.poll(() => menu.getBoundingClientRect().height).toBe(96);
+      const option = screen.getByRole("option", { name: "Responses (/responses)", exact: true });
+      const selected = screen.getByRole("option", {
+        name: "Chat Completions (/chat/completions)",
+        exact: true,
+      });
+      const baseline = option.element().getBoundingClientRect();
+      await option.hover();
+      await expect.poll(() => getComputedStyle(option.element()).backgroundColor).toBe(background);
+      await expect.poll(() => getComputedStyle(option.element()).color).toBe(foreground);
+      await expect.element(selected).toHaveAttribute("aria-selected", "true");
+      await expect.element(option).toHaveAttribute("aria-selected", "false");
+      expect(selected.element().querySelector("svg")!.getBoundingClientRect().width).toBe(16);
+      const hovered = option.element().getBoundingClientRect();
+      for (const key of ["left", "top", "width", "height"] as const)
+        expect(hovered[key]).toBe(baseline[key]);
+      expect(hovered.height).toBe(28);
+      expect(menu.getBoundingClientRect().height).toBe(96);
+    } finally {
+      await screen.unmount();
+      document.documentElement.className = originalRootClass;
+    }
+  },
+);
+
 test("saved overview stays compact; dirty credentials and invalid mapping remain explicit", async () => {
   await page.viewport(1280, 900);
   let providers: ModelServiceSummary[] = [
