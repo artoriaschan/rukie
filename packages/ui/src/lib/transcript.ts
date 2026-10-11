@@ -12,6 +12,16 @@ export interface TranscriptTool {
   status: "running" | "success" | "error" | "cancelled";
   output: string;
 }
+export function toolTitle(tool: TranscriptTool): string {
+  const call = tool.callView;
+  return call?.card === "terminal"
+    ? call.command
+    : call?.card === "diff"
+      ? call.diffs.map((diff) => diff.path).join(", ")
+      : call?.card === "generic"
+        ? (call.title ?? tool.name)
+        : tool.name;
+}
 export interface PromptGroup {
   id: string;
   messages: readonly TranscriptMessage[];

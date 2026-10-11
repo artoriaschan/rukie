@@ -3,7 +3,7 @@ import { FileText, Sparkles, SquareTerminal, Wrench } from "lucide-react";
 import { AgentDisclosure } from "./agents/agent-disclosure";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { PromptGroup, TranscriptState, PermissionDecision } from "../lib/transcript";
-import { messageText, presentationCallId } from "../lib/transcript";
+import { messageText, presentationCallId, toolTitle } from "../lib/transcript";
 import { useAppText } from "../lib/i18n";
 import { Button } from "./motion/button/base";
 import { PreviewRail } from "./motion/preview-rail";
@@ -13,6 +13,7 @@ import { ToolRow } from "./tool-row";
 import { ToolApproval, ToolApprovalCode } from "./agents/tool-approval";
 import { AgentActivity, type AgentActivityItem } from "./agents/agent-activity";
 import { ThinkingShimmer } from "./agents/loading-states/thinking-shimmer";
+import { TextShimmer } from "./motion/text-shimmer";
 import { StreamingResponse } from "./agents/streaming-response";
 function Group({
   group,
@@ -95,10 +96,14 @@ function Group({
     </span>
   );
   const sections: Array<
-    | { id: string; type: "trace"; items: AgentActivityItem[] }
+    | {
+        id: string;
+        type: "trace";
+        items: Array<AgentActivityItem & { detail?: string; active?: boolean }>;
+      }
     | { id: string; type: "message"; content: ReactNode }
   > = [];
-  const appendActivity = (item: AgentActivityItem) => {
+  const appendActivity = (item: AgentActivityItem & { detail?: string; active?: boolean }) => {
     const last = sections.at(-1);
     if (last?.type === "trace") last.items.push(item);
     else sections.push({ id: item.id, type: "trace", items: [item] });
@@ -170,6 +175,11 @@ function Group({
           id,
           type: "trace",
           kind: "thinking",
+          detail: `${t("conversation.thinking")} · ${block.thinking.replace(/\s+/g, " ").trim()}`,
+          active:
+            group.status === "running" &&
+            message === state.partial &&
+            index === message.content.length - 1,
           collapsible: true,
           label: t("conversation.thinking"),
           content: <Markdown text={block.thinking} streaming={group.status === "running"} />,
@@ -208,6 +218,8 @@ function Group({
                 : tool.callView?.kind === "edit"
                   ? "write"
                   : (tool.callView?.kind ?? "other"),
+            active: group.status === "running" && tool.status === "running",
+            detail: `${t(tool.status === "running" ? `conversation.active-${tool.callView?.kind ?? "other"}` : `conversation.action-${tool.callView?.kind ?? "other"}`)} · ${toolTitle(tool).replace(/\s+/g, " ").trim()}`,
             icon: null,
             label: <ToolRow tool={tool} />,
           });
@@ -216,7 +228,7 @@ function Group({
     });
   }
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-2 px-5 py-3">
+    <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-2 px-5 py-3">
       {user ? (
         <MessageBubble align="end">
           <MessageBubbleContent>
@@ -255,9 +267,10 @@ function Group({
         renderCompletedStatus={() => title}
         renderContent={({ expanded: activityOpen, contentId, triggerId }) => (
           <div id={contentId} role="region" aria-labelledby={triggerId} className="space-y-2 py-1">
-            {sections.map((section, index) => {
+            {sections.map((section) => {
               if (section.type === "message") return <div key={section.id}>{section.content}</div>;
-              const working = group.status === "running" && index === sections.length - 1;
+              const working = section.items.some((item) => item.active);
+              const latestDetail = section.items.findLast((item) => item.detail)?.detail;
               const kinds = new Set(
                 section.items.flatMap((item) =>
                   item.type === "trace" && item.kind !== "thinking" && item.kind !== "permission"
@@ -282,14 +295,10 @@ function Group({
                                   : kind === "task"
                                     ? "task"
                                     : "other";
-                      return t(
-                        working
-                          ? `conversation.active-${category}`
-                          : `conversation.activity-${category}`,
-                      );
+                      return t(`conversation.activity-${category}`);
                     })
                     .join(t("conversation.activity-separator"))
-                : t(working ? "conversation.analyzing" : "conversation.analyzed");
+                : t("conversation.analyzed");
               const Icon = kinds.has("run")
                 ? SquareTerminal
                 : kinds.has("read")
@@ -298,9 +307,20 @@ function Group({
                     ? Wrench
                     : Sparkles;
               const label = (
-                <span className="flex items-center gap-2 text-ui-sm font-normal text-muted-foreground">
+                <span className="flex min-w-0 flex-1 items-center gap-2 text-ui-sm font-normal text-muted-foreground">
                   <Icon aria-hidden="true" className="size-4 shrink-0" />
-                  {summary}
+                  {working && latestDetail ? (
+                    <TextShimmer
+                      title={latestDetail}
+                      className="min-w-0 truncate text-ui-sm font-normal"
+                    >
+                      {latestDetail}
+                    </TextShimmer>
+                  ) : (
+                    <span className="min-w-0 truncate" title={summary}>
+                      {summary}
+                    </span>
+                  )}
                 </span>
               );
               return (

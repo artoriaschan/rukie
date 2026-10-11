@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createTwoFilesPatch, parsePatch } from "diff";
-import type { TranscriptTool } from "../lib/transcript";
+import { toolTitle, type TranscriptTool } from "../lib/transcript";
 import { ToolResult } from "./agents/tool-result";
 import { FileDiff, type FileDiffLine } from "./agents/file-diff";
 import { AnsiOutput } from "./ansi";
@@ -82,14 +82,7 @@ export function ToolRow({ tool }: { tool: TranscriptTool }) {
   }, [tool.status]);
   const call = tool.callView;
   const result = tool.resultView;
-  const title =
-    call?.card === "terminal"
-      ? call.command
-      : call?.card === "diff"
-        ? call.diffs.map((diff) => diff.path).join(", ")
-        : call?.card === "generic"
-          ? (call.title ?? tool.name)
-          : tool.name;
+  const title = toolTitle(tool);
   const diffs = result?.card === "diff" ? result.diffs : call?.card === "diff" ? call.diffs : [];
   const output =
     result?.card === "terminal"
