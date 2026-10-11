@@ -4,7 +4,7 @@
 
 Blocked by: 01
 
-Status: claimed
+Status: resolved
 
 - [x] 检查锁定 pi-durable SqliteDatabase/Storage 接口，以 bun:sqlite 实现事务排队、回滚/关闭与 WAL/FULL；逐独立根 Session/Harness 原生 storage，子代理仍属于根 Harness
 - [x] 更新 SessionStore 的 create/resume/list/key 与 JSONL 硬编码只读 storage/snapshot 调用，覆盖 subagent、恢复与清理全部消费者
@@ -37,3 +37,5 @@ Status: claimed
 ### ADR Coverage
 
 实现ADR-0035的原生SQLite、WAL/FULL、跨进程执行lease和只读合同；保留ADR-0024 Harness恢复/replay与父子ownership，终端JSONL行为沿原生接口不变。应用索引原子持久化归03，完整工具输出分块归04，最终退出/打包验收归06；无需新增ADR。
+
+Final closure: integrated implementation, independent review and applicable local verification complete. Unified browser and genuine packaged acceptance are recorded in [06](06-integration-and-packaged-acceptance.md); spec/tickets close together after that gate. Prior aggregate environment failures remain recorded separately from passing focused follow-up. Final documentation commit CI remains pending until observed on the PR.

@@ -4,13 +4,13 @@
 
 Blocked by: 03
 
-Status: claimed
+Status: resolved
 
-- [ ] 读取 rukie.pen M17、C10–C17、P01–P08，记录流程和字段映射；先核对智能配置、高级输入/能力、推理等级与映射合同，缺口显式提出不假装支持
-- [ ] 按原画板实现总览/目录/新供应商/地址与协议/密钥/添加编辑模型/模型行连接验证、删除与启用/重命名/删除确认；遵守当前 DESIGN.md 和组件来源，保持聊天布局
-- [ ] 密钥走 host 受信任 IPC，非敏感配置和目录走相应合同；缺凭证可浏览，发送前配置模型，失败保留表单，取消不提交
-- [ ] 保存后模型目录及新请求采用新配置，已开始请求保持快照；删除不破坏历史，失效引用要求重新选择，无供应商兜底
-- [ ] Vitest browser mode 覆盖 P01–P08、焦点/键盘/zh/en/失败状态；focused/static 通过后真实浏览器 Light/Dark/窄窗口验收，使用假账号并关闭会话
+- [x] 读取 rukie.pen M17、C10–C17、P01–P08，记录流程和字段映射；先核对智能配置、高级输入/能力、推理等级与映射合同，缺口显式提出不假装支持
+- [x] 按原画板实现总览/目录/新供应商/地址与协议/密钥/添加编辑模型/模型行连接验证、删除与启用/重命名/删除确认；遵守当前 DESIGN.md 和组件来源，保持聊天布局
+- [x] 密钥走 host 受信任 IPC，非敏感配置和目录走相应合同；缺凭证可浏览，发送前配置模型，失败保留表单，取消不提交
+- [x] 保存后模型目录及新请求采用新配置，已开始请求保持快照；删除不破坏历史，失效引用要求重新选择，无供应商兜底
+- [x] Vitest browser mode 覆盖 P01–P08、焦点/键盘/zh/en/失败状态；focused/static 通过后真实浏览器 Light/Dark/窄窗口验收，使用假账号并关闭会话
 
 ## Implementation evidence
 
@@ -25,3 +25,7 @@ Local verification: shell baseline10 cases passed6.77s before edit; affected mod
 The unified real agent-browser Light/Dark/narrow acceptance is assigned to06 after04+05 integration. Prepared and launch-verified an external development harness at `/tmp/rukie-desktop-storage-evidence/browser-harness.ts`; it injects an isolated host, temporary OS-home/data root, private management token, and explicitly scripted nonproduction encryption. Its server exited and its temporary data root was removed. The source Pencil document remained unchanged. This issue stays claimed until review and the unified browser gate; its implementation is ready for integration.
 
 After merging integration `1913e9f4` (04) into issue05 (`ff423157`), combined `bun run test:desktop` passed25 files/89 tests9.05s; server file passed22 tests2.28s; `check:dev` passed. Final settings return-focus correction is verified by5 focused browser scenarios4.99s, including the public App seam preserving the draft and main-region geometry within1px while restoring keyboard focus to its opener. C10–C17 were read explicitly through Pencil MCP in addition to M17/P01–P08. No architecture decision beyond ADR-0035 is introduced; API limitations follow the locked adapter rather than adding conversions or request capabilities.
+
+Integrated acceptance on runtime candidate `4d3cf021`: unified real browser Light/Dark/420px and keyboard/focus/console checks passed. Fresh displayed-model first send, provider deletion plus sidecar restart with historical full-output pagination, and explicit replacement-model continuation passed after public regression fixes. Independent Standards/Spec review completed and documentation finding corrected. Final closure remains coordinated with 06 genuine native acceptance and spec.
+
+Final closure: integrated implementation, independent review and applicable local verification complete. Unified browser and genuine packaged acceptance are recorded in [06](06-integration-and-packaged-acceptance.md); spec/tickets close together after that gate. Prior aggregate environment failures remain recorded separately from passing focused follow-up. Final documentation commit CI remains pending until observed on the PR.

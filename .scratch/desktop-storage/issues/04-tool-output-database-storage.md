@@ -4,7 +4,7 @@
 
 Blocked by: 02
 
-Status: claimed
+Status: resolved
 
 - [x] 盘点 Jobs registry spill、Bash fullOutputPath、job_output、工具结果卡和所有读取消费者；桌面完整 stdout/stderr 与后台 Job 输出按调用身份持久化
 - [x] 分块有序追加并支持字节游标/按需读取；模型截断不删除完整输出；最终结果和关闭等待写入完成，失败不报告成功
@@ -41,3 +41,5 @@ Status: claimed
 ### ADR Coverage
 
 实现ADR-0035的同根Session SQLite完整输出、FULL块提交与shutdown义务；沿用ADR-0024 native执行/replay和ADR-0010 OS Job生命周期。输出引用是能力实现事实，不新增第二套领域模型或执行调度，无需新增ADR。
+
+Final closure: integrated implementation, independent review and applicable local verification complete. Unified browser and genuine packaged acceptance are recorded in [06](06-integration-and-packaged-acceptance.md); spec/tickets close together after that gate. Prior aggregate environment failures remain recorded separately from passing focused follow-up. Final documentation commit CI remains pending until observed on the PR.

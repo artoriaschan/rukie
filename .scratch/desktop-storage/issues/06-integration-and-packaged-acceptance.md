@@ -4,12 +4,12 @@
 
 Blocked by: 02, 03, 04, 05
 
-Status: claimed
+Status: resolved
 
 - [x] 集成 01–05，附件原生消息块与外置文件适配不丢图片，文件历史与分支引用、失败写入/清理同步 owning modules
 - [x] 隔离 HOME/TUI 配置和 appData，验证双端同项目独立 Session、信任/凭证/skills/MCP，桌面不写旧用户目录
 - [x] 真实 Session 输出/abort/resume/subagent/readonly/索引失败与 crash 回归；主进程单实例、sidecar shutdown/restart 与 SQLite 连接/执行 lease 清理
-- [ ] 实际签名 macOS arm64 app 正常启动，真实 safeStorage/钥匙串录入重启认证、替换删除、取消失败；不用 mock keychain 代表生产成功
+- [x] 实际签名 macOS arm64 app 正常启动，真实 safeStorage/钥匙串录入重启认证、替换删除、取消失败；不用 mock keychain 代表生产成功
 - [x] 完成受影响消费者盘点、focused timings/static 和适用 aggregate 检查；共享配置/存储/Jobs 接缝有跨模块风险时先说明再跑一次全量
 - [x] 同步所有当前 README/architecture/配置例子/tech-stack 与 ADR Coverage，评审和 tracker 状态按真实实施验收更新；仅文档通过不关闭本规格
 
@@ -32,3 +32,5 @@ Final runtime candidate rebuilt clean `4d3cf021ef65d71ca197626b9b8bdce5736da2d6`
 Root integration acceptance: independent Standards/Spec review completed; the storage glossary/ADR chain finding was corrected in b55810d2, final integration d4de7b37. Core/server 29 pass1.87s; root test:desktop 25files92pass8.98s. One announced cross-module aggregate completed: static checks passed, Bun3429pass21fail165.53s, exited1 before desktop. Nineteen release failures are blocked by installed npm11.19.1; minimal publication reproduces version gate and release scripts have no task diff. Two model-switch cases also fail on baseline a447d45f due to ambient DEEPSEEK_API_KEY; removing only that variable gives5pass568ms on both baseline/current. These pre-existing environment failures are recorded, not changed or represented as a passing aggregate. Native encryption acceptance remains pending human unlock; spec/issue claimed and PR draft.
 
 使用临时 npm 11.21.0（不修改系统 npm）复验 publication/recovery 两文件：20 pass、0 fail，114.27s。原 aggregate 的 19 项发布失败确认为环境版本门槛；聚焦复验不改写原 aggregate 结果。六张票和统一评审修复的临时工作树及已合入分支已清理，最终签名包和外部验收证据保留。
+
+Final genuine packaged acceptance (2026-10-11 after human unlock): clean signed runtime `4d3cf021`, ad-hoc hardened arm64 app, actual Electron safeStorage without mock Keychain/encryption. Trusted save and masked reload, real authenticated requests before/after restart, encrypted replacement/delete, form cancel preserving old authentication, wrong-key failure and isolated damaged-ciphertext native decrypt failure/repair all passed. Provider deletion plus full app restart retained historical full-output pagination; explicit replacement-model choice continued the same Session. Four Cmd-Q primary exits0; second-instance exits0; browser/fake API closed, owned ports18966–18968 have no listeners, app.sqlite integrity ok and credential rows0. No OS Keychain authorization dialog surfaced, so OS-prompt cancellation was not exercised or claimed; unavailable/encryption cancellation branches retain unit evidence. External report issue06-native-accepted.md records artifact hashes/screenshots; no real credentials or user Sessions used. ADR Coverage and independent review findings are complete; applicable local acceptance is complete with the earlier aggregate environment failures and successful focused remediation recorded accurately. Spec and all six tickets close together; final documentation commit CI remains pending until observed on the PR.

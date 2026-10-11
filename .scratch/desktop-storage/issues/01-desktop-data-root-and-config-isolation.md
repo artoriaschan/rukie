@@ -2,7 +2,7 @@
 
 **What to build:** 按[存储调整规格](../spec.md)和 [ADR-0035](../../../docs/adr/0035-desktop-isolated-sqlite-storage.md) 实施本票能力。
 
-Status: claimed
+Status: resolved
 
 - [x] Electron 确定生产业务数据根、开发/测试显式覆盖；私有传给 sidecar，真实 OS home 独立保留，禁止伪造 homeDir
 - [x] 盘点 settings/trust/permissions/hooks/MCP/credentials/skills/agents/用户规则/能力缓存/文件历史的全部读写与清理，接入桌面来源；终端默认实现保持不变
@@ -39,3 +39,5 @@ Status: claimed
 ### ADR Coverage
 
 本票实现 ADR-0035 的来源与真实home隔离；沿用 ADR-0014/0019 项目信任及 MCP 身份合同，终端行为不变。SQLite、加密库与引用清理仍归02/03/06，不将本票配置文件接线描述为完整SQLite交付，无需新增ADR。
+
+Final closure: integrated implementation, independent review and applicable local verification complete. Unified browser and genuine packaged acceptance are recorded in [06](06-integration-and-packaged-acceptance.md); spec/tickets close together after that gate. Prior aggregate environment failures remain recorded separately from passing focused follow-up. Final documentation commit CI remains pending until observed on the PR.

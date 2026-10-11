@@ -1,10 +1,10 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
 ## Problem Statement
 
-已交付的[桌面 MVP](../desktop/spec.md) 使用终端的 JSONL Session、配置与供应商环境凭证。桌面端需要独立管理会话、项目、置顶、配置与加密凭证，工具完整输出存入数据库。用户已于 2026-10-11 确认全部设计分叉，并指定供应商录入采用 `rukie.pen` 的模型服务流程。01–06 的代码已集成；真实系统凭证验收尚未完成，状态保持 claimed。
+已交付的[桌面 MVP](../desktop/spec.md) 使用终端的 JSONL Session、配置与供应商环境凭证。桌面端需要独立管理会话、项目、置顶、配置与加密凭证，工具完整输出存入数据库。用户已于 2026-10-11 确认全部设计分叉，并指定供应商录入采用 `rukie.pen` 的模型服务流程。01–06 的代码、独立评审和适用本地验收已完成，状态为 resolved；最新提交的 CI 与 PR 合并状态分别记录。
 
 ## Solution
 
@@ -101,3 +101,5 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 根集成验证：受影响 Core/server 29 pass，1.87s；`bun run test:desktop` 25 文件 92 pass，8.98s；浏览器 Light/Dark、窄窗口、历史完整输出和显式重选后续发送通过。一次 `env -u NO_COLOR bun run check` 静态阶段通过，Bun 3429 pass、21 fail，165.53s，未进入 desktop 阶段。19 项发布失败受本机 npm 11.19.1 门槛阻止，最小 publication 用例同样报要求 11.21.0 或受支持的 OIDC 版本；发布脚本无本轮 diff。两个 TUI 模型面板用例受继承的 `DEEPSEEK_API_KEY` 增加页签影响：当前与基线 `a447d45f` 均 3 pass/2 fail，单独移除该变量后均 5 pass（568ms），相关测试/模型路径无本轮 diff。这些既有环境失败不扩展为本轮修复范围，全量结果仍为失败。签名 arm64 包来自 clean `4d3cf021`，打包完整性检查通过；真实 safeStorage 录入、重启认证、替换、删除及失败/取消尚未验收，原生 UI 报告 Mac 锁定，需要人工解锁。PR 保持 draft，工单/spec 不关闭。
 
 使用临时 npm 11.21.0（不修改系统 npm）复验 publication/recovery 两文件：20 pass、0 fail，114.27s。原 aggregate 的 19 项发布失败确认为环境版本门槛；聚焦复验不改写原 aggregate 结果。六张票和统一评审修复的临时工作树及已合入分支已清理，最终签名包和外部验收证据保留。
+
+最终关闭（2026-10-11）：用户解锁后，来自 clean `4d3cf021` 的真实签名 arm64 包通过正常启动、真实 safeStorage 保存/遮罩/重启解密认证/替换/删除、表单取消、错误凭证反馈、仅破坏隔离测试密文后的真实解密失败及修复。删除供应商并完整重启后历史完整输出可分页读取，明确重选模型后同一 Session 可继续发送。四次 Cmd-Q 正常退出、第二实例退出、浏览器和测试 API 清理、SQLite 完整性及零凭证残留均通过。没有出现 OS 钥匙串授权提示，不声称测试其取消；加密不可用和授权取消分支另有 unit 证据。原 aggregate 失败保持原记录，临时 npm 与隔离环境的聚焦复验通过；代码候选 CI 已通过，最终关闭文档提交的 CI 待观察。ADR Coverage 经独立评审与最终实现核对完成，所有六票与 spec 在同一变更中 resolved，PR 交付等待用户评审，未授权合并 main。
