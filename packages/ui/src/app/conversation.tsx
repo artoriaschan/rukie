@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { WirePermissionRequest } from "@rukie/shared";
+import type { PresentedPermissionRequest } from "../lib/transcript";
 import type { ConversationProps } from "./index";
 import { WireError } from "../client";
 import { Transcript } from "../components/transcript";
@@ -44,45 +44,16 @@ export function AppConversation({
   const [error, setError] = useState("");
   const state = view.transcript;
   const reply = async (
-    permission: WirePermissionRequest,
+    permission: PresentedPermissionRequest,
     answer: "allow" | "deny" | "allow-session",
   ) => {
     const epoch = permission.identity.epoch;
-    const groupId = state?.groups.at(-1)?.id;
-    const call = permission.callView;
-    const args = permission.args;
-    const title =
-      call?.card === "terminal"
-        ? call.command
-        : call?.card === "diff"
-          ? call.diffs.map((item) => item.path).join(", ")
-          : typeof args === "object" &&
-              args !== null &&
-              "command" in args &&
-              typeof args.command === "string"
-            ? args.command
-            : typeof args === "object" &&
-                args !== null &&
-                "path" in args &&
-                typeof args.path === "string"
-              ? args.path
-              : permission.toolName;
     if (!connected || pending) return;
     setPending(epoch);
     setError("");
     try {
       await request({ type: "interaction.reply", identity: permission.identity, reply: answer });
-      onInteractionResolved(
-        epoch,
-        groupId
-          ? {
-              groupId,
-              reply: answer,
-              title,
-              origin: permission.origin?.description,
-            }
-          : undefined,
-      );
+      onInteractionResolved(epoch, { reply: answer, request: permission });
     } catch (reason) {
       if (reason instanceof WireError && reason.code === "interaction_stale")
         onInteractionResolved(epoch);

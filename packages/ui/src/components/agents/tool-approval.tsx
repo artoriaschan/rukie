@@ -209,7 +209,7 @@ export function ToolApproval({
           {parameters.map((parameter) => (
             <div
               key={parameter.id}
-              className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] items-center gap-3 text-ui-sm"
+              className="grid grid-cols-1 items-center gap-3 text-ui-sm sm:grid-cols-[minmax(0,7rem)_minmax(0,1fr)]"
             >
               <dt className="text-muted-foreground">{parameter.label}</dt>
               <dd className="min-w-0 break-words font-mono text-foreground/85">

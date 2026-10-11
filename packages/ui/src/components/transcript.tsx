@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { CircleCheck, CircleX } from "lucide-react";
 import type { PromptGroup, TranscriptState, PermissionDecision } from "../lib/transcript";
 import { messageText, presentationCallId } from "../lib/transcript";
 import { useAppText } from "../lib/i18n";
@@ -9,6 +8,7 @@ import { PreviewRail } from "./motion/preview-rail";
 import { MessageBubble, MessageBubbleContent } from "./agents/message-bubble";
 import { Markdown } from "./markdown";
 import { ToolRow } from "./tool-row";
+import { ToolApproval, ToolApprovalCode } from "./agents/tool-approval";
 import { AgentActivity, type AgentActivityItem } from "./agents/agent-activity";
 import { StreamingResponse } from "./agents/streaming-response";
 function Group({
@@ -90,9 +90,67 @@ function Group({
     </span>
   );
   const activity: AgentActivityItem[] = [];
+  const approvals = decisions
+    .filter((item) => item.request.placement?.groupId === group.id)
+    .map((item) => {
+      const placement = item.request.placement!;
+      const anchor = group.messages.find((candidate) =>
+        placement.entryId
+          ? candidate.entryId === placement.entryId
+          : candidate.timestamp === placement.timestamp,
+      );
+      return { item, anchor };
+    });
+  const appendApprovals = (
+    message: (typeof group.messages)[number],
+    blockIndex: number,
+    before: boolean,
+  ) => {
+    for (const { item, anchor } of approvals) {
+      const placement = item.request.placement!;
+      if (anchor !== message || placement.blockIndex !== blockIndex || placement.before !== before)
+        continue;
+      const request = item.request;
+      activity.push({
+        id: `permission-${request.identity.epoch}`,
+        type: "trace",
+        kind: "permission",
+        icon: null,
+        label: (
+          <ToolApproval
+            tool={request.toolName}
+            title={t("conversation.decision", { decision: t(`conversation.${item.reply}`) })}
+            status={item.reply === "deny" ? "denied" : "approved"}
+            description={request.origin?.description ?? request.reason}
+            parameters={[
+              {
+                id: "command",
+                label: request.toolName,
+                value: (
+                  <ToolApprovalCode
+                    code={
+                      request.callView?.card === "terminal"
+                        ? request.callView.command
+                        : (JSON.stringify(request.args, null, 2) ?? "")
+                    }
+                    language={request.callView?.card === "terminal" ? "bash" : "json"}
+                  />
+                ),
+              },
+            ]}
+          />
+        ),
+      });
+    }
+  };
   for (const message of group.messages) {
-    if (message.role !== "assistant") continue;
+    if (message.role !== "assistant") {
+      appendApprovals(message, -1, false);
+      continue;
+    }
+    if (!message.content.length) appendApprovals(message, -1, false);
     message.content.forEach((block, index) => {
+      appendApprovals(message, index, true);
       const id = `${message.entryId ?? `partial-${message.timestamp}`}:${index}`;
       if (block.type === "thinking")
         activity.push({
@@ -139,30 +197,9 @@ function Group({
             label: <ToolRow tool={tool} />,
           });
       }
+      appendApprovals(message, index, false);
     });
   }
-  decisions
-    .filter((item) => item.groupId === group.id)
-    .forEach((item, index) => {
-      activity.push({
-        id: `permission-${index}`,
-        type: "trace",
-        kind: "permission",
-        icon:
-          item.reply === "deny" ? (
-            <CircleX className="size-4 text-danger" />
-          ) : (
-            <CircleCheck className="size-4 text-success" />
-          ),
-        label: (
-          <div className="flex items-baseline gap-2 text-ui-sm text-muted-foreground">
-            <span>{t("conversation.decision", { decision: t(`conversation.${item.reply}`) })}</span>
-            {item.origin ? <span>{item.origin}</span> : null}
-            <code className="min-w-0 break-words font-mono">{item.title}</code>
-          </div>
-        ),
-      });
-    });
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-3 px-5 py-4">
       {user ? (

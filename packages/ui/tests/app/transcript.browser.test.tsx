@@ -416,6 +416,117 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
   }
 });
 
+test("settled Tool Approval cards stay beside their original calls when provider IDs are reused", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const send = async (facts: object) => {
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "one", ...facts }),
+    });
+  };
+  const command = "first-command " + "long/path/".repeat(35);
+  const assistant = (entryId: string, timestamp: number, command: string) => ({
+    role: "assistant",
+    entryId,
+    timestamp,
+    content: [
+      {
+        type: "toolCall",
+        id: "reused",
+        name: "bash",
+        arguments: { command },
+        view: { card: "terminal", kind: "execute", command },
+      },
+    ],
+  });
+  const ask = async (epoch: string, command: string) => {
+    const identity = { epoch, requestId: epoch, taskId: 1, conversationId: 1 };
+    await send({
+      type: "interaction_requested",
+      identity,
+      request: {
+        identity,
+        toolName: "bash",
+        toolCallId: "reused",
+        args: { command },
+        callView: { card: "terminal", kind: "execute", command },
+        mode: "ask",
+        sessionAllow: { kind: "tool", rule: "bash" },
+      },
+    });
+  };
+  try {
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    await expect.element(screen.getByRole("button", { name: "Context usage 25%" })).toBeVisible();
+    await page.viewport(420, 800);
+    await screen.getByRole("button", { name: "Toggle sidebar", exact: true }).first().click();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toBeEnabled();
+    await send({
+      type: "snapshot",
+      model: "test/script",
+      compactions: [],
+      messages: [
+        { role: "user", entryId: "u", timestamp: 1, content: "Review commands" },
+        assistant("first", 10, command),
+      ],
+      run: { inputs: [] },
+    });
+    await ask("first-epoch", command);
+    await expect
+      .element(screen.getByRole("button", { name: "Allow ↵", exact: true }))
+      .toBeVisible();
+    // New activity arrives while approval is pending; it must not move the earlier request.
+    await send({
+      type: "message_end",
+      entryId: "second",
+      messages: [assistant("second", 20, "second-command")],
+    });
+    await screen.getByRole("button", { name: "Allow for this Session A", exact: true }).click();
+    const approval = screen.getByText("Permission: Allowed for this Session", { exact: true });
+    await expect.element(approval).toBeVisible();
+    await ask("second-epoch", "second-command");
+    await screen.getByRole("button", { name: "Deny Esc", exact: true }).click();
+    await expect.element(screen.getByText("Permission: Denied", { exact: true })).toBeVisible();
+    const approved = approval.element().closest('[data-state="approved"]')!;
+    const denied = screen
+      .getByText("Permission: Denied", { exact: true })
+      .element()
+      .closest('[data-state="denied"]')!;
+    const first = screen
+      .getByRole("button", { name: /first-command/ })
+      .element()
+      .closest('[role="listitem"]')!;
+    const second = screen
+      .getByRole("button", { name: /second-command/ })
+      .element()
+      .closest('[role="listitem"]')!;
+    expect(approved.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(first.compareDocumentPosition(denied) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(denied.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(approved.querySelectorAll("[data-permission-primary]")).toHaveLength(0);
+    await userEvent.click(approved.querySelector("button")!);
+    const details = approved.querySelector("dd")!;
+    await expect.poll(() => details.textContent).toContain(command);
+    expect(approved.getBoundingClientRect().right).toBeLessThanOrEqual(
+      screen.getByRole("feed").element().getBoundingClientRect().right,
+    );
+    expect(details.scrollWidth).toBeLessThanOrEqual(details.clientWidth);
+    expect(approval.element().getBoundingClientRect().width).toBeGreaterThan(80);
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+    await page.viewport(1280, 900);
+  }
+});
+
 test("virtualized response groups follow streaming height, preserve upward reading, expand and jump by scale", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();

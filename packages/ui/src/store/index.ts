@@ -6,7 +6,6 @@ import type {
   WireProject,
   WirePreferences,
   WireModelCatalogEntry,
-  WirePermissionRequest,
   PermissionMode,
   ThinkingLevel,
   ContextReport,
@@ -16,13 +15,17 @@ import { Value } from "typebox/value";
 import { ToolCallViewSchema, THINKING_LEVELS, PERMISSION_MODES } from "@rukie/shared";
 
 import { reduceTranscript } from "./transcript";
-import type { TranscriptState, PermissionDecision } from "../lib/transcript";
+import type {
+  TranscriptState,
+  PermissionDecision,
+  PresentedPermissionRequest,
+} from "../lib/transcript";
 
 type SessionSnapshot = Extract<SessionEvent, { type: "snapshot" }>;
 export interface SessionViewState {
   snapshot?: SessionSnapshot;
   transcript?: TranscriptState;
-  interactions: Record<string, WirePermissionRequest>;
+  interactions: Record<string, PresentedPermissionRequest>;
   permissionDecisions?: Record<string, PermissionDecision>;
   busy: boolean;
   running?: boolean;
@@ -75,15 +78,54 @@ export function createDesktopStore() {
       busy: false,
     };
     let next: SessionViewState;
-    if (message.type === "interaction_requested")
+    if (message.type === "interaction_requested") {
+      const group = previous.transcript?.groups.at(-1);
+      const calls = !message.request.origin
+        ? group?.messages.filter(
+            (item) =>
+              item.role === "assistant" &&
+              item.content.some(
+                (block) => block.type === "toolCall" && block.id === message.request.toolCallId,
+              ),
+          )
+        : undefined;
+      const latest = calls?.at(-1);
+      // A late streaming update can accompany its committed entry. Prefer that entry,
+      // without rebinding a new partial call to an older reused provider call ID.
+      const anchor =
+        (latest && !latest.entryId
+          ? (calls?.findLast((item) => item.entryId && item.timestamp === latest.timestamp) ??
+            latest)
+          : latest) ?? group?.messages.at(-1);
+      const index =
+        anchor?.role === "assistant"
+          ? anchor.content.findIndex(
+              (block) => block.type === "toolCall" && block.id === message.request.toolCallId,
+            )
+          : -1;
+      const placement =
+        group && anchor
+          ? {
+              groupId: group.id,
+              entryId: anchor.entryId,
+              timestamp: anchor.timestamp,
+              blockIndex:
+                index >= 0 && !message.request.origin
+                  ? index
+                  : anchor.role === "assistant"
+                    ? anchor.content.length - 1
+                    : -1,
+              before: index >= 0 && !message.request.origin,
+            }
+          : undefined;
       next = {
         ...previous,
         interactions: {
           ...previous.interactions,
-          [message.identity.epoch]: { ...message.request, identity: message.identity },
+          [message.identity.epoch]: { ...message.request, identity: message.identity, placement },
         },
       };
-    else if (message.type === "interaction_settled") {
+    } else if (message.type === "interaction_settled") {
       const interactions = { ...previous.interactions };
       delete interactions[message.identity.epoch];
       next = { ...previous, interactions };

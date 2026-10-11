@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { WirePermissionRequest } from "@rukie/shared";
+import type { PresentedPermissionRequest } from "../lib/transcript";
 import type { QueuedInput } from "@rukie/agent";
 import type { SubagentPresentation } from "../lib/transcript";
 import { ToolApproval, ToolApprovalCode } from "./agents/tool-approval";
@@ -13,11 +13,11 @@ export function PermissionDock({
   shortcutsEnabled,
   onReply,
 }: {
-  requests: WirePermissionRequest[];
+  requests: PresentedPermissionRequest[];
   connected: boolean;
   pending: string | null;
   shortcutsEnabled: boolean;
-  onReply: (request: WirePermissionRequest, reply: "allow" | "deny" | "allow-session") => void;
+  onReply: (request: PresentedPermissionRequest, reply: "allow" | "deny" | "allow-session") => void;
 }) {
   const t = useAppText();
   const first = requests[0];

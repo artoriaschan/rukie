@@ -28,6 +28,6 @@ Transcript 呈现按用户输入分组（`PromptGroup`），组内保留多次 T
 
 工具以提交的 assistant entry ID 与 call ID 组合归约，实时事件通过当前调用索引关联，复用 provider ID 不覆盖历史；默认折叠，失败展开。ANSI 输出通过 anser 解析标准、256 色与 RGB SGR 并剔除 OSC/光标控制；diff 按 unified hunk 分行，旧文与新文分别高亮，流式工具/diff 输出不使用 aria-live。Markdown 解析成 React 文本节点，不执行 HTML 或链接导航。所有代码块按需加载并共用 GitHub Light/Dark Shiki 高亮器；完整块缓存最多 64 条，超过 12,000 个字符或 200 行显示纯文本。未闭合代码块使用 ShikiStreamTokenizer，仅重算不稳定尾部。
 
-权限停靠卡以 epoch 关联回复；Esc 拒绝、A 在 Session 内允许、Enter 允许，编辑文本、组合输入与菜单/模态框不触发这些快捷键。断连禁用回复；settled 与 stale 删除对应 epoch，重新订阅时使用 server 补发的新请求。成功回复的决定保留为当前窗口活动区中的结果行；重启窗口后以已提交工具结果事实为准。摘要显示当前 Todo 与子代理状态。
+权限停靠卡以 epoch 关联回复；Esc 拒绝、A 在 Session 内允许、Enter 允许，编辑文本、组合输入与菜单/模态框不触发这些快捷键。断连禁用回复；settled 与 stale 删除对应 epoch，重新订阅时使用 server 补发的新请求。成功回复的决定使用 Tool Approval 的 approved／denied 样式保留在当前窗口活动区，参数详情默认收起；重启窗口后以已提交工具结果事实为准。摘要显示当前 Todo 与子代理状态。
 
-权限回复按 Interaction epoch 保存当前 PromptGroup、命令和子代理来源，结果行不依赖可能复用的工具调用 ID。断连期间保留停靠卡并禁用按钮，恢复连接时清除旧 epoch，重新订阅后接受补发；提交应答期间保留可编辑草稿，提交按钮在命令应答前禁用。
+权限请求到达时按 Interaction epoch 保存当前 PromptGroup 与活动位置；同意或拒绝后，Tool Approval 结果卡位于对应工具执行卡之前，子代理请求保留其父活动位置，不会随后续活动或复用的 provider call ID 移到 Run 末尾。长命令在参数详情中换行，窄窗口将参数标签与内容纵向排列。断连期间保留停靠卡并禁用按钮，恢复连接时清除旧 epoch，重新订阅后接受补发；提交应答期间保留可编辑草稿，提交按钮在命令应答前禁用。

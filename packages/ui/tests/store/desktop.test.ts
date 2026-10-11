@@ -151,3 +151,98 @@ test("Run settlement updates execution feedback after an active snapshot", () =>
   store.receive({ type: "run_start", sessionId: "a", inputs: [] });
   expect(store.getState().views.a?.running).toBe(true);
 });
+
+test("permission placement captures the current partial call without rebinding reused IDs", () => {
+  const store = createDesktopStore();
+  const assistant = (entryId: string | undefined, timestamp: number) => ({
+    role: "assistant",
+    entryId,
+    timestamp,
+    content: [{ type: "toolCall", id: "same", name: "bash", arguments: { command: "ls" } }],
+  });
+  store.receive({
+    type: "snapshot",
+    sessionId: "a",
+    compactions: [],
+    model: "test/script",
+    messages: [
+      { role: "user", entryId: "u", timestamp: 1, content: "Review" },
+      assistant("old", 10),
+    ],
+  });
+  store.receive({ type: "message_update", sessionId: "a", message: assistant(undefined, 20) });
+  const identity = { epoch: "p", requestId: "r", taskId: 1, conversationId: 1 };
+  store.receive({
+    type: "interaction_requested",
+    sessionId: "a",
+    identity,
+    request: {
+      identity,
+      toolName: "bash",
+      toolCallId: "same",
+      args: { command: "ls" },
+      mode: "ask",
+      sessionAllow: { kind: "tool", rule: "bash" },
+    },
+  });
+  const request = store.getState().views.a!.interactions.p!;
+  expect(request.placement).toEqual({
+    groupId: "u",
+    entryId: undefined,
+    timestamp: 20,
+    blockIndex: 0,
+    before: true,
+  });
+  store.receive({
+    type: "message_end",
+    sessionId: "a",
+    entryId: "new",
+    messages: [assistant("new", 20)],
+  });
+  store.resolveInteraction("a", "p", { request, reply: "allow" });
+  expect(store.getState().views.a!.permissionDecisions!.p!.request.placement?.timestamp).toBe(20);
+});
+
+test("subagent permissions retain their parent activity position instead of matching a reused child call ID", () => {
+  const store = createDesktopStore();
+  store.receive({
+    type: "snapshot",
+    sessionId: "a",
+    compactions: [],
+    model: "test/script",
+    messages: [
+      { role: "user", entryId: "u", timestamp: 1, content: "Review" },
+      {
+        role: "assistant",
+        entryId: "parent",
+        timestamp: 10,
+        content: [
+          { type: "toolCall", id: "same", name: "task", arguments: {} },
+          { type: "text", text: "Child work" },
+        ],
+      },
+    ],
+  });
+  const identity = { epoch: "child", requestId: "r", taskId: 2, conversationId: 2 };
+  store.receive({
+    type: "interaction_requested",
+    sessionId: "a",
+    identity,
+    request: {
+      identity,
+      toolName: "bash",
+      toolCallId: "same",
+      args: { command: "ls" },
+      origin: { agentId: "child", description: "Inspect files" },
+      mode: "ask",
+      sessionAllow: { kind: "tool", rule: "bash" },
+    },
+  });
+  expect(store.getState().views.a!.interactions.child!.placement).toEqual({
+    groupId: "u",
+    entryId: "parent",
+    timestamp: 10,
+    blockIndex: 1,
+    before: false,
+  });
+});

@@ -1,5 +1,5 @@
 import type { TranscriptMessage, QueuedInput, BackgroundActivity } from "@rukie/agent";
-import type { ToolCallView, ToolResultView } from "@rukie/shared";
+import type { ToolCallView, ToolResultView, WirePermissionRequest } from "@rukie/shared";
 export interface SubagentPresentation extends BackgroundActivity {
   outcome?: string;
 }
@@ -61,9 +61,18 @@ export function presentationCallId(
   return `${message.entryId ?? `partial-${message.timestamp}`}:${callId}`;
 }
 
-export interface PermissionDecision {
+interface PermissionPlacement {
   groupId: string;
+  entryId?: string;
+  timestamp: number;
+  blockIndex: number;
+  before: boolean;
+}
+export interface PresentedPermissionRequest extends WirePermissionRequest {
+  /** Captured when the request arrives, before later activity can move its position. */
+  placement?: PermissionPlacement;
+}
+export interface PermissionDecision {
   reply: "allow" | "deny" | "allow-session";
-  title: string;
-  origin?: string;
+  request: PresentedPermissionRequest;
 }
