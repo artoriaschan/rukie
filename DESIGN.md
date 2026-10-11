@@ -6,32 +6,25 @@ This file is meant for coding agents. When generating or editing GUI code, follo
 
 ## Baseline
 
-The GUI is built from [beUI](https://beui.dev) first and [shadcn/ui](https://ui.shadcn.com) for what beUI does not provide, both installed through the shadcn CLI (sourcing rules: [AGENTS.md](AGENTS.md#ui-components)). beUI's default style is the visual baseline for every component, including shadcn ones: structure, surfaces, borders, radius, elevation, and motion. Rukie changes this baseline only where this file says so:
+The visual reference is the ZCode Design System: calm surfaces, compact operational controls, repeated spacing, nested radius, restrained depth, and motion that explains state changes. Rukie retains its GitHub Light/Dark palette and its Session, Run, Transcript, and Interaction behavior; ZCode-specific themes, workspace frames, and feature tokens are not Rukie contracts.
 
-- Colors come from GitHub Light and GitHub Dark (see [Themes](#themes)), not from the beUI or shadcn default palettes; beUI's glass and neon tokens take their GitHub-derived values below.
-- Interface font sizes use the `text-ui-*` scale (see [Typography](#typography)).
-- Copy is localized through `@rukie/i18n`; hard-coded English strings in copied components are replaced.
+The GUI is built from [beUI](https://beui.dev) first and [shadcn/ui](https://ui.shadcn.com) for roles beUI does not provide, installed through the shadcn CLI (sourcing rules: [AGENTS.md](AGENTS.md#ui-components)). Registry components supply structure, accessibility, and behavior. This document owns their final typography, geometry, surfaces, radius, elevation, and motion. A copied component's original defaults do not establish compliance.
 
-When this file and a beUI or shadcn default disagree, this file wins. When neither covers a need, update this file first instead of adding one-off values.
+These are binding target rules for new and changed GUI surfaces. They are not a claim that every existing component has been migrated. In particular, the current theme defines `text-ui-caption` as 11px, and the installed Button still has 40px/48px heights, pill radii, and spring scaling. Those defaults need adaptation to the targets below when migrated; this document does not change runtime CSS. Validate the rendered result before claiming product acceptance.
+
+When this file and a registry default disagree, this file wins. Use the existing semantic tokens and shared primitives; when a need is not covered, update this file before introducing an exception. Copy is localized through `@rukie/i18n` with zh and en entries.
 
 ## Product Character
 
-Rukie is a desktop-first, Web-compatible coding-agent workspace. Design for:
+Rukie is a desktop-first, Web-compatible coding-agent workspace. The interface feels calm, dense, and operational. Design for long sessions, readable messages and tool output, keyboard workflows, variable translations, and macOS, Windows, and Linux rendering in Light and Dark.
 
-- long sessions and high information density
-- readable chat and tool output
-- keyboard-driven workflows
-- macOS, Windows, and Linux rendering
-- internationalization and variable text length
-- light and dark themes
-
-Avoid oversized marketing-style spacing and full-surface brand fills.
+Use hierarchy in text, surfaces, and spacing before adding borders or color. Avoid marketing-sized controls, loose repeated rows, playful gradients, bright full-surface brand fills, default glass blur, and ambiguous separation between content and overlays. Compact means smaller repeated furniture, not clipped actions or unreadable copy.
 
 ## Themes
 
 User-facing theme choices are System, Light, and Dark. Light uses GitHub Light and Dark uses GitHub Dark. Values are copied from the functional themes of `@primer/primitives` 11.10.0; Rukie does not depend on the package at runtime.
 
-The theme keeps beUI's token names (shadcn semantic tokens plus beUI extensions) and the `dark` class variant, so beUI and shadcn components work unmodified.
+The theme keeps beUI's token names (shadcn semantic tokens plus beUI extensions) and the `dark` class variant, so beUI and shadcn components share the same semantic palette; geometry and interaction styling still follow this file.
 
 | Token                  | Light                     | Dark                      | Primer source                   |
 | ---------------------- | ------------------------- | ------------------------- | ------------------------------- |
@@ -81,77 +74,169 @@ Code blocks and diffs highlighted by shiki use the `github-light` and `github-da
 
 ### UI font scale
 
-All interface typography uses the `text-ui-*` scale, derived from `--ui-font-size` (default `14px`):
+All interface typography uses the `text-ui-*` scale, derived from `--ui-font-size` (default `14px`). Choose by role rather than isolated visual preference. Values below are targets; `text-ui-caption` currently computes to 11px in [theme.css](packages/ui/src/theme.css) and requires a separate runtime migration to reach 13px.
 
-| Token             | Formula                | Default | Replaces      |
-| ----------------- | ---------------------- | ------: | ------------- |
-| `text-ui-xl`      | `--ui-font-size + 4px` |    18px | `text-lg`     |
-| `text-ui-lg`      | `--ui-font-size + 2px` |    16px | `text-base`   |
-| `text-ui-base`    | `--ui-font-size`       |    14px | `text-sm`     |
-| `text-ui-sm`      | `--ui-font-size - 2px` |    12px | `text-xs`     |
-| `text-ui-xs`      | `--ui-font-size - 4px` |    10px | `text-[10px]` |
-| `text-ui-caption` | `--ui-font-size - 3px` |    11px | `text-[11px]` |
-| `text-ui-control` | `--ui-font-size - 1px` |    13px | `text-[13px]` |
+| Token             | Target formula         | Default | Target line height | Roles                                                       |
+| ----------------- | ---------------------- | ------: | -----------------: | ----------------------------------------------------------- |
+| `text-ui-xl`      | `--ui-font-size + 4px` |    18px |               28px | Markdown h1 and first-level reading headings                |
+| `text-ui-lg`      | `--ui-font-size + 2px` |    16px |               24px | Markdown h2 and second-level reading headings               |
+| `text-ui-base`    | `--ui-font-size`       |    14px |               20px | Body, common buttons, section titles, Run and Trace labels  |
+| `text-ui-caption` | `--ui-font-size - 1px` |    13px |               20px | Deliberate compact supporting captions                      |
+| `text-ui-sm`      | `--ui-font-size - 2px` |    12px |               16px | Secondary copy, helper text, tooltips, Markdown inline code |
+| `text-ui-xs`      | `--ui-font-size - 4px` |    10px |               14px | Badges, counters, shortcuts, very weak metadata             |
+| `text-ui-control` | `--ui-font-size - 1px` |    13px |               20px | Existing compact Trace and tool controls only               |
 
-Line heights preserve Tailwind ratios: xl `1.75 / 1.125`, lg `1.5`, base `1.25 / 0.875`, sm `1 / 0.75`, xs and caption `1.4`, control `1.5`. Loader glyphs use `text-ui-loader`, whose `--loader-font-size` follows the registry glyph size rather than interface text.
-
-At the default size the scale reproduces the Tailwind sizes used by shadcn and beUI, so copied components keep their look. When a registry component is added, rewrite its Tailwind `text-*` size classes with the right column.
+Line-height ratios follow the default pairs above as interface text scales. `text-ui-control` is a Rukie-specific retained role, not an alternative default for every button or body. Legacy 13px text without a deliberate caption or compact Trace role migrates to `text-ui-base`. Loader glyphs use `text-ui-loader`, whose `--loader-font-size` describes glyph geometry, not content typography.
 
 - Do not use Tailwind's built-in `text-xs`, `text-sm`, `text-base`, `text-lg`, arbitrary sizes such as `text-[13px]`, or inline `font-size` for interface text.
 - Interface font scaling changes only `--ui-font-size`; never change the root `html` font size. Icons, spacing, and radius do not scale with it.
-- Code, Diff, and terminal-like content may use their own numeric font-size settings; their headers, labels, and controls still use `text-ui-*`.
+- Code, Diff, and terminal-like content retain their independent numeric font-size settings. Their headers, labels, and controls use `text-ui-*`.
+- Body and common controls use `font-normal`; section labels use `font-medium`. Markdown h3–h4 use `font-semibold`, h5 uses `font-medium`, and h6 uses `font-normal`.
+- Supporting copy uses `muted-foreground`; primary reading text uses `foreground`. Font size and color express different hierarchy decisions. Do not weaken operational labels by combining tiny text with low opacity.
+- Tooltip copy uses `text-ui-sm`; shortcut labels use `text-ui-xs`. Rich Markdown in a tooltip retains reading hierarchy.
 
-### Type roles
+### Markdown type scale
 
-| Token          | Roles                                                           |
-| -------------- | --------------------------------------------------------------- |
-| `text-ui-xl`   | Markdown `h1` and first-level reading headings                  |
-| `text-ui-lg`   | Markdown `h2` and second-level reading headings                 |
-| `text-ui-base` | Markdown `h3`–`h6`, body copy, buttons, and section titles      |
-| `text-ui-sm`   | Secondary copy, helper text, tooltips, and Markdown inline code |
-| `text-ui-xs`   | Badges, counters, shortcut labels, and very weak metadata       |
-
-- Markdown `h3`–`h4` use `font-semibold`, `h5` uses `font-medium`, and `h6` uses `font-normal`.
-- Pair secondary copy with `text-muted-foreground`. Size and color hierarchy are independent decisions.
-- Do not hard-code layouts that only fit short English labels, and do not rely on truncation as the only way a label survives translation.
+| Content                                                | Typography                                                        |
+| ------------------------------------------------------ | ----------------------------------------------------------------- |
+| User/assistant message containers, body, links, tables | `text-ui-base`, normal weight                                     |
+| h1 / h2                                                | `text-ui-xl` / `text-ui-lg`                                       |
+| h3–h6                                                  | `text-ui-base`, weights defined above                             |
+| Inline code                                            | `font-mono text-ui-sm`                                            |
+| Code block body                                        | Monospace, default 14px; independent code setting where supported |
+| Code block header                                      | `text-ui-base`                                                    |
+| Command, path, identifier, shortcut, commit hash       | `font-mono`; role determines `text-ui-*` size                     |
 
 ## Spacing and sizing
 
-- Base spacing unit is `4px`; prefer the repeated rhythm `4px`, `8px`, `12px`, `16px`, `20px`–`24px`.
-- In flex layouts with text, add `min-w-0` where truncation or shrink is required; in nested scroll or split panels, add `min-h-0`.
-- `size-4` is the default icon size. Prefer fluid widths for content; fixed widths are acceptable for menus, popovers, dialogs, and side panels.
-- Avoid arbitrary `w-[...]`, `h-[...]`, and spacing values unless a registry component already uses them.
+All dimensions in this section are CSS pixels at the 14px interface setting. Use a 4px spacing grid: 4px for tight icon/text joins; 8px for inline gaps; 12px for compact rows and inset content; 16px for panels; 20px–24px for dialog interiors. The 2px menu-row gap and documented rail/scrollbar geometry are explicit exceptions. Do not inherit arbitrary registry spacing as a new exception.
+
+### Compact geometry targets
+
+These names describe reusable design roles, not CSS variables already shipped. Implement them in the shared owning primitive rather than repeating overrides at call sites.
+
+| Role                                                 |                                      Height / minimum height |     Horizontal padding | Vertical padding | Icon / gap              |
+| ---------------------------------------------------- | -----------------------------------------------------------: | ---------------------: | ---------------: | ----------------------- |
+| Micro action                                         |                                                         24px |                    8px |              4px | 12px / 4px              |
+| Dense toolbar action                                 |                                                         28px |                    8px |              4px | 14px / 4px              |
+| Standard button / single-line input / Select trigger |                                                         32px |                   12px |              4px | 16px / 8px              |
+| Emphasized action                                    |                                                         36px |                   16px |              8px | 16px / 8px              |
+| Icon-only action                                     | 24px, 28px, 32px, or 36px square, matching adjacent controls |                      0 |                0 | 12px, 14px, or 16px     |
+| Menu / option row                                    |                                                         28px |                    8px |              4px | 16px / 8px              |
+| Session / navigation row                             |                                                         32px |                   12px |              4px | 16px / 8px              |
+| Run / Trace group / tool summary row                 |                                                         28px |                      0 |              4px | 16px / 8px              |
+| Multiline field                                      |                                                 64px minimum |                   12px |              8px | 8px between controls    |
+| Card / approval content                              |                                               Content-driven |                   16px |             12px | 12px / 8px content gaps |
+| Dialog content                                       |                                               Content-driven | 24px wide, 16px narrow |             20px | 12px section gaps       |
+
+Control heights are compact baselines at the default font size, not clipping constraints. At larger text sizes or with wrapped labels, allow height to grow to fit the line box plus padding. Keep small icon-only controls' hit targets at least 24px square; larger targets must not overlap adjacent actions. Micro actions use `text-ui-sm` for sparse auxiliary controls, never primary approval actions or normal body text. Other text actions use `text-ui-base` unless an explicit role above applies.
+
+- Default icon: 16px. Supported icon sizes: 12px, 14px, 16px, 20px, 24px. Larger icons are for explicit empty-state or brand artwork roles.
+- Reuse existing Button size names: `sm` targets 28px, `md` targets 32px, `lg` targets 36px, `icon` targets 32px square. These targets replace the current 32px/40px/48px registry button heights; additional micro sizes require a shared primitive API, not isolated inline overrides.
+- Menu shells use 4px padding, 2px gaps between adjacent option rows, and a 4px trigger offset. Tooltips use 8px padding and 4px offset.
+- Ordinary cards have 12px content gaps; repeated Trace rows have 4px gaps, Trace groups have 8px gaps, and separate messages have 16px gaps. Do not stack a row's vertical padding with an equivalent external spacer.
+- In flex layouts with text, use `min-w-0`; in nested scroll or split panels, use `min-h-0`. Technical values wrap or scroll inside their own content region, never push action buttons beyond the shell.
+- Prefer fluid widths with a maximum. Standard menus target 240px maximum width, supporting menus may use 320px; ordinary dialogs target 480px maximum, settings or rich-content dialogs may use 640px. All clamp to viewport width minus 32px. A documented content need can choose a different shared role before implementation.
+- Dialog shells clamp to viewport height minus 32px. Scroll the body when needed; keep title and footer actions visible. Approval details may scroll internally, but the action footer must never be inside a clipped detail region.
 
 ## Radius, elevation, and motion
 
-- Components keep their registry's radius scale (`--radius`), shadows, and Motion spring settings; do not invent radii, shadows, or springs.
-- beUI surfaces keep their shipped `bg-card` / `bg-popover` tokens. Where a registry component uses glass utilities (`glass`, `glass-strong`, `glass-thin`), backdrop blur and neon accents resolve to the GitHub-derived `--glass-*` and `--neon` tokens in [Themes](#themes). Do not add new blur levels or accent colors.
-- A shadcn component used next to beUI ones keeps its structure but takes the matching beUI surface when one exists, so overlays and panels look the same wherever they come from.
-- A custom component borrows structure, surface, radius, elevation, and motion from the closest beUI component, falling back to the closest shadcn component.
-- Use beUI's easing tokens (`--ease-out`, `--ease-in-out`, `--ease-drawer`) for CSS transitions.
-- Respect `prefers-reduced-motion`: springs and decorative animations (`marquee`, `shimmer`) stop or reduce to an opacity change.
-- Long Transcripts must stay responsive; do not animate every streamed token or every row on scroll.
+### Radius
 
-## Components
+Radius follows actual visible rounded containers, not component importance or DOM nesting. Layout regions, ordinary wrappers, Trace groups, and separators do not add a level. At the default root geometry, use the shared scale: `rounded-sm` 4px, `rounded-md` 6px, `rounded-lg` 8px, `rounded-xl` 12px, `rounded-2xl` 16px. Adapt the shared radius mapping where the current theme's `--radius` derivation disagrees; do not scatter numeric radius overrides.
 
-- Component sourcing (existing → beUI → shadcn/ui → dedicated libraries for editors, terminals, diffs, and virtualization → custom) and the install workflow are defined in [AGENTS.md](AGENTS.md#ui-components).
-- Click menus with submenus use shadcn `dropdown-menu`, because beUI context menus require right-click/long-press and bloom menus lack menu keyboard semantics. Its surface matches the beUI select panel.
-- Every copied or custom component uses theme tokens, `text-ui-*` sizes, and localized copy.
-- Keep a clear action hierarchy: one primary action per region; secondary, ghost, and destructive variants for the rest.
-- Menus and option lists stay dense and scannable. Interactive overlays render above passive tooltips.
-- Tool output, terminal-like blocks, paths, hashes, and commands use monospace.
-- Markdown in messages is rendered by Rukie's micromark renderer, styled with the type roles above.
+- First rounded content container: `rounded-xl`. Nested containers step down through `rounded-lg` → `rounded-md` → `rounded-sm`; 4px is the minimum. Peers share a radius; count the nearest visible rounded ancestor through plain wrappers.
+- Buttons, Input, Textarea, and Select triggers follow the control table below. Primary emphasis and height do not increase radius.
+- Dialog shells use `rounded-2xl`. Their content hierarchy restarts at `rounded-xl`; the dialog shell does not force all inner controls down a level. Image-preview dialogs may use `rounded-xl` where a plain media boundary is required.
+- Menus, context menus, Select option panels, and suggestion panels use `rounded-lg`; items use `rounded-md`, nested controls `rounded-sm`. Each submenu restarts this overlay hierarchy, independently of its trigger.
+- Standalone ordinary popovers start at `rounded-xl` and follow content nesting.
+- The actual main composer input shell, independent Toast shell, and deliberate brand-icon backplates may retain `rounded-2xl`. Their nested controls still follow the control table. Ordinary cards and tool blocks do not qualify.
+- `rounded-full` is reserved for deliberate pills or circles: a status badge, avatar, or rail tick can qualify by shape. A button, tag, counter, or icon button does not qualify merely by component type.
+- Do not use arbitrary radius values or bare `rounded`. Remove joined-edge radius only when surfaces form a continuous shape.
+
+| Nearest rounded control parent        | Control radius |
+| ------------------------------------- | -------------- |
+| None, or `rounded-xl` / `rounded-2xl` | `rounded-lg`   |
+| `rounded-lg`                          | `rounded-md`   |
+| `rounded-md` / `rounded-sm`           | `rounded-sm`   |
+
+### Surfaces and elevation
+
+Layer through background contrast and borders first. The workspace uses `background`; ordinary cards use `card`; overlays use `popover` with `border-strong`. Rukie's overlay and card tokens currently share a color; their stronger border and elevation distinguish the overlay role without introducing ZCode's separate palette tokens.
+
+| Level     | Treatment                        | Uses                                          |
+| --------- | -------------------------------- | --------------------------------------------- |
+| Base      | No shadow                        | Workspace, Transcript, ordinary rows          |
+| Surface   | Border-led separation, no shadow | Cards, tool blocks, approval shell            |
+| Overlay   | `shadow-md`                      | Menus, popovers, dialogs                      |
+| Attention | `shadow-lg` only                 | Toast or explicitly justified floating notice |
+
+Default controls and content are opaque, neutral surfaces. Existing glass/neon compatibility tokens retain their theme values but do not authorize default blur, glow, gradients, metallic controls, or decorative attention fills. Do not clear an overlay's shadow while its root owns keyboard focus. Interactive overlays render above passive tooltips.
+
+### Motion
+
+- Color/focus transitions: 120ms. Overlay fade or small slide: 160ms; disclosure height change: at most 200ms. Use existing `--ease-out` / `--ease-in-out` tokens. Travel is at most 4px; avoid elastic or spring overshoot in ordinary workspace controls.
+- Buttons do not scale on hover or press by default. Ripple, bounce, glow, and decorative marquee are not default interaction feedback. These rules override copied registry springs and `whileHover` scaling.
+- Agent Loading States and Text Shimmer may indicate an actually running Run or active outer Trace header. They stop after settlement; no animation is required to understand the text.
+- Under `prefers-reduced-motion`, remove translation, scale, height animation, shimmer, marquee, and spin. Preserve state copy and static glyphs; an opacity transition may last at most 120ms.
+- Do not animate every streamed token or every row on scroll. Animation must not change layout geometry needed by virtualization or scrollbar mapping.
+
+## Components and states
+
+Component sourcing (existing → beUI → shadcn/ui → dedicated libraries → custom) remains defined in [AGENTS.md](AGENTS.md#ui-components). Every source follows the same compact geometry, semantic palette, typography, radius, and localization rules.
+
+### Shared state language
+
+| State               | Required treatment                                                                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default             | Neutral surface, readable `foreground` labels; secondary copy `muted-foreground`; no implied hover or selection                                      |
+| Hover               | Only pointed target changes: `muted/60` background or stronger border; label may become `foreground`; no geometry shift                              |
+| Pressed             | Same neutral family with stronger border or `muted` surface; no permanent active state after release                                                 |
+| Selected / active   | Persisted selection uses neutral contrast (`muted`) and `foreground`, plus checkmark or explicit indicator; selection is distinct from pointer hover |
+| Pending approval    | `warning` badge with readable waiting copy; neutral shell, never successful green feedback                                                           |
+| Running             | `accent` state copy/glyph where needed, optional loading feedback; no success styling before completion                                              |
+| Complete / approved | `success` only for actual completion or approval, paired with text                                                                                   |
+| Error / denied      | `danger` paired with error or denial copy; ordinary unselected controls never use it                                                                 |
+| Disabled            | Keep geometry and label, use `muted-foreground`, no hover/press response; expose native disabled or appropriate ARIA semantics                       |
+| Keyboard focus      | Visible 2px `ring`, 2px offset where applicable; preserve outline space and overlay shadow, independently of hover and status                        |
+
+Semantic alpha backgrounds (`warning/10`, `success/10`, `danger/10`) are allowed for state badges, not whole conversation surfaces. Opacity-only weak furniture such as rail ticks is not a substitute for readable label contrast. Disabled labels must remain distinguishable; do not dim an entire panel and its still-enabled controls together.
+
+### Buttons and fields
+
+One primary action per region uses `primary` with `primary-foreground`. Tool Approval retains its registry's deliberate foreground/inverse primary approval action; it uses the same compact sizing and radius rules. Secondary uses `card` and border, outline uses transparent neutral fill, ghost is transparent at rest and neutral on hover. Destructive fill is for genuinely destructive operations, not routine denial.
+
+Inputs use `background`, `foreground`, and `input` border. Hover strengthens the border with `border-strong`; focus uses `ring`, without glow. Select triggers follow fields while their option panels follow menus. Normal fields are not cards. Multiline content grows or scrolls in an explicit field viewport.
+
+### Menus, cards, and dialogs
+
+Menus are dense action lists, not stacks of miniature cards: compact rows, weak separators, no ordinary per-row borders. Prefer checkmarks, radio indicators, or trailing state markers to full brand fills. Preserve the same action list across dropdown and context-menu entry points. Click menus with submenus use shadcn `dropdown-menu`, because beUI context menus require right-click/long-press and bloom menus lack menu keyboard semantics.
+
+Menus normally align to the trigger's leading edge; trailing controls may align to the end to open toward content. Context menus anchor near the pointer; Select option panels preserve their trigger's width relationship. Keep overlay offsets consistent and clamp against viewport edges.
+
+Cards use quieter surfaces than overlays and 16px horizontal padding. Dialogs keep title, body, and action footer as distinct layout regions; long content scrolls in the body. Header icons and controls do not inherit oversized artwork styling.
+
+### Chat, Run, Trace, and approval
+
+- User and assistant text uses the Markdown reading scale. Assistant messages remain separate from Trace groups; technical values use monospace.
+- Run titles are compact disclosures with elapsed-state copy and a divider below the title in both expanded and collapsed states. Expanded Run details have no fixed content-height cap.
+- Trace groups open collapsed by default. Closed groups have no visible left rule or leaking detail body. Tool and reasoning rows align on the same left baseline and use 28px compact row targets; expanded hierarchy may use one 16px indentation per actual disclosure level.
+- During execution, only the outer group header shows the latest tool or reasoning detail, on one truncated line with Text Shimmer. Its full content remains accessible through disclosure. Once grouped tools settle, use the summary group name; inner rows do not duplicate live previews.
+- Pending approval replaces the composer with one Tool Approval at a time, preserving queue order and draft state. Details start collapsed; actions sit in a separate visible footer and wrap at narrow widths. Approved cards are absent from Trace; denial remains a chronological outcome. Presentation does not alter permission decisions.
+- Never force buttons, status, code, or translated labels into a one-line shell that clips them. Collapse long detail content, not the actions needed to continue a Run.
 
 ## Accessibility and internationalization
 
-- Keyboard navigation is a first-class path; every interactive element has visible focus using `--ring`.
-- Keep contrast safe in Light and Dark.
-- Prefer a text label over icon-only meaning when practical; icon-only buttons have an accessible name.
-- All user-visible copy, including copy inside copied registry components, goes through `@rukie/i18n` with zh and en entries.
+- Every interactive element has an accessible name, keyboard navigation, and visible focus. Pointer hover is supplementary, never the only route to details or actions.
+- Normal text contrast is at least 4.5:1; large text and essential UI boundaries/state indicators at least 3:1. Decorative ticks are exempt from text contrast but remain perceivable. Verify Light and Dark separately.
+- Localize user-facing copy through `@rukie/i18n` with zh and en entries. Never rely solely on color for status.
+- Preserve complete labels through wrapping, fluid width, or accessible disclosure. Truncation alone does not solve translation expansion.
 
 ## Responsive behavior
 
-The product is desktop-first, but the UI remains functional in narrow windows and the browser development mode. Use breakpoints for layout, width, visibility, and density; do not change a component's meaning across breakpoints or hide core workflows.
+At wide widths, preserve calm repeated geometry. At narrow widths, reflow actions and header metadata, clamp overlays, and scroll long content in its own region. Breakpoints may change layout, visibility of secondary furniture, and density within documented roles; they must not change the meaning of a component or hide a core workflow.
+
+A 420px-wide window must support Session navigation, Run/Trace disclosure, composer, approval queue, and scrollbar/Preview Rail interaction without horizontal page overflow. Reserve the documented rail gutter independently of text wrapping. Longer translations and enlarged interface text may increase row height; they do not shrink font sizes or remove primary actions.
 
 ## ANSI output palette
 
@@ -182,6 +267,23 @@ ANSI output preserves color meaning through `ansi-*` theme tokens. Bright varian
 
 The conversation scrollbar occupies the full right edge of the chat panel, including the input or approval dock, and maps only the Transcript viewport's scroll range. Its thumb uses the muted foreground token, a 12px hit track, and a minimum 24px thumb. Native Transcript scrollbars are hidden to avoid duplicate controls. The scrollbar supports pointer dragging, track clicks, arrow and page keys, Home and End, with visible keyboard focus. This custom mapping is needed because a standard ScrollArea track is constrained to its scroll viewport and cannot include a separate fixed input dock.
 
-Pending permissions replace the input dock with one beUI Tool Approval at a time; remaining permissions stay queued by their Interaction identity. Approved permissions do not add cards to the Trace; denied permissions remain chronological Tool Approval entries.
-
 The conversation Preview Rail sits 20px from the left edge and is vertically centered in the complete conversation detail panel, including its input or approval dock. Its navigation rows are 8px apart, with equal 6px resting tick lengths and 24px maximum lengths only while hovering, focusing, or tapping a preview, preserving the registry proximity animation at a compact scale. At rest, the current Run tick uses `foreground`; during preview, only the pointed or focused tick uses `foreground`. All other ticks use `foreground` at 25% opacity in both themes. A 40px left gutter in the Transcript keeps ticks clear of message content at narrow widths. The rail remains available at narrow widths; overflowing rows scroll within the panel height while previews escape through the existing tooltip portal.
+
+## Acceptance matrix
+
+The specification is accepted through document review; a migrated surface is accepted through rendered checks. Passing documentation checks does not establish runtime conformity. For each changed shared primitive, inspect all affected consumers; do not declare a whole screen compliant from one button screenshot.
+
+| Dimension            | Required scenario                                                                      | Observable pass condition                                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Theme / width        | Light and Dark at 1280×900 and 420×900                                                 | Correct semantic tokens, no horizontal page overflow; geometry and overlays remain compact and consistent                                          |
+| Geometry             | Default 14px interface text; measure rendered control, padding, gaps, icon, radius     | Values match target role tables within 1 CSS px rounding; deviations have a documented role, not a one-off override                                |
+| States               | Default, pointer hover/press, selected, pending, running, complete, error, disabled    | Only intended target changes; no resting hover treatment, false success state, or disabled response                                                |
+| Keyboard             | Tab/Shift+Tab, Enter/Space disclosure, menu arrows/Escape, scrollbar Home/End          | Reachable actions, visible unclipped focus, no focus loss or tooltip over active menu controls                                                     |
+| Locale               | zh and en, plus a fixture with labels twice the normal English length                  | Primary labels and actions remain readable and actionable; wrapping does not overlap icons, status, or adjacent controls                           |
+| Font scaling         | `--ui-font-size` 14px and 18px                                                         | Only text scale changes; row height grows as needed, icons/spacing/radii stay stable, action labels and focus rings remain fully visible           |
+| Long content         | Long path/command, multiline Markdown/table/code, expanded Trace, sequential approvals | Details wrap or scroll internally; action footer is visible; collapsed bodies contain no visible or focusable leaked content                       |
+| Conversation mapping | Rail rest/hover/focus; transcript at top/middle/bottom; resize with approval dock      | Rail positions and unique preview color match its contract; right scrollbar maps to actual scroll range and reaches track bottom at content bottom |
+| Motion / stability   | Streaming, completion, reduced-motion, resize and opening overlays                     | Loading ends on settlement; reduced-motion is static; no layout jumps, ResizeObserver errors, clipped transitions, or animated per-token geometry  |
+| Layering / contrast  | Open menu with tooltip; focus overlay; inspect text and essential controls             | Interactive surface remains above tooltip, shadow survives focus, contrast meets stated ratios in each theme                                       |
+
+Use isolated settings and fake model data for GUI browser checks, following [AGENTS.md](AGENTS.md#tests-and-verification). Capture Light, Dark, and narrow screenshots and record measured geometry, interactions, console/network errors, and remaining differences. Documentation-only edits do not require a runtime build, browser claim, or product test run.
