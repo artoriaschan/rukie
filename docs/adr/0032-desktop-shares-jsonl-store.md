@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded
 ---
 
 # 桌面端与 TUI 共用 JSONL Session store，项目与置顶由桌面端注册表维护
@@ -9,6 +9,8 @@ status: accepted
 [ADR-0003](0003-dual-session-store.md) 原定桌面端使用基于 `bun:sqlite` 的独立 Session store。[ADR-0024](0024-adopt-pi-durable-harness.md) 之后，Session 存储改为 pi-durable 的原生 JSONL Storage，SQLite 只持有写者 lease。桌面端需要决定 Session 存在哪里，以及项目列表、置顶这类桌面端专有的状态由谁持久化。
 
 ## 决定
+
+本决定已由 [ADR-0035](0035-desktop-isolated-sqlite-storage.md) 整份替代。以下保留已交付 MVP 的历史选择；新的桌面存储采用应用专属 SQLite，与终端隔离，实施进度见[存储调整规格](../../.scratch/desktop-storage/spec.md)。
 
 桌面端 server 直接使用 Agent Core 默认的 JSONL Session store，与 TUI 和 Headless CLI 共用同一目录。各端互相能看到对方创建的 Session，并共享按 Session 粒度的单写者 lease：同一个 Session 同时只能被一个进程打开，后到者收到带 code 的 busy 错误，server 映射为 `session_busy`。
 

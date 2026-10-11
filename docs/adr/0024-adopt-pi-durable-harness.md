@@ -24,6 +24,8 @@ Agent Core 采用 pi-durable Harness 作为唯一执行与持久化基座，移�
 
 ### 持久化与状态
 
+桌面端的存储后端与配置隔离由 [ADR-0035](0035-desktop-isolated-sqlite-storage.md) 决定，仍使用 pi-durable 原生 Storage 与恢复语义；以下终端 JSONL 决定继续有效。
+
 Headless CLI 和 TUI 使用原生 JSONL 目录，包含提交文件与 document/task sidecars，并启用 fsync。一个宿主进程独占一个 storage，宿主保证重复打开被拒绝，不假设上游有跨进程锁。新目录与旧数据隔离，旧文件保留但不枚举、不读取、不写入。Session 枚举和恢复使用新身份与索引。
 
 Rukie Session 映射到 durable Conversation，父子 Conversation 与任务 ownership 在同一 Harness 内恢复。durable 的底层 Session 容器名不改变产品术语。Tool State 由所属能力的 typed documents 保存，根据恢复、fork 和 Rewind 需要选择历史策略；Transcript 保留追加事实，模型上下文采用原生投影，Frontend 的当前消息快照不是完整历史。
