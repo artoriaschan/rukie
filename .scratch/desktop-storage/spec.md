@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -81,15 +81,16 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 
 ## ADR Coverage
 
-| 决定                           | 归属                                                                                                                                         | 理由                                                                              |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| 独立数据根、SQLite、输出与凭证 | 新增 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)                                                                      | 替代共享持久化，明确事务、隔离与资源所有权                                        |
-| 原生恢复和重放                 | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                             | 更换后端不更换执行语义                                                            |
-| MCP 生命周期                   | 部分替代并沿用 [ADR-0019](../../docs/adr/0019-mcp-oauth-credential-ownership.md)                                                             | 改密文落盘，保留身份、授权和项目信任                                              |
-| Cookie 与钥匙串                | 沿用 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md)，更新 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md) | 禁用未使用 Cookie；目录/历史只读不解密，显式执行保留系统加解密                    |
-| UI、server、desktop 所有权     | 沿用 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)                                                                            | main 管宿主加密，server 组合，Core 拥有执行                                       |
-| 模型服务布局与组件             | 无需额外 ADR                                                                                                                                 | 用户指定既有画板流程，遵守 DESIGN.md；协议缺口由实施调查核实                      |
-| 桌面开发环境与退出清理         | 更新 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)，沿用 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md) | 固定开发数据、应用和系统加密身份；保留真实工具 home；所属进程清理完成前保留启动锁 |
+| 决定                           | 归属                                                                                                                                         | 理由                                                                                               |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| 独立数据根、SQLite、输出与凭证 | 新增 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)                                                                      | 替代共享持久化，明确事务、隔离与资源所有权                                                         |
+| 原生恢复和重放                 | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                             | 更换后端不更换执行语义                                                                             |
+| MCP 生命周期                   | 部分替代并沿用 [ADR-0019](../../docs/adr/0019-mcp-oauth-credential-ownership.md)                                                             | 改密文落盘，保留身份、授权和项目信任                                                               |
+| Cookie 与钥匙串                | 沿用 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md)，更新 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md) | 禁用未使用 Cookie；目录/历史只读不解密，显式执行保留系统加解密                                     |
+| UI、server、desktop 所有权     | 沿用 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)                                                                            | main 管宿主加密，server 组合，Core 拥有执行                                                        |
+| 模型服务布局与组件             | 无需额外 ADR                                                                                                                                 | 用户指定既有画板流程，遵守 DESIGN.md；协议缺口由实施调查核实                                       |
+| 桌面开发环境与退出清理         | 更新 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)，沿用 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md) | 固定开发数据、应用和系统加密身份；保留真实工具 home；所属进程清理完成前保留启动锁                  |
+| 模型名称与自动推理选择         | 更新 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)，沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)    | 名称不改变请求 ID；产品选择持久保存 automatic，原生 Harness 保持七级载体，统一请求边界省略推理参数 |
 
 ## Delivery Evidence
 
@@ -178,3 +179,5 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 ## 独立模型名称与设计源等级
 
 由 [16](issues/16-independent-model-name-reasoning-labels.md) 的新代理实施，模型 ID/名称独立保存；菜单严格对应勾选的 C16 固定八层名称。用户进一步确认“自动”可选、保存且执行为不附加显式推理参数，由供应商决定。产品持久 Model Selection 保存自动事实，拥有 Models 边界覆盖生成及原生压缩；普通子代理、fork 和 retained 使用各自有效选择，显式会话选择、恢复与 Rewind 保留合同。最小本地证据由实施代理单一记录，父代理复用，未启动真实 Electron/钥匙串或等待 CI。
+
+16 最终关闭于 `80ff7776`：模型名称可独立编辑和清空，模型 ID 仍是请求身份；关闭、自动、Minimal、Low、Medium、High、XHigh、Max 两侧同名同序，菜单仅已勾选项，不国际化等级名称。UI 单例通过（2.67s），实际三协议请求与压缩三例通过（362ms），子代理普通继承/fork 双向及 retained 三例通过（495ms），服务默认、显式优先和冷恢复单例通过（254ms）、Core Rewind/恢复单例通过（86ms）；保存/存储与相关静态证据复用。Light/en、Dark/zh 与两色 420px 实际 Chromium/mock 验收通过，英文占位折行只改短文案并增量复核该控件。两轴的子代理选择一致性和超时清理发现已集中修正，父代理核对源码、断言、记录和截图关闭；新 merger 快进不重跑验证。ADR Coverage 更新 ADR-0035、沿用 ADR-0024/0029，CONTEXT 补齐 automatic 含义。16/spec 同步 resolved，用户预览保留，本地交付不等待 CI，PR 未合并。

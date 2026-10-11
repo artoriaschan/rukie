@@ -1,6 +1,6 @@
 # 16: 独立模型名称与设计源推理等级
 
-Status: claimed
+Status: resolved
 
 Blocked by: 15
 
@@ -9,7 +9,7 @@ Blocked by: 15
 - [x] 核对 C16 当前等级与名称、现有名称存储和展示消费者
 - [x] 复用 beUI Input/Select，独立字段端到端保存并展示；菜单只含勾选等级，取消选中默认等级时清理默认值
 - [x] 更新 DESIGN.md 的明确等级文案例外，最小公开行为测试与一次受影响区域 Chromium/mock 验收
-- [ ] 新代理两轴只读复核、关闭发现、复用验证证据集成并同步关闭 spec
+- [x] 新代理两轴只读复核、关闭发现、复用验证证据集成并同步关闭 spec
 
 验证由实施代理单一负责并记录；不重复包级或全量检查，不启动真实 Electron、访问钥匙串、等待 CI。预览和正式数据保留。ADR Coverage 由最终 diff 核对，新增模型展示元数据应沿用 ADR-0035 的配置与执行身份边界。
 
@@ -24,3 +24,5 @@ Blocked by: 15
 ADR Coverage：既有 ADR-0035 更新独立 name 与 automatic 的持久事实/原生载体/请求边界；沿用 ADR-0024 锁定 Harness 和 ADR-0029 GUI 原语，不新增 Harness 替代路径或 TUI 菜单，不需要新 ADR。两轴发现全部已关闭；父代理负责快进集成后统一状态关闭。
 
 父代理截图复核发现英文 placeholder 在188×36触发器折行，已仅缩短为 Select level/选择等级；该文案文件格式/lint和一张受影响 Light/en placeholder 增量截图通过，无几何变化，其余类型/测试/多主题验收复用。
+
+最终交付：`80ff7776` 经新 merger 快进至 `feat/desktop-storage`，根工作树和祖先确认通过。父代理读取统一有效子代理选择、幂等 runner cleanup、实际请求证据与最终截图，关闭两轴全部发现；没有重复测试、静态或浏览器验收。CONTEXT 补齐 automatic 的领域含义，ADR Coverage 核对更新 ADR-0035 并沿用 ADR-0024/0029；本票与 spec 同步 resolved。本地结果交付，不等待 CI，PR 等待评审，未授权合并；用户旧 Electron 保留。

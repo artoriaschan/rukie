@@ -115,7 +115,7 @@ Session 当前使用的模型（`provider/id`）与 Thinking Level，是 Session
 _Avoid_: model route, active model, model switch（指动作时说"切换 Model Selection"）
 
 **Thinking Level**:
-请求模型时要求的推理强度档位，从 `off` 到 `max`。模型不支持 reasoning 时不可用；模型不支持所选档位时降到它支持的下一个较低档，没有更低档时取它支持的最低档，从不升档。
+请求模型时要求的推理强度档位，从 `off` 到 `max`。模型不支持 reasoning 时明确强度档位不可用；模型不支持所选档位时降到它支持的下一个较低档，没有更低档时取它支持的最低档，从不升档。`automatic` 是不指定推理等级、开关或预算的选择，由供应商决定，不参与强度降档，也不等同明确关闭；它作为 Model Selection 保存、恢复和回退。
 _Avoid_: reasoning effort, effort, thinking budget
 
 ### 给模型的上下文
