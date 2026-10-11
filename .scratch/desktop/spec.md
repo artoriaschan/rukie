@@ -394,3 +394,5 @@ host 接口只有四个方法：`getConnection()`、`pickProjectFolder()`、`rev
 对照最终 diff 和实施票核对模块所有权、依赖方向、授权/信任、持久化/恢复、资源生命周期和 wire 协议。ADR-0029–0032 覆盖三包、五层、Hono/Effect、loopback 认证与共享 JSONL；ADR-0033 部分替代 ADR-0030 的 Session-keyed Run Fiber 规则，明确 Core 完成、请求回执等待和 Session.abort。其余表列取舍与最终实现一致，替代关系和链接完整，没有交付依赖的未确认决定。局部 consumer/文案/中断等待修复没有新增持久化格式或架构边界，无需额外 ADR。
 
 21–30 与 spec 在本次同一变更设为 resolved，含义仅为实现、受影响文档、评审修复和适用本地验证完成。最终推送的 CI 仍待验收，结果保留于 PR checks/描述与交付回复；本记录不证明 CI、公证、分发或合并。
+
+2026-10-11 — 启动钥匙串修正：之前 Cookie Encryption 导致的提示已通过关闭未使用的 fuse 处理；普通启动参数验收的首页、生产 sidecar 握手与退出通过，不再用 mock keychain 代替启动验收。长期 Cookie-free 存储约束由 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md) 覆盖，详细证据见 [issue 30](issues/30-local-macos-build.md)。

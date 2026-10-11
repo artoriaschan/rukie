@@ -37,3 +37,5 @@ Status: resolved
 一条本地 macOS arm64 构建命令生成真实 ad-hoc app；sidecar/rg 外置、精确签名、fuses、strict deep codesign 与 JIT 自检通过。真实编译产物完成流式/审批/bash/rg/Transcript 和进程退出验收。
 
 最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。
+
+2026-10-11 — 钥匙串启动修正：生产 Cookie Encryption fuse 关闭，构建在最终签名 app 中读回验证；桌面端无 Cookie 使用方，WS token 与 sidecar 配置／Session 存储保持原责任。长期约束见 [ADR-0034](../../../docs/adr/0034-desktop-cookie-free-startup.md)。原开启 Cookie Encryption 的 smoke 与 mock keychain 是历史证据，当前启动验收不使用该参数。调整后的真实 ad-hoc app 在隔离 HOME/user-data 下直接启动，首页与生产编译 sidecar 握手就绪，无 page／Keychain 错误；关闭窗口后 open -W 退出 0，任务 app/sidecar 进程归零。10 个 desktop Node 测试（583ms）、check:dev、签名／完整性／fuse 读回／JIT 检查通过。证据在 `/tmp/rukie-desktop-keychain-evidence/`，最终构建源码身份由 desktop-build.json 记录。

@@ -2,7 +2,13 @@ import { chmod, cp, mkdir, realpath, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { build, Platform, Arch } from "electron-builder";
-import { flipFuses, FuseVersion, FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
+import {
+  flipFuses,
+  FuseState,
+  FuseVersion,
+  FuseV1Options,
+  getCurrentFuseWire,
+} from "@electron/fuses";
 import { compiledBunOptions } from "../compiled-bun.ts";
 import { BUILD_BUN_VERSION } from "../release/platforms.ts";
 
@@ -142,7 +148,9 @@ export async function buildDesktop(output: string) {
         await flipFuses(app, {
           version: FuseVersion.V1,
           [FuseV1Options.RunAsNode]: false,
-          [FuseV1Options.EnableCookieEncryption]: true,
+          // Desktop uses token-authenticated WS and stores no credentials in cookies.
+          // Enabling this unused feature initializes Keychain on every ad-hoc build.
+          [FuseV1Options.EnableCookieEncryption]: false,
           [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
           [FuseV1Options.EnableNodeCliInspectArguments]: false,
           [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
@@ -221,6 +229,11 @@ export async function buildDesktop(output: string) {
   )
     throw new Error("Electron signature is missing hardened-runtime capabilities");
   const rgVersion = await run([join(resources, "rg"), "--version"]);
+  const fuses = await getCurrentFuseWire(app);
+  if (fuses[FuseV1Options.EnableCookieEncryption] !== FuseState.DISABLE)
+    throw new Error(
+      "Desktop cookie encryption must remain disabled to avoid startup Keychain access",
+    );
   const metadata = {
     app,
     commit: (await run(["git", "rev-parse", "HEAD"])).trim(),
@@ -228,7 +241,7 @@ export async function buildDesktop(output: string) {
     bunVersion: Bun.version,
     electronVersion: "41.0.3",
     integrityPresent,
-    fuses: await getCurrentFuseWire(app),
+    fuses,
     jitCompiles,
     appEntitlements,
     appFlags,

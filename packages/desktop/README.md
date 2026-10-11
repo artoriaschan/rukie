@@ -28,8 +28,8 @@ Electron host 启动 Bun sidecar，通过受来源校验的 preload 向 renderer
 
 脚本构建 main、CommonJS sandbox preload、当前 UI 入口和编译 sidecar；与 CLI release 共用禁止 dotenv、bunfig、package.json、tsconfig 自动加载的 Bun 编译配置。asar 内只含 JS 与 renderer；`Contents/Resources/sidecar/` 外置 rukie-server 和锁定的 rg，不依赖系统 Bun 或 Homebrew。
 
-`mac.identity: "-"` 执行 ad-hoc hardened-runtime 签名。Electron 与 Helper 保留 disable-library-validation；afterSign 将 sidecar 收紧到仅 allow-jit、rg 清除 entitlement，然后重封外层 app。electron-builder 26.15.3 在 afterPack 之前写入 ElectronAsarIntegrity，脚本检查实际 plist 后启用完整性和 OnlyLoadAppFromAsar fuse，并关闭 RunAsNode、NODE_OPTIONS 和 Node inspect。保留 Cookie Encryption。
+`mac.identity: "-"` 执行 ad-hoc hardened-runtime 签名。Electron 与 Helper 保留 disable-library-validation；afterSign 将 sidecar 收紧到仅 allow-jit、rg 清除 entitlement，然后重封外层 app。electron-builder 26.15.3 在 afterPack 之前写入 ElectronAsarIntegrity，脚本检查实际 plist 后启用完整性和 OnlyLoadAppFromAsar fuse，并关闭 RunAsNode、NODE_OPTIONS 和 Node inspect。Cookie Encryption 关闭：桌面端没有 Cookie 使用方，鉴权用 WS token，关闭未使用的加密初始化可避免 ad-hoc 构建启动时请求钥匙串密码；约束与代价见 [ADR-0034](../../docs/adr/0034-desktop-cookie-free-startup.md)。
 
-构建验收针对最终 app：strict deep codesign、runtime flags、sidecar/rg entitlement、实际 rg 版本和 `BUN_BE_BUN=1` DFG JIT 探针。JIT 不可用时构建失败，不按耗时猜测。此命令不调用 spctl，也不证明 Developer ID 签名、公证或分发成功。
+构建验收针对最终 app：Cookie Encryption fuse 读回必须为关闭、strict deep codesign、runtime flags、sidecar/rg entitlement、实际 rg 版本和 `BUN_BE_BUN=1` DFG JIT 探针。JIT 不可用时构建失败，不按耗时猜测。此命令不调用 spctl，也不证明 Developer ID 签名、公证或分发成功。
 
-打包 smoke 同时隔离 HOME 与 Electron user-data，并仅使用已有 fakeModel 经外部 loopback 传输桥接，不改生产 sidecar。隔离 HOME 可能触发 Chromium Keychain 初始化等待；本次验收用 `--use-mock-keychain` 测试启动参数避免访问真实钥匙串，生产包的加密设置保持不变。验收详细证据见 [issue 30](../../.scratch/desktop/issues/30-local-macos-build.md)。
+打包 smoke 同时隔离 HOME 与 Electron user-data，并仅使用已有 fakeModel 经外部 loopback 传输桥接，不改生产 sidecar。当前打包 smoke 使用普通启动参数，禁止以 `--use-mock-keychain` 代替启动验收。此前开启 Cookie Encryption 的产物曾依赖该测试参数；历史验收详细证据见 [issue 30](../../.scratch/desktop/issues/30-local-macos-build.md)。
