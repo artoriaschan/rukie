@@ -1,4 +1,4 @@
-import { truncateHead } from "./support/runtime.ts";
+import { truncateHead, captureFullOutput } from "./support/runtime.ts";
 import { Value } from "typebox/value";
 import type { PresentedTool } from "./support/presentation.ts";
 import { lstat } from "node:fs/promises";
@@ -68,7 +68,7 @@ export function createGlobTool(cwd: string): PresentedTool<typeof schema> {
       Value.Check(facts, details)
         ? { card: "search", kind: "search", displayKey: "tool.glob", shape: "paths", ...details }
         : undefined,
-    async execute({ pattern, path }, _api, context) {
+    async execute({ pattern, path }, api, context) {
       const signal = context.abortSignal;
       const root = resolve(cwd, path ?? ".");
       const glob = new Bun.Glob(pattern);
@@ -112,7 +112,9 @@ export function createGlobTool(cwd: string): PresentedTool<typeof schema> {
         }
       }
       await walk(root, ancestors);
-      const output = truncateHead(matches.sort().join("\n"));
+      const complete = matches.sort().join("\n");
+      captureFullOutput(api, complete);
+      const output = truncateHead(complete);
       // A byte cutoff may leave an incomplete final path; show only complete facts.
       const paths = output.content ? output.content.split("\n") : [];
       if (output.truncated && output.truncatedBy === "bytes") paths.pop();

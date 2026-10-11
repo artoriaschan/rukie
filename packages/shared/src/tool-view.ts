@@ -35,10 +35,14 @@ export const ToolCallViewSchema = Type.Union([
 ]);
 /** Output notices are facts separate from body text: frontends keep them visible outside folds.
  * Read continuation offsets come from upstream truncation metadata; recovery paths may expire. */
+const resultCommon = {
+  ...common,
+  outputRef: Type.Optional(Type.Object({ id: Type.String({ minLength: 1 }) })),
+};
 export const ToolResultViewSchema = Type.Union([
-  Type.Object({ ...common, card: Type.Literal("generic"), text: Type.String() }),
+  Type.Object({ ...resultCommon, card: Type.Literal("generic"), text: Type.String() }),
   Type.Object({
-    ...common,
+    ...resultCommon,
     card: Type.Literal("terminal"),
     output: Type.String(),
     exitCode: Type.Optional(Type.Number()),
@@ -46,16 +50,16 @@ export const ToolResultViewSchema = Type.Union([
     outputUnavailable: Type.Optional(Type.Boolean()),
     fullOutputPath: Type.Optional(Type.String()),
   }),
-  Type.Object({ ...common, card: Type.Literal("diff"), diffs }),
+  Type.Object({ ...resultCommon, card: Type.Literal("diff"), diffs }),
   Type.Object({
-    ...common,
+    ...resultCommon,
     card: Type.Literal("search"),
     shape: Type.Literal("paths"),
     paths: Type.Array(Type.String()),
     total: Type.Optional(Type.Number()),
   }),
   Type.Object({
-    ...common,
+    ...resultCommon,
     card: Type.Literal("search"),
     shape: Type.Literal("matches"),
     matches: Type.Array(
@@ -64,7 +68,7 @@ export const ToolResultViewSchema = Type.Union([
     total: Type.Optional(Type.Number()),
   }),
   Type.Object({
-    ...common,
+    ...resultCommon,
     card: Type.Literal("read"),
     path: Type.String(),
     offset: Type.Optional(Type.Number()),
@@ -74,7 +78,7 @@ export const ToolResultViewSchema = Type.Union([
     content: Type.String(),
   }),
   Type.Object({
-    ...common,
+    ...resultCommon,
     card: Type.Literal("web"),
     outputUnavailable: Type.Optional(Type.Boolean()),
     url: Type.String(),

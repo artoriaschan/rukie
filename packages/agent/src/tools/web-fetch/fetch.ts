@@ -18,6 +18,7 @@ export async function fetchWeb(
   runSignal?: AbortSignal,
   options: WebFetchOptions = {},
   applicationVersion?: string,
+  capture?: (text: string) => void,
 ) {
   const timeout = AbortSignal.timeout(options.timeoutMs ?? 30_000);
   const signal = runSignal ? AbortSignal.any([runSignal, timeout]) : timeout;
@@ -50,6 +51,7 @@ export async function fetchWeb(
             response.status,
             `Redirected to ${destination.href}; call web_fetch again with it to continue.`,
             false,
+            capture,
           );
         }
         const maxBytes = options.maxBytes ?? 5 * 1024 * 1024;
@@ -84,8 +86,8 @@ export async function fetchWeb(
           offset += chunk.length;
         }
         const body = decodeBody(bytes, response.headers.get("content-type"));
-        if (!response.ok) throw new Error(renderHttpError(url, response.status, body));
-        return render(url, response.status, body, truncated);
+        if (!response.ok) throw new Error(renderHttpError(url, response.status, body, capture));
+        return render(url, response.status, body, truncated, capture);
       } finally {
         await response.body?.cancel().catch(() => {});
         await close();

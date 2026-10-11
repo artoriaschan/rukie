@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { access, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { truncateHead } from "./support/runtime.ts";
+import { truncateHead, captureFullOutput } from "./support/runtime.ts";
 import { createUserVisibleError } from "@rukie/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -50,7 +50,7 @@ export function createGrepTool(cwd: string): PresentedTool<typeof schema> {
       Value.Check(facts, details)
         ? { card: "search", kind: "search", displayKey: "tool.grep", shape: "matches", ...details }
         : undefined,
-    async execute({ pattern, path }, _api, context) {
+    async execute({ pattern, path }, api, context) {
       const signal = context.abortSignal;
       signal?.throwIfAborted();
       let proc;
@@ -117,9 +117,11 @@ export function createGrepTool(cwd: string): PresentedTool<typeof schema> {
               ]
             : [];
         });
-      const output = truncateHead(
-        allMatches.map((match) => `${match.path}:${match.line}:${match.text}`).join("\n"),
-      );
+      const complete = allMatches
+        .map((match) => `${match.path}:${match.line}:${match.text}`)
+        .join("\n");
+      captureFullOutput(api, complete);
+      const output = truncateHead(complete);
       // A byte cutoff can leave a partial final line. Keep only complete match facts.
       let consumed = 0;
       const matches = allMatches.filter((match, index) => {

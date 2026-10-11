@@ -7,7 +7,7 @@ export {
   type ModelServiceSummary,
   type ModelServiceSave,
 } from "./model-services.ts";
-export type { JobView, JobOutput, JobEvent } from "./jobs.ts";
+export type { JobView, JobOutput, JobEvent, ToolOutputRef } from "./jobs.ts";
 export { isUnknownToolOutcome } from "./tool-outcome.ts";
 export {
   THINKING_LEVELS,

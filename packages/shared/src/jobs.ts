@@ -1,3 +1,6 @@
+/** Stable output identity within one root Harness; independent of model call IDs. */
+export type ToolOutputRef = { id: string };
+
 /** Process-local background work owned by one Session; never restored from Transcript. */
 export interface JobView {
   id: string;
@@ -10,6 +13,7 @@ export interface JobView {
   startedAt: number;
   endedAt?: number;
   spillPath?: string;
+  outputRef?: ToolOutputRef;
 }
 
 /** stdout and stderr since an absolute UTF-8 byte offset shared by both streams. */

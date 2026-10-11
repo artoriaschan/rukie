@@ -52,6 +52,7 @@ import {
   type McpSnapshot,
   type JobView,
   type JobOutput,
+  type ToolOutputRef,
 } from "@rukie/shared";
 import type { SessionEvent } from "./events.ts";
 import {
@@ -216,6 +217,7 @@ export interface Session {
   jobs(): JobView[];
   /** Read from an absolute UTF-8 byte offset without moving the model's job_output cursor. */
   readJob(id: string, offset: number): JobOutput;
+  readToolOutput(ref: ToolOutputRef, offset?: number, maxBytes?: number): Promise<JobOutput>;
   /** Stop a job; inform the active Run or queue input for the next human prompt while idle. */
   killJob(id: string): Promise<void>;
   readonly currentRequestId: string | undefined;
@@ -474,6 +476,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     // even though no durable submission receipt can be fabricated for that failure.
     const observedStorage = new Proxy(lease.storage, {
       get(target, key) {
+        // Native shutdown stops scheduling first. The root lease keeps its connection
+        // alive until owned background pipes drain, then release closes the storage.
+        if (key === "close" && lease.outputs) return async () => {};
         if (key === "document")
           return async (...args: Parameters<Storage["document"]>) => {
             const document = await target.document(...args);
@@ -524,6 +529,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     );
     const permissionBatch = createPermissionBatch(harness);
     const runtime = createConversationRuntime({
+      outputs: lease.outputs,
       lifetime: auxiliaryLifetime.signal,
       isClosed: () => closed,
     });
@@ -1100,6 +1106,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
     });
     const childRuntimes = createConversationRuntimePool({
+      outputs: lease.outputs,
       lifetime: auxiliaryLifetime.signal,
       isClosed: () => closed,
     });
@@ -3004,6 +3011,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         })();
       },
       jobs: () => jobs.list(),
+      async readToolOutput(ref, offset = 0, maxBytes = 256 * 1024) {
+        if (!lease.outputs) throw new Error("Tool output references require SQLite storage");
+        return lease.outputs.read(ref, offset, maxBytes);
+      },
       readJob(id, offset) {
         const job = jobs.get(id);
         if (!job) throw new Error(`Unknown job: ${id}`);

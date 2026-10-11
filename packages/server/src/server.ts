@@ -12,6 +12,7 @@ import {
   listSessions,
   discoverSqliteSessions,
   readSessionSnapshot,
+  readSessionToolOutput,
   listModelCatalog,
   loadSettings,
   type PermissionAskRequest,
@@ -486,6 +487,21 @@ export async function startServer(options: ServerOptions) {
               return { sessionId: summary.id, readonly: true, modelUnavailable: true };
             throw error;
           }
+        }
+        case "tool_output.read": {
+          const summary = (await summaries()).find((item) => item.id === command.sessionId);
+          if (!summary) throw new CommandError("session_not_found");
+          return readSessionToolOutput(
+            {
+              cwd: summary.cwd,
+              homeDir: options.homeDir,
+              dataRoot: options.dataRoot,
+              id: summary.id,
+            },
+            command.outputRef,
+            command.offset,
+            command.maxBytes,
+          );
         }
         case "session.unsubscribe":
           subscriptions.get(socket.raw)?.get(command.sessionId)?.();

@@ -15,6 +15,9 @@ import {
   SqliteStorage,
   CURRENT_SQLITE_SCHEMA_VERSION,
 } from "@earendil-works/pi-durable/storage/sqlite";
+import type { SqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite";
+import { createSqliteOutputs, readSqliteOutput, type SqliteOutputs } from "./output.ts";
+import type { ToolOutputRef, JobOutput } from "@rukie/shared";
 import { openBunSqliteDatabase } from "./sqlite-database.ts";
 import { JsonlStorage } from "@earendil-works/pi-durable/storage/jsonl";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
@@ -72,6 +75,7 @@ export interface SessionSummary {
 export interface SessionStorageLease {
   id: string;
   storage: Storage;
+  outputs?: SqliteOutputs;
   release(): Promise<void>;
 }
 /** Native storage ownership, never a legacy Session repository. */
@@ -190,6 +194,7 @@ function createStore(options: UserDataOptions & { cwd: string }, sqlite: boolean
         );
       }
       const files = new CommittedFiles({ cwd });
+      let database: SqliteDatabase | undefined;
       try {
         if (sqlite && id) {
           const reader = createNativeSession(
@@ -208,13 +213,16 @@ function createStore(options: UserDataOptions & { cwd: string }, sqlite: boolean
             await reader.close(BACKGROUND_CONTEXT);
           }
         }
-        const storage = sqlite
-          ? await SqliteStorage.open(await openBunSqliteDatabase(join(directory, storageName)))
+        database = sqlite ? await openBunSqliteDatabase(join(directory, storageName)) : undefined;
+        const outputs = database ? await createSqliteOutputs(database) : undefined;
+        const storage = database
+          ? await SqliteStorage.open(database)
           : await JsonlStorage.open(directory, files, context, { fsync: true });
         let released = false;
         return {
           id: sessionId,
           storage,
+          outputs,
           async release() {
             if (released) return;
             released = true;
@@ -230,6 +238,7 @@ function createStore(options: UserDataOptions & { cwd: string }, sqlite: boolean
           },
         };
       } catch (error) {
+        await database?.close();
         lease.close();
         await files.cleanup(BACKGROUND_CONTEXT);
         throw error;
@@ -342,7 +351,10 @@ export async function listSessions(options: {
 }
 
 /** Native read semantics over a pinned WAL frame, without open()'s schema migrations. */
-async function openReadonlySqliteStorage(path: string): Promise<Storage> {
+async function openReadonlySqliteStorage(
+  path: string,
+  opened?: (database: SqliteDatabase) => void,
+): Promise<Storage> {
   const db = await openBunSqliteDatabase(path, { readonly: true });
   try {
     const schema = await db.get<{ version: number }>(
@@ -376,6 +388,7 @@ async function openReadonlySqliteStorage(path: string): Promise<Storage> {
     // Locked pi-durable's constructor only stores (db, nextId); open() adds migrations.
     // Reflect.construct retains native reads without duplicating its document/history engine.
     const storage: SqliteStorage = Reflect.construct(SqliteStorage, [db, nextId]);
+    opened?.(db);
     return new Proxy(storage, {
       get(target, key) {
         if (key === "commit" || key === "mintId")
@@ -442,4 +455,37 @@ export async function discoverSqliteSessions(
     }
   }
   return results.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+}
+
+/** Read historical desktop output without execution ownership, recovery, or schema mutation. */
+export async function readSessionToolOutput(
+  options: UserDataOptions & { cwd: string; id: string },
+  ref: ToolOutputRef,
+  from = 0,
+  maxBytes = 256 * 1024,
+): Promise<JobOutput> {
+  validId(options.id);
+  if (!options.dataRoot) throw new Error("Historical tool output requires SQLite Session storage");
+  let database: SqliteDatabase | undefined;
+  const storage = await openReadonlySqliteStorage(
+    join(createSessionStore(options).key(options.id), "session.sqlite"),
+    (db) => {
+      database = db;
+    },
+  );
+  const kernel = createNativeSession(storage);
+  try {
+    const metadata = parseSessionMetadata(
+      await kernel.snapshot(SessionMetadataDoc, BACKGROUND_CONTEXT),
+    );
+    if (metadata.id !== options.id || metadata.cwd !== resolve(options.cwd))
+      throw createUserVisibleError(`Session not found: ${options.id}`, {
+        code: "session-not-found",
+        params: { id: options.id },
+      });
+    if (!database) throw new Error("Missing Session output connection");
+    return await readSqliteOutput(database, ref, from, maxBytes);
+  } finally {
+    await kernel.close(BACKGROUND_CONTEXT);
+  }
 }

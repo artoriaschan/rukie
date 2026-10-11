@@ -39,9 +39,12 @@ export function createJobTools(jobs: Jobs): ToolRegistration[] {
       if (result.stderr) text += `${text ? "\n" : ""}[stderr]\n${result.stderr}`;
       text ||= "(no new output)";
       if (result.dropped)
-        text += `\n[some output was dropped from memory; full output: ${job.view.spillPath}]`;
+        text += `\n[some output was dropped from memory; full output: ${job.view.spillPath ?? `output reference ${job.view.outputRef?.id}`}]`;
       text += `\n${jobStatus(job.view)}`;
-      return { content: [{ type: "text", text }], details: undefined };
+      return {
+        content: [{ type: "text", text }],
+        details: job.view.outputRef ? { outputRef: job.view.outputRef } : undefined,
+      };
     },
   };
   const kill: PresentedTool<typeof killSchema> = {

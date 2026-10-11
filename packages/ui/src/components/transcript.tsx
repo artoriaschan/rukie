@@ -10,7 +10,7 @@ import { Button } from "./motion/button/base";
 import { PreviewRail } from "./motion/preview-rail";
 import { MessageBubble, MessageBubbleContent } from "./agents/message-bubble";
 import { Markdown } from "./markdown";
-import { ToolRow } from "./tool-row";
+import { ToolRow, type ReadToolOutput } from "./tool-row";
 import { ToolApproval, ToolApprovalCode } from "./agents/tool-approval";
 import { AgentActivity, type AgentActivityItem } from "./agents/agent-activity";
 import { ThinkingShimmer } from "./agents/loading-states/thinking-shimmer";
@@ -21,11 +21,13 @@ function Group({
   state,
   decisions,
   waiting,
+  readOutput,
 }: {
   group: PromptGroup;
   state: TranscriptState;
   decisions: PermissionDecision[];
   waiting: boolean;
+  readOutput?: ReadToolOutput;
 }) {
   const t = useAppText();
   const failed =
@@ -231,7 +233,7 @@ function Group({
                     ? "write"
                     : (tool.callView?.kind ?? "other"),
               icon: null,
-              label: <ToolRow tool={tool} />,
+              label: <ToolRow tool={tool} readOutput={readOutput} />,
             },
             {
               active: group.status === "running" && tool.status === "running",
@@ -374,12 +376,14 @@ export function Transcript({
   state,
   decisions,
   waiting,
+  readOutput,
 }: {
   viewportRef?: RefObject<HTMLDivElement | null>;
   navigationContainer?: HTMLElement | null;
   state: TranscriptState;
   decisions: PermissionDecision[];
   waiting: boolean;
+  readOutput?: ReadToolOutput;
 }) {
   const t = useAppText();
   const ownViewport = useRef<HTMLDivElement>(null);
@@ -463,7 +467,13 @@ export function Transcript({
                 className="absolute left-0 top-0 w-full"
                 style={{ transform: `translateY(${item.start}px)` }}
               >
-                <Group group={group} state={state} decisions={decisions} waiting={waiting} />
+                <Group
+                  group={group}
+                  state={state}
+                  decisions={decisions}
+                  waiting={waiting}
+                  readOutput={readOutput}
+                />
               </article>
             );
           })}
