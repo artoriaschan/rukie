@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -199,3 +199,5 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 ## 高级设置表单编辑
 
 用户报告 C16 高级设置表单无法填写，由 [20](issues/20-model-advanced-editing.md) 新代理修复实际输入和持久化合同，保持设计字段与布局；验证限受影响接缝，普通 Chromium/mock，不启动 Electron。
+
+20 最终关闭于 `7131447e`：原高级字段是 disabled 占位且配置未定义，现补齐九字段的实际 beUI 编辑、有限值/范围校验、保存与重开，保留小数输入中间态、清空默认和 C16 布局。用户确认压缩阈值 1–100% 与每 Run 工具批次上限后无工具总结；Temperature 进入请求、四项价格进入成本，根会话百分比转换原生触发阈值，摘要预算与阈值独立以支持 100%。工具轮次依据当前 Conversation/Run 原生已提交 toolUse 批次恢复计数，主/子代理共享限额，违规供应商工具回复由原生 abort 阻止继续执行。最终 UI 单例 1.89s、存储单例 11.93ms、Core 四例 487ms，相关类型、局部静态、文档和测试策略通过；真实 Chromium/mock Light/Dark/420px 九字段可编辑并保存重开，无控制台错误/横向溢出，临时服务已清理。新两轴零预算 P1/partial 误计 P2 与父代理小数问题集中修复并只复验失效接缝，父代理核对闭合，fresh merger 仅快进集成。ADR Coverage 更新 ADR-0035，沿用 ADR-0024 原生执行。子代理压缩沿用根 Harness 策略，同 Run partial 恢复仅源码审查；未运行真实 Electron/Keychain、包级/全量或 CI。20/spec resolved，以本地结果交付，用户预览保持，PR 未合并。
