@@ -1,4 +1,4 @@
-Status: resolved
+Status: claimed
 
 # Spec: 桌面端独立 SQLite 存储与模型服务录入
 
@@ -167,3 +167,7 @@ API Key 录入通过受信任 preload IPC 到 main，再经私有 main/sidecar �
 用户指定 C01 为整体壳维护源、C02/C03 为会话/设置中间栏，整页参照 H01/H08/H09/P01 与 L- 浅色稿。由 [14](issues/14-app-shell-pencil.md) 新代理更新背景、圆角、分割线和标题栏按钮/标题分支，保留 Session、标签与内容交互合同。
 
 14 最终关闭于 `cd7fa2e1`：C01 统一壳背景、16/12px 圆角、52/268px 栏宽、Pencil 分割线及 44px 标题栏；会话区域保留标题/分割线，设置无标题与侧栏开关。beUI Back/Forward 恢复会话、设置和独立草稿，现有内容/输入与滚动保持。最终受影响布局 2 pass（1.90s）、导航单例 1 pass（1.51s）、Node 窗口配置 mock 1 pass（336ms）；类型、其他消费者和实际 Light/Dark/窄屏证据复用，详见 [14](issues/14-app-shell-pencil.md)。Standards 清理发现已修正，Spec 无明确偏差，父代理核对最终 divider 补丁与截图关闭；新的 merger 快进集成不重跑。ADR Coverage 沿用 ADR-0029/0035，无新架构取舍。H09 独立标签功能未在本票新增，原生红绿灯实际对齐尚未验收；用户旧 Electron 保留。14/spec 同时 resolved，本地交付不等待 CI，PR 未合并。
+
+## 隔离的桌面开发入口
+
+用户要求增加 `dev:desktop` 调试命令，开发所依赖的状态与正式版完全隔离，开发数据不影响正式数据。由 [15](issues/15-isolated-desktop-development.md) 新代理实施；开发身份、业务数据与 Electron 状态分离，真实工具 home 保留，生产来源校验/凭据策略不被开发便利削弱。
