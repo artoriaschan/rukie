@@ -60,7 +60,10 @@ function getStatusClass(status: ApprovalCardStatus) {
 }
 
 function getStatusBadgeClass(status: ApprovalCardStatus) {
-  if (status === "pending" || status === "changes-requested") {
+  if (status === "pending") {
+    return "border-interaction-confirmation-foreground/30 bg-interaction-confirmation-surface text-interaction-confirmation-foreground";
+  }
+  if (status === "changes-requested") {
     return "border-warning/30 bg-warning/10 text-warning";
   }
   if (status === "submitting") {

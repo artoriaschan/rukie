@@ -55,6 +55,48 @@
   --glass-border: rgb(31 35 40 / 0.08);
   --glass-strong-bg: rgb(255 255 255 / 0.7);
   --glass-thin-bg: rgb(255 255 255 / 0.45);
+
+  /* Granular presentation roles stay independent even when palette values match. */
+  --brand: var(--accent);
+  --icon-blue: var(--accent);
+  --background-alt: var(--card);
+  --background-win-alt: var(--background);
+  --header: var(--background);
+  --panel: var(--background);
+  --sidebar: var(--background);
+  --surface: var(--card);
+  --surface-hover: color-mix(in srgb, var(--foreground) 5%, var(--surface));
+  --card-selected: var(--selected);
+  --menu: var(--popover);
+  --menu-hover: color-mix(in srgb, var(--foreground) 5%, var(--menu));
+  --input-surface: var(--background);
+  --input-focused: var(--background);
+  --foreground-subtle: var(--muted-foreground);
+  --foreground-inverse: var(--background);
+  --border-hover: var(--border-strong);
+  --card-border: var(--border);
+  --popover-border: var(--border-strong);
+  --input-border: var(--border);
+  --input-border-hover: var(--border-strong);
+  --input-border-focused: var(--ring);
+  --idle-task: var(--violet);
+  --idle-task-surface: color-mix(in srgb, var(--idle-task) 10%, var(--background));
+  --workflow-rule: color-mix(in srgb, var(--border) 50%, transparent);
+  --workflow-trace: var(--border-strong);
+  --workflow-trace-strong: var(--muted-foreground);
+  --toast: var(--popover);
+  --tooltip: var(--popover);
+  --tooltip-foreground: var(--foreground);
+  --tooltip-tag: var(--muted);
+  --tooltip-tag-foreground: var(--muted-foreground);
+  --tag: var(--muted);
+  --hover: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  --selected: color-mix(in srgb, var(--foreground) 8%, var(--background));
+  --foreground-subtlest: #656d76;
+  --interaction-confirmation-surface: #dafbe1;
+  --interaction-confirmation-foreground: #116329;
+  --find-highlight: #fff8c5;
+  --find-highlight-active: #fae17d;
   /* shadcn semantic tokens */
   --card-foreground: var(--foreground);
   --popover: var(--card);
@@ -96,6 +138,11 @@
   --diff-added-fg: #aff5b4;
   --diff-removed-fg: #ffdcd7;
 
+  --foreground-subtlest: #848d97;
+  --interaction-confirmation-surface: #033a16;
+  --interaction-confirmation-foreground: #7ee787;
+  --find-highlight: #3b2300;
+  --find-highlight-active: #5a3d00;
   --background: #0d1117;
   --foreground: #f0f6fc;
   --card: #151b23;
@@ -124,6 +171,47 @@
 }
 
 @theme inline {
+  --color-brand: var(--brand);
+  --color-icon-blue: var(--icon-blue);
+  --color-background-alt: var(--background-alt);
+  --color-background-win-alt: var(--background-win-alt);
+  --color-header: var(--header);
+  --color-panel: var(--panel);
+  --color-sidebar: var(--sidebar);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-card-selected: var(--card-selected);
+  --color-menu: var(--menu);
+  --color-menu-hover: var(--menu-hover);
+  --color-input-surface: var(--input-surface);
+  --color-input-focused: var(--input-focused);
+  --color-foreground-subtle: var(--foreground-subtle);
+  --color-foreground-inverse: var(--foreground-inverse);
+  --color-border-hover: var(--border-hover);
+  --color-card-border: var(--card-border);
+  --color-popover-border: var(--popover-border);
+  --color-input-border: var(--input-border);
+  --color-input-border-hover: var(--input-border-hover);
+  --color-input-border-focused: var(--input-border-focused);
+  --color-idle-task: var(--idle-task);
+  --color-idle-task-surface: var(--idle-task-surface);
+  --color-workflow-rule: var(--workflow-rule);
+  --color-workflow-trace: var(--workflow-trace);
+  --color-workflow-trace-strong: var(--workflow-trace-strong);
+  --color-toast: var(--toast);
+  --color-tooltip: var(--tooltip);
+  --color-tooltip-foreground: var(--tooltip-foreground);
+  --color-tooltip-tag: var(--tooltip-tag);
+  --color-tooltip-tag-foreground: var(--tooltip-tag-foreground);
+  --color-tag: var(--tag);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+  --color-foreground-subtlest: var(--foreground-subtlest);
+  --color-interaction-confirmation-surface: var(--interaction-confirmation-surface);
+  --color-interaction-confirmation-foreground: var(--interaction-confirmation-foreground);
+  --color-find-highlight: var(--find-highlight);
+  --color-find-highlight-active: var(--find-highlight-active);
+
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
@@ -166,6 +254,8 @@
   --text-ui-base--line-height: calc(1.25 / 0.875);
   --text-ui-sm: calc(var(--ui-font-size) - 2px);
   --text-ui-sm--line-height: calc(1 / 0.75);
+  --text-ui-2xs: calc(var(--ui-font-size) - 5px);
+  --text-ui-2xs--line-height: calc(12 / 9);
   --text-ui-xs: calc(var(--ui-font-size) - 4px);
   --text-ui-xs--line-height: 1.4;
   --text-ui-caption: calc(var(--ui-font-size) - 1px);
@@ -313,6 +403,11 @@
     --diff-added-fg: #aff5b4;
     --diff-removed-fg: #ffdcd7;
 
+    --foreground-subtlest: #848d97;
+    --interaction-confirmation-surface: #033a16;
+    --interaction-confirmation-foreground: #7ee787;
+    --find-highlight: #3b2300;
+    --find-highlight-active: #5a3d00;
     --background: #0d1117;
     --foreground: #f0f6fc;
     --card: #151b23;

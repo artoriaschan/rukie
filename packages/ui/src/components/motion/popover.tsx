@@ -669,7 +669,7 @@ export function PopoverContent({ children, className, ariaLabel }: PopoverConten
               transformOrigin: `${ALIGN_ORIGIN[align]} ${side === "bottom" ? "top" : "bottom"}`,
             }}
             className={cn(
-              "w-max max-w-[min(calc(100vw-32px),320px)] max-h-[calc(100dvh-32px)] overflow-y-auto rounded-xl border border-border-strong bg-popover p-3 text-popover-foreground shadow-md outline-none",
+              "w-max max-w-[min(calc(100vw-32px),320px)] max-h-[calc(100dvh-32px)] overflow-y-auto rounded-xl border border-popover-border bg-popover p-3 text-popover-foreground shadow-md outline-none",
               className,
             )}
           >

@@ -77,7 +77,11 @@ function Group({
       {(group.status === "running" && waiting) ||
       group.status === "aborted" ||
       group.status === "failed" ? (
-        <span>
+        <span
+          className={
+            group.status === "running" ? "text-interaction-confirmation-foreground" : undefined
+          }
+        >
           {t(
             group.status === "running"
               ? "app.waiting"

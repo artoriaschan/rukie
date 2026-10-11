@@ -6,7 +6,7 @@ This file is meant for coding agents. When generating or editing GUI code, follo
 
 ## Baseline
 
-The visual reference is the ZCode Design System: calm surfaces, compact operational controls, repeated spacing, nested radius, restrained depth, and motion that explains state changes. Rukie retains its GitHub Light/Dark palette and its Session, Run, Transcript, and Interaction behavior; ZCode-specific themes, workspace frames, and feature tokens are not Rukie contracts.
+The visual reference is the ZCode Design System: calm surfaces, compact operational controls, repeated spacing, nested radius, restrained depth, and motion that explains state changes. Rukie retains its GitHub Light/Dark palette and its Session, Run, Transcript, and Interaction behavior. ZCode's desktop design rules apply through the semantic roles and conditional feature contracts below; Zai theme choices and mobile-specific behavior are outside this adoption.
 
 The GUI is built from [beUI](https://beui.dev) first and [shadcn/ui](https://ui.shadcn.com) for roles beUI does not provide, installed through the shadcn CLI (sourcing rules: [AGENTS.md](AGENTS.md#ui-components)). Registry components supply structure, accessibility, and behavior. This document owns their final typography, geometry, surfaces, radius, elevation, and motion. A copied component's original defaults do not establish compliance.
 
@@ -53,7 +53,9 @@ The theme keeps beUI's token names (shadcn semantic tokens plus beUI extensions)
 | `--diff-removed`       | `#ffebe9`                 | `#f851491a`               | `diffBlob-deletionLine-bgColor` |
 | `--diff-removed-word`  | `#ffcecb`                 | `#f8514966`               | `diffBlob-deletionWord-bgColor` |
 
-The remaining shadcn tokens keep beUI's derivations: `--card-foreground`, `--popover-foreground`, and `--secondary-foreground` use `--foreground`; `--popover`, `--secondary`, and `--muted` use `--card`; `--accent-foreground` uses `--accent-fg`; `--destructive` uses `--danger`; `--input` uses `--border`. The `--diff-*` tokens are Rukie extensions exposed as `--color-diff-*` in `@theme inline`.
+The existing shadcn tokens keep beUI's derivations: `--card-foreground`, `--popover-foreground`, and `--secondary-foreground` use `--foreground`; `--popover`, `--secondary`, and `--muted` use `--card`; `--accent-foreground` uses `--accent-fg`; `--destructive` uses `--danger`; `--input` uses `--border`. The `--diff-*` tokens are Rukie extensions exposed as `--color-diff-*` in `@theme inline`.
+
+The semantic role extensions below preserve those GitHub foundations while providing separately named surface, text, border, Interaction, search, and feature feedback tokens. `input-surface` names field fill; `input` keeps its shadcn border meaning. Confirmation waiting foreground is `#116329` in Light and `#7ee787` in Dark, with surfaces `#dafbe1` and `#033a16`; these are dedicated values, not aliases of success.
 
 Code blocks and diffs highlighted by shiki use the `github-light` and `github-dark` themes, replacing beUI's high-contrast default.
 
@@ -67,42 +69,55 @@ Code blocks and diffs highlighted by shiki use the `github-light` and `github-da
 
 ### Semantic roles and token mapping
 
-Classify each surface as structure, content, interaction, or state before choosing its tokens. The mappings below adapt ZCode's role boundaries to Rukie's existing palette; they do not assert that ZCode's more numerous role variables are installed here. A shared color value does not make its roles interchangeable.
+Classify each surface as structure, content, interaction, or state before choosing its tokens. The mappings below retain GitHub colors while separating independently adjustable structural, content, interaction, and feedback roles. A shared color value does not make its roles interchangeable. Tokens are owned by [theme.css](packages/ui/src/theme.css), exposed as matching `--color-*` utilities; components consume the role, not an incidental shared value.
 
-| Role                                 | Rukie treatment                                                                              | Boundary                                                                                                        |
-| ------------------------------------ | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Page / workspace / Transcript        | `background` with `foreground`                                                               | Structural base; no ordinary layout shadow or brand fill                                                        |
-| Header / sidebar / panel structure   | `background`, or `muted` when separation is necessary; `border` separators                   | Layout surfaces, not reusable content-card or menu styling                                                      |
-| Low-emphasis content / ordinary card | `card` with `foreground` and `border`                                                        | Content above the base, below interactive overlays                                                              |
-| Menu / Select options                | `popover`, `popover-foreground`, `border-strong`, overlay shadow                             | One shared action-list surface; never use card treatment merely because the colors currently match              |
-| Dialog / standalone popover          | `popover`, `popover-foreground`, `border-strong`                                             | Floating interaction; radius depends on the overlay category                                                    |
-| Editable field                       | `background`, `foreground`, `input` border                                                   | A field, not a card; focused border uses `ring`                                                                 |
-| Generic hover / pressed surface      | `muted/60` / `muted`                                                                         | Transient pointer state, not durable selection                                                                  |
-| Selected row / tab / card            | `muted` and `foreground`, with explicit selected indicator                                   | Neutral durable selection, not full-row brand fill                                                              |
-| Primary / supporting / weak text     | `foreground` / `muted-foreground` / a contrast-checked muted role                            | Supporting labels remain readable; reduced opacity is restricted to weak furniture, not normal operational text |
-| Inverse text                         | `primary-foreground` on `primary`; `background` on the deliberate `foreground` approval fill | Use the matching pair; do not borrow a white literal for all themes                                             |
-| Tooltip / toast                      | `popover` and matching foreground, with their category's elevation                           | Passive hints and notifications remain distinct from menus and content cards                                    |
-| Status / blocking Interaction        | `success`, `danger`, or `warning` according to the actual state                              | Pending approval uses warning, not completed-success styling                                                    |
-| Diff / ANSI output                   | Dedicated `diff-*` / `ansi-*` tokens                                                         | Preserve technical meaning; do not substitute generic decoration colors                                         |
+| Role                             | Token contract                                                                                     | Boundary                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Page / workspace / Transcript    | `background` with `foreground`                                                                     | Structural base; no ordinary layout shadow or brand fill                 |
+| Alternate / platform workspace   | `background-alt`, `background-win-alt`                                                             | Platform shell only; child surface roles stay independent                |
+| Header / sidebar / panel         | `header`, `sidebar`, `panel`                                                                       | Structure, not reusable cards or menus                                   |
+| Low-emphasis content / hover     | `surface`, `surface-hover`                                                                         | Quiet content above the base                                             |
+| Ordinary / selected card         | `card`, `card-selected`, `card-border`                                                             | Content below interactive overlays                                       |
+| Menu / option hover              | `menu`, `menu-hover`, `popover-border`                                                             | One action-list surface with overlay shadow                              |
+| Dialog / standalone popover      | `popover`, `popover-foreground`, `popover-border`                                                  | Floating interaction; radius follows category                            |
+| Editable field                   | `input-surface`, `input-focused`, `input-border`, `input-border-hover`, `input-border-focused`     | Fields, not cards; `input` remains the registry border token             |
+| Generic hover / selection        | `hover`, `selected`                                                                                | Transient pointer state and durable selection are separate roles         |
+| Primary / supporting / weak text | `foreground`, `foreground-subtle`, `foreground-subtlest`                                           | Weak copy still meets text contrast; opacity is for decorative furniture |
+| Inverse text                     | `foreground-inverse` on deliberate inverse fills; matching primary/state foreground on their fills | Never borrow a white literal for all themes                              |
+| Tooltip / tag / toast            | `tooltip`, `tooltip-foreground`, `tooltip-tag`, `tooltip-tag-foreground`, `tag`, `toast`           | Hints, tags, and notifications remain distinct from menus and cards      |
+| Border / hover                   | `border`, `border-hover`                                                                           | Ordinary separators and stronger hovered boundaries                      |
+| Brand / link icon                | `brand`, `icon-blue`                                                                               | Sparse emphasis; file-type icons keep descriptor colors                  |
+| Waiting Interaction              | `interaction-confirmation-surface`, `interaction-confirmation-foreground`                          | Dedicated green waiting treatment, separate from success                 |
+| Outcome                          | `success`, `warning`, `danger` with matching foreground pairs                                      | Actual semantic state only                                               |
+| Diff / ANSI output               | Dedicated `diff-*` / `ansi-*`                                                                      | Preserve technical meaning                                               |
 
 - Ordinary separators use `border`; stronger border treatment is for hover, focus, or overlay separation. Do not add a border around every metadata row to manufacture hierarchy.
 - Use `accent` deliberately for links or current execution emphasis, `primary` for main actions, and descriptor-provided colors for specialized file-type icons. A link-colored icon does not make every technical icon an accent icon.
 - Keep page, card, and overlay layers identifiable. Mixing `background`, `card`, and `muted` in one view requires a structural, content, or interaction reason, rather than alternating colors for decoration.
 - Glass tokens are available but do not grant ordinary workspace surfaces blur or transparency. Use opaque functional surfaces by default so text, menus, and state colors remain predictable in both themes.
 
-### Reference scope
+### Blocking Interactions and search
 
-All portable ZCode rules for typography, spacing, radius, sizing, component states, menus, depth, motion, responsiveness, and accessibility apply through their Rukie mappings in this document. The following source-specific mechanisms are outside the current product contract; their absence must not remove the corresponding general design rule.
+Waiting badges for questions, tool permission approval, and plan-exit confirmation use one green `interaction-confirmation-surface` / `interaction-confirmation-foreground` treatment. Waiting means user input is required, not successful execution. Never substitute `success`, use completed copy, or vary badge color by Interaction type. Success remains reserved for actual approval or completion; warning remains available for genuine attention and running workflow states. This presentation does not change Interaction ownership or permission decisions. Legacy Ask-specific color tokens are not introduced.
 
-| ZCode-specific mechanism                                                                                                   | Rukie boundary                                                                                                                                                 |
-| -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Zai theme modes and separate brand, structural, surface, menu, hover, selected, and inverse variables                      | Keep GitHub Light/Dark and use the role mappings above; add a token only when an actual shared role requires one                                               |
-| Legacy Ask interaction colors and unified green waiting confirmation                                                       | Keep Rukie's actual Interaction states: warning for pending, success only after approval or completion                                                         |
-| Workflow timeline colors, idle-task queue / paused colors, avatar palette, compile lamps, and `text-ui-2xs` axis furniture | No workflow timeline contract or below-10px content token; add a feature-specific specification before introducing one                                         |
-| `text-mobile-input-safe` and mobile remote-control drawers                                                                 | No shipped mobile Web compatibility token or remote-control layout is implied; a future editable mobile surface must specify and verify its iOS focus behavior |
-| Find-highlight tokens                                                                                                      | No new in-page search UI or tokens are implied; specify match and active-match roles when that feature is added                                                |
-| Independent terminal / Side Pane frames, platform-specific window shell colors and compositor radius                       | Do not add absent workspace panels or OS frame behavior to copy the reference; existing layout regions follow the structure and sizing rules                   |
-| Conversation status floating panel and feedback / CUA screenshot-preview radius exceptions                                 | No absent feature inherits an exception; specify its role first if introduced                                                                                  |
+In-page and text search marks all matches with `find-highlight`; the currently selected match uses `find-highlight-active`. Keep both roles separate from generic selection, diff additions, and warnings. The active match remains identifiable when keyboard navigation changes it, with readable foreground in both themes.
+
+### Workflow and task feedback
+
+These feature-scoped contracts apply whenever workflow timeline, compilation feedback, or task scheduling surfaces are implemented. They specify appearance, not a new execution model or a claim that those surfaces are shipped.
+
+- `workflow-rule` is weaker than an ordinary border and only marks repeated timeline furniture; do not use it as a general separator.
+- `workflow-trace` marks a path not yet taken; `workflow-trace-strong` marks control that has passed. A currently marching segment overlays warning-colored dashes; do not invent a third rail or arc stroke color. Reduced-motion stops marching without hiding the running state.
+- Station lamps and agent status pills use success for completed execution, warning for running, and danger for execution failure. Pair status with accessible text or shape, not color alone.
+- Agent avatars use one shared fixed nine-color HEX palette, assigned by instance index; a stable name hash is the fallback when an index is unavailable. Identity colors never encode status. The workflow feature owner defines and validates the nine entries in the shared theme before rendering that feature, rather than inventing per-avatar colors or reusing state colors. The reference specifies the nine-color constraint but does not supply its HEX values; this contract does not claim that palette is installed.
+- Compilation feedback for a draft that did not compile, so nothing executed, uses a hollow lamp: warning while it is the latest draft, `foreground-subtlest` after a newer draft exists. Do not show danger or imply execution failure for that state.
+- Idle-time queue and paused tags use `idle-task` / `idle-task-surface`; scheduled tasks use their distinct green treatment. Ordinary Queued Input remains a Session input state and does not become an idle-time task merely because it is queued.
+
+### Adoption scope
+
+All desktop rules described here are adopted. Roles for absent search, workflow, terminal, Side Pane, scheduling, feedback, and CUA surfaces are conditional design contracts: use them when the corresponding feature exists, and record that feature as not applicable in acceptance until then. Their presence in this document does not imply new panels, execution capabilities, or OS compositor behavior are implemented.
+
+Rukie keeps its existing System / GitHub Light / GitHub Dark choices. Zai theme values, mobile fixed-size input compatibility tokens, and mobile remote-control drawer rules are not adopted. Narrow desktop and Web windows still follow the existing responsive and accessibility requirements.
 
 ## Typography
 
@@ -115,15 +130,18 @@ All portable ZCode rules for typography, spacing, radius, sizing, component stat
 
 All interface typography uses the `text-ui-*` scale, derived from `--ui-font-size` (default `14px`). Choose by role rather than isolated visual preference. The scale is defined in [theme.css](packages/ui/src/theme.css); the role table governs all consumers.
 
-| Token             | Target formula         | Default | Target line height | Roles                                                       |
-| ----------------- | ---------------------- | ------: | -----------------: | ----------------------------------------------------------- |
-| `text-ui-xl`      | `--ui-font-size + 4px` |    18px |               28px | Markdown h1 and first-level reading headings                |
-| `text-ui-lg`      | `--ui-font-size + 2px` |    16px |               24px | Markdown h2 and second-level reading headings               |
-| `text-ui-base`    | `--ui-font-size`       |    14px |               20px | Body, common buttons, section titles, Run and Trace labels  |
-| `text-ui-caption` | `--ui-font-size - 1px` |    13px |               20px | Deliberate compact supporting captions                      |
-| `text-ui-sm`      | `--ui-font-size - 2px` |    12px |               16px | Secondary copy, helper text, tooltips, Markdown inline code |
-| `text-ui-xs`      | `--ui-font-size - 4px` |    10px |               14px | Badges, counters, shortcuts, very weak metadata             |
-| `text-ui-control` | `--ui-font-size - 1px` |    13px |               20px | Existing compact Trace and tool controls only               |
+| Token             | Target formula         | Default | Target line height | Roles                                                               |
+| ----------------- | ---------------------- | ------: | -----------------: | ------------------------------------------------------------------- |
+| `text-ui-xl`      | `--ui-font-size + 4px` |    18px |               28px | Markdown h1 and first-level reading headings                        |
+| `text-ui-lg`      | `--ui-font-size + 2px` |    16px |               24px | Markdown h2 and second-level reading headings                       |
+| `text-ui-base`    | `--ui-font-size`       |    14px |               20px | Body, common buttons, section titles, Run and Trace labels          |
+| `text-ui-caption` | `--ui-font-size - 1px` |    13px |               20px | Deliberate compact supporting captions                              |
+| `text-ui-sm`      | `--ui-font-size - 2px` |    12px |               16px | Secondary copy, helper text, tooltips, Markdown inline code         |
+| `text-ui-xs`      | `--ui-font-size - 4px` |    10px |               14px | Badges, counters, shortcuts, very weak metadata                     |
+| `text-ui-2xs`     | `--ui-font-size - 5px` |     9px |               12px | Workflow timeline axis ticks, channel codes, and unit suffixes only |
+| `text-ui-control` | `--ui-font-size - 1px` |    13px |               20px | Existing compact Trace and tool controls only                       |
+
+`text-ui-2xs` is the only permitted exception below the 10px floor. It is restricted to workflow timeline axis furniture; never use it for content, field labels, status, counters, Run/Trace metadata, or ordinary supporting copy.
 
 Line-height ratios follow the default pairs above as interface text scales. `text-ui-control` is a Rukie-specific retained role, not an alternative default for every button or body. Legacy 13px text without a deliberate caption or compact Trace role migrates to `text-ui-base`. Loader glyphs use `text-ui-loader`, whose `--loader-font-size` describes glyph geometry, not content typography.
 
@@ -131,7 +149,7 @@ Line-height ratios follow the default pairs above as interface text scales. `tex
 - Interface font scaling changes only `--ui-font-size`; never change the root `html` font size. Icons, spacing, and radius do not scale with it.
 - Code, Diff, and terminal-like content use the independent `text-code` content token (`--code-font-size`, default 14px), which does not change with `--ui-font-size`. Their headers, labels, and controls use `text-ui-*`. This content token is not an interface hierarchy role.
 - Body and common controls use `font-normal`; section labels use `font-medium`. Markdown h3–h4 use `font-semibold`, h5 uses `font-medium`, and h6 uses `font-normal`.
-- Supporting copy uses `muted-foreground`; primary reading text uses `foreground`. Font size and color express different hierarchy decisions. Do not weaken operational labels by combining tiny text with low opacity.
+- Supporting copy uses `foreground-subtle` (`muted-foreground` remains its registry alias); weak copy uses `foreground-subtlest`, and primary reading text uses `foreground`. Font size and color express different hierarchy decisions. Do not weaken operational labels by combining tiny text with low opacity.
 - Tooltip copy uses `text-ui-sm`; shortcut labels use `text-ui-xs`. Rich Markdown in a tooltip retains reading hierarchy.
 
 ### Markdown type scale
@@ -188,10 +206,10 @@ Radius follows actual visible rounded containers, not component importance or DO
 
 - First rounded content container: `rounded-xl`. Nested containers step down through `rounded-lg` → `rounded-md` → `rounded-sm`; 4px is the minimum. Peers share a radius; count the nearest visible rounded ancestor through plain wrappers.
 - Buttons, Input, Textarea, and Select triggers follow the control table below. Primary emphasis and height do not increase radius.
-- Dialog shells use `rounded-2xl`. Their content hierarchy restarts at `rounded-xl`; the dialog shell does not force all inner controls down a level. Image-preview dialogs may use `rounded-xl` where a plain media boundary is required.
+- Dialog shells use `rounded-2xl`. Their content hierarchy restarts at `rounded-xl`; the dialog shell does not force all inner controls down a level. Only chat attachment, feedback screenshot, and CUA screenshot preview dialogs use `rounded-xl` shells; this is not a generic exception for all image dialogs.
 - Menus, context menus, Select option panels, and suggestion panels use `rounded-lg`; items use `rounded-md`, nested controls `rounded-sm`. Each submenu restarts this overlay hierarchy, independently of its trigger.
 - Standalone ordinary popovers start at `rounded-xl` and follow content nesting.
-- The actual main composer input shell, independent Toast shell, and deliberate brand-icon backplates may retain `rounded-2xl`. Their nested controls still follow the control table. Ordinary cards and tool blocks do not qualify.
+- The actual main composer input shell, conversation status floating panel in both collapsed and expanded states, independent Toast shell, and deliberate brand-icon backplates may retain `rounded-2xl`. Their nested controls still follow the control table. Ordinary cards and tool blocks do not qualify.
 - The composer region and its context-header wrappers are layout, not radius levels. A drag overlay covering the input shell matches that shell's radius; it does not create a deeper content container. A decorative wrapper radius does not force input controls down a level.
 - `rounded-full` is reserved for deliberate pills or circles: a status badge, avatar, or rail tick can qualify by shape. A button, tag, counter, or icon button does not qualify merely by component type.
 - Do not use arbitrary radius values or bare `rounded`. Remove joined-edge radius only when surfaces form a continuous shape.
@@ -204,7 +222,7 @@ Radius follows actual visible rounded containers, not component importance or DO
 
 ### Surfaces and elevation
 
-Layer through background contrast and borders first. The workspace uses `background`; ordinary cards use `card`; overlays use `popover` with `border-strong`. Rukie's overlay and card tokens currently share a color; their stronger border and elevation distinguish the overlay role without introducing ZCode's separate palette tokens.
+Layer through background contrast and borders first. The workspace uses `background`; ordinary cards use `card` with `card-border`; menus use `menu`, and dialogs/popovers use `popover`, both with `popover-border`. Their independently named roles remain separate even when the theme gives them the same value; stronger borders and elevation distinguish overlays.
 
 | Level     | Treatment                        | Uses                                          |
 | --------- | -------------------------------- | --------------------------------------------- |
@@ -229,20 +247,20 @@ Component sourcing (existing → beUI → shadcn/ui → dedicated libraries → 
 
 ### Shared state language
 
-| State               | Required treatment                                                                                                                                   |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Default             | Neutral surface, readable `foreground` labels; secondary copy `muted-foreground`; no implied hover or selection                                      |
-| Hover               | Only pointed target changes: `muted/60` background or stronger border; label may become `foreground`; no geometry shift                              |
-| Pressed             | Same neutral family with stronger border or `muted` surface; no permanent active state after release                                                 |
-| Selected / active   | Persisted selection uses neutral contrast (`muted`) and `foreground`, plus checkmark or explicit indicator; selection is distinct from pointer hover |
-| Pending approval    | `warning` badge with readable waiting copy; neutral shell, never successful green feedback                                                           |
-| Running             | `accent` state copy/glyph where needed, optional loading feedback; no success styling before completion                                              |
-| Complete / approved | `success` only for actual completion or approval, paired with text                                                                                   |
-| Error / denied      | `danger` paired with error or denial copy; ordinary unselected controls never use it                                                                 |
-| Disabled            | Keep geometry and label, use `muted-foreground`, no hover/press response; expose native disabled or appropriate ARIA semantics                       |
-| Keyboard focus      | Visible 2px `ring`, 2px offset where applicable; preserve outline space and overlay shadow, independently of hover and status                        |
+| State               | Required treatment                                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default             | Neutral surface, readable `foreground` labels; secondary copy `muted-foreground`; no implied hover or selection                                         |
+| Hover               | Only pointed target changes: `hover` background or `border-hover`; label may become `foreground`; no geometry shift                                     |
+| Pressed             | Same neutral family with stronger border or `muted` surface; no permanent active state after release                                                    |
+| Selected / active   | Persisted selection uses neutral contrast (`selected`) and `foreground`, plus checkmark or explicit indicator; selection is distinct from pointer hover |
+| Pending approval    | Dedicated green confirmation badge with readable waiting copy; neutral shell, never completed-success copy                                              |
+| Running             | `accent` state copy/glyph where needed, optional loading feedback; no success styling before completion                                                 |
+| Complete / approved | `success` only for actual completion or approval, paired with text                                                                                      |
+| Error / denied      | `danger` paired with error or denial copy; ordinary unselected controls never use it                                                                    |
+| Disabled            | Keep geometry and label, use `muted-foreground`, no hover/press response; expose native disabled or appropriate ARIA semantics                          |
+| Keyboard focus      | Visible 2px `ring`, 2px offset where applicable; preserve outline space and overlay shadow, independently of hover and status                           |
 
-Semantic alpha backgrounds (`warning/10`, `success/10`, `danger/10`) are allowed for state badges, not whole conversation surfaces. Opacity-only weak furniture such as rail ticks is not a substitute for readable label contrast. Disabled labels must remain distinguishable; do not dim an entire panel and its still-enabled controls together.
+Semantic alpha backgrounds (`warning/10`, `success/10`, `danger/10`) and dedicated confirmation surfaces are allowed for state badges, not whole conversation surfaces. Opacity-only weak furniture such as rail ticks is not a substitute for readable label contrast. Disabled labels must remain distinguishable; do not dim an entire panel and its still-enabled controls together.
 
 ### Buttons and fields
 
@@ -259,7 +277,7 @@ Use the installed shared Button variants and sizes first; visual roles below do 
 
 Tool Approval retains its registry's deliberate `foreground` / inverse primary approval action; it uses the same compact sizing and radius rules. The approval button's initial appearance has no blue decorative outline or ring. Programmatic focus when the card appears must not be interpreted as keyboard navigation or force the keyboard focus treatment to appear. Preserve the card's keyboard entry point, shortcuts, focus containment where required, and restoration; when the user navigates with the keyboard, show a visible, unclipped focus indicator. Do not solve a resting-style defect by removing focus feedback for keyboard users.
 
-Inputs use `background`, `foreground`, and `input` border. Hover strengthens the border with `border-strong`; focus uses `ring`, without glow. Select triggers follow fields while their option panels follow menus. Normal fields are not cards. Multiline content grows or scrolls in an explicit field viewport.
+Inputs use `input-surface`, `foreground`, and `input-border`. Hover uses `input-border-hover`; focus uses `input-focused` and `input-border-focused`, without glow. Select triggers follow fields while their option panels follow menus. Normal fields are not cards. Multiline content grows or scrolls in an explicit field viewport.
 
 - Error styling represents an actual validation error, paired with explanatory copy; it does not decorate an untouched field.
 - Ordinary Input and Textarea follow the basic-control radius table. A composite field shell follows content-container nesting; only the actual main composer has the approved `2xl` exception.
@@ -269,8 +287,8 @@ Inputs use `background`, `foreground`, and `input` border. Hover strengthens the
 
 Menus are dense action lists, not stacks of miniature cards: compact rows, weak separators, no ordinary per-row borders. Prefer checkmarks, radio indicators, or trailing state markers to full brand fills. Preserve the same action list across dropdown and context-menu entry points. Click menus with submenus use shadcn `dropdown-menu`, because beUI context menus require right-click/long-press and bloom menus lack menu keyboard semantics.
 
-- Dropdown, context-menu, and Select option panels share `popover` surface, `border-strong`, `rounded-lg`, 4px shell padding, and overlay shadow. The shared option stack owns the 2px gap; individual items do not each add an equivalent margin.
-- Rows use the compact option role, `rounded-md`, 8px horizontal padding, 8px icon/text gaps, and `text-ui-base`. Hover is a subtle neutral fill; default items remain transparent and disabled items keep their geometry with weaker copy.
+- Dropdown, context-menu, and Select option panels share `menu` surface, `popover-border`, `rounded-lg`, 4px shell padding, and overlay shadow. The shared option stack owns the 2px gap; individual items do not each add an equivalent margin.
+- Rows use the compact option role, `rounded-md`, 8px horizontal padding, 8px icon/text gaps, and `text-ui-base`. Hover uses the subtle neutral `menu-hover` fill; default items remain transparent and disabled items keep their geometry with weaker copy.
 - Group related actions through ordering, labels, and weak separators. Avoid stacked sub-cards, per-item borders, or a strong selected fill for ordinary options.
 - A composite primary-action / chevron trigger uses a joined segmented shell: the main action and menu reveal remain distinct keyboard targets, with shared outer shape and continuous inner edge. A plain Select trigger remains one field control, not a split action.
 - Menu shadow is visible from the first open frame and remains during pointer hover and keyboard focus. Focus-reset styles must not remove the content root's overlay shadow.
@@ -281,7 +299,7 @@ The standard 4px offset may increase only to resolve a measured border collision
 
 Cards use quieter surfaces than overlays and 16px horizontal padding. Dialogs keep title, body, and action footer as distinct layout regions; long content scrolls in the body. Header icons and controls do not inherit oversized artwork styling.
 
-Ordinary cards use `card`, matching foreground, and border-led separation. Low-emphasis content may share that surface without adding another border; selected cards use the neutral selected role. Avoid multiple unrelated card backgrounds on one screen. Toasts use compact padding and attention elevation; they do not turn ordinary content cards into attention panels.
+Ordinary cards use `card`, matching foreground, and `card-border` separation. Low-emphasis content may share that surface without adding another border; selected cards use `card-selected`. Avoid multiple unrelated card backgrounds on one screen. Toasts use compact padding and attention elevation; they do not turn ordinary content cards into attention panels.
 
 ### Tabs and selection
 
@@ -292,9 +310,15 @@ Ordinary cards use `card`, matching foreground, and border-led separation. Low-e
 
 ### Workspace structure
 
-Session navigation, the conversation header, Transcript viewport, and composer or approval dock are layout regions with independent content responsibilities. Their wrappers do not add radius levels. Keep structural surfaces quiet, preserve the Transcript's reading position, and allocate scroll ownership to the content region instead of making every nested wrapper independently scrollable.
+Session navigation, the conversation header, Transcript viewport, and composer or approval dock have independent content responsibilities. Their wrappers do not add radius levels. Keep structural surfaces quiet, preserve the Transcript's reading position, and allocate scroll ownership to the content region instead of making every nested wrapper independently scrollable.
 
-Use stable side-panel widths and fluid main content. Interactive controls inside desktop title bars explicitly opt out of dragging; floating overlays receive pointer input without becoming drag regions. An existing split or resize affordance must retain keyboard/pointer operability, a visible focus/hover indicator, and a hit target larger than its decorative line. Do not create ZCode's absent terminal or Side Pane frames as part of a styling migration.
+Desktop and wide Web workspaces use independent conversation, optional bottom terminal, and optional Side Pane frames. The conversation frame owns its header and conversation; the terminal has its own frame below it; Side Pane owns its tab bar. Each frame has its own panel background and border, 12px corner radius, and 4px gaps and outer inset. Frames are layout and do not count toward inner content radius levels. Optional panels follow this contract when present; the rule does not require exposing an absent terminal or Side Pane during a styling change.
+
+Use stable side-panel widths and fluid main content. Resize handles use a transparent 4px hit area and show a 2px `foreground-subtlest/50` indicator on hover, keyboard focus, or drag. The line runs along the panel edge, inset by the panel radius at both ends, with rounded ends and no mask. Preserve pointer and keyboard resizing, accessible names, and a visible focus state without letting the decorative line determine the hit target.
+
+The desktop window shell uses `background-alt` on macOS; Windows, Linux, and Web use `background-win-alt`. Child panel colors are independent. Linux has a 16px outer shell radius around 12px panels and the 4px outer inset; the native compositor clip path must match that shell. Maximized Linux windows use a 0px shell and matching clip path. Native-shell and compositor rules require validation on the corresponding platform before claiming that implementation conforms.
+
+Interactive controls inside desktop title bars explicitly opt out of dragging; floating overlays receive pointer input without becoming drag regions. Changing panel geometry must preserve reading position, bottom following, and dock visibility.
 
 ### Chat, Run, Trace, and approval
 
@@ -355,18 +379,20 @@ The specification is accepted through document review; a migrated surface is acc
 
 Audit every application screen and shared primitive by role: structure/surface, type, spacing/size, radius, state/focus, overlay/layering, motion, responsive behavior, and localization. Record each applicable rule as conforming, changed and verified, or remaining deviation with its owning component. A rule that references an absent feature is not applicable with a stated reason, rather than silently dropped or claimed as implemented. Registry source alone is not acceptance evidence.
 
-| Dimension            | Required scenario                                                                      | Observable pass condition                                                                                                                          |
-| -------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Theme / width        | Light and Dark at 1280×900 and 420×900                                                 | Correct semantic tokens, no horizontal page overflow; geometry and overlays remain compact and consistent                                          |
-| Geometry             | Default 14px interface text; measure rendered control, padding, gaps, icon, radius     | Values match target role tables within 1 CSS px rounding; deviations have a documented role, not a one-off override                                |
-| States               | Default, pointer hover/press, selected, pending, running, complete, error, disabled    | Only intended target changes; no resting hover treatment, false success state, or disabled response                                                |
-| Keyboard             | Tab/Shift+Tab, Enter/Space disclosure, menu arrows/Escape, scrollbar Home/End          | Reachable actions, visible unclipped focus, no focus loss or tooltip over active menu controls                                                     |
-| Approval focus       | Card opens through pointer interaction; then keyboard navigation enters actions        | Resting default approval has no forced blue ring; keyboard-focused action shows its visible indicator and retains shortcuts/restoration            |
-| Locale               | zh and en, plus a fixture with labels twice the normal English length                  | Primary labels and actions remain readable and actionable; wrapping does not overlap icons, status, or adjacent controls                           |
-| Font scaling         | `--ui-font-size` 14px and 18px                                                         | Only text scale changes; row height grows as needed, icons/spacing/radii stay stable, action labels and focus rings remain fully visible           |
-| Long content         | Long path/command, multiline Markdown/table/code, expanded Trace, sequential approvals | Details wrap or scroll internally; action footer is visible; collapsed bodies contain no visible or focusable leaked content                       |
-| Conversation mapping | Rail rest/hover/focus; transcript at top/middle/bottom; resize with approval dock      | Rail positions and unique preview color match its contract; right scrollbar maps to actual scroll range and reaches track bottom at content bottom |
-| Motion / stability   | Streaming, completion, reduced-motion, resize and opening overlays                     | Loading ends on settlement; reduced-motion is static; no layout jumps, ResizeObserver errors, clipped transitions, or animated per-token geometry  |
-| Layering / contrast  | Open menu with tooltip; focus overlay; inspect text and essential controls             | Interactive surface remains above tooltip, shadow survives focus, contrast meets stated ratios in each theme                                       |
+| Dimension            | Required scenario                                                                                                           | Observable pass condition                                                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Theme / width        | Light and Dark at 1280×900 and 420×900                                                                                      | Correct semantic tokens, no horizontal page overflow; geometry and overlays remain compact and consistent                                          |
+| Geometry             | Default 14px interface text; measure rendered control, padding, gaps, icon, radius                                          | Values match target role tables within 1 CSS px rounding; deviations have a documented role, not a one-off override                                |
+| States               | Default, pointer hover/press, selected, pending, running, complete, error, disabled                                         | Only intended target changes; no resting hover treatment, false success state, or disabled response                                                |
+| Keyboard             | Tab/Shift+Tab, Enter/Space disclosure, menu arrows/Escape, scrollbar Home/End                                               | Reachable actions, visible unclipped focus, no focus loss or tooltip over active menu controls                                                     |
+| Approval focus       | Card opens through pointer interaction; then keyboard navigation enters actions                                             | Resting default approval has no forced blue ring; keyboard-focused action shows its visible indicator and retains shortcuts/restoration            |
+| Locale               | zh and en, plus a fixture with labels twice the normal English length                                                       | Primary labels and actions remain readable and actionable; wrapping does not overlap icons, status, or adjacent controls                           |
+| Font scaling         | `--ui-font-size` 14px and 18px                                                                                              | Only text scale changes; row height grows as needed, icons/spacing/radii stay stable, action labels and focus rings remain fully visible           |
+| Long content         | Long path/command, multiline Markdown/table/code, expanded Trace, sequential approvals                                      | Details wrap or scroll internally; action footer is visible; collapsed bodies contain no visible or focusable leaked content                       |
+| Conversation mapping | Rail rest/hover/focus; transcript at top/middle/bottom; resize with approval dock                                           | Rail positions and unique preview color match its contract; right scrollbar maps to actual scroll range and reaches track bottom at content bottom |
+| Motion / stability   | Streaming, completion, reduced-motion, resize and opening overlays                                                          | Loading ends on settlement; reduced-motion is static; no layout jumps, ResizeObserver errors, clipped transitions, or animated per-token geometry  |
+| Conditional features | Search matches; workflow path and compile states; identity palette; idle/scheduled tags; optional panels and platform shell | Applicable feature uses its dedicated role; absent feature is recorded as not applicable, not implemented or omitted from the contract             |
+| Panel resizing       | Pointer and keyboard resize; hover/focus/drag; platform maximize/restore                                                    | 4px hit target, 2px indicator with radius inset; frame gaps/inset and shell/compositor clip remain synchronized                                    |
+| Layering / contrast  | Open menu with tooltip; focus overlay; inspect text and essential controls                                                  | Interactive surface remains above tooltip, shadow survives focus, contrast meets stated ratios in each theme                                       |
 
 Use isolated settings and fake model data for GUI browser checks, following [AGENTS.md](AGENTS.md#tests-and-verification). Capture Light, Dark, and narrow screenshots and record measured geometry, interactions, console/network errors, and remaining differences. Documentation-only edits do not require a runtime build, browser claim, or product test run.

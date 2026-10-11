@@ -370,7 +370,7 @@ function MorphPopoverSurface({
           maxWidth: "calc(100vw - 32px)",
           overflowY: "auto",
         }}
-        className={cn("overflow-hidden border border-border-strong bg-popover", className)}
+        className={cn("overflow-hidden border border-popover-border bg-popover", className)}
       >
         {children}
       </motion.div>

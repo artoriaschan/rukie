@@ -67,7 +67,7 @@ export function Sidebar(props: SidebarProps) {
           ) : session.waitingPermission ? (
             <span
               aria-label={t("app.waiting")}
-              className="size-2 shrink-0 rounded-full bg-warning"
+              className="size-2 shrink-0 rounded-full bg-interaction-confirmation-foreground"
             />
           ) : null}
           <span className="min-w-0 flex-1 truncate">{session.title}</span>
@@ -200,7 +200,7 @@ export function Sidebar(props: SidebarProps) {
   return (
     <aside
       aria-label={t("app.home")}
-      className="flex h-full min-h-0 w-64 shrink-0 flex-col border-r border-border bg-background p-2"
+      className="flex h-full min-h-0 w-64 shrink-0 flex-col border-r border-border bg-sidebar p-2"
     >
       <div className="mb-4 flex items-center gap-1">
         <Button

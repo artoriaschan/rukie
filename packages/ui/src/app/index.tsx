@@ -504,222 +504,239 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   );
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col bg-card text-ui-base text-foreground">
-      <header className="flex h-11 shrink-0 select-none items-center [-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag]">
-        <div className={cn("flex h-full shrink-0 items-center gap-1 px-3", sidebar && "md:w-76")}>
-          <span aria-hidden="true" className="w-16" />
-          <Tooltip content={t("app.toggle-sidebar")}>
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label={t("app.toggle-sidebar")}
-              aria-pressed={sidebar}
-              onClick={() => setSidebar(!sidebar)}
-            >
-              <PanelLeft className="size-4" />
-            </Button>
-          </Tooltip>
-        </div>
-        <div
-          className={cn(
-            "flex h-full min-w-0 flex-1 items-center gap-2 px-3",
-            sidebar && "md:border-l md:border-border",
-          )}
-        >
-          {current ? (
-            <>
-              <Tooltip content={currentProject?.name ?? t("app.conversations")}>
-                <span
-                  tabIndex={0}
-                  role="img"
-                  aria-label={currentProject?.name ?? t("app.conversations")}
-                  className="rounded-md p-1 text-muted-foreground outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {currentProject ? (
-                    <Folder className="size-4" />
-                  ) : (
-                    <MessageSquare className="size-4" />
-                  )}
-                </span>
-              </Tooltip>
-              <h1 className="min-w-0 flex-1 truncate text-ui-base font-medium">{current.title}</h1>
-              <Menu.DropdownMenu>
-                <Tooltip content={t("app.more")}>
-                  <Menu.DropdownMenuTrigger asChild>
-                    <Button size="icon" variant="ghost" aria-label={t("app.more")}>
-                      <Ellipsis className="size-4" />
-                    </Button>
-                  </Menu.DropdownMenuTrigger>
+    <div
+      data-workspace-shell
+      className={cn(
+        "relative flex h-dvh min-h-0 gap-1 p-1 text-ui-base text-foreground",
+        /Electron\//.test(navigator.userAgent) && /Mac/.test(navigator.platform)
+          ? "bg-background-alt"
+          : "bg-background-win-alt",
+      )}
+    >
+      <div
+        aria-hidden="true"
+        className="absolute left-1 top-1 h-11 w-12 [-webkit-app-region:drag]"
+      />
+      <nav
+        aria-label={t("app.home")}
+        className="flex w-12 shrink-0 flex-col items-center bg-sidebar px-2 pb-2 pt-13"
+      >
+        <Tooltip content={t("app.home")} side="right">
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label={t("app.home")}
+            aria-current="page"
+            className="bg-background"
+            onClick={() => newChat(null)}
+          >
+            <Home className="size-4 fill-current" />
+          </Button>
+        </Tooltip>
+      </nav>
+      {sidebar ? (
+        <>
+          <button
+            aria-label={t("app.close-sidebar")}
+            className="absolute inset-1 top-12 z-10 bg-background/60 md:hidden"
+            onClick={() => setSidebar(false)}
+          />
+          <div className="absolute bottom-1 left-14 top-12 z-20 bg-sidebar md:relative md:inset-auto md:z-auto md:shrink-0 md:pt-11">
+            <div
+              aria-hidden="true"
+              className="absolute inset-x-0 top-0 hidden h-11 [-webkit-app-region:drag] md:block"
+            />
+            <Sidebar
+              sessions={state.sessions}
+              recent={recent}
+              projects={state.projects}
+              pinned={state.pinned}
+              preferences={state.preferences}
+              selected={state.selected}
+              ctrl={ctrl}
+              onSelect={(id) => safe(() => select(id))}
+              onNew={newChat}
+              onSearch={openSearch}
+              onAdd={() => safe(addProject)}
+              onPin={pin}
+              onPreferences={preferences}
+            />
+          </div>
+        </>
+      ) : null}
+      <div
+        data-workspace-frame="conversation"
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-panel"
+      >
+        <header className="flex h-11 shrink-0 select-none bg-header items-center [-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag]">
+          <div className="flex h-full shrink-0 items-center gap-1 px-3">
+            <span aria-hidden="true" className="w-16" />
+            <Tooltip content={t("app.toggle-sidebar")}>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label={t("app.toggle-sidebar")}
+                aria-pressed={sidebar}
+                onClick={() => setSidebar(!sidebar)}
+              >
+                <PanelLeft className="size-4" />
+              </Button>
+            </Tooltip>
+          </div>
+          <div className="flex h-full min-w-0 flex-1 items-center gap-2 px-3">
+            {current ? (
+              <>
+                <Tooltip content={currentProject?.name ?? t("app.conversations")}>
+                  <span
+                    tabIndex={0}
+                    role="img"
+                    aria-label={currentProject?.name ?? t("app.conversations")}
+                    className="rounded-md p-1 text-muted-foreground outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {currentProject ? (
+                      <Folder className="size-4" />
+                    ) : (
+                      <MessageSquare className="size-4" />
+                    )}
+                  </span>
                 </Tooltip>
-                <Menu.DropdownMenuContent align="end">
-                  <Menu.DropdownMenuGroup>
-                    <Menu.DropdownMenuItem
-                      onSelect={() => pin(current.id, !state.pinned.includes(current.id))}
-                    >
-                      {t(state.pinned.includes(current.id) ? "app.unpin" : "app.pin")}
-                      <Menu.DropdownMenuShortcut>⌥⌘P</Menu.DropdownMenuShortcut>
-                    </Menu.DropdownMenuItem>
-                    <Menu.DropdownMenuSub>
-                      <Menu.DropdownMenuSubTrigger>{t("app.copy")}</Menu.DropdownMenuSubTrigger>
-                      <Menu.DropdownMenuSubContent>
-                        <Menu.DropdownMenuItem
-                          onSelect={() => safe(() => navigator.clipboard.writeText(current.id))}
-                        >
-                          {t("app.copy-id")}
-                        </Menu.DropdownMenuItem>
-                        <Menu.DropdownMenuItem
-                          onSelect={() => safe(() => navigator.clipboard.writeText(current.cwd))}
-                        >
-                          {t("app.copy-cwd")}
-                        </Menu.DropdownMenuItem>
-                        <Menu.DropdownMenuItem
-                          onSelect={() => safe(() => navigator.clipboard.writeText(markdown()))}
-                        >
-                          {t("app.copy-markdown")}
-                        </Menu.DropdownMenuItem>
-                      </Menu.DropdownMenuSubContent>
-                    </Menu.DropdownMenuSub>
-                    {host.revealPath || host.openInTerminal ? (
+                <h1 className="min-w-0 flex-1 truncate text-ui-base font-medium">
+                  {current.title}
+                </h1>
+                <Menu.DropdownMenu>
+                  <Tooltip content={t("app.more")}>
+                    <Menu.DropdownMenuTrigger asChild>
+                      <Button size="icon" variant="ghost" aria-label={t("app.more")}>
+                        <Ellipsis className="size-4" />
+                      </Button>
+                    </Menu.DropdownMenuTrigger>
+                  </Tooltip>
+                  <Menu.DropdownMenuContent align="end">
+                    <Menu.DropdownMenuGroup>
+                      <Menu.DropdownMenuItem
+                        onSelect={() => pin(current.id, !state.pinned.includes(current.id))}
+                      >
+                        {t(state.pinned.includes(current.id) ? "app.unpin" : "app.pin")}
+                        <Menu.DropdownMenuShortcut>⌥⌘P</Menu.DropdownMenuShortcut>
+                      </Menu.DropdownMenuItem>
                       <Menu.DropdownMenuSub>
-                        <Menu.DropdownMenuSubTrigger>{t("app.open")}</Menu.DropdownMenuSubTrigger>
+                        <Menu.DropdownMenuSubTrigger>{t("app.copy")}</Menu.DropdownMenuSubTrigger>
                         <Menu.DropdownMenuSubContent>
-                          {host.revealPath ? (
-                            <Menu.DropdownMenuItem
-                              onSelect={() => safe(() => host.revealPath!(current.cwd))}
-                            >
-                              {t("app.finder")}
-                            </Menu.DropdownMenuItem>
-                          ) : null}
-                          {host.openInTerminal ? (
-                            <Menu.DropdownMenuItem
-                              onSelect={() => safe(() => host.openInTerminal!(current.cwd))}
-                            >
-                              {t("app.terminal")}
-                            </Menu.DropdownMenuItem>
-                          ) : null}
+                          <Menu.DropdownMenuItem
+                            onSelect={() => safe(() => navigator.clipboard.writeText(current.id))}
+                          >
+                            {t("app.copy-id")}
+                          </Menu.DropdownMenuItem>
+                          <Menu.DropdownMenuItem
+                            onSelect={() => safe(() => navigator.clipboard.writeText(current.cwd))}
+                          >
+                            {t("app.copy-cwd")}
+                          </Menu.DropdownMenuItem>
+                          <Menu.DropdownMenuItem
+                            onSelect={() => safe(() => navigator.clipboard.writeText(markdown()))}
+                          >
+                            {t("app.copy-markdown")}
+                          </Menu.DropdownMenuItem>
                         </Menu.DropdownMenuSubContent>
                       </Menu.DropdownMenuSub>
-                    ) : null}
-                  </Menu.DropdownMenuGroup>
-                </Menu.DropdownMenuContent>
-              </Menu.DropdownMenu>
-              <Tooltip content={t("app.summary")}>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label={t("app.summary")}
-                  aria-expanded={summary}
-                  onClick={() => setSummary(!summary)}
-                >
-                  <ListTree className="size-4" />
-                </Button>
-              </Tooltip>
-            </>
-          ) : null}
-        </div>
-      </header>
-      <div className="flex min-h-0 flex-1">
-        <nav aria-label={t("app.home")} className="flex w-12 shrink-0 flex-col items-center p-2">
-          <Tooltip content={t("app.home")} side="right">
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label={t("app.home")}
-              aria-current="page"
-              className="bg-background"
-              onClick={() => newChat(null)}
-            >
-              <Home className="size-4 fill-current" />
-            </Button>
-          </Tooltip>
-        </nav>
-        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-tl-xl border-l border-t border-border bg-background">
-          {sidebar ? (
-            <>
-              <button
-                aria-label={t("app.toggle-sidebar")}
-                className="absolute inset-0 z-10 bg-background/60 md:hidden"
-                onClick={() => setSidebar(false)}
-              />
-              <div className="absolute inset-y-0 left-0 z-20 md:relative md:z-auto">
-                <Sidebar
-                  sessions={state.sessions}
-                  recent={recent}
-                  projects={state.projects}
-                  pinned={state.pinned}
-                  preferences={state.preferences}
-                  selected={state.selected}
-                  ctrl={ctrl}
-                  onSelect={(id) => safe(() => select(id))}
-                  onNew={newChat}
-                  onSearch={openSearch}
-                  onAdd={() => safe(addProject)}
-                  onPin={pin}
-                  onPreferences={preferences}
+                      {host.revealPath || host.openInTerminal ? (
+                        <Menu.DropdownMenuSub>
+                          <Menu.DropdownMenuSubTrigger>{t("app.open")}</Menu.DropdownMenuSubTrigger>
+                          <Menu.DropdownMenuSubContent>
+                            {host.revealPath ? (
+                              <Menu.DropdownMenuItem
+                                onSelect={() => safe(() => host.revealPath!(current.cwd))}
+                              >
+                                {t("app.finder")}
+                              </Menu.DropdownMenuItem>
+                            ) : null}
+                            {host.openInTerminal ? (
+                              <Menu.DropdownMenuItem
+                                onSelect={() => safe(() => host.openInTerminal!(current.cwd))}
+                              >
+                                {t("app.terminal")}
+                              </Menu.DropdownMenuItem>
+                            ) : null}
+                          </Menu.DropdownMenuSubContent>
+                        </Menu.DropdownMenuSub>
+                      ) : null}
+                    </Menu.DropdownMenuGroup>
+                  </Menu.DropdownMenuContent>
+                </Menu.DropdownMenu>
+                <Tooltip content={t("app.summary")}>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={t("app.summary")}
+                    aria-expanded={summary}
+                    onClick={() => setSummary(!summary)}
+                  >
+                    <ListTree className="size-4" />
+                  </Button>
+                </Tooltip>
+              </>
+            ) : null}
+          </div>
+        </header>
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {state.selected ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              {Conversation ? (
+                <Conversation
+                  key={state.selected}
+                  footer={footer}
+                  sessionId={state.selected}
+                  view={view}
+                  connected={connected}
+                  summaryOpen={summary}
+                  onCloseSummary={() => setSummary(false)}
+                  request={client.request}
+                  onInteractionResolved={(epoch, decision) =>
+                    store.resolveInteraction(state.selected!, epoch, decision)
+                  }
+                  draft={draft}
+                  onDraft={setDraft}
+                  images={images}
+                  onImages={setImages}
                 />
-              </div>
-            </>
-          ) : null}
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {state.selected ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                {Conversation ? (
-                  <Conversation
-                    key={state.selected}
-                    footer={footer}
-                    sessionId={state.selected}
-                    view={view}
-                    connected={connected}
-                    summaryOpen={summary}
-                    onCloseSummary={() => setSummary(false)}
-                    request={client.request}
-                    onInteractionResolved={(epoch, decision) =>
-                      store.resolveInteraction(state.selected!, epoch, decision)
-                    }
-                    draft={draft}
-                    onDraft={setDraft}
-                    images={images}
-                    onImages={setImages}
-                  />
-                ) : (
-                  <div className="min-h-0 flex-1" />
-                )}
-              </div>
-            ) : (
-              <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-                <h1 className="text-center text-ui-xl font-medium">
-                  {targetProject ? (
-                    <Menu.DropdownMenu>
-                      <Menu.DropdownMenuTrigger asChild>
-                        <button className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                          {t("app.project-welcome", { project: targetProject.name })}
-                        </button>
-                      </Menu.DropdownMenuTrigger>
-                      <Menu.DropdownMenuContent>
-                        <Menu.DropdownMenuGroup>
-                          <Menu.DropdownMenuItem onSelect={() => store.select(null, null)}>
-                            {t("app.workspace")}
+              ) : (
+                <div className="min-h-0 flex-1" />
+              )}
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+              <h1 className="text-center text-ui-xl font-medium">
+                {targetProject ? (
+                  <Menu.DropdownMenu>
+                    <Menu.DropdownMenuTrigger asChild>
+                      <button className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        {t("app.project-welcome", { project: targetProject.name })}
+                      </button>
+                    </Menu.DropdownMenuTrigger>
+                    <Menu.DropdownMenuContent>
+                      <Menu.DropdownMenuGroup>
+                        <Menu.DropdownMenuItem onSelect={() => store.select(null, null)}>
+                          {t("app.workspace")}
+                        </Menu.DropdownMenuItem>
+                        {state.projects.map((project) => (
+                          <Menu.DropdownMenuItem
+                            key={project.id}
+                            onSelect={() => store.select(null, project.id)}
+                          >
+                            {project.name}
                           </Menu.DropdownMenuItem>
-                          {state.projects.map((project) => (
-                            <Menu.DropdownMenuItem
-                              key={project.id}
-                              onSelect={() => store.select(null, project.id)}
-                            >
-                              {project.name}
-                            </Menu.DropdownMenuItem>
-                          ))}
-                        </Menu.DropdownMenuGroup>
-                      </Menu.DropdownMenuContent>
-                    </Menu.DropdownMenu>
-                  ) : (
-                    t("app.welcome")
-                  )}
-                </h1>
-              </div>
-            )}
-            {!state.selected ? footer() : null}
-          </main>
-        </div>
+                        ))}
+                      </Menu.DropdownMenuGroup>
+                    </Menu.DropdownMenuContent>
+                  </Menu.DropdownMenu>
+                ) : (
+                  t("app.welcome")
+                )}
+              </h1>
+            </div>
+          )}
+          {!state.selected ? footer() : null}
+        </main>
       </div>
       <CommandPalette
         open={search}

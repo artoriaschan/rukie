@@ -61,7 +61,7 @@ function getStatusCopy(componentText: ComponentTranslator, status: ToolApprovalS
 
 function getStatusBadgeClass(status: ToolApprovalStatus) {
   if (status === "pending") {
-    return "border-warning/30 bg-warning/10 text-warning";
+    return "border-interaction-confirmation-foreground/30 bg-interaction-confirmation-surface text-interaction-confirmation-foreground";
   }
   if (status === "approving" || status === "running") {
     return "border-accent/30 bg-accent/10 text-accent";
@@ -231,7 +231,7 @@ export function ToolApproval({
               disabled={disabled}
               onClick={onApprove}
               transition={{ duration: 0.16, ease: EASE_OUT }}
-              className="min-h-8 max-w-full rounded-lg bg-foreground px-3 py-1 text-ui-base font-medium text-background outline-none disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="min-h-8 max-w-full rounded-lg bg-foreground px-3 py-1 text-ui-base font-medium text-foreground-inverse outline-none disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {approveLabel ?? componentText("component.allow-once")}
             </motion.button>

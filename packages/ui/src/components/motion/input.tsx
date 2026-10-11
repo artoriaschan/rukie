@@ -90,8 +90,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         data-state={hasError ? "error" : success ? "success" : focused ? "focused" : "idle"}
         className={cn(
           "relative flex min-h-8 items-center rounded-lg border transition-colors duration-120",
-          "border-input",
-          focused && !hasError && "border-ring ring-2 ring-ring/40",
+          "border-input-border bg-input-surface",
+          !focused && !hasError && !disabled && "hover:border-input-border-hover",
+          focused &&
+            !hasError &&
+            "border-input-border-focused bg-input-focused ring-2 ring-ring/40",
           hasError && "border-destructive ring-2 ring-destructive/25",
           disabled && "opacity-60",
           classNames?.field,
@@ -128,7 +131,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           }}
           className={cn(
             "peer min-h-7 w-full bg-transparent py-1 text-ui-base text-foreground caret-foreground outline-none",
-            "placeholder:text-muted-foreground",
+            "placeholder:text-foreground-subtlest",
             leftIcon ? "pl-10" : "pl-3",
             rightSlot || success ? "pr-10" : "pr-3",
             disabled && "cursor-not-allowed",

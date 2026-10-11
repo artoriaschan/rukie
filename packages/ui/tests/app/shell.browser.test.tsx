@@ -8,6 +8,7 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
   const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const wasDark = document.documentElement.classList.contains("dark");
   const region = (element: Element) =>
     getComputedStyle(element).getPropertyValue("-webkit-app-region");
   try {
@@ -16,6 +17,24 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
       await page.viewport(width, 800);
       const header = document.querySelector("header")!;
       expect(region(header)).toBe("drag");
+      const shell = document.querySelector("[data-workspace-shell]")!;
+      const frame = document.querySelector('[data-workspace-frame="conversation"]')!;
+      expect(frame.contains(header)).toBe(true);
+      expect(frame.contains(screen.getByRole("main").element())).toBe(true);
+      for (const dark of [false, true]) {
+        document.documentElement.classList.toggle("dark", dark);
+        const style = getComputedStyle(frame);
+        expect(style.borderTopLeftRadius).toBe("12px");
+        for (const edge of ["Top", "Right", "Bottom", "Left"] as const)
+          expect(style[`border${edge}Width`]).toBe("1px");
+        expect(getComputedStyle(shell).padding).toBe("4px");
+        expect(getComputedStyle(shell).gap).toBe("4px");
+        const bounds = frame.getBoundingClientRect();
+        expect(bounds.top).toBe(4);
+        expect(bounds.right).toBe(width - 4);
+        expect(bounds.bottom).toBe(796);
+        expect(shell.scrollWidth).toBeLessThanOrEqual(shell.clientWidth);
+      }
       for (const section of header.children) expect(region(section)).not.toBe("no-drag");
       const toggle = screen
         .getByRole("banner")
@@ -25,6 +44,16 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
       await toggle.click();
       await expect.element(toggle).toHaveAttribute("aria-pressed", String(previous !== "true"));
       await toggle.click();
+      if (width === 420) {
+        const backdrop = screen.getByRole("button", { name: "Close sidebar", exact: true });
+        await expect.element(backdrop).toBeVisible();
+        expect(document.querySelectorAll('button[aria-label="Toggle sidebar"]')).toHaveLength(1);
+        const bounds = backdrop.element().getBoundingClientRect();
+        await backdrop.click({ position: { x: bounds.width - 8, y: 8 } });
+        await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
+        await expect.element(backdrop).not.toBeInTheDocument();
+        await toggle.click();
+      }
     }
     await userEvent.keyboard("{Control>}1{/Control}");
     const title = screen.getByRole("heading", { name: "Fix compiler", exact: true });
@@ -43,6 +72,7 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
     await screen.unmount();
     await commands.stopWire(connection.port);
     await page.viewport(1280, 900);
+    document.documentElement.classList.toggle("dark", wasDark);
   }
 });
 

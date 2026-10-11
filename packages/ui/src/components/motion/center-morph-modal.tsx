@@ -318,7 +318,7 @@ export function CenterMorphModalContent({
                       reduce ? { duration: 0.14, ease: EASE_OUT } : CENTER_UNFOLD_TRANSITION
                     }
                     className={cn(
-                      "pointer-events-auto relative w-full max-w-[480px] max-h-[calc(100dvh-32px)] origin-center flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border-strong bg-popover will-change-[clip-path]",
+                      "pointer-events-auto relative w-full max-w-[480px] max-h-[calc(100dvh-32px)] origin-center flex min-h-0 flex-col overflow-hidden rounded-2xl border border-popover-border bg-popover will-change-[clip-path]",
                       className,
                     )}
                   >

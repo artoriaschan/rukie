@@ -508,7 +508,7 @@ export function ContextMenuContent({
         onKeyDown={onKeyDown}
         onContextMenu={(event) => event.preventDefault()}
         className={cn(
-          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-border-strong bg-popover p-1 text-popover-foreground outline-none",
+          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground outline-none",
           className,
         )}
       >
@@ -586,7 +586,7 @@ function ContextMenuItemBase({
           layoutId={`${context.menuId}-active`}
           className={cn(
             "absolute inset-0 -z-10 rounded-md",
-            tone === "destructive" ? "bg-destructive/10" : "bg-foreground/[0.065]",
+            tone === "destructive" ? "bg-destructive/10" : "bg-menu-hover",
           )}
           transition={context.reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
         />

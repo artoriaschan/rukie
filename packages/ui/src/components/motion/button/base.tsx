@@ -33,9 +33,10 @@ type Ripple = { id: number; x: number; y: number; size: number };
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
   primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-  secondary: "border border-border bg-card text-foreground hover:border-border",
-  ghost: "text-muted-foreground hover:text-foreground hover:bg-muted/60",
-  outline: "border border-border bg-transparent text-foreground hover:bg-muted/60",
+  secondary: "border border-border bg-card text-foreground hover:border-border-hover",
+  ghost: "text-muted-foreground hover:text-foreground hover:bg-hover",
+  outline:
+    "border border-border bg-transparent text-foreground hover:bg-hover hover:border-border-hover",
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {

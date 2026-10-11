@@ -194,8 +194,8 @@ export function SelectTrigger({ className, children }: SelectTriggerProps) {
       aria-controls={ctx.listId}
       onClick={() => ctx.setOpen(!ctx.open)}
       className={cn(
-        "relative z-10 flex w-full items-center justify-between gap-2 min-h-8 rounded-lg border border-border bg-background px-3 py-1 text-ui-base text-foreground outline-none transition-colors",
-        "hover:border-(--color-border-strong) focus-visible:ring-2 focus-visible:ring-foreground/20",
+        "relative z-10 flex w-full items-center justify-between gap-2 min-h-8 rounded-lg border border-input-border bg-input-surface px-3 py-1 text-ui-base text-foreground outline-none transition-colors",
+        "hover:border-input-border-hover focus-visible:border-input-border-focused focus-visible:bg-input-focused focus-visible:ring-2 focus-visible:ring-foreground/20",
         "disabled:pointer-events-none disabled:opacity-50",
         className,
       )}
@@ -303,7 +303,7 @@ export function SelectContent({ className, children }: SelectContentProps) {
       // sits above or below depending on available space
       className={cn(
         OVERLAY_LAYER.interactive,
-        "absolute left-0 right-0 rounded-lg border border-border-strong bg-popover text-popover-foreground shadow-md",
+        "absolute left-0 right-0 rounded-lg border border-popover-border bg-menu text-popover-foreground shadow-md",
         isTop ? "bottom-full" : "top-full",
         className,
       )}
@@ -347,8 +347,8 @@ export function SelectItem({ value, disabled = false, className, children }: Sel
         className={cn(
           "flex w-full items-center justify-between min-h-7 gap-2 rounded-md px-2 py-1 text-left text-ui-base outline-none transition-colors",
           selected
-            ? "bg-muted text-foreground"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted",
+            ? "bg-selected text-foreground"
+            : "text-muted-foreground hover:bg-menu-hover hover:text-foreground focus-visible:bg-menu-hover",
           "disabled:pointer-events-none disabled:opacity-50",
           className,
         )}
