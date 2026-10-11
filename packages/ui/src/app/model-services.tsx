@@ -53,7 +53,6 @@ import { Tooltip } from "../components/motion/tooltip";
 import { Switch } from "../components/motion/switch";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "../components/motion/radio";
-import { Textarea } from "../components/ui/textarea";
 import "@fontsource-variable/noto-sans-sc";
 import "@fontsource-variable/jetbrains-mono";
 import "./model-services.css";
@@ -98,7 +97,6 @@ export function ModelServices({
     return () => previous?.focus();
   }, []);
   const [providers, setProviders] = useState<ModelServiceSummary[]>([]);
-  const [templates, setTemplates] = useState<ModelService[]>([]);
   const [draft, setDraft] = useState<ModelService>();
   const [key, setKey] = useState("");
   const [removeKey, setRemoveKey] = useState(false);
@@ -109,11 +107,8 @@ export function ModelServices({
   const [dialog, setDialog] = useState<"model" | "rename" | "delete" | null>(null);
   const [editing, setEditing] = useState<number>();
   const [model, setModel] = useState<ServiceModel>(defaultModel);
-  const [intelligent, setIntelligent] = useState(false);
   const [modelError, setModelError] = useState("");
-  const [modelNotice, setModelNotice] = useState("");
   const [advanced, setAdvanced] = useState(false);
-  const [mapping, setMapping] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [rename, setRename] = useState("");
   const selected = providers.find((provider) => provider.id === draft?.id);
@@ -148,7 +143,6 @@ export function ModelServices({
       const result = await services.list();
       setProviders(result);
       if (!draft && result[0]) choose(result[0]);
-      if (services.templates) setTemplates(await services.templates());
       setError("");
     } catch {
       setError(t("services.loadFailure"));
@@ -241,66 +235,19 @@ export function ModelServices({
     setEditing(index);
     setModel(structuredClone(index === undefined ? defaultModel : draft!.models[index]!));
     setModelError("");
-    setModelNotice("");
-    setMapping(
-      JSON.stringify(
-        index === undefined ? {} : (draft!.models[index]!.thinkingLevelMap ?? {}),
-        null,
-        2,
-      ),
-    );
     setAdvanced(false);
-    setIntelligent(index === undefined);
     setDialog("model");
-  };
-  const applyTemplate = (id: string) => {
-    const template = templates
-      .filter((p) => p.api === draft?.api)
-      .flatMap((p) => p.models)
-      .find((m) => m.id === id);
-    if (template) {
-      setModel({ ...structuredClone(template), enabled: model.enabled });
-      setMapping(JSON.stringify(template.thinkingLevelMap ?? {}, null, 2));
-      setModelNotice(t("services.templateNote"));
-    } else {
-      setModel((previous) => ({ ...previous, id }));
-      setModelNotice(t("services.noTemplate"));
-    }
   };
   const saveModel = async () => {
     if (!draft || !model.id.trim() || !model.contextWindow || !model.maxTokens) {
       setModelError(t("services.invalid"));
       return;
     }
-    let parsedMap: unknown;
-    try {
-      parsedMap = JSON.parse(mapping || "{}");
-    } catch {
-      setModelError(t("services.mappingInvalid"));
-      return;
-    }
     if (!Value.Check(ModelCompatSchemas[draft.api], model.compat ?? {})) {
       setModelError(t("services.apiIncompatible"));
       return;
     }
-    if (
-      !parsedMap ||
-      typeof parsedMap !== "object" ||
-      Array.isArray(parsedMap) ||
-      Object.entries(parsedMap).some(
-        ([level, value]) =>
-          !THINKING_LEVELS.includes(level as (typeof THINKING_LEVELS)[number]) ||
-          (value !== null && typeof value !== "string"),
-      )
-    ) {
-      setModelError(t("services.mappingInvalid"));
-      return;
-    }
-    const savedModel = {
-      ...model,
-      // The guard above validates every supported key and string/null value.
-      thinkingLevelMap: parsedMap as ServiceModel["thinkingLevelMap"],
-    };
+    const savedModel = { ...model };
     const models = [...draft.models];
     if (editing === undefined) models.push(savedModel);
     else models[editing] = savedModel;
@@ -805,7 +752,7 @@ export function ModelServices({
                   placeholder={t("services.id")}
                   autoFocus
                   value={model.id}
-                  onChange={(id) => (intelligent ? applyTemplate(id) : setModel({ ...model, id }))}
+                  onChange={(id) => setModel({ ...model, id })}
                 />
                 <div className="model-services-basic-columns">
                   <Input
@@ -863,7 +810,6 @@ export function ModelServices({
                               [level]: enabled ? level : null,
                             };
                             setModel({ ...model, thinkingLevelMap: map });
-                            setMapping(JSON.stringify(map, null, 2));
                           }}
                         />
                       ))}
@@ -924,6 +870,9 @@ export function ModelServices({
                   />
                 </div>
               </section>
+              <p className="sr-only" id="model-services-unsupported">
+                {t("services.unsupported")}
+              </p>
               <div className="model-services-advanced-shell">
                 <Button
                   variant="ghost"
@@ -941,35 +890,7 @@ export function ModelServices({
                   <ChevronDown className="ml-auto size-4" />
                 </Button>
                 <div className="model-services-advanced" hidden={!advanced}>
-                  <div className="model-services-intelligent">
-                    <span>{t("services.intelligent")}</span>
-                    <Tooltip content={t("services.templateNote")}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="model-services-capability-help"
-                        aria-label={t("services.intelligentInfo")}
-                        type="button"
-                      >
-                        <Info aria-hidden="true" />
-                      </Button>
-                    </Tooltip>
-                    <Switch
-                      checked={intelligent}
-                      ariaLabel={t("services.intelligent")}
-                      onCheckedChange={(value) => {
-                        setIntelligent(value);
-                        if (value) applyTemplate(model.id);
-                      }}
-                    />
-                  </div>
-                  {modelNotice ? (
-                    <p className="text-ui-sm text-muted-foreground">{modelNotice}</p>
-                  ) : null}
-                  <p
-                    className="text-ui-sm text-muted-foreground"
-                    id="model-services-advanced-unavailable"
-                  >
+                  <p className="sr-only" id="model-services-advanced-unavailable">
                     {t("services.advancedUnavailable")}
                   </p>
                   <div className="model-services-advanced-columns">
@@ -1029,84 +950,6 @@ export function ModelServices({
                       aria-describedby="model-services-advanced-unavailable"
                     />
                   </section>
-                  <p className="model-services-help-label">
-                    {t("services.capabilities")}
-                    <Tooltip content={t("services.unsupported")}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="model-services-capability-help"
-                        aria-label={t("services.capabilitiesInfo")}
-                        aria-describedby="model-services-unsupported"
-                      >
-                        <Info aria-hidden="true" />
-                      </Button>
-                    </Tooltip>
-                  </p>
-                  <div className="model-services-chips">
-                    <Checkbox
-                      checked={false}
-                      disabled
-                      label={t("services.structured")}
-                      aria-describedby="model-services-unsupported"
-                      onCheckedChange={() => {}}
-                    />
-                    <Checkbox
-                      checked={false}
-                      disabled
-                      label={t("services.web")}
-                      aria-describedby="model-services-unsupported"
-                      onCheckedChange={() => {}}
-                    />
-                    <Checkbox
-                      checked={model.compat?.supportsMidConvoSystemMessages ?? false}
-                      label={t("services.midSystem")}
-                      onCheckedChange={(value) =>
-                        setModel({
-                          ...model,
-                          compat: { ...model.compat, supportsMidConvoSystemMessages: value },
-                        })
-                      }
-                    />
-                  </div>
-                  <p className="sr-only" id="model-services-unsupported">
-                    {t("services.unsupported")}
-                  </p>
-                  <label className="model-services-mapping">
-                    <span className="model-services-help-label">
-                      {t("services.mapping")}
-                      <Info aria-hidden="true" />
-                    </span>
-                    <ScrollArea
-                      className="model-services-mapping-scroll"
-                      viewportLabel={t("services.mapping")}
-                    >
-                      <Textarea
-                        ref={(field) => {
-                          if (field) {
-                            field.style.height = "0px";
-                            field.style.height = `${Math.max(64, field.scrollHeight)}px`;
-                          }
-                        }}
-                        aria-label={t("services.mapping")}
-                        value={mapping}
-                        onChange={(event) => setMapping(event.target.value)}
-                      />
-                    </ScrollArea>
-                  </label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setModel(structuredClone(defaultModel));
-                      setModelError("");
-                      setModelNotice("");
-                      setIntelligent(false);
-                      setMapping("{}");
-                    }}
-                  >
-                    {t("services.reset")}
-                  </Button>
                 </div>
               </div>
               {modelError || error ? (

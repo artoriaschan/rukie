@@ -101,7 +101,7 @@ test("model services creates a provider and preserves input when encrypted save 
     // Model a dark host palette with the independently scoped Light settings theme.
     document.documentElement.style.setProperty("--background", "#0d1117");
     document.documentElement.style.setProperty("--foreground", "#e6edf3");
-    const advanced = screen.getByRole("button", { name: /Advanced configuration/ });
+    const advanced = screen.getByRole("button", { name: /Advanced settings/ });
     expect(getComputedStyle(advanced.element()).backgroundColor).toBe("rgba(0, 0, 0, 0)");
     await advanced.hover();
     await expect
@@ -112,15 +112,8 @@ test("model services creates a provider and preserves input when encrypted save 
     advanced.element().focus();
     await expect.element(advanced).toHaveFocus();
     expect(getComputedStyle(advanced.element()).color).toBe("rgb(38, 38, 38)");
-    await screen.getByRole("button", { name: /Advanced configuration/ }).click();
-    await expect
-      .element(screen.getByRole("checkbox", { name: "Structured output" }))
-      .toBeDisabled();
+    await screen.getByRole("button", { name: /Advanced settings/ }).click();
     await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("script-model");
-    const help = screen.getByRole("button", { name: "Intelligent configuration information" });
-    expect(help.element().getBoundingClientRect().width).toBe(24);
-    expect(help.element().querySelector("svg")!.getBoundingClientRect().width).toBe(14);
-    expect(help.element().getBoundingClientRect().height).toBe(24);
     const cancelBox = screen
       .getByRole("dialog")
       .getByRole("button", { name: "Cancel", exact: true })
@@ -131,11 +124,6 @@ test("model services creates a provider and preserves input when encrypted save 
       .element()
       .getBoundingClientRect();
     expect(saveBox.left - cancelBox.right).toBe(8);
-    help.element().focus();
-    await userEvent.keyboard("{Enter}");
-    await expect
-      .element(page.getByRole("tooltip"))
-      .toHaveTextContent("Use a matching locked catalog template. Unknown IDs remain manual.");
     await screen.getByRole("textbox", { name: "Model ID", exact: true }).click();
     await screen.getByRole("button", { name: "Save model", exact: true }).click();
     await expect.poll(() => providers[0]?.models[0]?.id).toBe("script-model");
@@ -240,64 +228,84 @@ test("Chinese narrow settings preserves compatibility, maps, credentials and mod
   }
 });
 
-test("intelligent configuration uses explicit templates and leaves unknown IDs editable", async () => {
+test("Pencil advanced settings contains only reference fields and preserves hidden model metadata", async () => {
+  await page.viewport(1280, 900);
   let providers: ModelServiceSummary[] = [
     {
       id: "local",
       name: "Local",
-      api: "openai-responses",
+      api: "openai-completions",
       baseUrl: "https://api.example.com/v1",
       hasCredential: true,
-      models: [],
+      models: [
+        {
+          id: "known",
+          contextWindow: 128000,
+          maxTokens: 12000,
+          reasoning: true,
+          thinkingLevelMap: { high: "deep" },
+          compat: { supportsMidConvoSystemMessages: true },
+        },
+      ],
     },
   ];
-  const template: import("@rukie/shared").ModelService = {
-    id: "catalog",
-    name: "Catalog",
-    api: "openai-responses",
-    baseUrl: "https://api.example.com/v1",
-    models: [
-      {
-        id: "known",
-        contextWindow: 200000,
-        maxTokens: 12000,
-        input: ["text", "image"],
-        reasoning: true,
-        thinkingLevelMap: { off: null, high: "deep" },
-      },
-    ],
-  };
-  const services = {
-    list: async () => providers,
-    templates: async () => [template],
-    save: async (input: import("@rukie/shared").ModelServiceSave) => {
-      providers = [{ ...input.provider, hasCredential: true }];
-    },
-    delete: async () => {},
-  };
+  const original = structuredClone(providers[0]!.models[0]!);
   const screen = await render(
     <UiLocaleProvider locale="en">
-      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+      <ModelServices
+        services={{
+          list: async () => providers,
+          save: async (input: import("@rukie/shared").ModelServiceSave) => {
+            providers = [{ ...input.provider, hasCredential: true }];
+          },
+          delete: async () => {},
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
     </UiLocaleProvider>,
   );
   try {
-    await screen.getByRole("button", { name: "Add model", exact: true }).click();
-    await screen.getByRole("button", { name: /Advanced configuration/ }).click();
-    await expect
-      .element(screen.getByRole("switch", { name: "Intelligent configuration" }))
-      .toHaveAttribute("aria-checked", "true");
-    await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("known");
-    await expect
-      .element(screen.getByRole("spinbutton", { name: "Context window" }))
-      .toHaveValue(200000);
-    await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("unknown");
-    await expect
-      .element(screen.getByText("No matching catalog template. Configure this model manually."))
-      .toBeVisible();
-    await expect.element(screen.getByRole("spinbutton", { name: "Context window" })).toBeEnabled();
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await screen.getByRole("button", { name: /Advanced settings/ }).click();
+    const content = document.querySelector<HTMLElement>(".model-services-advanced")!;
+    expect(
+      Array.from(content.querySelectorAll("label[for]"), (label) => label.textContent),
+    ).toEqual([
+      "Compression threshold",
+      "Temperature",
+      "Maximum output tokens",
+      "Maximum tool iterations",
+      "Input price",
+      "Output price",
+      "Cache read price",
+      "Cache write price",
+      "Price source",
+    ]);
+    expect(content.querySelectorAll('[role="switch"], [role="checkbox"], textarea')).toHaveLength(
+      0,
+    );
+    expect(Array.from(content.querySelectorAll("h3"), (item) => item.textContent)).toEqual([
+      "Automatic compression",
+      "Runtime parameters",
+      "Price (USD / million tokens)",
+    ]);
+    expect(getComputedStyle(content).gap).toBe("16px");
+    expect(content.getBoundingClientRect().width).toBe(608);
+    for (const card of content.querySelectorAll<HTMLElement>(".model-services-option-card")) {
+      expect(card.getBoundingClientRect().height).toBeGreaterThanOrEqual(189);
+      expect(getComputedStyle(card).minHeight).toBe("189px");
+      expect(getComputedStyle(card).borderRadius).toBe("16px");
+    }
+    await screen.getByRole("checkbox", { name: "Low", exact: true }).click();
+    await screen.getByRole("spinbutton", { name: "Maximum output tokens" }).fill("14000");
     await screen.getByRole("button", { name: "Save model", exact: true }).click();
-    await expect.poll(() => providers[0]?.models[0]?.id).toBe("unknown");
-    expect(providers[0]!.models[0]!.input).toEqual(["text", "image"]);
+    await expect.poll(() => providers[0]!.models[0]!.maxTokens).toBe(14000);
+    expect(providers[0]!.models[0]!.thinkingLevelMap).toEqual({
+      ...original.thinkingLevelMap,
+      low: "low",
+    });
+    expect(providers[0]!.models[0]!.compat).toEqual(original.compat);
   } finally {
     await screen.unmount();
   }
@@ -469,9 +477,9 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
       .element()
       .getBoundingClientRect();
     await expect
-      .element(screen.getByRole("button", { name: /高级配置/ }))
+      .element(screen.getByRole("button", { name: /高级设置/ }))
       .toHaveAttribute("aria-expanded", "false");
-    await screen.getByRole("button", { name: /高级配置/ }).click();
+    await screen.getByRole("button", { name: /高级设置/ }).click();
     const tokens = screen
       .getByRole("spinbutton", { name: "最大输出 Token" })
       .element()
@@ -571,7 +579,7 @@ test.each([
   },
 );
 
-test("saved overview stays compact; dirty credentials and invalid mapping remain explicit", async () => {
+test("saved overview stays compact; dirty credentials and hidden mapping remain preserved", async () => {
   await page.viewport(1280, 900);
   let providers: ModelServiceSummary[] = [
     {
@@ -622,23 +630,10 @@ test("saved overview stays compact; dirty credentials and invalid mapping remain
     await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
     await expect.poll(() => providers[0]!.models[0]!.enabled).toBe(false);
     await screen.getByRole("button", { name: "Edit", exact: true }).click();
-    await screen.getByRole("button", { name: /Advanced configuration/ }).click();
-    const mapping = screen.getByRole("textbox", {
-      name: "Provider reasoning parameter",
-      exact: true,
-    });
-    await mapping.fill('{"unknown":"deep"}');
+    await screen.getByRole("button", { name: /Advanced settings/ }).click();
     await screen.getByRole("button", { name: "Save model", exact: true }).click();
-    await expect
-      .element(screen.getByRole("alert"))
-      .toHaveTextContent(
-        "Enter a JSON object mapping supported reasoning levels to strings or null.",
-      );
-    await expect.element(mapping).toHaveValue('{"unknown":"deep"}');
+    await expect.poll(() => saved.length).toBe(3);
     expect(providers[0]!.models[0]!.thinkingLevelMap).toEqual({ high: "deep" });
-    await mapping.fill('{"high":"maximum"}');
-    await screen.getByRole("button", { name: "Save model", exact: true }).click();
-    await expect.poll(() => providers[0]!.models[0]!.thinkingLevelMap?.high).toBe("maximum");
   } finally {
     await screen.unmount();
   }
@@ -820,7 +815,7 @@ test("Pencil overlay scrollbars appear only for overflow and map keyboard and wh
   }
 });
 
-test("model form and long parameter mapping use custom scrollbars at narrow widths", async () => {
+test("expanded model form uses custom scrollbars at narrow widths", async () => {
   await page.viewport(1280, 900);
   const providers: ModelServiceSummary[] = [
     {
@@ -844,27 +839,10 @@ test("model form and long parameter mapping use custom scrollbars at narrow widt
   try {
     await screen.getByRole("button", { name: "Add model", exact: true }).click();
 
-    await screen.getByRole("button", { name: /Advanced configuration/ }).click();
+    await screen.getByRole("button", { name: /Advanced settings/ }).click();
     await expect
       .element(screen.getByRole("scrollbar", { name: "Model configuration" }))
       .toBeVisible();
-    await screen
-      .getByRole("textbox", { name: "Provider reasoning parameter", exact: true })
-      .fill(Array.from({ length: 100 }, (_, index) => `line ${index}`).join("\n"));
-    const mappingTrack = screen.getByRole("scrollbar", { name: "Provider reasoning parameter" });
-    await expect.element(mappingTrack).toBeVisible();
-    const mappingRail = mappingTrack.element();
-    const mappingThumb = mappingRail.firstElementChild!;
-    expect(mappingThumb.getBoundingClientRect().height).toBe(24);
-    mappingRail.focus();
-    await userEvent.keyboard("{End}");
-    await expect
-      .poll(() =>
-        Math.abs(
-          mappingThumb.getBoundingClientRect().bottom - mappingRail.getBoundingClientRect().bottom,
-        ),
-      )
-      .toBeLessThanOrEqual(1);
     await page.viewport(420, 900);
     await expect
       .poll(() => document.querySelector<HTMLElement>(".model-services")!.scrollWidth)

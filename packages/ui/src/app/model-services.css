@@ -354,16 +354,10 @@
 .model-services-chips > label:has([aria-checked="true"]) {
   background: var(--secondary);
 }
-.model-services-levels,
-.model-services-mapping {
+.model-services-levels {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-.model-services-mapping textarea {
-  height: 64px;
-  min-height: 64px;
-  resize: none;
 }
 .model-services-modal-footer {
   display: flex;
@@ -517,30 +511,9 @@
 .model-services-modal-footer > button:last-child {
   min-width: 64px;
 }
-.model-services-intelligent {
-  height: 20px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: -6px;
-  flex-shrink: 0;
-}
-.model-services-intelligent > span:first-child {
-  width: 72px;
-}
-.model-services-intelligent > span:not(:first-child) {
-  margin-left: 10px;
-}
-.model-services-advanced > p:nth-of-type(2) {
-  margin-top: 17px;
-}
 .model-services-levels {
   margin-top: 19px;
   gap: 7px;
-}
-.model-services-mapping {
-  margin-top: 16px;
-  gap: 5px;
 }
 .model-services-level-chip {
   display: flex;
@@ -816,14 +789,6 @@
   padding: 0;
   color: var(--muted-foreground);
 }
-.model-services-intelligent .model-services-capability-help {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  min-height: 24px;
-  padding: 0;
-  color: var(--muted-foreground);
-}
 .model-services-capability-help > svg {
   width: 14px;
   height: 14px;
@@ -1011,9 +976,10 @@
   margin-bottom: -6px;
 }
 .model-services-advanced-shell {
+  margin-inline: -1px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px;
+  padding: 11px;
 }
 .model-services-advanced-toggle {
   width: 100%;
@@ -1029,14 +995,11 @@
   text-align: left;
 }
 .model-services-advanced {
-  gap: 12px;
+  gap: 16px;
   margin-top: 16px;
 }
 .model-services-advanced[hidden] {
   display: none;
-}
-.model-services-mapping {
-  margin-top: 0;
 }
 .model-services-modal-footer {
   padding: 12px 20px;
@@ -1118,14 +1081,6 @@
 .model-services-multimodal > .model-services-help-label {
   line-height: 18px;
 }
-.model-services-mapping-scroll {
-  height: 64px;
-}
-.model-services-mapping-scroll textarea {
-  height: auto;
-  min-height: 64px;
-  overflow: hidden;
-}
 
 .model-services-advanced-columns {
   display: grid;
@@ -1133,9 +1088,11 @@
   gap: 16px;
 }
 .model-services-option-card {
+  min-height: 189px;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 16px;
+  padding: 11px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1169,4 +1126,12 @@
   width: 128px;
   color: var(--primary-foreground);
   background: var(--primary);
+}
+
+.model-services-option-card h3 {
+  font-size: var(--text-ui-base);
+  line-height: 1.5;
+}
+.model-services-option-card .model-services-basic-columns {
+  gap: 10px;
 }
