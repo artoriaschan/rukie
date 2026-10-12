@@ -1,0 +1,37 @@
+.scratch/desktop-web-dev/issues/02-launcher.md
+  s_ffaffa796582bc::t_e11ddcfce4eb6e 1-17
+docs/adr/README.md
+  s_ffaffa796582bc::t_59797473ca604c 68
+docs/adr/0037-browser-host-sidecar-capabilities.md
+  s_ffaffa796582bc::t_030199ec08175b 1-52
+docs/adr/0035-desktop-isolated-sqlite-storage.md
+  s_ffaffa796582bc::t_719c74d3c995be 13
+.scratch/desktop-web-dev/spec.md
+  s_ffaffa796582bc::t_59797473ca604c 73-79,94-101
+  s_ffaffa796582bc::t_f687f4fd998a97 81
+  s_ffaffa796582bc::t_d1c67005bbdf15 1-72,80,82-93,102-105
+.scratch/desktop-web-dev/issues/04-host-wire-commands.md
+  s_ffaffa796582bc::t_465260512a4fa4 1-13
+.scratch/desktop-web-dev/issues/01-sidecar-encryption-backends.md
+  s_ffaffa796582bc::t_ccc837cd585113 1-12
+.scratch/desktop-web-dev/issues/03-model-services-wire.md
+  s_ffaffa796582bc::t_98150c6acf4777 1-14
+.scratch/desktop-web-dev/issues/05-isolated-acceptance.md
+  s_ffaffa796582bc::t_e0e3ea370baf8d 1-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "d75580fc391df31c7ca4235effedb657254de287",
+  "prompts": {},
+  "sessions": {
+    "s_ffaffa796582bc": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_gu56s9igz70y",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
