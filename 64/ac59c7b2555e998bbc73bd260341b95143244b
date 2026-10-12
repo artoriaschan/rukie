@@ -1,0 +1,30 @@
+.scratch/desktop-web-dev/spec.md
+  s_e09d8f70cffc20::t_96c104bf26166c 122-123
+packages/ui/tests/app/model-services.browser.test.tsx
+  s_e09d8f70cffc20::t_af89efbf62349a 1478-1485,1489-1502,1504-1505,1546,1576
+  s_e09d8f70cffc20::t_cf8d187e8f07a2 1506,1562
+  s_e09d8f70cffc20::t_42eb1c38d78494 1486-1488,1503,1507-1545,1547-1561
+  s_e09d8f70cffc20::t_beeae834fceb3b 1563-1575
+packages/ui/src/app/model-services.tsx
+  s_e09d8f70cffc20::t_42eb1c38d78494 44,1271-1284
+.scratch/desktop-web-dev/issues/03-model-services-wire.md
+  s_e09d8f70cffc20::t_96c104bf26166c 31-40
+packages/ui/README.md
+  s_e09d8f70cffc20::t_dbcc39bd2220ca 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "64ac59c7b2555e998bbc73bd260341b95143244b",
+  "prompts": {},
+  "sessions": {
+    "s_e09d8f70cffc20": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12f34-a6f6-73c1-ae4e-16f8621913e1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
