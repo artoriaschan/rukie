@@ -41,6 +41,7 @@ import {
   modelServiceThinkingLevels,
   parseModelServiceSave,
   ModelCompatSchemas,
+  ModelServiceSchema,
   type ModelService,
   type ModelServiceSummary,
 } from "@rukie/shared";
@@ -1267,10 +1268,20 @@ export function ModelServices({
             className="flex flex-col gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              if (draft)
-                void persist({ ...draft, name: rename }).then((saved) => {
-                  if (saved) setDialog(null);
-                });
+              if (!draft) return;
+              if (!rename.trim() || !Value.Check(ModelServiceSchema.properties.name, rename)) {
+                setError(t("services.invalid"));
+                return;
+              }
+              if (dirty) {
+                setDraft({ ...draft, name: rename });
+                setError("");
+                setDialog(null);
+                return;
+              }
+              void persist({ ...draft, name: rename }).then((saved) => {
+                if (saved) setDialog(null);
+              });
             }}
           >
             <h2 className="font-medium">{t("services.rename")}</h2>

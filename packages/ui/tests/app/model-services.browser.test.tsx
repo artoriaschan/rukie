@@ -1475,3 +1475,102 @@ test("model USD price autofill preserves manual drafts, saves prices and ignores
     await screen.unmount();
   }
 });
+
+test("renaming a new provider draft does not require a Base URL", async () => {
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          save: async (input) => {
+            saved.push(input);
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  await screen.getByRole("button", { name: "Add provider", exact: true }).click();
+  await screen.getByRole("button", { name: "Create custom provider" }).click();
+  await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("");
+  await screen.getByRole("button", { name: "Provider actions" }).click();
+  await screen.getByRole("menuitem", { name: "Rename provider" }).click();
+  await screen.getByRole("textbox", { name: "Provider name" }).fill("Draft supplier");
+  await screen.getByRole("button", { name: "Save provider", exact: true }).last().click();
+  expect(saved).toEqual([]);
+  expect(screen.getByRole("alert").query()?.textContent ?? "").toBe("");
+  await expect.element(screen.getByRole("heading", { name: "Draft supplier" })).toBeVisible();
+  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("https://example.com/v1");
+  await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+  await expect.poll(() => saved[0]?.provider.name).toBe("Draft supplier");
+});
+
+test("renaming a saved provider persists its name and rejects blank names", async () => {
+  let providers: ModelServiceSummary[] = [
+    {
+      id: "rename-existing",
+      name: "Existing supplier",
+      api: "openai-responses",
+      baseUrl: "https://example.com/v1",
+      models: [],
+      hasCredential: false,
+    },
+  ];
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => providers,
+          save: async (input) => {
+            saved.push(input);
+            providers = [{ ...input.provider, hasCredential: false }];
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  await screen.getByRole("button", { name: "Provider actions" }).click();
+  await screen.getByRole("menuitem", { name: "Rename provider" }).click();
+  await screen.getByRole("textbox", { name: "Provider name" }).fill("   ");
+  await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+  await expect.element(screen.getByRole("alert")).toBeVisible();
+  expect(saved).toEqual([]);
+  await screen.getByRole("textbox", { name: "Provider name" }).fill("Renamed supplier");
+  await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+  await expect.element(screen.getByRole("heading", { name: "Renamed supplier" })).toBeVisible();
+  expect(saved).toEqual([
+    {
+      provider: {
+        id: "rename-existing",
+        name: "Renamed supplier",
+        api: "openai-responses",
+        baseUrl: "https://example.com/v1",
+        models: [],
+      },
+      credential: { type: "keep" },
+    },
+  ]);
+  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("");
+  await screen.getByLabelText("API Key", { exact: true }).fill("fake-draft-key");
+  await screen.getByRole("button", { name: "Provider actions" }).click();
+  await screen.getByRole("menuitem", { name: "Rename provider" }).click();
+  await screen.getByRole("textbox", { name: "Provider name" }).fill("Edited supplier");
+  await screen.getByRole("button", { name: "Save provider", exact: true }).last().click();
+  await expect.element(screen.getByRole("heading", { name: "Edited supplier" })).toBeVisible();
+  expect(screen.getByRole("alert").query()).toBeNull();
+  expect(saved).toHaveLength(1);
+  await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("");
+  await expect
+    .element(screen.getByLabelText("API Key", { exact: true }))
+    .toHaveValue("fake-draft-key");
+});

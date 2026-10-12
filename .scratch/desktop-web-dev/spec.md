@@ -119,3 +119,5 @@ Status: resolved
 日志、评审与图片：`/tmp/rukie-desktop-web-evidence/verification.md`、`review-fixes-verification.md`、`check-dev.log`、`test-desktop.log`、`review-standards.md`、`review-spec.md`、`review-focused-green.log`、`review-browserhost-green.log`、`settings-light.png`、`settings-dark.png`、`settings-narrow.png`、`conversation-dark.png`。日志属于本机任务证据，不提交临时 token 或密钥。
 
 限制：未访问真实系统钥匙串、真实供应商凭证或启动真实 Electron/原生对话框/文件管理器/终端；其他操作系统的真实原生运行未验收。自动测试通过注入验证平台参数向量与路径限制。CI 的最新提交结果以 PR checks 为准，本地通过不代表 CI 已通过。
+
+追加的供应商空地址改名修复及增量验证见 [ticket 03](issues/03-model-services-wire.md#追加修复未配置地址时修改供应商名称)。草稿改名与正式配置保存的边界已同步 ui README；其余已通过证据按实际差异继续复用。
