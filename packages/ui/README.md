@@ -8,6 +8,8 @@
 
 从仓库根运行 `bun run dev:desktop:web`，启动当前源码 sidecar 与固定在 `http://localhost:5173/` 的 Vite dev server，并打印带握手 fragment 的完整地址；`--open` 用默认浏览器打开。UI 源码修改由 HMR 更新，sidecar 源码修改需重启命令。端口占用、握手超时或任一服务退出时命令失败并停止另一个服务；Ctrl+C 或 SIGTERM 等待 Vite、sidecar 顺序退出后释放锁。端口和 token 来自 sidecar stdout 握手，不放进 query、文件或设置。入口跟随系统主题并按浏览器语言选择 zh/en。数据与配置隔离、`--reset` 及锁说明见 [desktop README](../desktop/README.md#浏览器开发)。
 
+代理手工浏览器验收使用 `bun run dev:desktop:web --isolated`，打开输出的带 fragment 地址。入口为本次运行分配临时配置与数据，使用 memory 加密与 loopback fake 供应商；模型服务和 Session 经真实 sidecar，固定回复为 `packaged protocol reply`。关闭浏览器后停止启动器，它等待服务退出并删除临时目录；自动 React DOM 测试仍使用模拟 DesktopHost。原生验收边界见 [testing.md](../../docs/testing.md#原生验收授权边界)。
+
 `App` 的可选 `Conversation` 组件接收持续归约的 TranscriptState、snapshot 元数据、pending Interaction、连接事实与请求接口，以及受控 draft / images。窗口层拥有标题栏、侧栏、项目选择与输入框；Conversation 层接收摘要开关并拥有对话与停靠内容。`SessionViewState` 归约 Run 开始与结束，保留每个 Session 的最新 snapshot；snapshot 替换全量消息，message_end 仅按 entryId 更新或追加该提交条目的投影，流式 partial 独立保存；Interaction 以 epoch 归约。组件只读 props，app 接线 client、store 和 host。侧栏状态只读 sessions_changed 的运行和权限汇总，等待确认优先于运行标记，未订阅会话同样更新；不从可能停更的历史视图猜测后台状态。
 
 ## 连接与交互

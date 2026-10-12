@@ -1,7 +1,9 @@
+import { providerProtocol } from "../release/tests/provider-protocol.ts";
+import { seedIsolatedProvider } from "./isolated.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
-import { rm } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdtemp, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { realpath } from "node:fs/promises";
 import {
@@ -15,12 +17,26 @@ import {
 export async function webDevelopmentPaths(
   checkout: string,
   options: {
+    isolated?: boolean;
     home?: string;
     platform?: NodeJS.Platform;
     environment?: NodeJS.ProcessEnv;
   } = {},
 ) {
   const root = await realpath(checkout);
+  if (options.isolated) {
+    const local = await realpath(await mkdtemp(join(tmpdir(), "rukie-web-isolated-")));
+    try {
+      const data = join(local, "data");
+      const configuration = join(local, "configuration");
+      await ensureDevelopmentDirectory(data);
+      await ensureDevelopmentDirectory(configuration);
+      return { root, local, data, configuration, isolated: true };
+    } catch (error) {
+      await rm(local, { recursive: true, force: true });
+      throw error;
+    }
+  }
   const home = options.home ?? homedir();
   const platform = options.platform ?? process.platform;
   const environment = options.environment ?? process.env;
@@ -39,7 +55,7 @@ export async function webDevelopmentPaths(
   await ensureDevelopmentDirectory(configuration);
   await checkPersistentData(data);
   await checkPersistentData(configuration);
-  return { root, local, data, configuration };
+  return { root, local, data, configuration, isolated: false };
 }
 
 type WebPaths = Awaited<ReturnType<typeof webDevelopmentPaths>>;
@@ -72,7 +88,6 @@ export async function launchWebDevelopment(options: LaunchOptions): Promise<void
   const environment = developmentEnvironment(options.environment ?? process.env);
   const output = options.stdout ?? ((text) => process.stdout.write(text));
   const errors = options.stderr ?? ((text) => process.stderr.write(text));
-  options.signal?.throwIfAborted();
   const release = await acquireDevelopmentLock(options.paths.local);
   const cancelled = Promise.withResolvers<void>();
   const failed = Promise.withResolvers<never>();
@@ -82,6 +97,7 @@ export async function launchWebDevelopment(options: LaunchOptions): Promise<void
   options.signal?.addEventListener("abort", abort, { once: true });
   if (options.signal?.aborted) abort();
   let stopping = false;
+  let fake: ReturnType<typeof providerProtocol> | undefined;
   const children: OwnedProcess[] = [];
   function start(
     command: Command,
@@ -169,23 +185,30 @@ export async function launchWebDevelopment(options: LaunchOptions): Promise<void
         cleanupError ??= error;
       }
     }
-    if (cleanupError) throw cleanupError; // Preserve the lock when cleanup cannot be verified.
+    await fake?.stop();
+    if (cleanupError) throw cleanupError; // Preserve the lock and data when cleanup cannot be verified.
     await release();
+    if (options.paths.isolated) await rm(options.paths.local, { recursive: true, force: true });
   }
   try {
+    options.signal?.throwIfAborted();
     if (options.reset) {
       await rm(options.paths.data, { recursive: true, force: true });
       await ensureDevelopmentDirectory(options.paths.data);
     }
+    if (options.paths.isolated) fake = providerProtocol("openai-responses");
     const handshake = Promise.withResolvers<{ port: number; token: string }>();
     let received = false;
     start(
       options.sidecarCommand ?? [process.execPath, "packages/server/src/main.ts", "--dev"],
       {
         ...environment,
+        ...(options.paths.isolated
+          ? { HOME: options.paths.local, RUKIE_DESKTOP_HOME_DIR: options.paths.local }
+          : {}),
         RUKIE_DESKTOP_DATA_ROOT: options.paths.data,
         RUKIE_DESKTOP_CONFIGURATION_ROOT: options.paths.configuration,
-        RUKIE_DESKTOP_ENCRYPTION_BACKEND: "system-keychain",
+        RUKIE_DESKTOP_ENCRYPTION_BACKEND: options.paths.isolated ? "memory" : "system-keychain",
         RUKIE_DESKTOP_SECRET_SERVICE: "Rukie Web Development",
       },
       (line) => {
@@ -218,6 +241,26 @@ export async function launchWebDevelopment(options: LaunchOptions): Promise<void
       "Sidecar handshake",
     );
     if (!connection) return;
+    if (fake) {
+      const setupController = new AbortController();
+      const setupSignal = options.signal
+        ? AbortSignal.any([options.signal, setupController.signal])
+        : setupController.signal;
+      const setup = seedIsolatedProvider(connection, fake.baseUrl, setupSignal);
+      try {
+        if (
+          !(await waitFor(
+            setup.then(() => true),
+            options.handshakeTimeoutMs ?? 15_000,
+            "Isolated provider setup",
+          ))
+        )
+          return;
+      } finally {
+        setupController.abort();
+        await setup.catch(() => {});
+      }
+    }
     const viteReady = Promise.withResolvers<true>();
     start(
       options.viteCommand ?? [
@@ -282,11 +325,11 @@ export async function runWebDevelopment(options: Omit<LaunchOptions, "signal">):
 if (import.meta.main) {
   try {
     const args = process.argv.slice(2);
-    if (args.some((argument) => !["--reset", "--open"].includes(argument)))
-      throw new Error("Usage: dev:desktop:web [--reset] [--open]");
+    if (args.some((argument) => !["--reset", "--open", "--isolated"].includes(argument)))
+      throw new Error("Usage: dev:desktop:web [--reset] [--open] [--isolated]");
     developmentEnvironment(process.env);
     await runWebDevelopment({
-      paths: await webDevelopmentPaths(process.cwd()),
+      paths: await webDevelopmentPaths(process.cwd(), { isolated: args.includes("--isolated") }),
       reset: args.includes("--reset"),
       open: args.includes("--open"),
     });

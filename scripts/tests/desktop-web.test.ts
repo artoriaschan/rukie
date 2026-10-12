@@ -316,3 +316,150 @@ test("Vite crash after readiness stops the surviving sidecar", async () => {
   await expect(running).rejects.toThrow("exited unexpectedly");
   expect(await readFile(join(root, "events"), "utf8")).toBe("sidecar stopped\n");
 });
+
+test("isolated launcher owns temporary data and configuration and removes them on startup failure", async () => {
+  const paths = await webDevelopmentPaths(process.cwd(), { isolated: true });
+  onTestFinished(() => rm(paths.local, { recursive: true, force: true }));
+  expect(paths.local.startsWith(join(await realpath(tmpdir()), "rukie-web-isolated-"))).toBe(true);
+  expect(paths.data).toBe(join(paths.local, "data"));
+  expect(paths.configuration).toBe(join(paths.local, "configuration"));
+  await expect(
+    launchWebDevelopment({
+      paths,
+      environment: {},
+      sidecarCommand: [process.execPath, "-e", "process.exit(29)"],
+      stderr: () => {},
+      stdout: () => {},
+    }),
+  ).rejects.toThrow("29");
+  await expect(realpath(paths.local)).rejects.toThrow("ENOENT");
+});
+
+test("isolated launcher presets a fake provider and real Session replies, then releases ports and directories", async () => {
+  const paths = await webDevelopmentPaths(process.cwd(), { isolated: true });
+  const controller = new AbortController();
+  let running: Promise<void> | undefined;
+  let socket: WebSocket | undefined;
+  onTestFinished(async () => {
+    socket?.close();
+    controller.abort();
+    await running;
+    await rm(paths.local, { recursive: true, force: true });
+  });
+  const ready = Promise.withResolvers<string>();
+  running = launchWebDevelopment({
+    paths,
+    environment: {},
+    signal: controller.signal,
+    viteCommand: [
+      process.execPath,
+      "-e",
+      `process.on("SIGTERM", () => process.exit(0)); console.log("Local: http://localhost:5173/"); setInterval(() => {}, 100000);`,
+    ],
+    stdout: (line) => {
+      if (line.startsWith("http://")) ready.resolve(line.trim());
+    },
+    stderr: (text) => {
+      console.error(text);
+    },
+  });
+  void running.catch(ready.reject);
+  const fragment = new URL(await ready.promise).hash.slice(1);
+  const params = new URLSearchParams(fragment);
+  const port = Number(params.get("port"));
+  socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+    protocols: ["rukie.v1", `rukie.auth.${params.get("token")}`],
+    headers: { Origin: "http://localhost:5173" },
+  });
+  const messages: Record<string, unknown>[] = [];
+  const listeners = new Set<() => void>();
+  socket.addEventListener("message", (event) => {
+    const message: unknown = JSON.parse(String(event.data));
+    if (message && typeof message === "object") {
+      messages.push(Object.fromEntries(Object.entries(message)));
+      for (const listener of listeners) listener();
+    }
+  });
+  await new Promise<void>((resolve, reject) => {
+    socket!.onopen = () => resolve();
+    socket!.onerror = reject;
+  });
+  async function next(predicate: (message: Record<string, unknown>) => boolean) {
+    return new Promise<Record<string, unknown>>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        listeners.delete(check);
+        reject(new Error(`Missing wire message: ${JSON.stringify(messages)}`));
+      }, 4000);
+      function check() {
+        const found = messages.find(predicate);
+        if (found) {
+          clearTimeout(timeout);
+          listeners.delete(check);
+          resolve(found);
+        }
+      }
+      listeners.add(check);
+      check();
+    });
+  }
+  async function command(type: string, fields: Record<string, unknown> = {}) {
+    const id = crypto.randomUUID();
+    socket!.send(JSON.stringify({ id, type, ...fields }));
+    return next((message) => message.id === id);
+  }
+  const listed = await command("modelServices.list");
+  expect(listed.error).toBeUndefined();
+  const providers: unknown = listed.result;
+  expect(providers).toEqual([
+    expect.objectContaining({
+      id: "isolated",
+      name: "Isolated acceptance",
+      api: "openai-responses",
+      hasCredential: true,
+      models: [expect.objectContaining({ id: "isolated-reply" })],
+    }),
+  ]);
+  if (!Array.isArray(providers)) throw new Error("Missing providers");
+  const provider: unknown = providers[0];
+  if (
+    !provider ||
+    typeof provider !== "object" ||
+    !("baseUrl" in provider) ||
+    typeof provider.baseUrl !== "string"
+  )
+    throw new Error("Missing fake endpoint");
+  const fakeUrl = provider.baseUrl;
+  expect(new URL(fakeUrl).hostname).toBe("127.0.0.1");
+  expect(
+    (
+      await command("session.create", {
+        project: null,
+        text: "hello isolated",
+        modelSelection: { provider: "isolated", modelId: "isolated-reply" },
+      })
+    ).error,
+  ).toBeUndefined();
+  await next((message) => message.type === "result");
+  expect(JSON.stringify(messages)).toContain("packaged protocol reply");
+  const closed = new Promise<void>((resolve) =>
+    socket!.addEventListener("close", () => resolve(), { once: true }),
+  );
+  socket.close();
+  await closed;
+  controller.abort();
+  await running;
+  await expect(realpath(paths.local)).rejects.toThrow("ENOENT");
+  await expect(fetch(fakeUrl)).rejects.toThrow();
+  await expect(fetch(`http://127.0.0.1:${port}`)).rejects.toThrow();
+}, 10000);
+
+test("isolated launcher cancelled before startup still drains its temporary environment", async () => {
+  const paths = await webDevelopmentPaths(process.cwd(), { isolated: true });
+  onTestFinished(() => rm(paths.local, { recursive: true, force: true }));
+  const controller = new AbortController();
+  controller.abort();
+  await expect(
+    launchWebDevelopment({ paths, environment: {}, signal: controller.signal }),
+  ).rejects.toThrow();
+  await expect(realpath(paths.local)).rejects.toThrow("ENOENT");
+});

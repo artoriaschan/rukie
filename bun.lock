@@ -8,6 +8,7 @@
         "@commitlint/cli": "21.2.3",
         "@commitlint/config-conventional": "21.2.3",
         "@electron/fuses": "2.0.0",
+        "@rukie/shared": "workspace:*",
         "@types/bun": "1.4.2",
         "@types/node": "24.19.2",
         "@types/semver": "7.8.0",
