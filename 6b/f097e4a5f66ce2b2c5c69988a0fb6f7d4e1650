@@ -1,0 +1,23 @@
+.scratch/desktop-web-dev/issues/03-model-services-wire.md
+  s_e09d8f70cffc20::t_7bcd8786a2430b 3,27-30
+.scratch/desktop-web-dev/issues/05-isolated-acceptance.md
+  s_e09d8f70cffc20::t_7bcd8786a2430b 3,13,34-37
+.scratch/desktop-web-dev/spec.md
+  s_e09d8f70cffc20::t_7bcd8786a2430b 1,106-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "6bf097e4a5f66ce2b2c5c69988a0fb6f7d4e1650",
+  "prompts": {},
+  "sessions": {
+    "s_e09d8f70cffc20": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12f34-a6f6-73c1-ae4e-16f8621913e1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
