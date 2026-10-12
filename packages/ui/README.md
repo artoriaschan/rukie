@@ -6,7 +6,7 @@
 
 `App` 接收 `host` 与 `locale`（`zh` / `en`）。Electron preload 注入 `window.rukieHost` 的 `getConnection`、`pickProjectFolder`、`revealPath` 和 `openInTerminal`；浏览器开发入口从 URL fragment 读取 `port` 与 `token`，立即从 history 清除 fragment，只提供 `getConnection`。完整刷新后需重新附加握手 fragment；当前页面中的 Retry 重用内存中的凭据。浏览器通过手动填写绝对路径添加项目，隐藏 Finder 与终端入口。
 
-从仓库根运行 `bunx --no vite --config packages/ui/vite.config.ts packages/ui`，Vite 固定使用 `http://localhost:5173/`，占用端口时退出；打开此地址并附加 `#port=<sidecar-port>&token=<sidecar-token>`。sidecar 必须以开发模式运行，见 [server README](../server/README.md)。端口和 token 来自当前 sidecar 的 stdout 握手，不放进 query、文件或设置。入口跟随系统主题并按浏览器语言选择 zh/en。
+从仓库根运行 `bun run dev:desktop:web`，启动当前源码 sidecar 与固定在 `http://localhost:5173/` 的 Vite dev server，并打印带握手 fragment 的完整地址；`--open` 用默认浏览器打开。UI 源码修改由 HMR 更新，sidecar 源码修改需重启命令。端口占用、握手超时或任一服务退出时命令失败并停止另一个服务；Ctrl+C 或 SIGTERM 等待 Vite、sidecar 顺序退出后释放锁。端口和 token 来自 sidecar stdout 握手，不放进 query、文件或设置。入口跟随系统主题并按浏览器语言选择 zh/en。数据与配置隔离、`--reset` 及锁说明见 [desktop README](../desktop/README.md#浏览器开发)。
 
 `App` 的可选 `Conversation` 组件接收持续归约的 TranscriptState、snapshot 元数据、pending Interaction、连接事实与请求接口，以及受控 draft / images。窗口层拥有标题栏、侧栏、项目选择与输入框；Conversation 层接收摘要开关并拥有对话与停靠内容。`SessionViewState` 归约 Run 开始与结束，保留每个 Session 的最新 snapshot；snapshot 替换全量消息，message_end 仅按 entryId 更新或追加该提交条目的投影，流式 partial 独立保存；Interaction 以 epoch 归约。组件只读 props，app 接线 client、store 和 host。侧栏状态只读 sessions_changed 的运行和权限汇总，等待确认优先于运行标记，未订阅会话同样更新；不从可能停更的历史视图猜测后台状态。
 
