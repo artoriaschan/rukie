@@ -212,11 +212,8 @@ test("Electron installs app scheme before load and authenticates every native IP
       token: "test-token",
     });
     expect(await electron.handlers.get("rukie:pickProjectFolder")!(event)).toBeNull();
-    await expect(electron.handlers.get("rukie:revealPath")!(event, "relative")).rejects.toThrow(
-      "absolute",
-    );
-    await electron.handlers.get("rukie:revealPath")!(event, "/tmp");
-    expect(electron.shell.showItemInFolder).toHaveBeenCalledWith("/tmp");
+    expect(electron.handlers.has("rukie:revealPath")).toBe(false);
+    expect(electron.handlers.has("rukie:openInTerminal")).toBe(false);
   } finally {
     await owner.stop();
   }

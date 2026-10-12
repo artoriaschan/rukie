@@ -87,7 +87,11 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const t = useAppText();
   const errorText = useErrorText();
   const [store] = useState(createDesktopStore);
-  const [client] = useState(() => createWireClient(host));
+  const [client] = useState(() => {
+    const value = createWireClient(host);
+    host.bindClient?.(value);
+    return value;
+  });
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsOpener = useRef<HTMLElement | null>(null);
@@ -440,12 +444,13 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const addProject = async () => {
     if (host.pickProjectFolder) {
       const folder = await host.pickProjectFolder();
-      if (folder) await client.request({ type: "project.add", path: folder });
-    } else {
-      opener.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setPathOpen(true);
+      if (folder) {
+        await client.request({ type: "project.add", path: folder });
+        return;
+      }
     }
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setPathOpen(true);
   };
   const closePath = () => {
     setPathOpen(false);
@@ -682,27 +687,29 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                         </Menu.DropdownMenuItem>
                       </Menu.DropdownMenuSubContent>
                     </Menu.DropdownMenuSub>
-                    {host.revealPath || host.openInTerminal ? (
-                      <Menu.DropdownMenuSub>
-                        <Menu.DropdownMenuSubTrigger>{t("app.open")}</Menu.DropdownMenuSubTrigger>
-                        <Menu.DropdownMenuSubContent>
-                          {host.revealPath ? (
-                            <Menu.DropdownMenuItem
-                              onSelect={() => safe(() => host.revealPath!(current.cwd))}
-                            >
-                              {t("app.finder")}
-                            </Menu.DropdownMenuItem>
-                          ) : null}
-                          {host.openInTerminal ? (
-                            <Menu.DropdownMenuItem
-                              onSelect={() => safe(() => host.openInTerminal!(current.cwd))}
-                            >
-                              {t("app.terminal")}
-                            </Menu.DropdownMenuItem>
-                          ) : null}
-                        </Menu.DropdownMenuSubContent>
-                      </Menu.DropdownMenuSub>
-                    ) : null}
+                    <Menu.DropdownMenuSub>
+                      <Menu.DropdownMenuSubTrigger>{t("app.open")}</Menu.DropdownMenuSubTrigger>
+                      <Menu.DropdownMenuSubContent>
+                        <Menu.DropdownMenuItem
+                          onSelect={() =>
+                            safe(() =>
+                              client.request({ type: "host.revealPath", path: current.cwd }),
+                            )
+                          }
+                        >
+                          {t("app.finder")}
+                        </Menu.DropdownMenuItem>
+                        <Menu.DropdownMenuItem
+                          onSelect={() =>
+                            safe(() =>
+                              client.request({ type: "host.openInTerminal", path: current.cwd }),
+                            )
+                          }
+                        >
+                          {t("app.terminal")}
+                        </Menu.DropdownMenuItem>
+                      </Menu.DropdownMenuSubContent>
+                    </Menu.DropdownMenuSub>
                   </Menu.DropdownMenuGroup>
                 </Menu.DropdownMenuContent>
               </Menu.DropdownMenu>

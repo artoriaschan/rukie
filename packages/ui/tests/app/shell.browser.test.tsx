@@ -241,9 +241,7 @@ test("narrow layout retains new-chat shortcuts, manual project entry and final-d
       .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
       .toBeVisible();
     await screen.getByRole("button", { name: "Session actions" }).click();
-    await expect
-      .element(screen.getByRole("menuitem", { name: "Open with" }))
-      .not.toBeInTheDocument();
+    await expect.element(screen.getByRole("menuitem", { name: "Open with" })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     window.dispatchEvent(new CustomEvent("rukie:connection-change", { detail: "disconnected" }));
     await expect.element(screen.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
