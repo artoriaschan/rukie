@@ -40,6 +40,9 @@ export const WirePreferencesSchema = Type.Object(
 
 /** Client commands are untrusted input; server messages use TypeScript types. */
 export const WireCommandSchema = Type.Union([
+  command("host.pickFolder", {}),
+  command("host.revealPath", { path: id }),
+  command("host.openInTerminal", { path: id }),
   command("projects.list", {}),
   command("project.add", { path: id }),
   command("sessions.list", {}),
@@ -101,6 +104,7 @@ export type WireErrorCode =
   | "invalid_command"
   | "not_queued"
   | "interaction_stale"
+  | "unsupported"
   | "internal";
 export type WireResponse<Result = unknown> = { type: "response"; id: string } & (
   | { result: Result; error?: never }

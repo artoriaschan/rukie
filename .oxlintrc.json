@@ -689,11 +689,9 @@
                   "**/app",
                   "**/components",
                   "**/store",
-                  "**/client",
                   "**/app/**",
                   "**/components/**",
                   "**/store/**",
-                  "**/client/**",
                   "@rukie/ui",
                   "@rukie/ui/**",
                   "react",
@@ -703,7 +701,7 @@
                   "react-dom",
                   "react-dom/**"
                 ],
-                "message": "Follow ADR-0029 UI layer dependency direction."
+                "message": "Browser host may compose client (ADR-0037); never import UI or store."
               }
             ]
           }

@@ -196,6 +196,7 @@ function isErrorCode(code: string): code is WireErrorCode {
     code === "invalid_command" ||
     code === "not_queued" ||
     code === "interaction_stale" ||
+    code === "unsupported" ||
     code === "internal"
   );
 }
@@ -208,3 +209,5 @@ function isErrorParams(value: unknown): value is Record<string, string | number>
     Object.values(value).every((item) => typeof item === "string" || typeof item === "number")
   );
 }
+
+export type WireClient = ReturnType<typeof createWireClient>;

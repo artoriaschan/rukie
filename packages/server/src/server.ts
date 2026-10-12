@@ -32,6 +32,7 @@ import {
   ModelServiceSchema,
   ModelPriceRequestSchema,
 } from "@rukie/shared";
+import { executeHost, hostOperation, HostError, type HostExecutor } from "./host.ts";
 import { lookupModelPrices } from "./model-prices.ts";
 import { parseWireCommand } from "./command.ts";
 import { AppDatabase, type ApplicationRegistry } from "./storage/app-database.ts";
@@ -40,6 +41,8 @@ import { applicationMcpPersistence, applicationConfiguration } from "./storage/c
 
 type Registry = ApplicationRegistry;
 export interface ServerOptions {
+  hostPlatform?: NodeJS.Platform;
+  executeHost?: HostExecutor;
   homeDir: string;
   /** Application-owned root, distinct from tool/permission home. No shared-path fallback. */
   dataRoot: string;
@@ -458,6 +461,14 @@ export async function startServer(options: ServerOptions) {
     const dispatch = async (command: WireCommand, socket: WSContext): Promise<unknown> => {
       if (shuttingDown) throw new CommandError("internal");
       switch (command.type) {
+        case "host.pickFolder":
+        case "host.revealPath":
+        case "host.openInTerminal":
+          return hostOperation(command, {
+            platform: options.hostPlatform ?? process.platform,
+            execute: options.executeHost ?? executeHost,
+            roots: [...registry.projects.map((project) => project.path), workspace],
+          });
         case "projects.list":
           return runtime.runPromise(
             Effect.gen(function* () {
@@ -856,7 +867,7 @@ export async function startServer(options: ServerOptions) {
                 send(socket, { type: "response", id: command.id, result } satisfies WireResponse),
               (error) => {
                 const code =
-                  error instanceof CommandError
+                  error instanceof CommandError || error instanceof HostError
                     ? error.code
                     : error instanceof Error && "code" in error && error.code === "session-busy"
                       ? "session_busy"
