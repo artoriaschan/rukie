@@ -1,0 +1,29 @@
+packages/ui/tests/app/host.browser.test.tsx
+  s_e09d8f70cffc20::t_3d0e46baffff54 20-31,65-69
+  s_e09d8f70cffc20::t_579efd08592b6b 49-58,60-62,64,70-74
+packages/ui/src/client/index.ts
+  s_e09d8f70cffc20::t_579efd08592b6b 12
+packages/ui/src/host/index.ts
+  s_e09d8f70cffc20::t_579efd08592b6b 30-39,47-50,52-56,60
+  s_e09d8f70cffc20::t_3d0e46baffff54 42-46
+packages/ui/src/lib/app-copy.ts
+  s_e09d8f70cffc20::t_579efd08592b6b 17-18,193
+.scratch/desktop-web-dev/spec.md
+  s_e09d8f70cffc20::t_10b5eb76d7af3d 127-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "45807b20737a2acd4e846d20bdf329b35a713e34",
+  "prompts": {},
+  "sessions": {
+    "s_e09d8f70cffc20": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12f34-a6f6-73c1-ae4e-16f8621913e1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
