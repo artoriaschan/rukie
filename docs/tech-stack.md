@@ -148,6 +148,6 @@ ui 状态使用 Zustand vanilla store，React 订阅由 app 层的 `useSyncExter
 
 本地 macOS arm64 构建使用 electron-builder **26.15.3** 和 @electron/fuses **2.0.0**。Electron **41.0.3** 与 Bun **1.4.2** 为运行时，sidecar 的原生搜索资源来自 @vscode/ripgrep-darwin-arm64 **1.18.0**。这些是已安装的构建依赖；桌面打包不进入 GitHub Actions。命令与签名验收见 [desktop README](../packages/desktop/README.md#本地构建)。
 
-桌面模型服务设置使用 `@fontsource-variable/noto-sans-sc` **5.3.1** 自托管完整 Unicode-range WOFF2 字体，与 Pencil 字体对应，不访问外部字体服务。字体仅应用于设置页及其弹窗；模型 ID 使用自托管 `@fontsource-variable/jetbrains-mono` **5.3.0**。两者采用 OFL-1.1，发行资源在 `packages/ui/public/fonts/` 保留原始许可证。beUI Switch 为已复制并按设置组件规范适配的源码，复用现有运行依赖。
+桌面/Web 页面、设置与弹窗使用系统字体栈；代码、模型标识和数值使用系统等宽字体，不打包或请求额外字体文件。beUI Switch 为已复制并按设置组件规范适配的源码，复用现有运行依赖。
 
 模型服务设置的覆盖式滚动条使用经 shadcn CLI 安装并适配 Pencil A13 的 ScrollArea，复用已锁定的 radix-ui 1.7.0 Root/Viewport；beUI 目录没有对应的 ScrollArea 角色。Radix 的滚动条比例计算固定最小滑块为 18px，无法满足 A13 的 24px；因此轨道组合已有 TranscriptScrollbar 的比例、输入和最小长度实现，通过局部样式采用 8px 轨道与 4px 滑块，不改变聊天轨道几何。按钮、输入、开关、复选框、单选按钮、Select、Tooltip 和弹窗继续使用已有 beUI 源码。

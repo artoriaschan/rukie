@@ -121,3 +121,5 @@ Status: resolved
 限制：未访问真实系统钥匙串、真实供应商凭证或启动真实 Electron/原生对话框/文件管理器/终端；其他操作系统的真实原生运行未验收。自动测试通过注入验证平台参数向量与路径限制。CI 的最新提交结果以 PR checks 为准，本地通过不代表 CI 已通过。
 
 追加的供应商空地址改名修复及增量验证见 [ticket 03](issues/03-model-services-wire.md#追加修复未配置地址时修改供应商名称)。草稿改名与正式配置保存的边界已同步 ui README；其余已通过证据按实际差异继续复用。
+
+追加页面系统字体要求：GUI 统一使用 `system-ui` 平台字体，代码、模型标识、快捷键与数值使用系统 `ui-monospace`；字号、字重、行高与布局保留。DESIGN.md 与 tech-stack 已同步，移除两项字体包、四个导入、六处 scoped 覆盖及不再发行的许可证资源，lockfile 与 frozen install 对齐。这属于用户追加的展示要求，不改变执行或存储边界，无需 ADR。字体源样式的基线 5+7 个浏览器布局案例通过；新增实际 font-family / 无 bundled FontFace 回归先 RED，再随全部 12 个案例通过（7.24s）。check:dev、类型/Knip/文档/测试策略及字体扫描通过；实际浏览器检查系统字体、零字体文件请求、Light/Dark/窄屏和无横向溢出。原有 desktop 包级未受影响证据复用，字体差异由这组 focused 证据覆盖，未重跑整套。验收沿用用户现有 Vite，独立 memory/fake sidecar 已清理；PID 74227 的用户服务保持监听 5173。详情与图片在 `/tmp/rukie-desktop-web-evidence/system-font-verification.md` 及 `system-font-*.png`。

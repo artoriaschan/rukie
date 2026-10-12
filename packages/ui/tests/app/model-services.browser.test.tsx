@@ -694,6 +694,7 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     await expect.element(screen.getByRole("heading", { name: "DeepSeek" })).toBeVisible();
     const workspace = document.querySelector<HTMLElement>(".model-services-workspace");
     expect(workspace).not.toBeNull();
+    expect(getComputedStyle(workspace!).fontFamily.startsWith("system-ui")).toBe(true);
     const box = workspace!.getBoundingClientRect();
     expect(box.width).toBe(880);
     expect(box.top).toBe(100);
@@ -761,6 +762,11 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
       .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().height))
       .toBe(180);
     expect(screen.getByRole("dialog").element().getBoundingClientRect().width).toBe(448);
+    expect(
+      getComputedStyle(
+        screen.getByRole("dialog").element().querySelector("kbd")!,
+      ).fontFamily.startsWith("ui-monospace"),
+    ).toBe(true);
     await expect
       .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().top))
       .toBe(520);

@@ -55,8 +55,6 @@ import { Tooltip } from "../components/motion/tooltip";
 import { Switch } from "../components/motion/switch";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "../components/motion/radio";
-import "@fontsource-variable/noto-sans-sc";
-import "@fontsource-variable/jetbrains-mono";
 import "./model-services.css";
 import * as Menu from "../components/ui/dropdown-menu";
 import { useAppText } from "../lib/i18n";

@@ -66,6 +66,17 @@ test.each([
       expect(getComputedStyle(main).backgroundColor).toBe(
         dark ? "rgb(24, 24, 24)" : "rgb(255, 255, 255)",
       );
+      expect(getComputedStyle(document.body).fontFamily.startsWith("system-ui")).toBe(true);
+      expect(
+        getComputedStyle(
+          screen.getByRole("button", { name: "Choose model" }).element(),
+        ).fontFamily.startsWith("system-ui"),
+      ).toBe(true);
+      expect(
+        [...document.fonts].some((face) =>
+          /Noto Sans SC Variable|JetBrains Mono Variable/.test(face.family),
+        ),
+      ).toBe(false);
       const input = screen.getByRole("textbox", { name: "Prompt", exact: true });
       const form = input.element().closest("form")!;
       const controls = ["Attach images", "Permission mode", "Choose model", "Send prompt"];

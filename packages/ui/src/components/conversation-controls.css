@@ -11,7 +11,7 @@
   --hover: var(--menu-hover);
   --conversation-chip: #000;
   --conversation-chip-text: #fff;
-  font-family: "Noto Sans SC Variable", sans-serif;
+  font-family: var(--font-sans);
   color: var(--foreground);
   line-height: 1.5;
 }
@@ -416,7 +416,7 @@
 }
 .conversation-context-category dd,
 .conversation-context-footer dd {
-  font-family: "JetBrains Mono Variable", monospace;
+  font-family: var(--font-mono);
   text-align: right;
 }
 .conversation-context-category p {
