@@ -1,0 +1,19 @@
+.scratch/desktop-web-dev/spec.md
+  s_e09d8f70cffc20::t_266b88cb5bf8fb 1,105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "36cf306bcf8317cdc10cc0a8c5d1808dd6c7fbb0",
+  "prompts": {},
+  "sessions": {
+    "s_e09d8f70cffc20": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12f34-a6f6-73c1-ae4e-16f8621913e1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
