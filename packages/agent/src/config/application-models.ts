@@ -8,7 +8,6 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import type { ModelService } from "@rukie/shared";
-import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { withToolCapabilityDetection, type ToolCapabilityStore } from "./tool-capabilities.ts";
 
 /** Builds only explicitly configured application providers. Auth never reads terminal env or user files. */
@@ -29,6 +28,8 @@ export function createApplicationModels(options: {
     "anthropic-messages": anthropicMessagesApi,
   };
   for (const provider of options.providers) {
+    if (provider.enabled === false) continue;
+    if (!URL.canParse(provider.baseUrl)) continue;
     models.setProvider(
       withToolCapabilityDetection(
         createProvider({
@@ -98,34 +99,4 @@ export function createApplicationModels(options: {
     );
   }
   return models;
-}
-
-/** Static, non-sensitive metadata only; never checks or resolves built-in authentication. */
-export function applicationModelTemplates(): ModelService[] {
-  const catalog = builtinModels();
-  const apis = ["anthropic-messages", "openai-completions", "openai-responses"] as const;
-  return catalog.getProviders().flatMap((provider) =>
-    apis.flatMap((api) => {
-      const entries = catalog.getModels(provider.id).filter((model) => model.api === api);
-      if (!entries.length) return [];
-      return [
-        {
-          id: `${provider.id}-${api}`,
-          name: provider.name ?? provider.id,
-          api,
-          baseUrl: entries[0]!.baseUrl,
-          models: entries.map((model) => ({
-            id: model.id,
-            name: model.name,
-            input: model.input,
-            reasoning: model.reasoning,
-            contextWindow: model.contextWindow,
-            maxTokens: model.maxTokens,
-            thinkingLevelMap: model.thinkingLevelMap,
-            compat: model.compat,
-          })),
-        },
-      ];
-    }),
-  );
 }

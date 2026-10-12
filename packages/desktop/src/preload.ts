@@ -7,7 +7,6 @@ const host: DesktopHost = {
   modelServices: {
     prices: (input) => ipcRenderer.invoke("rukie:modelServices:prices", input),
     revealKey: (id) => ipcRenderer.invoke("rukie:modelServices:revealKey", id),
-    templates: () => ipcRenderer.invoke("rukie:modelServices:templates"),
     test: (id, modelId) => ipcRenderer.invoke("rukie:modelServices:test", id, modelId),
     list: () => ipcRenderer.invoke("rukie:modelServices:list"),
     save: (input) => ipcRenderer.invoke("rukie:modelServices:save", input),

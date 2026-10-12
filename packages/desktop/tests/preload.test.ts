@@ -21,14 +21,12 @@ test("preload exposes fixed native methods and explicit credential reveal with f
     "prices",
     "revealKey",
     "save",
-    "templates",
     "test",
   ]);
   await host.modelServices!.prices!({
     baseUrl: "https://api.deepseek.com",
     modelId: "deepseek-chat",
   });
-  await host.modelServices!.templates!();
   await host.modelServices!.test!("local", "m");
   await host.modelServices!.list();
   await host.modelServices!.revealKey!("local");
@@ -40,7 +38,6 @@ test("preload exposes fixed native methods and explicit credential reveal with f
       "rukie:modelServices:prices",
       { baseUrl: "https://api.deepseek.com", modelId: "deepseek-chat" },
     ],
-    ["rukie:modelServices:templates"],
     ["rukie:modelServices:test", "local", "m"],
     ["rukie:modelServices:list"],
     ["rukie:modelServices:revealKey", "local"],

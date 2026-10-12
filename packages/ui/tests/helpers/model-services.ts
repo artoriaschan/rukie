@@ -7,6 +7,5 @@ export const modelServicesFixture: DesktopHost["modelServices"] = {
   delete: async () => {},
   test: async () => {},
   revealKey: async () => undefined,
-  templates: async () => [],
   prices: async () => ({ status: "unavailable" }),
 };

@@ -17,6 +17,7 @@ import {
   SettingsSchema,
   ModelCompatSchemas,
   type Settings,
+  type ModelService,
   type CustomSessionEvent,
 } from "@rukie/shared";
 import { parsePermissionRules } from "../permissions/index.ts";
@@ -276,16 +277,18 @@ async function getAuthenticatedProviders(models: Models): Promise<Set<string>> {
 /**
  * Lists all last-known models and local credential facts without refreshing models or OAuth.
  * Frontends own provider visibility; unauthenticated entries remain in this catalog.
+ * Application callers supply saved Model Services for their display icon keys.
  */
 export async function listModelCatalog(
   settings: Settings = {},
   models: Models | undefined = undefined,
-  options: { dataRoot?: string } = {},
+  options: { dataRoot?: string; providers?: ModelService[] } = {},
 ): Promise<ModelCatalogEntry[]> {
   if (!models && options.dataRoot !== undefined) return [];
   models ??= modelRegistry(settings);
   const authenticated = await getAuthenticatedProviders(models);
   const custom = new Set(settings.providers?.map((provider) => provider.id));
+  const icons = new Map(options.providers?.map((provider) => [provider.id, provider.icon]));
   return models
     .getModels()
     .map((model) => ({
@@ -294,6 +297,7 @@ export async function listModelCatalog(
       name: model.name,
       providerId: model.provider,
       providerName: models.getProvider(model.provider)?.name ?? model.provider,
+      ...(icons.get(model.provider) && { providerIcon: icons.get(model.provider) }),
       input: [...model.input],
       reasoning: model.reasoning,
       thinkingLevels: getSupportedThinkingLevels(model),

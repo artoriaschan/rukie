@@ -162,7 +162,6 @@ test("browser model service settings save, reveal and delete through the single 
     await screen.getByRole("button", { name: "Save provider", exact: true }).click();
     await expect.element(screen.getByLabelText("API Key", { exact: true })).toHaveValue("");
     const providerId = (await host.modelServices.list())[0]!.id;
-    expect(await host.modelServices.templates()).toEqual([]);
     expect(
       await host.modelServices.prices({ baseUrl: "http://127.0.0.1:1", modelId: "fixture" }),
     ).toEqual({ status: "unavailable" });

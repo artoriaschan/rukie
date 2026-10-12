@@ -269,3 +269,25 @@ test("subagent permissions retain their parent activity position instead of matc
     before: false,
   });
 });
+
+test("model catalogs preserve known provider icons and reject unknown icon keys", () => {
+  const store = createDesktopStore();
+  const model = {
+    spec: "deepseek/flash",
+    id: "flash",
+    name: "Flash",
+    providerId: "deepseek",
+    providerName: "DeepSeek",
+    providerIcon: "deepseek",
+    input: ["text"],
+    reasoning: false,
+    thinkingLevels: ["off"],
+    contextWindow: 10000,
+    custom: true,
+    authenticated: false,
+  };
+  store.setModels([model]);
+  expect(store.getState().models[0]?.providerIcon).toBe("deepseek");
+  expect(() => store.setModels([{ ...model, providerIcon: "unknown" }])).toThrow("invalid_command");
+  expect(store.getState().models[0]?.providerIcon).toBe("deepseek");
+});

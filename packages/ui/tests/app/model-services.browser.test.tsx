@@ -399,7 +399,6 @@ test("Chinese narrow settings preserves compatibility, maps, credentials and mod
     test: async (_id: string, model: string) => {
       tested.push(model);
     },
-    templates: async () => [{ ...initial, id: "template", name: "目录模板" }],
   };
   const screen = await render(
     <UiLocaleProvider locale="zh">
@@ -971,60 +970,6 @@ test("keyboard Cancel preserves provider and credential while confirmation delet
       .focus();
     await userEvent.keyboard("{Enter}");
     await expect.poll(() => providers.length).toBe(0);
-  } finally {
-    await screen.unmount();
-  }
-});
-
-test("provider directory offers only the custom path even when templates exist", async () => {
-  const templates = ["Anthropic", "OpenAI"].map((name) => ({
-    id: name.toLowerCase(),
-    name,
-    api: "openai-completions" as const,
-    baseUrl: "https://api.example.com/v1",
-    models: [],
-  }));
-  const screen = await render(
-    <UiLocaleProvider locale="en">
-      <ModelServices
-        services={{
-          ...modelServicesFixture,
-          list: async () => [],
-          templates: async () => templates,
-          save: async () => {},
-          delete: async () => {},
-        }}
-        onClose={() => {}}
-        onChanged={async () => {}}
-      />
-    </UiLocaleProvider>,
-  );
-  try {
-    await screen.getByRole("button", { name: "Add provider", exact: true }).first().click();
-    await expect
-      .element(screen.getByRole("button", { name: "Create custom provider" }))
-      .toBeVisible();
-    await expect
-      .element(screen.getByRole("button", { name: "Anthropic", exact: true }))
-      .not.toBeInTheDocument();
-    await expect
-      .element(screen.getByRole("button", { name: "OpenAI", exact: true }))
-      .not.toBeInTheDocument();
-    await expect
-      .element(screen.getByRole("button", { name: "BigModel", exact: true }))
-      .not.toBeInTheDocument();
-    await expect
-      .element(screen.getByRole("button", { name: "Z.ai Coding Plan", exact: true }))
-      .not.toBeInTheDocument();
-    expect(
-      screen
-        .getByRole("button", { name: "Create custom provider" })
-        .element()
-        .getBoundingClientRect().height,
-    ).toBe(44);
-    await screen.getByRole("button", { name: "Create custom provider" }).click();
-    await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("");
-    await expect.element(screen.getByRole("heading", { name: "New provider" })).toBeVisible();
   } finally {
     await screen.unmount();
   }
