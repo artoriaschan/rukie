@@ -19,6 +19,7 @@ status: accepted
   - 预设更新不改变已创建的服务。
   - 服务不保存预设引用，只在创建时写入展示用的 `icon` 键。
   - 新建服务的表单停留期间，界面在内存中记住来源预设，切换协议时整体替换为对应变体的 Base URL 和模型。离开表单后不再联动。
+- 来源预设仍在当前表单内存中时，API Key 标签旁展示获取链接。浏览器以标准外部链接打开；Electron main 只允许受信任 app 窗口和 app 来源打开固定的 `https://platform.deepseek.com/api_keys`，交给系统浏览器并始终拒绝应用内弹窗，其他地址仍拒绝，不新增任意 URL 的 host 或 IPC 能力。
 - 图标键是 `@rukie/shared` 中的封闭枚举。`@rukie/ui` 的 `ProviderIcon` 是唯一的图标渲染入口，使用 `@lobehub/icons` 的纯 SVG 组件，不引入它的 antd 与 `@lobehub/ui` peer。
 - 删除未被界面使用的 `applicationModelTemplates` 及其 wire、IPC 与 host 通道。预设只有界面一个消费者，不再经 sidecar 提供。
 - 桌面存储 spec 中“添加供应商不展示预设”的决定由本记录替代。

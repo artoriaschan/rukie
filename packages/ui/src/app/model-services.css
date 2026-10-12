@@ -244,10 +244,6 @@
   width: 14px;
   height: 14px;
 }
-.model-services-save {
-  justify-content: flex-end;
-  margin-top: 4px;
-}
 .model-services-catalog {
   display: flex;
   flex-direction: column;
@@ -1269,4 +1265,8 @@
 
 .model-services-key-input[type="password"] {
   font-family: var(--font-mono);
+}
+
+.model-services-provider-key-field {
+  height: 63px;
 }

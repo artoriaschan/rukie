@@ -8,7 +8,12 @@ const electron = vi.hoisted(() => {
     mainFrame,
     session: { protocol },
     send: vi.fn(),
-    setWindowOpenHandler: vi.fn(),
+    setWindowOpenHandler:
+      vi.fn<
+        (
+          handler: (details: { url: string; referrer: { url: string } }) => { action: string },
+        ) => void
+      >(),
     on: vi.fn(),
   };
   const window = {
@@ -50,7 +55,11 @@ const electron = vi.hoisted(() => {
       encryptString: vi.fn((value: string) => Buffer.from(value)),
       decryptString: vi.fn((value: Buffer) => value.toString()),
     },
-    shell: { showItemInFolder: vi.fn(), openPath: vi.fn().mockResolvedValue("") },
+    shell: {
+      showItemInFolder: vi.fn(),
+      openPath: vi.fn().mockResolvedValue(""),
+      openExternal: vi.fn().mockResolvedValue(undefined),
+    },
   };
 });
 vi.mock("electron", () => electron);
@@ -412,6 +421,56 @@ test("development main forwards shared configuration separately from workspace d
       encryptionBackend: "electron",
     });
   } finally {
+    await owner.stop();
+  }
+});
+
+test("API Key acquisition opens only the fixed trusted destination and denies popups", async () => {
+  const owner = await startDesktop({
+    dataRoot: "/tmp/rukie-desktop-test-data",
+    rendererDirectory: "/tmp",
+    preload: "/tmp/preload.cjs",
+    sidecar: {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./helpers/sidecar.mjs", import.meta.url))],
+    },
+  });
+  try {
+    const open = electron.window.webContents.setWindowOpenHandler.mock.calls[0]![0];
+    const referrer = { url: "app://rukie/" };
+    for (const url of [
+      "https://evil.test",
+      "https://platform.deepseek.com/api_keys?other=1",
+      "http://platform.deepseek.com/api_keys",
+      "https://platform.deepseek.com/api_keys#other",
+    ])
+      expect(open({ url, referrer })).toEqual({ action: "deny" });
+    expect(
+      open({
+        url: "https://platform.deepseek.com/api_keys",
+        referrer: { url: "https://evil.test" },
+      }),
+    ).toEqual({ action: "deny" });
+    electron.window.webContents.mainFrame.url = "https://evil.test";
+    expect(open({ url: "https://platform.deepseek.com/api_keys", referrer })).toEqual({
+      action: "deny",
+    });
+    expect(electron.shell.openExternal).not.toHaveBeenCalled();
+    electron.window.webContents.mainFrame.url = "app://rukie/";
+    expect(open({ url: "https://platform.deepseek.com/api_keys", referrer })).toEqual({
+      action: "deny",
+    });
+    expect(electron.shell.openExternal).toHaveBeenCalledWith(
+      "https://platform.deepseek.com/api_keys",
+    );
+    electron.shell.openExternal.mockRejectedValueOnce(Error("OS browser unavailable"));
+    expect(open({ url: "https://platform.deepseek.com/api_keys", referrer })).toEqual({
+      action: "deny",
+    });
+    // Settle the mocked OS rejection; Vitest reports any unhandled rejection as a failure.
+    await Promise.resolve();
+  } finally {
+    electron.window.webContents.mainFrame.url = "app://rukie/";
     await owner.stop();
   }
 });

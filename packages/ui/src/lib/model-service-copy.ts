@@ -44,8 +44,6 @@ export const modelServiceCopy = {
 
     "services.title": "Model services",
     "services.models": "Models",
-    "services.apiIncompatible":
-      "Some model compatibility settings do not match this API. Edit or remove the incompatible models before saving.",
     "services.description": "Manage custom model providers for use in chat.",
     "services.back": "Back to app",
     "services.addProvider": "Add provider",
@@ -134,11 +132,8 @@ export const modelServiceCopy = {
       "Could not save. Your input is preserved. Retry or reconfigure credentials.",
     "services.loadFailure": "Could not load model services. Retry.",
     "services.retry": "Retry",
-    "services.saved": "Saved.",
     "services.refreshFailure":
       "Saved, but the model catalog could not refresh. Reconnect or reopen settings to retry.",
-    "services.invalid":
-      "Enter a provider name, valid HTTP(S) Base URL and unique model IDs with positive token limits.",
     "services.route": "Request route",
     "services.templateSource":
       "Templates are from the locked pi-ai catalog; no terminal accounts are discovered.",
@@ -189,7 +184,6 @@ export const modelServiceCopy = {
 
     "services.title": "模型服务",
     "services.models": "模型列表",
-    "services.apiIncompatible": "部分模型兼容设置不匹配当前 API。请编辑或移除这些模型后再保存。",
     "services.description": "管理自定义模型供应商，配置后可在聊天时选择使用。",
     "services.back": "返回应用",
     "services.addProvider": "添加供应商",
@@ -272,9 +266,7 @@ export const modelServiceCopy = {
     "services.saveFailure": "保存失败，已保留输入。请重试或重新配置凭证。",
     "services.loadFailure": "无法加载模型服务，请重试。",
     "services.retry": "重试",
-    "services.saved": "已保存。",
     "services.refreshFailure": "配置已保存，但模型目录刷新失败。请重新连接或重新打开设置重试。",
-    "services.invalid": "请输入供应商名称、有效 HTTP(S) 地址、不重复的模型 ID 和正数 Token 限额。",
     "services.route": "请求路由",
     "services.templateSource": "模板来自已锁定的 pi-ai 目录，不发现终端账号。",
     "services.returnDetail": "返回供应商",
