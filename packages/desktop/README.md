@@ -42,6 +42,14 @@ bun run dev:desktop
 
 入口拒绝继承 `RUKIE_DESKTOP_*`、`NODE_OPTIONS`、`BUN_OPTIONS`、`BUN_BE_BUN`、`DYLD_*` 与 `ELECTRON_*` 启动覆盖项，提示先移除变量，不接受正式数据路径的参数。sidecar 每次从当前源码编译，禁用 dotenv、bunfig、package.json 与 tsconfig 自动加载，避免开发运行采用用户 Bun 配置或隐式凭据。`Ctrl+C`、`SIGTERM` 或关闭开发窗口时等待所属进程退出；优雅退出失败才按有界退出探测终止所属进程组，并确认组中已无可继续工作的成员；不能确认清理完成时以非零状态失败并保留 launcher 锁，保留开发数据。构建或启动失败以非零状态退出，不影响已打开的正式应用或其他预览窗口。
 
+## 浏览器开发
+
+从仓库根运行 `bun run dev:desktop:web`，直接运行 `packages/server/src/main.ts --dev` 与 Vite，无需构建或启动 Electron。命令打印 `http://localhost:5173/#port=…&token=…`，`--open` 交给系统默认浏览器。Vite 固定监听 localhost:5173，端口占用即失败；UI 支持 HMR，sidecar 修改需重启。浏览器入口与完整刷新后的握手规则见 [ui README](../ui/README.md#使用)。
+
+每个 checkout 的 `.desktop-dev/web/data/` 保存项目、Session 与附件，共享配置位于用户应用数据目录的 `Rukie Web Development/configuration/`：macOS 为 `~/Library/Application Support/`，Linux 为 `$XDG_DATA_HOME` 或 `~/.local/share/`，Windows 为 `%APPDATA%`。路径、父目录与已有业务树拒绝符号链接。sidecar 显式选择 `system-keychain`，系统凭据服务名为 `Rukie Web Development`，与 Electron 开发版配置分开；凭据操作可能触发系统授权。`--reset` 只清空当前 checkout 的 web data，不删除配置或凭据。
+
+启动器沿用 Electron 开发入口的环境覆盖拒绝规则，在 `.desktop-dev/web/launcher.lock` 取得独占锁，同一 checkout 只允许一个 web 实例，可以与 `dev:desktop` 同时运行。握手超时保留 stderr 诊断；启动失败或服务意外退出时非零退出并清理另一个服务。Ctrl+C / SIGTERM 先停 Vite 再停 sidecar，等待实际退出后释放锁；无法确认清理时保留锁。异常崩溃遗留锁时，仅在确认所属进程已退出后手动删除该锁。
+
 ## 本地构建
 
 前置条件是 macOS arm64、Bun 1.4.2、支持 Vite 的 Node、Xcode Command Line Tools（codesign / plutil），以及 `bun install --frozen-lockfile`。从根目录运行 `bun run desktop:build --out /absolute/task-owned/output`，输出 `package/mac-arm64/Rukie.app` 和 `desktop-build.json`；输出目录的 staging 属于构建脚本，会在下一次构建时清理。默认输出为 `dist/desktop`。

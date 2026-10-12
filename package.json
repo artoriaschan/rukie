@@ -26,6 +26,7 @@
     "test:desktop": "env -u NO_COLOR vitest run",
     "check:ui-typography": "bun scripts/check-ui-typography.ts",
     "dev:desktop": "bun scripts/desktop/development.ts",
+    "dev:desktop:web": "bun scripts/desktop/web.ts",
     "desktop:build": "bun scripts/desktop/build.ts"
   },
   "devDependencies": {
