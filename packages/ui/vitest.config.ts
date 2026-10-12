@@ -15,7 +15,14 @@ export default defineConfig({
       {
         plugins: [react(), tailwindcss()],
         resolve,
-        optimizeDeps: { include: ["@floating-ui/dom", "zustand/vanilla"] },
+        optimizeDeps: {
+          include: [
+            "@floating-ui/dom",
+            "zustand/vanilla",
+            "@lobehub/icons/es/DeepSeek/components/Mono",
+            "@lobehub/icons/es/DeepSeek/components/Color",
+          ],
+        },
         test: {
           name: "ui-browser",
           include: ["tests/**/*.browser.test.{ts,tsx}"],

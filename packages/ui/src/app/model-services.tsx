@@ -46,6 +46,7 @@ import {
   type ModelServiceSummary,
 } from "@rukie/shared";
 import type { DesktopHost } from "../host";
+import { ProviderIcon } from "../components/provider-icon";
 import { Button } from "../components/motion/button/base";
 import { Input } from "../components/motion/input";
 import { Checkbox } from "../components/motion/checkbox";
@@ -227,6 +228,8 @@ export function ModelServices({
       structuredClone({
         id: provider.id,
         name: provider.name,
+        icon: provider.icon,
+        enabled: provider.enabled,
         api: provider.api,
         baseUrl: provider.baseUrl,
         models: provider.models,
@@ -329,6 +332,8 @@ export function ModelServices({
         structuredClone({
           id: provider.id,
           name: provider.name,
+          icon: provider.icon,
+          enabled: provider.enabled,
           api: provider.api,
           baseUrl: provider.baseUrl,
           models: provider.models,
@@ -596,7 +601,11 @@ export function ModelServices({
                       disabled={pending}
                       onClick={() => choose(provider)}
                     >
-                      <Box className="size-4 shrink-0 text-muted-foreground" />
+                      <ProviderIcon
+                        icon={provider.icon}
+                        variant="color"
+                        className="text-muted-foreground"
+                      />
                       <span className="truncate">{provider.name}</span>
                       <Circle
                         aria-label={t(
@@ -660,7 +669,11 @@ export function ModelServices({
                     <div className="model-services-provider-form">
                       <div className="model-services-provider-heading flex items-center justify-between gap-2">
                         <h2 className="flex items-center gap-2 truncate text-ui-lg font-medium">
-                          <Box className="size-5 text-muted-foreground" />
+                          <ProviderIcon
+                            icon={draft.icon}
+                            variant="color"
+                            className="size-5 text-muted-foreground"
+                          />
                           {draft.name}
                         </h2>
                         <div className="flex items-center gap-2">

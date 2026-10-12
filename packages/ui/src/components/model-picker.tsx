@@ -138,7 +138,7 @@ export function ModelPicker({
                       }
                     }}
                   >
-                    <ProviderIcon providerId={entry.providerId} providerName={entry.providerName} />
+                    <ProviderIcon icon={entry.providerIcon} />
                     <span className="truncate" title={entry.name || entry.id}>
                       {entry.name || entry.id}
                     </span>

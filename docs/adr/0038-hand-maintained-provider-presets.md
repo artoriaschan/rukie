@@ -35,5 +35,5 @@ status: accepted
 
 - 扩充一个供应商需要四样东西：一个预设文件、一个图标键、一条图标映射、zh 和 en 文案。测试校验每个变体都满足 `ModelServiceSchema` 与对应协议的 compat schema，图标映射由类型检查保证穷尽。
 - 代价是预设数值要人工跟进供应商的变化。pi-ai 未覆盖的协议变体只有文档和 payload 测试依据，需要用真实凭据手动验收。
-- `@lobehub/icons` 的深路径属于包内部结构，升级版本时要核对导入路径。
+- `@lobehub/icons` 的深路径属于包内部结构，升级版本时要核对导入路径。Bun 通过仓库级 `install.peer = false` 关闭自动安装 peer，锁文件仍记录解析元数据；ui 在保留 React 与 React DOM peer 合同的同时显式声明测试和构建的 devDependencies。此策略影响整个仓库，其他 workspace 也必须显式声明实际需要的运行依赖；精确版本与安装策略见 [技术栈](../tech-stack.md)。
 - 实施与验收见 [供应商预设 spec](../../.scratch/provider-presets/spec.md)。
