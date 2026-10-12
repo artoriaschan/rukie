@@ -443,8 +443,10 @@ test("API Key acquisition opens only the fixed trusted destination and denies po
       "https://platform.deepseek.com/api_keys?other=1",
       "http://platform.deepseek.com/api_keys",
       "https://platform.deepseek.com/api_keys#other",
-    ])
+    ]) {
       expect(open({ url, referrer })).toEqual({ action: "deny" });
+      expect(open({ url, referrer: { url: "" } })).toEqual({ action: "deny" });
+    }
     expect(
       open({
         url: "https://platform.deepseek.com/api_keys",
@@ -455,12 +457,23 @@ test("API Key acquisition opens only the fixed trusted destination and denies po
     expect(open({ url: "https://platform.deepseek.com/api_keys", referrer })).toEqual({
       action: "deny",
     });
+    expect(open({ url: "https://platform.deepseek.com/api_keys", referrer: { url: "" } })).toEqual({
+      action: "deny",
+    });
     expect(electron.shell.openExternal).not.toHaveBeenCalled();
     electron.window.webContents.mainFrame.url = "app://rukie/";
     expect(open({ url: "https://platform.deepseek.com/api_keys", referrer })).toEqual({
       action: "deny",
     });
     expect(electron.shell.openExternal).toHaveBeenCalledWith(
+      "https://platform.deepseek.com/api_keys",
+    );
+    electron.shell.openExternal.mockClear();
+    // rel=noreferrer on the rendered acquisition anchor emits an empty referrer.
+    expect(open({ url: "https://platform.deepseek.com/api_keys", referrer: { url: "" } })).toEqual({
+      action: "deny",
+    });
+    expect(electron.shell.openExternal).toHaveBeenCalledExactlyOnceWith(
       "https://platform.deepseek.com/api_keys",
     );
     electron.shell.openExternal.mockRejectedValueOnce(Error("OS browser unavailable"));

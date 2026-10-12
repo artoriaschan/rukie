@@ -74,11 +74,12 @@ export async function startDesktop(options: DesktopOptions) {
       serveAppFile(request.url, options.rendererDirectory),
     );
     window.webContents.setWindowOpenHandler(({ url, referrer }) => {
+      // The acquisition anchor uses noreferrer; an omitted referrer still requires the trusted app frame.
       if (
         url === "https://platform.deepseek.com/api_keys" &&
         !window.isDestroyed() &&
         trustedAddress(window.webContents.mainFrame.url) &&
-        trustedAddress(referrer.url)
+        (referrer.url === "" || trustedAddress(referrer.url))
       ) {
         // The OS browser owns this fixed acquisition page; failed opens cannot create an app popup.
         void shell.openExternal(url).catch(() => {});

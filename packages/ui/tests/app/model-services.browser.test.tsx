@@ -1925,3 +1925,329 @@ test("cancel and close model and rename dialogs never save edits", async () => {
     expect(saves).toBe(0);
   }
 });
+
+test("selecting the current service flushes without replacing failed drafts or credentials", async () => {
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  let fail = true;
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "original",
+              models: [],
+              hasCredential: true,
+            },
+          ],
+          save: async (input) => {
+            saved.push(input);
+            if (fail) throw Error("secret");
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("edited");
+  await screen.getByLabelText("API Key", { exact: true }).fill("replacement-key");
+  await screen.getByRole("button", { name: "Local", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  await expect
+    .element(screen.getByRole("alert"))
+    .toHaveTextContent(
+      "Could not save. Your input is preserved. Retry or reconfigure credentials.",
+    );
+  await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("edited");
+  await expect
+    .element(screen.getByLabelText("API Key", { exact: true }))
+    .toHaveValue("replacement-key");
+  fail = false;
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(2);
+  expect(saved[1]).toMatchObject({
+    provider: { baseUrl: "edited", enabled: false },
+    credential: { type: "replace", value: "replacement-key" },
+  });
+});
+
+test("saving clears revealed stored keys immediately and retains typed replacement after failure", async () => {
+  let finish: () => void = () => {};
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "original",
+              models: [],
+              hasCredential: true,
+            },
+          ],
+          revealKey: async () => "stored-fixture-key",
+          save: async (input) => {
+            saved.push(input);
+            if (saved.length === 1)
+              await new Promise<void>((resolve) => {
+                finish = resolve;
+              });
+            throw Error("secret");
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(async () => {
+    finish();
+    await screen.unmount();
+  });
+  await screen.getByRole("button", { name: "Show API Key", exact: true }).click();
+  await expect
+    .element(screen.getByLabelText("API Key", { exact: true }))
+    .toHaveValue("stored-fixture-key");
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  await expect.element(screen.getByLabelText("API Key", { exact: true })).toHaveValue("");
+  await expect
+    .element(screen.getByLabelText("API Key", { exact: true }))
+    .toHaveAttribute("type", "password");
+  // A new replacement entered while the older write waits must survive its failure.
+  await screen.getByLabelText("API Key", { exact: true }).fill("replacement-key");
+  finish();
+  await expect
+    .element(screen.getByRole("alert"))
+    .toHaveTextContent(
+      "Could not save. Your input is preserved. Retry or reconfigure credentials.",
+    );
+  await expect
+    .element(screen.getByLabelText("API Key", { exact: true }))
+    .toHaveValue("replacement-key");
+});
+
+test.each(["model", "rename"] as const)(
+  "older %s save cannot close or report errors in a reopened editor",
+  async (kind) => {
+    let finish: () => void = () => {};
+    let saves = 0;
+    let changes = 0;
+    const screen = await render(
+      <UiLocaleProvider locale="en">
+        <ModelServices
+          services={{
+            ...modelServicesFixture,
+            list: async () => [
+              {
+                id: "local",
+                name: "Local",
+                api: "openai-completions",
+                baseUrl: "",
+                models: [],
+                hasCredential: false,
+              },
+            ],
+            save: async () => {
+              saves++;
+              await new Promise<void>((resolve) => {
+                finish = resolve;
+              });
+            },
+          }}
+          onClose={() => {}}
+          onChanged={async () => {
+            changes++;
+          }}
+        />
+      </UiLocaleProvider>,
+    );
+    onTestFinished(async () => {
+      finish();
+      await screen.unmount();
+    });
+    if (kind === "model") {
+      await screen.getByRole("button", { name: "Add model", exact: true }).click();
+      await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("first-model");
+      await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    } else {
+      await screen.getByRole("button", { name: "Provider actions" }).click();
+      await screen.getByRole("menuitem", { name: "Rename provider" }).click();
+      await screen.getByRole("textbox", { name: "Provider name" }).fill("renamed");
+      await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+    }
+    await expect.poll(() => saves).toBe(1);
+    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    await screen.getByRole("button", { name: "Add model", exact: true }).click();
+    await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("later-draft");
+    finish();
+    await expect.poll(() => changes).toBe(1);
+    // Another browser input turn lets the completed save's React updates commit.
+    await userEvent.keyboard("{Tab}");
+    await screen
+      .getByRole("textbox", { name: "Model ID", exact: true })
+      .fill("later-draft-updated");
+    await expect
+      .element(screen.getByRole("textbox", { name: "Model ID", exact: true }))
+      .toHaveValue("later-draft-updated");
+    expect(screen.getByRole("alert").query()).toBeNull();
+  },
+);
+
+test("model submissions remain single while saving and ignore obsolete failure", async () => {
+  let finish: () => void = () => {};
+  let completed = false;
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "",
+              models: [],
+              hasCredential: false,
+            },
+          ],
+          save: async (input) => {
+            saved.push(input);
+            await new Promise<void>((resolve) => {
+              finish = resolve;
+            });
+            completed = true;
+            throw Error("secret");
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(async () => {
+    finish();
+    await screen.unmount();
+  });
+  await screen.getByRole("button", { name: "Add model", exact: true }).click();
+  await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("first-model");
+  await screen.getByRole("button", { name: "Save model", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  await expect
+    .element(screen.getByRole("button", { name: "Save model", exact: true }))
+    .toBeDisabled();
+  // Native form submission is also guarded, even if a second event precedes React's disabled render.
+  document.querySelector<HTMLFormElement>(".model-services-model-form")!.requestSubmit();
+  await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+  await screen.getByRole("button", { name: "Add model", exact: true }).click();
+  await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("later-draft");
+  finish();
+  await expect.poll(() => completed).toBe(true);
+  await userEvent.keyboard("{Tab}");
+  expect(saved).toHaveLength(1);
+  expect(saved[0]!.provider.models).toHaveLength(1);
+  expect(screen.getByRole("alert").query()).toBeNull();
+  await expect
+    .element(screen.getByRole("textbox", { name: "Model ID", exact: true }))
+    .toHaveValue("later-draft");
+});
+
+test("selecting the current service preserves a pending URL through its next immediate write", async () => {
+  let finish: () => void = () => {};
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "original",
+              models: [],
+              hasCredential: false,
+            },
+          ],
+          save: async (input) => {
+            saved.push(input);
+            if (saved.length === 1)
+              await new Promise<void>((resolve) => {
+                finish = resolve;
+              });
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(async () => {
+    finish();
+    await screen.unmount();
+  });
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("edited");
+  await screen.getByRole("button", { name: "Local", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("edited");
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  finish();
+  await expect.poll(() => saved.length).toBe(2);
+  expect(saved.map((input) => input.provider.baseUrl)).toEqual(["edited", "edited"]);
+  expect(saved[1]!.provider.enabled).toBe(false);
+});
+
+test("retrying a failed new model save replaces its draft without duplicating the model", async () => {
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "",
+              models: [],
+              hasCredential: false,
+            },
+          ],
+          save: async (input) => {
+            saved.push(input);
+            if (saved.length === 1) throw Error("secret");
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  await screen.getByRole("button", { name: "Add model", exact: true }).click();
+  await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("new-model");
+  await screen.getByRole("button", { name: "Save model", exact: true }).click();
+  await expect
+    .element(screen.getByRole("dialog", { name: "Add model", exact: true }).getByRole("alert"))
+    .toHaveTextContent(
+      "Could not save. Your input is preserved. Retry or reconfigure credentials.",
+    );
+  await screen.getByRole("button", { name: "Save model", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(2);
+  expect(saved[1]!.provider.models.map((model) => model.id)).toEqual(["new-model"]);
+  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
+});

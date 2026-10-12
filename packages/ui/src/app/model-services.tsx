@@ -117,7 +117,18 @@ export function ModelServices({
   const [status, setStatus] = useState("");
   const [pending, setPending] = useState(false);
   const [dialog, setDialog] = useState<"model" | "rename" | "delete" | null>(null);
+  const dialogIdentity = useRef(0);
+  const dialogSubmission = useRef<number | undefined>(undefined);
+  const [dialogPending, setDialogPending] = useState(false);
+  const changeDialog = (next: "model" | "rename" | "delete" | null) => {
+    dialogIdentity.current++;
+    dialogSubmission.current = undefined;
+    setDialogPending(false);
+    setError("");
+    setDialog(next);
+  };
   const [editing, setEditing] = useState<number>();
+  const newModelIndex = useRef<number | undefined>(undefined);
   const [model, setModel] = useState<ServiceModel>(defaultModel);
   const [modelError, setModelError] = useState("");
   const [advancedDraft, setAdvancedDraft] = useState<Partial<Record<AdvancedNumericField, string>>>(
@@ -238,7 +249,11 @@ export function ModelServices({
   };
   const choose = (provider: ModelService) => {
     void flush();
-    if (draftRef.current?.id !== provider.id) createdPreset.current = undefined;
+    if (draftRef.current?.id === provider.id) {
+      setCatalog(false);
+      return;
+    }
+    createdPreset.current = undefined;
     clearRevealedKey();
     const next = structuredClone({
       id: provider.id,
@@ -308,16 +323,21 @@ export function ModelServices({
       void flush();
       mounted.current = false;
       generation.current++;
+      dialogIdentity.current++;
       createdPreset.current = undefined;
     };
   }, [services]);
   const persist = (
     provider: ModelService,
     creationCredential?: ModelServiceSave["credential"],
+    submittedDialog?: number,
   ): Promise<boolean> => {
+    const currentDialog = () =>
+      submittedDialog === undefined || submittedDialog === dialogIdentity.current;
     if (timer.current !== undefined) clearTimeout(timer.current);
     timer.current = undefined;
     queued.current = false;
+    clearRevealedKey();
     const current = structuredClone(provider);
     const savedRevision = revision.current;
     const currentGeneration = generation.current;
@@ -354,19 +374,18 @@ export function ModelServices({
             removeKeyRef.current = false;
             setKey("");
             setRemoveKey(false);
-            clearRevealedKey();
-            setError("");
+            if (currentDialog()) setError("");
           }
         }
         try {
           await onChanged();
         } catch {
-          if (mounted.current && generation.current === currentGeneration)
+          if (mounted.current && generation.current === currentGeneration && currentDialog())
             setError(t("services.refreshFailure"));
         }
         return true;
       } catch {
-        if (mounted.current && generation.current === currentGeneration)
+        if (mounted.current && generation.current === currentGeneration && currentDialog())
           setError(t("services.saveFailure"));
         return false;
       }
@@ -418,11 +437,12 @@ export function ModelServices({
     autoPrices.current.clear();
     setPriceStatus("");
     setEditing(index);
+    newModelIndex.current = undefined;
     setModel(structuredClone(index === undefined ? defaultModel : draft!.models[index]!));
     setModelError("");
     setAdvancedDraft({});
     setAdvanced(false);
-    setDialog("model");
+    changeDialog("model");
     if (
       index !== undefined &&
       priceFields.some((field) => draft!.models[index]![field] === undefined)
@@ -430,7 +450,7 @@ export function ModelServices({
       void fillPrices(draft!.models[index]!);
   };
   const saveModel = async () => {
-    if (activePriceIdentity.current) return;
+    if (activePriceIdentity.current || dialogSubmission.current === dialogIdentity.current) return;
     if (
       draft &&
       model.id.trim() &&
@@ -441,19 +461,28 @@ export function ModelServices({
       return;
     }
     if (!draft) return;
+    const identity = dialogIdentity.current;
+    dialogSubmission.current = identity;
+    setDialogPending(true);
     const savedModel = { ...model };
     for (const field of advancedNumericFields) {
       const value = advancedDraft[field];
       if (value !== undefined) savedModel[field] = value === "" ? undefined : Number(value);
     }
     const models = [...draft.models];
-    if (editing === undefined) models.push(savedModel);
-    else models[editing] = savedModel;
+    const index = editing ?? newModelIndex.current ?? models.length;
+    models[index] = savedModel;
+    // A failed creation remains the same draft slot when this dialog retries.
+    if (editing === undefined) newModelIndex.current = index;
     const next = { ...draft, models };
     draftRef.current = next;
     setDraft(next);
     revision.current++;
-    if (await persist(next)) setDialog(null);
+    const saved = await persist(next, undefined, identity);
+    if (dialogIdentity.current !== identity) return;
+    dialogSubmission.current = undefined;
+    setDialogPending(false);
+    if (saved) changeDialog(null);
     else setModelError(t("services.saveFailure"));
   };
   const testConnection = async (modelId: string) => {
@@ -762,7 +791,7 @@ export function ModelServices({
                               <Menu.DropdownMenuItem
                                 onSelect={() => {
                                   setRename(draft.name);
-                                  setDialog("rename");
+                                  changeDialog("rename");
                                 }}
                               >
                                 <Pencil className="size-4" />
@@ -784,7 +813,7 @@ export function ModelServices({
                               <Menu.DropdownMenuItem
                                 aria-label={t("services.deleteProvider")}
                                 className="text-danger"
-                                onSelect={() => setDialog("delete")}
+                                onSelect={() => changeDialog("delete")}
                               >
                                 <Trash2 className="size-4" />
                                 {t("services.delete")}
@@ -987,7 +1016,7 @@ export function ModelServices({
         }
         viewId={dialog}
         onClose={() => {
-          if (!pending) setDialog(null);
+          if (!pending) changeDialog(null);
         }}
         placement="center"
         className={
@@ -1014,7 +1043,7 @@ export function ModelServices({
                 variant="ghost"
                 size="icon"
                 aria-label={t("services.close")}
-                onClick={() => setDialog(null)}
+                onClick={() => changeDialog(null)}
               >
                 <X className="size-4" />
               </Button>
@@ -1319,7 +1348,7 @@ export function ModelServices({
                 className="model-services-model-cancel"
                 variant="ghost"
                 size="sm"
-                onClick={() => setDialog(null)}
+                onClick={() => changeDialog(null)}
                 disabled={pending}
               >
                 {t("services.cancel")}
@@ -1328,8 +1357,8 @@ export function ModelServices({
                 className="model-services-model-save cursor-pointer disabled:pointer-events-auto disabled:cursor-not-allowed"
                 type="submit"
                 size="sm"
-                disabled={pending || priceLoading}
-                aria-busy={priceLoading}
+                disabled={pending || dialogPending || priceLoading}
+                aria-busy={dialogPending || priceLoading}
                 aria-label={t("services.saveModel")}
               >
                 {t("services.saveModel")}
@@ -1341,23 +1370,29 @@ export function ModelServices({
             className="flex flex-col gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              if (!draft) return;
+              if (!draft || dialogSubmission.current === dialogIdentity.current) return;
+              const identity = dialogIdentity.current;
+              dialogSubmission.current = identity;
+              setDialogPending(true);
               const next = { ...draft, name: rename };
               draftRef.current = next;
               setDraft(next);
               revision.current++;
-              void persist(next).then((saved) => {
-                if (saved) setDialog(null);
+              void persist(next, undefined, identity).then((saved) => {
+                if (dialogIdentity.current !== identity) return;
+                dialogSubmission.current = undefined;
+                setDialogPending(false);
+                if (saved) changeDialog(null);
               });
             }}
           >
             <h2 className="font-medium">{t("services.rename")}</h2>
             <Input autoFocus label={t("services.name")} value={rename} onChange={setRename} />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setDialog(null)}>
+              <Button variant="ghost" onClick={() => changeDialog(null)}>
                 {t("services.cancel")}
               </Button>
-              <Button type="submit" disabled={pending}>
+              <Button type="submit" disabled={pending || dialogPending}>
                 {t("services.saveProvider")}
               </Button>
             </div>
@@ -1372,7 +1407,7 @@ export function ModelServices({
               <Button
                 variant="secondary"
                 aria-label={t("services.cancel")}
-                onClick={() => setDialog(null)}
+                onClick={() => changeDialog(null)}
                 disabled={pending}
               >
                 {t("services.cancel")}
@@ -1390,7 +1425,7 @@ export function ModelServices({
                   void writes.current
                     .then(() => services.delete(providerId))
                     .then(async () => {
-                      setDialog(null);
+                      changeDialog(null);
                       draftRef.current = undefined;
                       setDraft(undefined);
                       setProviders(await services.list());

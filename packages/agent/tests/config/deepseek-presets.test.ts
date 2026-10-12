@@ -13,7 +13,10 @@ for (const service of deepseekServices) {
         const bodies: Record<string, unknown>[] = [];
         const fakeFetch: FetchFunction = Object.assign(
           async (input: string | URL | Request, init?: RequestInit) => {
-            const request = new Request(input, init);
+            const request =
+              input instanceof Request
+                ? new Request(input, init)
+                : new Request(typeof input === "string" ? input : input.href, init);
             const body: unknown = await request.json();
             if (typeof body !== "object" || body === null || Array.isArray(body))
               throw new Error("Expected object payload");
@@ -37,7 +40,8 @@ for (const service of deepseekServices) {
           { messages: [{ role: "user", content: "Hello", timestamp: 0 }] },
           {
             sessionId: "preset-payload-test",
-            reasoning: level === "automatic" ? "off" : level,
+            // The simple API carries native off by omitting reasoning; Session policy removes its mapped wire fields.
+            reasoning: level === "automatic" ? undefined : level,
             fetch: fakeFetch,
           },
         );
