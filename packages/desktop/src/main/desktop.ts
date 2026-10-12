@@ -87,6 +87,7 @@ export async function startDesktop(options: DesktopOptions) {
         RUKIE_DESKTOP_DATA_ROOT: dataRoot,
         RUKIE_DESKTOP_CONFIGURATION_ROOT: options.configurationRoot,
         RUKIE_DESKTOP_HOME_DIR: userInfo().homedir,
+        RUKIE_DESKTOP_ENCRYPTION_BACKEND: "electron",
         RUKIE_DESKTOP_SECRET_URL: secrets.url,
         RUKIE_DESKTOP_SECRET_TOKEN: secrets.token,
         RUKIE_DESKTOP_MANAGEMENT_TOKEN: managementToken,

@@ -35,7 +35,7 @@ import {
 import { lookupModelPrices } from "./model-prices.ts";
 import { parseWireCommand } from "./command.ts";
 import { AppDatabase, type ApplicationRegistry } from "./storage/app-database.ts";
-import { secretVault, type SecretEncryption } from "./storage/secrets.ts";
+import { secretVault, type SecretEncryption, type EncryptionBackend } from "./storage/secrets.ts";
 import { applicationMcpPersistence, applicationConfiguration } from "./storage/configuration.ts";
 
 type Registry = ApplicationRegistry;
@@ -49,6 +49,8 @@ export interface ServerOptions {
   /** Private main/sidecar channel; never included in the renderer handshake. */
   managementToken?: string;
   encryption?: SecretEncryption;
+  /** Typed callers default to Electron; process startup always supplies an explicit backend. */
+  encryptionBackend?: EncryptionBackend;
   /** Model network boundary overrides for isolated frontend acceptance. */
   sessionOptions?: Pick<SessionOptions, "model" | "models" | "settings">;
   onWarning?: (warning: string) => void;

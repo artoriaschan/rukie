@@ -15,6 +15,7 @@ if (!process.argv.includes("--no-handshake"))
             dataRoot: process.env.RUKIE_DESKTOP_DATA_ROOT,
             configurationRoot: process.env.RUKIE_DESKTOP_CONFIGURATION_ROOT,
             homeDir: process.env.RUKIE_DESKTOP_HOME_DIR,
+            encryptionBackend: process.env.RUKIE_DESKTOP_ENCRYPTION_BACKEND,
           })
         : process.argv.includes("--env-token")
           ? process.env.RUKIE_TEST_PROVIDER_KEY
