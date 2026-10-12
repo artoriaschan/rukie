@@ -8,6 +8,8 @@ import {
   type ThinkingLevel,
 } from "./settings.ts";
 
+import { ModelServiceSaveSchema, ModelPriceRequestSchema } from "./model-services.ts";
+
 export const WIRE_SUBPROTOCOL = "rukie.v1";
 const id = Type.String({ minLength: 1 });
 const session = { sessionId: id };
@@ -40,6 +42,20 @@ export const WirePreferencesSchema = Type.Object(
 
 /** Client commands are untrusted input; server messages use TypeScript types. */
 export const WireCommandSchema = Type.Union([
+  command("modelServices.list", {}),
+  command("modelServices.save", ModelServiceSaveSchema.properties),
+  command("modelServices.delete", {
+    providerId: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
+  }),
+  command("modelServices.revealKey", {
+    providerId: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
+  }),
+  command("modelServices.test", {
+    providerId: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
+    modelId: Type.String({ minLength: 1, maxLength: 256 }),
+  }),
+  command("modelServices.templates", {}),
+  command("modelServices.prices", ModelPriceRequestSchema.properties),
   command("host.pickFolder", {}),
   command("host.revealPath", { path: id }),
   command("host.openInTerminal", { path: id }),
@@ -97,6 +113,7 @@ export const WireCommandSchema = Type.Union([
 export type WireCommand = Static<typeof WireCommandSchema>;
 
 export type WireErrorCode =
+  | "model_services_unavailable"
   | "model_unavailable"
   | "session_busy"
   | "session_not_found"

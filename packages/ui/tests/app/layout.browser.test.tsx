@@ -1,3 +1,4 @@
+import { modelServicesFixture } from "../helpers/model-services";
 import { expect, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -36,7 +37,12 @@ test.each([
       await page.viewport(width, height);
       root.classList.toggle("dark", dark);
       root.style.setProperty("--ui-font-size", `${fontSize}px`);
-      screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+      screen = await render(
+        <App
+          host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+          locale="en"
+        />,
+      );
       await expect.element(screen.getByRole("button", { name: "Choose model" })).toBeEnabled();
       if (width < 768)
         await screen.getByRole("button", { name: "Toggle sidebar", exact: true }).click();

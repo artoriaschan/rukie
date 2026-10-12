@@ -1,3 +1,4 @@
+import { modelServicesFixture } from "../helpers/model-services";
 import { expect, onTestFinished, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -17,7 +18,12 @@ test("Pencil P01-E empty provider state preserves shell and opens the custom cat
   const screen = await render(
     <UiLocaleProvider locale="zh">
       <ModelServices
-        services={{ list: async () => [], save: async () => {}, delete: async () => {} }}
+        services={{
+          ...modelServicesFixture,
+          list: async () => [],
+          save: async () => {},
+          delete: async () => {},
+        }}
         onClose={() => {}}
         onChanged={async () => {}}
       />
@@ -112,6 +118,7 @@ test("Pencil model footer keeps cancel surface and primary save colors in both t
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => [
             {
               id: "local",
@@ -174,6 +181,7 @@ test("Pencil model numeric fields hide native steppers while retaining numeric k
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => [
             {
               id: "local",
@@ -225,6 +233,7 @@ test("model services creates a provider and preserves input when encrypted save 
   let providers: ModelServiceSummary[] = [];
   let fail = false;
   const service = {
+    ...modelServicesFixture,
     list: async () => providers,
     save: async (input: import("@rukie/shared").ModelServiceSave) => {
       if (fail) throw new Error("unsafe-secret");
@@ -378,6 +387,7 @@ test("Chinese narrow settings preserves compatibility, maps, credentials and mod
   const credentials: string[] = [];
   const tested: string[] = [];
   const services = {
+    ...modelServicesFixture,
     list: async () => providers,
     save: async (input: import("@rukie/shared").ModelServiceSave) => {
       credentials.push(input.credential.type);
@@ -465,6 +475,7 @@ test("Pencil advanced settings contains only reference fields and preserves hidd
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => providers,
           save: async (input: import("@rukie/shared").ModelServiceSave) => {
             providers = [{ ...input.provider, hasCredential: true }];
@@ -496,11 +507,9 @@ test("Pencil advanced settings contains only reference fields and preserves hidd
     expect(content.querySelectorAll('[role="switch"], [role="checkbox"], textarea')).toHaveLength(
       0,
     );
-    expect(Array.from(content.querySelectorAll("h3"), (item) => item.textContent)).toEqual([
-      "Automatic compression",
-      "Runtime parameters",
-      "Price (USD / million tokens)",
-    ]);
+    expect(
+      Array.from(content.querySelectorAll("h3"), (item) => item.firstChild?.textContent),
+    ).toEqual(["Automatic compression", "Runtime parameters", "Price (USD / million tokens)"]);
     expect(getComputedStyle(content).gap).toBe("16px");
     expect(content.getBoundingClientRect().width).toBe(608);
     for (const card of content.querySelectorAll<HTMLElement>(".model-services-option-card")) {
@@ -574,6 +583,7 @@ test("provider API changes accept compatible models and preserve incompatible dr
   ];
   let saved = 0;
   const services = {
+    ...modelServicesFixture,
     list: async () => providers,
     save: async (input: import("@rukie/shared").ModelServiceSave) => {
       saved++;
@@ -626,7 +636,12 @@ test("provider API changes accept compatible models and preserve incompatible dr
 
 test("settings returns keyboard focus and preserves chat geometry and draft", async () => {
   const connection = await commands.startWire();
-  const services = { list: async () => [], save: async () => {}, delete: async () => {} };
+  const services = {
+    ...modelServicesFixture,
+    list: async () => [],
+    save: async () => {},
+    delete: async () => {},
+  };
   const screen = await render(
     <App host={{ getConnection: async () => connection, modelServices: services }} />,
   );
@@ -656,6 +671,7 @@ test("settings returns keyboard focus and preserves chat geometry and draft", as
 test("Pencil settings geometry uses current compact workspace and grouped model form", async () => {
   await page.viewport(1887, 1210);
   const services = {
+    ...modelServicesFixture,
     list: async () => [
       {
         id: "deepseek",
@@ -780,6 +796,7 @@ test.each([
       <UiLocaleProvider locale="en">
         <ModelServices
           services={{
+            ...modelServicesFixture,
             list: async () => [
               {
                 id: "local",
@@ -851,6 +868,7 @@ test("saved overview stays compact; dirty credentials and hidden mapping remain 
   ];
   const saved: import("@rukie/shared").ModelServiceSave[] = [];
   const services = {
+    ...modelServicesFixture,
     list: async () => providers,
     save: async (input: import("@rukie/shared").ModelServiceSave) => {
       saved.push(input);
@@ -903,6 +921,7 @@ test("keyboard Cancel preserves provider and credential while confirmation delet
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => providers,
           save: async () => {},
           delete: async () => {
@@ -963,6 +982,7 @@ test("provider directory offers only the custom path even when templates exist",
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => [],
           templates: async () => templates,
           save: async () => {},
@@ -1017,7 +1037,12 @@ test("Pencil overlay scrollbars appear only for overflow and map keyboard and wh
   const screen = await render(
     <UiLocaleProvider locale="en">
       <ModelServices
-        services={{ list: async () => providers, save: async () => {}, delete: async () => {} }}
+        services={{
+          ...modelServicesFixture,
+          list: async () => providers,
+          save: async () => {},
+          delete: async () => {},
+        }}
         onClose={() => {}}
         onChanged={async () => {}}
       />
@@ -1080,7 +1105,12 @@ test("expanded model form uses custom scrollbars at narrow widths", async () => 
   const screen = await render(
     <UiLocaleProvider locale="en">
       <ModelServices
-        services={{ list: async () => providers, save: async () => {}, delete: async () => {} }}
+        services={{
+          ...modelServicesFixture,
+          list: async () => providers,
+          save: async () => {},
+          delete: async () => {},
+        }}
         onClose={() => {}}
         onChanged={async () => {}}
       />
@@ -1131,6 +1161,7 @@ test("model default reasoning is selectable, saved and restricted to supported l
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => providers,
           save: async (input) => {
             providers = [{ ...input.provider, hasCredential: true }];
@@ -1223,6 +1254,7 @@ test("API Key reveals saved credentials only on request and toggles compact mask
   const saved: import("@rukie/shared").ModelServiceSave[] = [];
   let reads = 0;
   const services = {
+    ...modelServicesFixture,
     list: async () => [
       {
         id: "local",
@@ -1289,6 +1321,7 @@ test("API Key ignores cancelled and stale reveals and retries a safe failure", a
     hasCredential: true,
   }));
   const services = {
+    ...modelServicesFixture,
     list: async () => providers,
     save: async () => {},
     delete: async () => {},
@@ -1365,6 +1398,7 @@ test("model USD price autofill preserves manual drafts, saves prices and ignores
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => providers,
           save: async ({ provider }) => {
             providers = [{ ...provider, hasCredential: false }];

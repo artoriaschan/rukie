@@ -2,6 +2,8 @@ import { modelServiceCopy } from "./model-service-copy";
 export const appCopy = {
   en: {
     ...modelServiceCopy.en,
+    "app.error-model_services_unavailable":
+      "Model service management requires the browser sidecar encryption backend.",
     "app.error-model_unavailable": "Choose an available model service before sending.",
     "app.error-session_busy": "This Session is open elsewhere. Close it there, then retry.",
     "app.error-session_not_found": "This Session is unavailable. Choose another conversation.",
@@ -175,6 +177,7 @@ export const appCopy = {
   },
   zh: {
     ...modelServiceCopy.zh,
+    "app.error-model_services_unavailable": "模型服务管理需要浏览器 sidecar 加密后端。",
     "app.error-model_unavailable": "发送前请选择可用的模型服务。",
     "app.error-session_busy": "这个 Session 正在别处打开，关闭后再试。",
     "app.error-session_not_found": "这个 Session 已不可用，请选择其他会话。",

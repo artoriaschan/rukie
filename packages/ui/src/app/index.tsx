@@ -41,8 +41,8 @@ import { ModelServices } from "./model-services";
 import { AppConversation } from "./conversation";
 import { useErrorText } from "./error";
 
-export type AppHost = Pick<DesktopHost, "getConnection"> &
-  Partial<Omit<DesktopHost, "getConnection">>;
+export type AppHost = Pick<DesktopHost, "getConnection" | "modelServices"> &
+  Partial<Omit<DesktopHost, "getConnection" | "modelServices">>;
 export interface ConversationProps {
   footer: (approval?: ReactNode) => ReactNode;
   sessionId: string;
@@ -745,20 +745,18 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               <Home className="size-4 fill-current" />
             </Button>
           </Tooltip>
-          {host.modelServices ? (
-            <Button
-              className="mt-auto"
-              size="icon"
-              variant="ghost"
-              aria-label={t("services.title")}
-              onClick={(event) => {
-                settingsOpener.current = event.currentTarget;
-                setSettingsOpen(true);
-              }}
-            >
-              <Settings className="size-4" />
-            </Button>
-          ) : null}
+          <Button
+            className="mt-auto"
+            size="icon"
+            variant="ghost"
+            aria-label={t("services.title")}
+            onClick={(event) => {
+              settingsOpener.current = event.currentTarget;
+              setSettingsOpen(true);
+            }}
+          >
+            <Settings className="size-4" />
+          </Button>
         </nav>
         <div className="app-workspace relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
           {sidebar ? (
@@ -848,7 +846,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           </main>
         </div>
       </div>
-      {settingsOpen && host.modelServices ? (
+      {settingsOpen ? (
         <ModelServices
           services={host.modelServices}
           onClose={() => setSettingsOpen(false)}

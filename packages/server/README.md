@@ -35,3 +35,9 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 [server.ts](src/server.ts) 持有 Hono 接入、单个 ManagedRuntime、Layer 与输入回执 FiberMap；[command.ts](src/command.ts) 在进入业务处理前校验不可信输入。依赖和架构约束见 [tech-stack](../../docs/tech-stack.md) 与 [ADR-0030](../../docs/adr/0030-desktop-server-hono-and-effect.md)。
 
 模型美元价格查询通过同一私有管理入口，只接收 Base URL 和精确模型 ID，不读取凭证。固定读取 [llmprice.cn](https://llmprice.cn/) 首页采用的 [LiteLLM Cost Map](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) 原始 JSON（raw.githubusercontent.com），不回退到 CDN，8 秒超时、8 MiB 上限并拒绝重定向。当前只认 HTTPS 官方主机 api.openai.com、api.anthropic.com、api.deepseek.com、api.mistral.ai、api.groq.com、api.x.ai、openrouter.ai 和 generativelanguage.googleapis.com；自定义代理地址返回歧义，不推测其账单。仅接受 provider 相符的精确 ID 或 provider/ID 键；同 provider 同价格别名可合并，冲突或上下文分层返回歧义。普通每 Token 美元价换算为百万 Token；缺少、无效或零值不视为已知价格，缓存价格缺失保持空白。网络、大小或解析失败返回不可用，不写配置、不提供任意 URL 抓取。
+
+### 浏览器模型服务通道
+
+`system-keychain` 和 `memory` 后端通过鉴权会话 WS 提供 `modelServices.list / save / delete / test / revealKey / templates / prices`，复用 Electron 私有模型服务处理器。`delete`、`test` 与 `revealKey` 用 `providerId` 指定供应商；`save` 接收共享 schema 的供应商与 `keep`、`delete` 或 `replace` 明文凭证，立即按 `provider:<id>` 加密后由数据库同事务提交供应商与密文。加密失败不写供应商。`electron` 后端返回 `model_services_unavailable`，继续走 main 的私有通道。
+
+显式 `revealKey` 只返回指定供应商的 `{value: string | null}`；明文、显示结果和底层凭证错误不进入广播、snapshot、日志或模型上下文。WS 命令保留相同 Origin、token、字段校验和关闭时等待命令完成的规则；模型测试仅发送短连接探测，失败返回安全协议错误。凭证通道边界见 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md)。

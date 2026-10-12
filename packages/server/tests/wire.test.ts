@@ -25,3 +25,35 @@ test("wire preserves an optional image name in prompt input", () => {
   };
   expect(parseWireCommand(command)).toEqual(command);
 });
+
+test("model service wire accepts bounded plaintext replacement and rejects private ciphertext and extra fields", () => {
+  const provider = {
+    id: "fixture",
+    name: "Fixture",
+    api: "openai-completions",
+    baseUrl: "",
+    models: [],
+  };
+  for (const credential of [
+    { type: "keep" },
+    { type: "delete" },
+    { type: "replace", value: "fixture-key" },
+  ])
+    expect(
+      parseWireCommand({ id: "1", type: "modelServices.save", provider, credential }),
+    ).toBeDefined();
+  for (const credential of [
+    { type: "replace", ciphertext: "encrypted" },
+    { type: "replace", value: "" },
+    { type: "replace", value: "x".repeat(65537) },
+    { type: "keep", value: "secret" },
+  ])
+    expect(
+      parseWireCommand({ id: "1", type: "modelServices.save", provider, credential }),
+    ).toBeUndefined();
+  for (const type of ["list", "templates"])
+    expect(parseWireCommand({ id: "1", type: `modelServices.${type}` })).toBeDefined();
+  expect(
+    parseWireCommand({ id: "1", type: "modelServices.revealKey", providerId: "../../secret" }),
+  ).toBeUndefined();
+});

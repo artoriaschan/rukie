@@ -31,6 +31,7 @@ import {
   WIRE_SUBPROTOCOL,
   ModelServiceSchema,
   ModelPriceRequestSchema,
+  parseModelServiceSave,
 } from "@rukie/shared";
 import { executeHost, hostOperation, HostError, type HostExecutor } from "./host.ts";
 import { lookupModelPrices } from "./model-prices.ts";
@@ -63,6 +64,13 @@ export interface ServerOptions {
 class CommandError extends Error {
   constructor(readonly code: WireErrorCode) {
     super(code);
+  }
+}
+class ModelServiceFailure extends CommandError {
+  constructor(
+    readonly privateError: "unavailable-model" | "unavailable-provider" | "connection-failed",
+  ) {
+    super(privateError === "connection-failed" ? "internal" : "model_unavailable");
   }
 }
 const AgentCore = Context.Service<{
@@ -130,6 +138,106 @@ export async function startServer(options: ServerOptions) {
       const next = await configuredModels();
       applicationModels.clearProviders();
       for (const provider of next.getProviders()) applicationModels.setProvider(provider);
+    };
+    const List = Type.Object({ type: Type.Literal("list") }, { additionalProperties: false });
+    const Delete = Type.Object(
+      {
+        type: Type.Literal("delete"),
+        id: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
+      },
+      { additionalProperties: false },
+    );
+    const RevealKey = Type.Object(
+      {
+        type: Type.Literal("revealKey"),
+        id: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
+      },
+      { additionalProperties: false },
+    );
+    const Save = Type.Object(
+      {
+        type: Type.Literal("save"),
+        provider: ModelServiceSchema,
+        credential: Type.Union([
+          Type.Object({ type: Type.Literal("keep") }, { additionalProperties: false }),
+          Type.Object({ type: Type.Literal("delete") }, { additionalProperties: false }),
+          Type.Object(
+            { type: Type.Literal("replace"), ciphertext: Type.String({ minLength: 1 }) },
+            { additionalProperties: false },
+          ),
+        ]),
+      },
+      { additionalProperties: false },
+    );
+    const Templates = Type.Object(
+      { type: Type.Literal("templates") },
+      { additionalProperties: false },
+    );
+    const Test = Type.Object(
+      {
+        type: Type.Literal("test"),
+        id: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
+        modelId: Type.String({ minLength: 1, maxLength: 256 }),
+      },
+      { additionalProperties: false },
+    );
+    const Prices = Type.Object(
+      { type: Type.Literal("prices"), ...ModelPriceRequestSchema.properties },
+      { additionalProperties: false },
+    );
+    const ModelOperation = Type.Union([List, Delete, RevealKey, Save, Templates, Test, Prices]);
+    const modelOperation = async (
+      input: import("typebox").Static<typeof ModelOperation>,
+      signal: AbortSignal,
+    ) => {
+      if (Value.Check(Prices, input)) return await lookupModelPrices(input);
+      if (Value.Check(Templates, input)) return applicationModelTemplates();
+      if (Value.Check(Test, input)) {
+        const providers = await database.providers();
+        const provider = providers.find((p) => p.id === input.id);
+        const model = provider?.models.find((m) => m.id === input.modelId);
+        if (!provider || !model) throw new ModelServiceFailure("unavailable-model");
+        const models =
+          options.sessionOptions?.models ??
+          createApplicationModels({
+            providers: [{ ...provider, models: [{ ...model, enabled: true }] }],
+            homeDir: options.homeDir,
+            hasCredential: async (id) =>
+              (await database.credential(`provider:${id}`)) !== undefined,
+            credential: (id) => vault.read(`provider:${id}`),
+            capabilityStore: {
+              read: (key) => database.capability(key),
+              save: (key, value) => database.saveCapability(key, value),
+            },
+          });
+        const selected = models.getModel(input.id, input.modelId);
+        if (!selected) throw new ModelServiceFailure("unavailable-model");
+        const result = await models.completeSimple(
+          selected,
+          { messages: [{ role: "user", content: "Reply OK.", timestamp: Date.now() }] },
+          {
+            maxTokens: 8,
+            signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
+          },
+        );
+        if (result.stopReason === "error" || result.stopReason === "aborted")
+          throw new ModelServiceFailure("connection-failed");
+        return {};
+      }
+      if (Value.Check(RevealKey, input)) {
+        const provider = (await database.providers()).find((item) => item.id === input.id);
+        if (!provider) throw new ModelServiceFailure("unavailable-provider");
+        return { value: (await vault.read(`provider:${input.id}`)) ?? null };
+      }
+      if (Value.Check(List, input)) return await database.providers();
+      if (Value.Check(Delete, input)) {
+        await database.deleteProvider(input.id);
+        return {};
+      }
+      if (Value.Check(Save, input)) {
+        await database.saveProvider(input.provider, input.credential);
+        return {};
+      }
     };
     const save = async () => {
       try {
@@ -460,6 +568,67 @@ export async function startServer(options: ServerOptions) {
     };
     const dispatch = async (command: WireCommand, socket: WSContext): Promise<unknown> => {
       if (shuttingDown) throw new CommandError("internal");
+      if (command.type.startsWith("modelServices.")) {
+        if ((options.encryptionBackend ?? "electron") === "electron")
+          throw new CommandError("model_services_unavailable");
+        try {
+          switch (command.type) {
+            case "modelServices.save": {
+              if (
+                !parseModelServiceSave({
+                  provider: command.provider,
+                  credential: command.credential,
+                })
+              )
+                throw new CommandError("invalid_command");
+              let credential: import("typebox").Static<typeof Save>["credential"] = {
+                type: "keep",
+              };
+              if (command.credential.type === "replace") {
+                if (!options.encryption) throw new CommandError("internal");
+                credential = {
+                  type: "replace",
+                  ciphertext: await options.encryption.encrypt(
+                    `provider:${command.provider.id}`,
+                    command.credential.value,
+                  ),
+                };
+              } else credential = command.credential;
+              return await modelOperation(
+                { type: "save", provider: command.provider, credential },
+                AbortSignal.timeout(8000),
+              );
+            }
+            case "modelServices.list":
+              return await modelOperation({ type: "list" }, AbortSignal.timeout(8000));
+            case "modelServices.templates":
+              return await modelOperation({ type: "templates" }, AbortSignal.timeout(8000));
+            case "modelServices.prices":
+              return await modelOperation(
+                { type: "prices", baseUrl: command.baseUrl, modelId: command.modelId },
+                AbortSignal.timeout(8000),
+              );
+            case "modelServices.delete":
+              return await modelOperation(
+                { type: "delete", id: command.providerId },
+                AbortSignal.timeout(8000),
+              );
+            case "modelServices.revealKey":
+              return await modelOperation(
+                { type: "revealKey", id: command.providerId },
+                AbortSignal.timeout(8000),
+              );
+            case "modelServices.test":
+              return await modelOperation(
+                { type: "test", id: command.providerId, modelId: command.modelId },
+                AbortSignal.timeout(8000),
+              );
+          }
+        } catch (error) {
+          // Never propagate provider, vault or encryption exceptions containing credentials.
+          throw new CommandError(error instanceof CommandError ? error.code : "internal");
+        }
+      }
       switch (command.type) {
         case "host.pickFolder":
         case "host.revealPath":
@@ -692,103 +861,19 @@ export async function startServer(options: ServerOptions) {
       const operation = (async () => {
         try {
           const input: unknown = await c.req.json();
-          const List = Type.Object({ type: Type.Literal("list") }, { additionalProperties: false });
-          const Delete = Type.Object(
+          if (!Value.Check(ModelOperation, input))
+            return c.json({ error: "invalid-operation" }, 400);
+          return c.json(await modelOperation(input, c.req.raw.signal));
+        } catch (error) {
+          return c.json(
             {
-              type: Type.Literal("delete"),
-              id: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
+              error:
+                error instanceof ModelServiceFailure
+                  ? error.privateError
+                  : "model-service-operation-failed",
             },
-            { additionalProperties: false },
+            409,
           );
-          const RevealKey = Type.Object(
-            {
-              type: Type.Literal("revealKey"),
-              id: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
-            },
-            { additionalProperties: false },
-          );
-          const Save = Type.Object(
-            {
-              type: Type.Literal("save"),
-              provider: ModelServiceSchema,
-              credential: Type.Union([
-                Type.Object({ type: Type.Literal("keep") }, { additionalProperties: false }),
-                Type.Object({ type: Type.Literal("delete") }, { additionalProperties: false }),
-                Type.Object(
-                  { type: Type.Literal("replace"), ciphertext: Type.String({ minLength: 1 }) },
-                  { additionalProperties: false },
-                ),
-              ]),
-            },
-            { additionalProperties: false },
-          );
-          const Templates = Type.Object(
-            { type: Type.Literal("templates") },
-            { additionalProperties: false },
-          );
-          const Test = Type.Object(
-            {
-              type: Type.Literal("test"),
-              id: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
-              modelId: Type.String({ minLength: 1, maxLength: 256 }),
-            },
-            { additionalProperties: false },
-          );
-          const Prices = Type.Object(
-            { type: Type.Literal("prices"), ...ModelPriceRequestSchema.properties },
-            { additionalProperties: false },
-          );
-          if (Value.Check(Prices, input)) return c.json(await lookupModelPrices(input));
-          if (Value.Check(Templates, input)) return c.json(applicationModelTemplates());
-          if (Value.Check(Test, input)) {
-            const providers = await database.providers();
-            const provider = providers.find((p) => p.id === input.id);
-            const model = provider?.models.find((m) => m.id === input.modelId);
-            if (!provider || !model) return c.json({ error: "unavailable-model" }, 409);
-            const models =
-              options.sessionOptions?.models ??
-              createApplicationModels({
-                providers: [{ ...provider, models: [{ ...model, enabled: true }] }],
-                homeDir: options.homeDir,
-                hasCredential: async (id) =>
-                  (await database.credential(`provider:${id}`)) !== undefined,
-                credential: (id) => vault.read(`provider:${id}`),
-                capabilityStore: {
-                  read: (key) => database.capability(key),
-                  save: (key, value) => database.saveCapability(key, value),
-                },
-              });
-            const selected = models.getModel(input.id, input.modelId);
-            if (!selected) return c.json({ error: "unavailable-model" }, 409);
-            const result = await models.completeSimple(
-              selected,
-              { messages: [{ role: "user", content: "Reply OK.", timestamp: Date.now() }] },
-              {
-                maxTokens: 8,
-                signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(8000)]),
-              },
-            );
-            if (result.stopReason === "error" || result.stopReason === "aborted")
-              return c.json({ error: "connection-failed" }, 409);
-            return c.json({});
-          }
-          if (Value.Check(RevealKey, input)) {
-            const provider = (await database.providers()).find((item) => item.id === input.id);
-            if (!provider) return c.json({ error: "unavailable-provider" }, 409);
-            return c.json({ value: (await vault.read(`provider:${input.id}`)) ?? null });
-          }
-          if (Value.Check(List, input)) return c.json(await database.providers());
-          if (Value.Check(Delete, input)) {
-            await database.deleteProvider(input.id);
-            return c.json({});
-          }
-          if (Value.Check(Save, input)) {
-            await database.saveProvider(input.provider, input.credential);
-            return c.json({});
-          }
-          return c.json({ error: "invalid-operation" }, 400);
-        } catch {
-          return c.json({ error: "model-service-operation-failed" }, 409);
         }
       })();
       commands.add(operation);

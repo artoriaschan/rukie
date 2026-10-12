@@ -70,3 +70,43 @@ for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
     }
   });
 }
+
+test("browser model service settings save, reveal and delete through the single app connection", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const original = location.href;
+  history.replaceState(null, "", `#port=${connection.port}&token=${connection.token}`);
+  const host = browserHost();
+  const screen = await render(<App host={host} locale="en" />);
+  try {
+    await screen.getByRole("button", { name: "Model services", exact: true }).click();
+    await screen.getByRole("button", { name: "Add provider", exact: true }).first().click();
+    await screen.getByRole("button", { name: "Create custom provider" }).click();
+    await screen.getByRole("textbox", { name: "Base URL" }).fill("http://127.0.0.1:1");
+    await screen.getByLabelText("API Key", { exact: true }).fill("browser-wire-fixture");
+    await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+    await expect.element(screen.getByLabelText("API Key", { exact: true })).toHaveValue("");
+    const providerId = (await host.modelServices.list())[0]!.id;
+    expect(await host.modelServices.templates()).toEqual([]);
+    expect(
+      await host.modelServices.prices({ baseUrl: "http://127.0.0.1:1", modelId: "fixture" }),
+    ).toEqual({ status: "unavailable" });
+    await host.modelServices.test(providerId, "fixture");
+    await screen.getByRole("button", { name: "Show API Key", exact: true }).click();
+    await expect
+      .element(screen.getByLabelText("API Key", { exact: true }))
+      .toHaveValue("browser-wire-fixture");
+    await screen.getByRole("button", { name: "Hide API Key", exact: true }).click();
+    await expect.element(screen.getByLabelText("API Key", { exact: true })).toHaveValue("");
+    await screen.getByRole("button", { name: "Provider actions", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Delete provider", exact: true }).click();
+    await screen.getByRole("button", { name: "Confirm delete", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: "Add provider", exact: true }).first())
+      .toBeVisible();
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+    history.replaceState(null, "", original);
+  }
+});

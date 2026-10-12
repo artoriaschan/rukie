@@ -1,3 +1,4 @@
+import { modelServicesFixture } from "../helpers/model-services";
 import { App } from "../../src/app";
 import { expect, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
@@ -75,7 +76,12 @@ test("full output is fetched on demand, byte pages and failed reads remain retry
 test("App reads a historical tool reference through the session wire command", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     await screen
       .getByRole("button", { name: /Fix compiler/ })

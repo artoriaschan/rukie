@@ -1697,3 +1697,149 @@ for (const platform of ["darwin", "linux", "win32"] as const) {
     }
   });
 }
+
+test("browser model services encrypt, keep and delete credentials through authenticated wire", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-wire-models-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const warnings: string[] = [];
+    const { memorySecretEncryption } = await import("../src/storage/secrets.ts");
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          development: true,
+          encryptionBackend: "memory",
+          encryption: memorySecretEncryption(),
+          sessionOptions: fakeModel([fauxAssistantMessage("safe wire reply")]),
+          onWarning: (warning) => warnings.push(warning),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "http://localhost:5173", owner);
+    const provider = {
+      id: "fixture",
+      name: "Fixture",
+      api: "openai-completions",
+      baseUrl: "http://127.0.0.1:1",
+      models: [],
+    };
+    expect(
+      (
+        await client.command("modelServices.save", {
+          provider,
+          credential: { type: "replace", value: "wire-secret-fixture" },
+        })
+      ).error,
+    ).toBeUndefined();
+    expect((await client.command("modelServices.list")).result).toEqual([
+      { ...provider, hasCredential: true },
+    ]);
+    expect(JSON.stringify(client.messages)).not.toContain("wire-secret-fixture");
+    client.messages.length = 0;
+    expect(
+      (await client.command("session.create", { project: null, text: "hello" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(client.messages.some((message) => message.type === "snapshot")).toBe(true);
+    expect(JSON.stringify(client.messages)).not.toContain("wire-secret-fixture");
+    expect(
+      (await client.command("modelServices.revealKey", { providerId: "fixture" })).result,
+    ).toEqual({ value: "wire-secret-fixture" });
+    expect(
+      (
+        await client.command("modelServices.save", {
+          provider: { ...provider, name: "Updated" },
+          credential: { type: "keep" },
+        })
+      ).error,
+    ).toBeUndefined();
+    expect(
+      (await client.command("modelServices.revealKey", { providerId: "fixture" })).result,
+    ).toEqual({ value: "wire-secret-fixture" });
+    expect(
+      (await client.command("modelServices.save", { provider, credential: { type: "delete" } }))
+        .error,
+    ).toBeUndefined();
+    expect(
+      (await client.command("modelServices.revealKey", { providerId: "fixture" })).result,
+    ).toEqual({ value: null });
+    expect((await client.command("modelServices.list")).result).toEqual([
+      { ...provider, hasCredential: false },
+    ]);
+    await client.command("modelServices.delete", { providerId: "fixture" });
+    expect((await client.command("modelServices.list")).result).toEqual([]);
+    expect(warnings).toEqual([]);
+  } finally {
+    await owner.close();
+  }
+});
+
+for (const backend of ["electron", "memory"] as const) {
+  test(`model service ${backend} failures never expose credential exceptions`, async () => {
+    const owner = ownResources();
+    try {
+      const homeDir = await owner.acquire(
+        () => mkdtemp(join(tmpdir(), "rukie-wire-model-error-")),
+        (path) => rm(path, { recursive: true, force: true }),
+      );
+      const warnings: string[] = [];
+      const server = await owner.acquire(
+        () =>
+          startServer({
+            homeDir,
+            development: true,
+            encryptionBackend: backend,
+            encryption: {
+              encrypt: async () => {
+                throw new Error("unsafe-fixture-key");
+              },
+              decrypt: async () => {
+                throw new Error("unsafe-fixture-key");
+              },
+            },
+            onWarning: (warning) => warnings.push(warning),
+            onHandshake: () => {},
+          }),
+        (server) => server.close(),
+      );
+      const client = await connect(server, "http://localhost:5173", owner);
+      const provider = {
+        id: "fixture",
+        name: "Fixture",
+        api: "openai-completions",
+        baseUrl: "",
+        models: [],
+      };
+      const result = await client.command("modelServices.save", {
+        provider,
+        credential: { type: "replace", value: "unsafe-fixture-key" },
+      });
+      expect(result.error).toEqual({
+        code: backend === "electron" ? "model_services_unavailable" : "internal",
+      });
+      if (backend === "memory")
+        expect((await client.command("modelServices.list")).result).toEqual([]);
+      else
+        for (const type of ["list", "delete", "test", "revealKey", "templates", "prices"]) {
+          const fields =
+            type === "prices"
+              ? { baseUrl: "http://127.0.0.1", modelId: "fixture" }
+              : ["delete", "test", "revealKey"].includes(type)
+                ? { providerId: "fixture", ...(type === "test" ? { modelId: "fixture" } : {}) }
+                : {};
+          expect((await client.command(`modelServices.${type}`, fields)).error).toEqual({
+            code: "model_services_unavailable",
+          });
+        }
+      expect(JSON.stringify(client.messages)).not.toContain("unsafe-fixture-key");
+      expect(warnings.join(" ")).not.toContain("unsafe-fixture-key");
+    } finally {
+      await owner.close();
+    }
+  });
+}

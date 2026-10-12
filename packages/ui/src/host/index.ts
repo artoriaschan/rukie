@@ -1,5 +1,8 @@
 /** Native capabilities are injected by the Electron or browser entry. */
-import { WireError, type WireClient } from "../client";
+import { WireError, type WireClient, type ClientCommand } from "../client";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import { ModelServiceSchema } from "@rukie/shared";
 import type {
   ModelServiceSave,
   ModelServiceSummary,
@@ -11,22 +14,19 @@ export interface DesktopHost {
   pickProjectFolder(): Promise<string | null>;
   /** App binds its single connection before host actions; host never opens or closes it. */
   bindClient?(client: WireClient): void;
-  modelServices?: {
-    prices?(input: ModelPriceRequest): Promise<ModelPriceResult>;
+  modelServices: {
+    prices(input: ModelPriceRequest): Promise<ModelPriceResult>;
     /** Explicit user reveal only; never persist or log the returned key. */
-    revealKey?(id: string): Promise<string | undefined>;
+    revealKey(id: string): Promise<string | undefined>;
     list(): Promise<ModelServiceSummary[]>;
     save(input: ModelServiceSave): Promise<void>;
     delete(id: string): Promise<void>;
-    test?(id: string, modelId: string): Promise<void>;
-    templates?(): Promise<import("@rukie/shared").ModelService[]>;
+    test(id: string, modelId: string): Promise<void>;
+    templates(): Promise<import("@rukie/shared").ModelService[]>;
   };
 }
 
-export function browserHost(): Pick<
-  DesktopHost,
-  "getConnection" | "pickProjectFolder" | "bindClient"
-> {
+export function browserHost(): DesktopHost {
   const parameters = new URLSearchParams(location.hash.slice(1));
   const port = Number(parameters.get("port"));
   const token = parameters.get("token") ?? "";
@@ -39,8 +39,63 @@ export function browserHost(): Pick<
     },
   };
   let client: WireClient | undefined;
+  const request = async (command: ClientCommand): Promise<unknown> => {
+    if (!client) throw new Error("Browser host client is not connected");
+    await client.connect();
+    return client.request(command);
+  };
+  const checked = <T>(value: unknown, check: (input: unknown) => input is T): T => {
+    if (!check(value)) throw new Error("Invalid model service response");
+    return value;
+  };
   return {
     ...connection,
+    modelServices: {
+      list: async () =>
+        checked(
+          await request({ type: "modelServices.list" }),
+          (input): input is ModelServiceSummary[] =>
+            Value.Check(
+              Type.Array(
+                Type.Object(
+                  { ...ModelServiceSchema.properties, hasCredential: Type.Boolean() },
+                  { additionalProperties: false },
+                ),
+              ),
+              input,
+            ),
+        ),
+      save: async (input) => {
+        await request({ type: "modelServices.save", ...input });
+      },
+      delete: async (id) => {
+        await request({ type: "modelServices.delete", providerId: id });
+      },
+      test: async (id, modelId) => {
+        await request({ type: "modelServices.test", providerId: id, modelId });
+      },
+      revealKey: async (id) => {
+        const result = await request({ type: "modelServices.revealKey", providerId: id });
+        if (
+          typeof result !== "object" ||
+          result === null ||
+          !("value" in result) ||
+          (result.value !== null && typeof result.value !== "string")
+        )
+          throw new Error("Invalid model service response");
+        return result.value ?? undefined;
+      },
+      templates: async () =>
+        checked(
+          await request({ type: "modelServices.templates" }),
+          (input): input is import("@rukie/shared").ModelService[] =>
+            Value.Check(Type.Array(ModelServiceSchema), input),
+        ),
+      prices: async (input) => {
+        const result = await request({ type: "modelServices.prices", ...input });
+        return checked(result, isModelPriceResult);
+      },
+    },
     bindClient: (value) => {
       client = value;
     },
@@ -63,4 +118,32 @@ declare global {
   interface Window {
     rukieHost?: DesktopHost;
   }
+}
+
+function isModelPriceResult(value: unknown): value is ModelPriceResult {
+  return Value.Check(
+    Type.Union([
+      Type.Object(
+        { status: Type.Enum(["unmatched", "ambiguous", "unavailable"]) },
+        { additionalProperties: false },
+      ),
+      Type.Object(
+        {
+          status: Type.Literal("found"),
+          prices: Type.Object(
+            {
+              inputPrice: Type.Number({ minimum: 0 }),
+              outputPrice: Type.Number({ minimum: 0 }),
+              cacheReadPrice: Type.Optional(Type.Number({ minimum: 0 })),
+              cacheWritePrice: Type.Optional(Type.Number({ minimum: 0 })),
+            },
+            { additionalProperties: false },
+          ),
+          priceSource: Type.String(),
+        },
+        { additionalProperties: false },
+      ),
+    ]),
+    value,
+  );
 }
