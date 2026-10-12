@@ -14,6 +14,8 @@ export const appCopy = {
     "app.error-unsupported": "This action is unavailable on this platform.",
     "app.error-internal": "The action could not be completed. Retry.",
     "app.error-disconnected": "Connection lost. Retry.",
+    "app.error-connection_missing":
+      "Connection details are missing. Open the full URL printed by dev:desktop:web.",
     "app.error-superseded": "Another window took over this connection. Retry to continue here.",
     "conversation.action-read": "Read file",
     "conversation.action-edit": "Edited file",
@@ -188,6 +190,7 @@ export const appCopy = {
     "app.error-unsupported": "当前平台不支持此操作。",
     "app.error-internal": "无法完成此操作，请重试。",
     "app.error-disconnected": "连接已断开，请重试。",
+    "app.error-connection_missing": "缺少连接信息，请打开 dev:desktop:web 启动时打印的完整地址。",
     "app.error-superseded": "另一个窗口已接管连接，请重试以在此继续。",
     "conversation.action-read": "读取了文件",
     "conversation.action-edit": "修改了文件",

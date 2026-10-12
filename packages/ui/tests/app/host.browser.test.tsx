@@ -1,9 +1,76 @@
-import { expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { App } from "../../src/app";
 import { browserHost } from "../../src/host";
 import "../../src/theme.css";
+
+const connectionStorageKey = "rukie.webDevelopment.connection";
+let previousConnection: string | null;
+beforeEach(() => {
+  previousConnection = sessionStorage.getItem(connectionStorageKey);
+  sessionStorage.removeItem(connectionStorageKey);
+});
+afterEach(() => {
+  if (previousConnection === null) sessionStorage.removeItem(connectionStorageKey);
+  else sessionStorage.setItem(connectionStorageKey, previousConnection);
+});
+
+test("browser reconnects after reloading the cleaned development URL", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const original = location.href;
+  let screen: Awaited<ReturnType<typeof render>> | undefined;
+  try {
+    history.replaceState(null, "", `#port=${connection.port}&token=${connection.token}`);
+    expect(await browserHost().getConnection()).toEqual(connection);
+    expect(location.hash).toBe("");
+    // A full page reload reconstructs the host after the fragment has been removed.
+    const restoredHost = browserHost();
+    expect(await restoredHost.getConnection()).toEqual(connection);
+    screen = await render(<App host={restoredHost} locale="en" />);
+    await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Retry", exact: true }))
+      .not.toBeInTheDocument();
+  } finally {
+    try {
+      await screen?.unmount();
+    } finally {
+      try {
+        await commands.stopWire(connection.port);
+      } finally {
+        history.replaceState(null, "", original);
+      }
+    }
+  }
+});
+
+test("a new launch replaces the cached handshake and malformed fragments clear it", async () => {
+  const original = location.href;
+  try {
+    history.replaceState(null, "", "#port=1234&token=old-fixture");
+    await browserHost().getConnection();
+    history.replaceState(null, "", "#port=5678&token=new-fixture");
+    expect(await browserHost().getConnection()).toEqual({ port: 5678, token: "new-fixture" });
+    expect(await browserHost().getConnection()).toEqual({ port: 5678, token: "new-fixture" });
+    history.replaceState(null, "", "#port=invalid&token=fixture");
+    await expect(browserHost().getConnection()).rejects.toMatchObject({
+      code: "connection_missing",
+    });
+    expect(sessionStorage.getItem(connectionStorageKey)).toBeNull();
+    await expect(browserHost().getConnection()).rejects.toMatchObject({
+      code: "connection_missing",
+    });
+    history.replaceState(null, "", "#port=1234&token=invalid%20token");
+    await expect(browserHost().getConnection()).rejects.toMatchObject({
+      code: "connection_missing",
+    });
+    expect(sessionStorage.getItem(connectionStorageKey)).toBeNull();
+  } finally {
+    history.replaceState(null, "", original);
+  }
+});
 
 for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
   test(`browser folder ${outcome} uses the app connection and falls back to manual entry`, async () => {

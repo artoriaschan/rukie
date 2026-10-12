@@ -4,7 +4,7 @@
 
 ## 使用
 
-`App` 接收 `host` 与 `locale`（`zh` / `en`）。Electron preload 注入 `window.rukieHost` 的 `getConnection`、`pickProjectFolder` 和模型服务能力；浏览器开发入口从 URL fragment 读取 `port` 与 `token`，立即从 history 清除 fragment，通过 `getConnection` 连接 sidecar，`pickProjectFolder` 经 `host.pickFolder` wire 命令选择项目。完整刷新后需重新附加握手 fragment；当前页面中的 Retry 重用内存中的凭据。macOS 浏览器使用系统选择文件夹对话框；取消或平台返回 `unsupported` 时退回手动填写绝对路径。Electron 保留窗口内的文件夹对话框。两种入口的 Finder 与终端操作均通过 app 的 wire client 调用 sidecar，受已登记项目根与 workspace 的路径范围限制。浏览器 host 的 `bindClient` 由 app 在执行宿主操作前绑定唯一连接，host 不另开或关闭连接，避免抢占 app 的订阅。
+`App` 接收 `host` 与 `locale`（`zh` / `en`）。Electron preload 注入 `window.rukieHost` 的 `getConnection`、`pickProjectFolder` 和模型服务能力；浏览器开发入口从 URL fragment 读取 `port` 与 `token`，立即从 history 清除 fragment，通过 `getConnection` 连接 sidecar，`pickProjectFolder` 经 `host.pickFolder` wire 命令选择项目。握手信息保存在当前标签页的 sessionStorage 中，完整刷新或 Vite 整页重载后复用；新的握手 fragment 会替换旧值，无效 fragment 清除缓存。关闭标签页后，或 sidecar 重启后，需要重新打开启动命令打印的完整地址。存储不可用时当前页面仍可连接，但刷新需重新附加握手 fragment。macOS 浏览器使用系统选择文件夹对话框；取消或平台返回 `unsupported` 时退回手动填写绝对路径。Electron 保留窗口内的文件夹对话框。两种入口的 Finder 与终端操作均通过 app 的 wire client 调用 sidecar，受已登记项目根与 workspace 的路径范围限制。浏览器 host 的 `bindClient` 由 app 在执行宿主操作前绑定唯一连接，host 不另开或关闭连接，避免抢占 app 的订阅。
 
 从仓库根运行 `bun run dev:desktop:web`，启动当前源码 sidecar 与固定在 `http://localhost:5173/` 的 Vite dev server，并打印带握手 fragment 的完整地址；`--open` 用默认浏览器打开。UI 源码修改由 HMR 更新，sidecar 源码修改需重启命令。端口占用、握手超时或任一服务退出时命令失败并停止另一个服务；Ctrl+C 或 SIGTERM 等待 Vite、sidecar 顺序退出后释放锁。端口和 token 来自 sidecar stdout 握手，不放进 query、文件或设置。入口跟随系统主题并按浏览器语言选择 zh/en。数据与配置隔离、`--reset` 及锁说明见 [desktop README](../desktop/README.md#浏览器开发)。
 

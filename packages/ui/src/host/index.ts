@@ -27,14 +27,37 @@ export interface DesktopHost {
 }
 
 export function browserHost(): DesktopHost {
-  const parameters = new URLSearchParams(location.hash.slice(1));
+  const storageKey = "rukie.webDevelopment.connection";
+  const fragment = location.hash.slice(1);
+  let handshake = fragment;
+  // Retain only the local sidecar handshake for reloads in this tab, never API keys.
+  try {
+    if (!fragment) handshake = sessionStorage.getItem(storageKey) ?? "";
+  } catch {
+    // Storage can be blocked; the launch fragment still works for this page.
+  }
+  const parameters = new URLSearchParams(handshake);
   const port = Number(parameters.get("port"));
   const token = parameters.get("token") ?? "";
+  const valid =
+    Number.isInteger(port) &&
+    port > 0 &&
+    port <= 65535 &&
+    /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(token);
+  try {
+    if (valid)
+      sessionStorage.setItem(
+        storageKey,
+        new URLSearchParams({ port: String(port), token }).toString(),
+      );
+    else sessionStorage.removeItem(storageKey);
+  } catch {
+    // Storage availability must not prevent the initial connection.
+  }
   history.replaceState(null, "", `${location.pathname}${location.search}`);
   const connection = {
     getConnection: async () => {
-      if (!Number.isInteger(port) || port <= 0 || port > 65535 || !token)
-        throw new Error("Missing development connection fragment");
+      if (!valid) throw new WireError("connection_missing");
       return { port, token };
     },
   };

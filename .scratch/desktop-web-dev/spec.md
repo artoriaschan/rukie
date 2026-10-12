@@ -123,3 +123,7 @@ Status: resolved
 追加的供应商空地址改名修复及增量验证见 [ticket 03](issues/03-model-services-wire.md#追加修复未配置地址时修改供应商名称)。草稿改名与正式配置保存的边界已同步 ui README；其余已通过证据按实际差异继续复用。
 
 追加页面系统字体要求：GUI 统一使用 `system-ui` 平台字体，代码、模型标识、快捷键与数值使用系统 `ui-monospace`；字号、字重、行高与布局保留。DESIGN.md 与 tech-stack 已同步，移除两项字体包、四个导入、六处 scoped 覆盖及不再发行的许可证资源，lockfile 与 frozen install 对齐。这属于用户追加的展示要求，不改变执行或存储边界，无需 ADR。字体源样式的基线 5+7 个浏览器布局案例通过；新增实际 font-family / 无 bundled FontFace 回归先 RED，再随全部 12 个案例通过（7.24s）。check:dev、类型/Knip/文档/测试策略及字体扫描通过；实际浏览器检查系统字体、零字体文件请求、Light/Dark/窄屏和无横向溢出。原有 desktop 包级未受影响证据复用，字体差异由这组 focused 证据覆盖，未重跑整套。验收沿用用户现有 Vite，独立 memory/fake sidecar 已清理；PID 74227 的用户服务保持监听 5173。详情与图片在 `/tmp/rukie-desktop-web-evidence/system-font-verification.md` 及 `system-font-*.png`。
+
+追加断线修复验证记录：现场 Vite 与 sidecar 均在运行；窄屏标题隐藏曾干扰首次断言，改为固定宽度与直接检查恢复握手后，旧实现明确抛出 Missing development connection fragment（RED，2.02s）。当前标签页 sessionStorage 保留握手，新 fragment 替换缓存，无效端口或 WebSocket 子协议非法 token 清除缓存，缺少握手显示明确启动地址提示；源 ADR 与 README 已同步。新建只读评审代理发现非法 token 缓存边界，已加入校验与回归。host browser 和 client 合计 13 案例通过（5.35s），check:dev 通过；复用已有 desktop 包级与布局证据，不重跑无关整套。
+
+实际 agent-browser Chromium 使用独立 memory sidecar/fake provider，复用用户仍运行的源码 Vite：完整 URL 首次连接后 fragment 清除，实际 reload 后模型仍就绪；Light/Dark 与 640px narrow 截图均核对，无横向溢出与操作失败，控制台无错误，所观察网络请求均成功。清除测试标签页握手再 reload，Retry 显示中文启动地址提示，窄屏无溢出。测试浏览器关闭，独立 sidecar 58856 端口关闭；用户 Vite 74227、sidecar 74225、launcher 74224 全程仍在运行。证据：`/tmp/rukie-disconnect-{red,green,static}.log` 与 `/tmp/rukie-desktop-web-evidence/reload-{light,dark,narrow,missing-handshake}.png`。此修复确认重载失去握手的路径；未直接读取用户原浏览器，不能断言其当次触发必为重载。

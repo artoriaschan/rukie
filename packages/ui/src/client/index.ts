@@ -9,7 +9,7 @@ export type ClientCommand = WireCommand extends infer C
   : never;
 export class WireError extends Error {
   constructor(
-    readonly code: WireErrorCode | "disconnected" | "superseded",
+    readonly code: WireErrorCode | "disconnected" | "superseded" | "connection_missing",
     readonly params?: Record<string, string | number>,
   ) {
     super(code);
