@@ -1,0 +1,34 @@
+packages/ui/src/theme.css
+  s_e09d8f70cffc20::t_78a2ee6ddafd6d 239
+packages/ui/tests/app/layout.browser.test.tsx
+  s_e09d8f70cffc20::t_78a2ee6ddafd6d 70-79
+docs/tech-stack.md
+  s_e09d8f70cffc20::t_78a2ee6ddafd6d 151
+packages/ui/tests/app/model-services.browser.test.tsx
+  s_e09d8f70cffc20::t_d8322482ff7c22 697
+  s_e09d8f70cffc20::t_78a2ee6ddafd6d 765-769
+DESIGN.md
+  s_e09d8f70cffc20::t_78a2ee6ddafd6d 139,452,468
+packages/ui/src/components/conversation-controls.css
+  s_e09d8f70cffc20::t_78a2ee6ddafd6d 14,419
+.scratch/desktop-web-dev/spec.md
+  s_e09d8f70cffc20::t_7c55b8e96e88f1 124-125
+packages/ui/src/app/model-services.css
+  s_e09d8f70cffc20::t_78a2ee6ddafd6d 28,480,625,717
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "edc64b709f90cc67427d0fa491f809cd62ba3712",
+  "prompts": {},
+  "sessions": {
+    "s_e09d8f70cffc20": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12f34-a6f6-73c1-ae4e-16f8621913e1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
