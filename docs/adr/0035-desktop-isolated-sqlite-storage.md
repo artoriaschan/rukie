@@ -10,7 +10,7 @@ status: accepted
 
 ## 决定
 
-开发版的配置共享范围由 [ADR-0036](0036-shared-development-configuration.md) 部分替代；正式应用与终端隔离规则继续有效。
+开发版的配置共享范围由 [ADR-0036](0036-shared-development-configuration.md) 部分替代；正式应用与终端隔离规则继续有效。浏览器形态的凭证加密与模型服务通道由 [ADR-0037](0037-browser-host-sidecar-capabilities.md) 部分替代；Electron 的 safeStorage、preload IPC 与 management token 通道继续有效。
 
 ### 数据归属与隔离
 
