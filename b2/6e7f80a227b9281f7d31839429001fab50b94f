@@ -1,0 +1,51 @@
+packages/ui/src/client/index.ts
+  s_e09d8f70cffc20::t_3ac59b353055e1 199,212-213
+packages/desktop/tests/main.test.ts
+  s_e09d8f70cffc20::t_3ac59b353055e1 215-216
+packages/desktop/tests/preload.test.ts
+  s_e09d8f70cffc20::t_3ac59b353055e1 15
+packages/ui/tests/app/shell.browser.test.tsx
+  s_e09d8f70cffc20::t_3ac59b353055e1 244
+.oxlintrc.json
+  s_e09d8f70cffc20::t_3ac59b353055e1 704
+packages/server/src/server.ts
+  s_e09d8f70cffc20::t_3ac59b353055e1 35,44-45,464-471,870
+packages/ui/tests/helpers/wire.ts
+  s_e09d8f70cffc20::t_3ac59b353055e1 8,28,31
+packages/ui/src/lib/app-copy.ts
+  s_e09d8f70cffc20::t_3ac59b353055e1 12,185
+packages/shared/src/wire.ts
+  s_e09d8f70cffc20::t_3ac59b353055e1 43-45,107
+.scratch/desktop-web-dev/issues/04-host-wire-commands.md
+  s_e09d8f70cffc20::t_3ac59b353055e1 3,7-33
+packages/server/tests/server.test.ts
+  s_e09d8f70cffc20::t_3ac59b353055e1 4,1583-1699
+packages/server/src/host.ts
+  s_e09d8f70cffc20::t_3ac59b353055e1 1-79
+packages/ui/README.md
+  s_e09d8f70cffc20::t_3ac59b353055e1 7
+packages/ui/src/host/index.ts
+  s_e09d8f70cffc20::t_3ac59b353055e1 2,12-13,26-29,34,41-58
+packages/desktop/README.md
+  s_e09d8f70cffc20::t_3ac59b353055e1 15
+packages/ui/src/app/index.tsx
+  s_e09d8f70cffc20::t_3ac59b353055e1 90-94,447-450,452-453,690-709
+packages/ui/tests/app/host.browser.test.tsx
+  s_e09d8f70cffc20::t_3ac59b353055e1 1-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "b26e7f80a227b9281f7d31839429001fab50b94f",
+  "prompts": {},
+  "sessions": {
+    "s_e09d8f70cffc20": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12f34-a6f6-73c1-ae4e-16f8621913e1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
