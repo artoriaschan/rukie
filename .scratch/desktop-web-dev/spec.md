@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 浏览器开发模式 `dev:desktop:web`
 
@@ -103,3 +103,19 @@ Status: claimed
 ## 验证记录
 
 基线提交：`5b65547d`（`origin/main`）。设计提交：`d75580fc`。本次集成分支 `feat/desktop-web-dev-complete`。实施代理在各自 ticket 记录 focused TDD 与耗时，主代理协调集成静态检查、desktop 包级验收与隔离浏览器验收；集成与交接复用仍有效证据。
+
+## 最终交付与 ADR Coverage 复核
+
+实现集成至 `5fb02150`，最终状态提交只更新本 spec 和 03/05 的关闭证据。五张票的实现、消费者与文档已对齐；01/02/04 的已通过证据复用，03/05 与 spec 在本次统一 resolved。PR #17 将转为 ready for review，CI 待验收，未授权或执行合并。
+
+逐项复核 Implementation Decisions 与最终 diff：加密所有权、显式后端与单主密钥及共享初始化锁沿用 ADR-0037；浏览器模型服务经唯一鉴权 WS，Electron 保留 IPC，沿用 ADR-0037/0031；原生操作由 sidecar 校验 canonical 项目/workspace 路径并以参数向量执行，沿用 ADR-0037；host 组合 App 唯一 client，保持 ADR-0029 依赖方向；共享配置与 checkout Session/data 的隔离沿用 ADR-0036/0037。启动器与一次性 fake/临时目录属于开发编排，不引入新的产品数据或执行边界，无需新增 ADR。覆盖表链接与 accepted 状态已核对，没有遗漏的长期取舍或未解决冲突。
+
+双轴评审：Standards 两项 P2（启动器测试 timeout cleanup、browser host 初始化失败 cleanup），Spec 一项 P1（独立实例首次主密钥创建竞争）。全部由新的单个实施代理修复，提交 `5fb02150`；竞争回归先复现两次创建，修复后单次创建，并覆盖进程强制退出释放锁和失败重试不覆盖已有密钥。每个实施、合并、评审与修复阶段都创建新代理，没有复用代理。
+
+本地证据：集成 `5a4ff88e` 的 `rtk proxy bun run check:dev` 退出 0，`rtk proxy env -u NO_COLOR bun run test:desktop` 29 files / 128 tests 通过，23.32s；评审差异由 crypto/startup/launcher 28 pass（3.17s）和 Chromium host 4 pass（5.86s）补验，workspace types、受影响 lint/format、docs 与 test-policy 通过。生产 UI 与 memory 隔离链路没有改变，包级与浏览器证据继续有效；没有重跑未失效的完整套件。最终 tracker 状态变化仅补文档、scratch、格式和 diff 检查。
+
+实际 agent-browser Chromium 验收：`bun run dev:desktop:web --isolated` 源码 sidecar、预置和 Vite 就绪；浏览器显示模型服务，显式显示/隐藏 key（未输出明文），保存模型名称后选择器同步，键盘选择后真实 Session 返回 `packaged protocol reply`。Light/Dark 和 640px 窄屏已截图核对，无页面横向溢出；model button 与嵌套 SVG 为 pointer，disabled send 为 not-allowed；fragment 清除，控制台无错误，已观察网络请求无失败状态。验收自动化曾因 aria-only 按钮选择条件与过期 refs 超时，刷新条件/快照后同一交互成功，记录为自动化操作失败。浏览器已关闭，Ctrl+C 后 sidecar PID 消失，5173/sidecar/fake 三个端口关闭，临时目录删除；外层 bun run PTY 因中断返回 1，所属资源清理完成。
+
+日志、评审与图片：`/tmp/rukie-desktop-web-evidence/verification.md`、`review-fixes-verification.md`、`check-dev.log`、`test-desktop.log`、`review-standards.md`、`review-spec.md`、`review-focused-green.log`、`review-browserhost-green.log`、`settings-light.png`、`settings-dark.png`、`settings-narrow.png`、`conversation-dark.png`。日志属于本机任务证据，不提交临时 token 或密钥。
+
+限制：未访问真实系统钥匙串、真实供应商凭证或启动真实 Electron/原生对话框/文件管理器/终端；其他操作系统的真实原生运行未验收。自动测试通过注入验证平台参数向量与路径限制。CI 的最新提交结果以 PR checks 为准，本地通过不代表 CI 已通过。

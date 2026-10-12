@@ -1,6 +1,6 @@
 # 03：`modelServices.*` wire 命令与浏览器 host 模型服务
 
-Status: claimed
+Status: resolved
 
 Blocked by: 01
 
@@ -24,3 +24,7 @@ Owner: ticket 03 implementer; pre-agreed seams: shared command parsing, authenti
 ADR Coverage review: 与 spec 的 ADR-0037 模型服务 WS / 后端拒绝边界、ADR-0031 鉴权命令及 ADR-0029 host→client 方向一致；复用现有数据库凭证事务与历史行为，不新增架构取舍。README 已同步当前凭证通道。保持 claimed，待集成评审与根代理适用验证后一起 resolved。
 
 Chromium settings tracer 在基线 browserHost/App 下重放，缺少 Model services 按钮失败；恢复实现后上方 3.01 s green 证据有效。Snapshot 非泄露断言在仍保存凭证时执行，最终 focused green 155.26 ms。文档检查 146 Markdown 文件通过。
+
+## Comments
+
+集成、双轴评审修复及适用本地验证已完成，与 spec 在本次状态提交统一 resolved。ADR Coverage 与静态、desktop 包级和 isolated Chromium 验收证据见 [spec 最终交付记录](../spec.md#最终交付与-adr-coverage-复核)。未访问真实钥匙串，PR 待用户评审，CI 待验收。

@@ -1,6 +1,6 @@
 # 05：`--isolated` 验收模式与文档
 
-Status: claimed
+Status: resolved
 
 Blocked by: 01, 02, 03
 
@@ -10,7 +10,7 @@ Blocked by: 01, 02, 03
 - [x] 启动只监听 loopback 的 OpenAI 兼容 fake 端点，复用 `scripts/release/tests/provider-protocol.ts` 的协议回包；握手后经 `modelServices.save` 预置指向它的供应商与模型
 - [x] 测试覆盖临时目录清理、fake 供应商预置、对话收到固定回复、退出后端口与目录释放
 - [x] AGENTS.md 与 [testing.md](../../../docs/testing.md#原生验收授权边界) 中“mock DesktopHost / 模拟 DesktopHost”改为 `dev:desktop:web --isolated`；`test:desktop` 的 mock 边界不变
-- [ ] spec 的 ADR Coverage 与最终实现复核后关闭 spec
+- [x] spec 的 ADR Coverage 与最终实现复核后关闭 spec
 
 ## 实施与验证记录
 
@@ -31,3 +31,7 @@ TDD：第一轮 isolated 临时路径断言失败（原路径仍为 checkout 持
 AGENTS.md 与 testing.md 的手工验收改为 `bun run dev:desktop:web --isolated`；自动 `test:desktop` 的 DesktopHost/Electron/safeStorage mock 边界保持。ui README 补充同一入口及固定回复。主代理实际浏览器验收使用命令输出的 fragment URL，并选择 `Isolated acceptance` / `Isolated reply`；关闭浏览器后停止启动器。最终 aggregate、GUI 与 ADR Coverage 复核及关闭本票/spec 由主代理统一完成。
 
 提交前增量证据：seed 新增要求 `type === "response"`，使该 seam 先前证据失效，最小复验 `rtk proxy bun test scripts/tests/desktop-web.test.ts -t 'isolated launcher presets'` 1 pass，0 fail，8 assertions，1.212s（场景 1104.46ms，真实进程/Session 集成成本同上）。最终受影响 lint、scripts typecheck、check:docs 与 diff check 均通过。README 段落移至使用入口，沿用已验证行为。最终格式检查及提交 hooks 结果由提交输出确认。
+
+## Comments
+
+集成、双轴评审修复及适用本地验证已完成，与 spec 在本次状态提交统一 resolved。ADR Coverage 与静态、desktop 包级和 isolated Chromium 验收证据见 [spec 最终交付记录](../spec.md#最终交付与-adr-coverage-复核)。未访问真实钥匙串，PR 待用户评审，CI 待验收。
