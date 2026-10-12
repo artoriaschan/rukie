@@ -212,7 +212,7 @@ test("Pencil model numeric fields hide native steppers while retaining numeric k
       expect(getComputedStyle(input).appearance).toBe("textfield");
       expect(input.type).toBe("number");
       expect(input.min).toBe("1");
-      await expect.poll(() => input.parentElement!.getBoundingClientRect().height).toBe(36);
+      await expect.poll(() => input.parentElement!.getBoundingClientRect().height).toBe(32);
       await field.click();
       await userEvent.keyboard("{ArrowUp}");
       await expect.element(field).toHaveValue(Number(original) + 1);
@@ -704,9 +704,9 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
       .element()
       .parentElement!.getBoundingClientRect();
     expect(url.left).toBe(900);
-    expect(url.top).toBe(258);
+    expect(url.top).toBe(261);
     expect(url.width).toBe(624);
-    expect(url.height).toBe(30);
+    expect(url.height).toBe(32);
     const nav = document
       .querySelector<HTMLElement>(".model-services-navigation-scroll")!
       .getBoundingClientRect();
@@ -730,7 +730,7 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     expect(apiMenu.getBoundingClientRect().bottom - lastOption.getBoundingClientRect().bottom).toBe(
       4,
     );
-    expect(apiMenu.getBoundingClientRect().top).toBe(322);
+    expect(apiMenu.getBoundingClientRect().top).toBe(330);
     expect(apiMenu.getBoundingClientRect().width).toBe(624);
     await screen
       .getByRole("option", { name: "Anthropic Messages (/v1/messages)", exact: true })
@@ -1209,7 +1209,7 @@ test("model default reasoning is selectable, saved and restricted to supported l
     ]);
     const field = document.querySelector<HTMLElement>(".model-services-default-reasoning")!;
     await expect.poll(() => field.getBoundingClientRect().width).toBe(188);
-    await expect.poll(() => field.getBoundingClientRect().height).toBe(60);
+    await expect.poll(() => field.getBoundingClientRect().height).toBe(54);
     await screen.getByRole("button", { name: "Default reasoning level", exact: true }).click();
     await expect.element(screen.getByRole("option", { name: "Low", exact: true })).toBeVisible();
     expect(screen.getByRole("option", { name: "XHigh", exact: true }).query()).toBeNull();
@@ -1579,4 +1579,123 @@ test("renaming a saved provider persists its name and rejects blank names", asyn
   await expect
     .element(screen.getByLabelText("API Key", { exact: true }))
     .toHaveValue("fake-draft-key");
+});
+
+test.each([1887, 420])("settings field geometry across themes at %i px", async (width) => {
+  const originalClass = document.documentElement.className;
+  await page.viewport(width, 1210);
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "geometry",
+              name: "Geometry",
+              api: "anthropic-messages",
+              baseUrl: "https://example.com",
+              hasCredential: false,
+              models: [{ id: "model", reasoning: true, contextWindow: 128000 }],
+            },
+          ],
+          save: async () => {},
+          delete: async () => {},
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  const measureFields = (region: Element) =>
+    [...region.querySelectorAll("label[for]")]
+      .filter(
+        (label) => document.getElementById(label.getAttribute("for")!) instanceof HTMLInputElement,
+      )
+      .map((label) => {
+        const control = document.getElementById(label.getAttribute("for")!)!;
+        const field = control.parentElement!;
+        const labelBox = label.getBoundingClientRect();
+        const box = field.getBoundingClientRect();
+        return {
+          label: label.textContent,
+          top: labelBox.top,
+          labelHeight: labelBox.height,
+          height: box.height,
+          gap: box.top - labelBox.bottom,
+          radius: getComputedStyle(field).borderRadius,
+          group: label.parentElement!.getBoundingClientRect().height,
+        };
+      });
+  try {
+    await expect
+      .element(screen.getByRole("heading", { name: "Geometry", exact: true }))
+      .toBeVisible();
+    const details = document.querySelector(".model-services-details")!;
+    const panel = document.querySelector(".model-services-panel")!;
+    for (const dark of [false, true]) {
+      document.documentElement.classList.toggle("dark", dark);
+      const api = screen.getByRole("button", { name: "API format", exact: true }).element();
+      const label = api.parentElement!.previousElementSibling!;
+      for (const field of measureFields(details)) {
+        expect(field.gap).toBe(4);
+        expect(field.height).toBe(32);
+        expect(field.radius).toBe("8px");
+      }
+      expect(label.getBoundingClientRect().top - measureFields(details)[0]!.top).toBe(69);
+      expect(api.getBoundingClientRect().height).toBe(32);
+      expect(api.getBoundingClientRect().top - label.getBoundingClientRect().bottom).toBe(4);
+      expect(getComputedStyle(api).borderRadius).toBe("8px");
+      expect(
+        document.querySelector(".model-services-model-row")!.getBoundingClientRect().top -
+          details.getBoundingClientRect().top,
+      ).toBe(291);
+      expect(panel.getBoundingClientRect().height).toBe(width === 1887 ? 560 : 580);
+      expect(panel.getBoundingClientRect().top).toBe(width === 1887 ? 188 : 204);
+      expect(panel.getBoundingClientRect().left).toBe(width === 1887 ? 660 : 64);
+      expect(panel.getBoundingClientRect().width).toBe(width === 1887 ? 880 : 344);
+    }
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await screen.getByRole("button", { name: /Advanced settings/ }).click();
+    const fields = document.querySelector(".model-services-model-fields")!;
+    for (const dark of [false, true]) {
+      document.documentElement.classList.toggle("dark", dark);
+      const select = screen
+        .getByRole("button", { name: "Default reasoning level", exact: true })
+        .element();
+      for (const field of measureFields(fields)) {
+        expect(field.gap, field.label ?? "field").toBe(4);
+        expect(field.height, field.label ?? "field").toBe(32);
+        expect(field.radius).toBe("8px");
+        // The wide runtime pair shares a row whose output-token label wraps to two lines.
+        // Other groups grow only when their own label wraps.
+        const sharedRuntimeRow =
+          width === 1887 && ["Temperature", "Maximum output tokens"].includes(field.label ?? "");
+        expect(field.group, field.label ?? "field").toBe(
+          sharedRuntimeRow ? 72 : field.labelHeight + 36,
+        );
+      }
+      expect(select.getBoundingClientRect().height).toBe(32);
+      expect(
+        select.getBoundingClientRect().top -
+          select.parentElement!.previousElementSibling!.getBoundingClientRect().bottom,
+      ).toBe(4);
+      expect(
+        select.closest(".model-services-default-reasoning")!.getBoundingClientRect().height,
+      ).toBe(54);
+      expect(getComputedStyle(select).borderRadius).toBe("8px");
+      for (const option of fields.querySelectorAll(
+        ".model-services-chips > label, [role=radiogroup] > label",
+      )) {
+        expect(option.getBoundingClientRect().height).toBe(28);
+        expect(getComputedStyle(option).borderRadius).toBe("8px");
+      }
+      for (const action of document.querySelectorAll(".model-services-modal-footer > button"))
+        expect(getComputedStyle(action).borderRadius).toBe("12px");
+    }
+  } finally {
+    await screen.unmount();
+    document.documentElement.className = originalClass;
+    await page.viewport(1280, 900);
+  }
 });
