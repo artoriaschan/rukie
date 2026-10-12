@@ -8,7 +8,7 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 进程入口必须通过 `RUKIE_DESKTOP_ENCRYPTION_BACKEND` 显式选择 `electron`、`system-keychain` 或 `memory`，未选择、未知值或必要参数缺失时在握手前启动失败，不探测或回退。`electron` 要求 `RUKIE_DESKTOP_SECRET_URL` 与 `RUKIE_DESKTOP_SECRET_TOKEN` 指向 main 的私有加密通道；`system-keychain` 要求非空 `RUKIE_DESKTOP_SECRET_SERVICE` 系统凭据服务名；`memory` 不需附加参数，仅用于隔离验收。`RUKIE_DESKTOP_MANAGEMENT_TOKEN` 供 main 的私有管理通道使用。所有 `RUKIE_DESKTOP_*` 启动变量在捕获后从进程环境删除，工具子进程只继承正常系统环境。
 
-`system-keychain` 经 `Bun.secrets` 首次加密时创建一把 AES-256-GCM 主密钥，后续进程从相同 service 的 `credential-master-key-v1` 项读取；读取失败、授权取消、已有主密钥无效或解密缺少主密钥均返回可重试凭证错误，不覆盖密钥或改用其他后端。密文通过认证附加数据绑定 vault 凭证身份。`memory` 主密钥只保留在当前进程，退出后原密文失效。不同后端的密文不互通，调用方必须使用独立配置根；系统凭据验收边界见 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md)。
+`system-keychain` 经 `Bun.secrets` 首次加密时创建一把 AES-256-GCM 主密钥，后续进程从相同 service 的 `credential-master-key-v1` 项读取；读取失败、授权取消、已有主密钥无效或解密缺少主密钥均返回可重试凭证错误，不覆盖密钥或改用其他后端。首次创建在有效配置根（`RUKIE_DESKTOP_CONFIGURATION_ROOT`，未指定时为数据根）内按 service 派生的 SQLite guard 下重新读取并写入；同一 service 的启动方必须共享该配置根。guard 不保存密钥材料，等待锁最多 15 秒，进程退出时由 SQLite 释放锁，不按时间删除其他实例的锁。密文通过认证附加数据绑定 vault 凭证身份。`memory` 主密钥只保留在当前进程，退出后原密文失效。不同后端的密文不互通，调用方必须使用独立配置根；系统凭据验收边界见 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md)。
 
 客户端连接 `ws://127.0.0.1:<port>/ws`，subprotocol 按顺序传入 `rukie.v1` 和 `rukie.auth.<token>`，Origin 必须是 `app://rukie`。`development: true`（进程入口的 `--dev`）额外接受 `http://localhost:5173`。随机端口绑定 loopback，鉴权失败在升级前返回 401 或 403。
 

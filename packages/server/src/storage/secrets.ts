@@ -1,4 +1,8 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { Database } from "bun:sqlite";
+import { mkdir } from "node:fs/promises";
+import { join, isAbsolute } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
 import type { AppDatabase } from "./app-database.ts";
 
 export type EncryptionBackend = "electron" | "system-keychain" | "memory";
@@ -100,12 +104,54 @@ export function memorySecretEncryption(): SecretEncryption {
   return aesSecretEncryption(async () => master);
 }
 
-/** Failed reads never create or replace a key. Concurrent first-use writes share one lookup. */
+/** All consumers of a service must share its configuration root. SQLite owns crash-safe exclusion;
+ * the guard contains no key material and is closed after every creation attempt. */
+async function initializeMasterKey<T>(
+  root: string,
+  service: string,
+  initialize: () => Promise<T>,
+): Promise<T> {
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  const name = createHash("sha256").update(service).digest("hex");
+  const guard = new Database(join(root, `master-key-${name}.sqlite`), { create: true });
+  try {
+    guard.exec("PRAGMA busy_timeout=0");
+    const deadline = performance.now() + 15_000;
+    for (;;) {
+      try {
+        guard.exec("BEGIN IMMEDIATE");
+        break;
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !("code" in error) ||
+          error.code !== "SQLITE_BUSY" ||
+          performance.now() >= deadline
+        )
+          throw error;
+        // SQLite exclusion is a cross-process runtime contract; yield while its owner awaits keychain I/O.
+        await delay(10);
+      }
+    }
+    try {
+      return await initialize();
+    } finally {
+      guard.exec("ROLLBACK");
+    }
+  } finally {
+    guard.close();
+  }
+}
+
+/** Failed reads never replace a key. Missing keys are reread under shared cross-process exclusion. */
 export function systemKeychainSecretEncryption(
   service: string,
+  configurationRoot: string,
   store: SecretsStore = Bun.secrets,
 ): SecretEncryption {
   if (!service.trim()) throw new Error("System keychain requires an explicit service name");
+  if (!isAbsolute(configurationRoot))
+    throw new Error("System keychain requires an absolute configuration root");
   let loading: Promise<Buffer> | undefined;
   const load = async (create: boolean): Promise<Buffer> => {
     const options = { service, name: "credential-master-key-v1" };
@@ -115,9 +161,16 @@ export function systemKeychainSecretEncryption(
       return Buffer.from(value, "hex");
     }
     if (!create) throw new Error("Missing master key");
-    const master = randomBytes(32);
-    await store.set({ ...options, value: master.toString("hex") });
-    return master;
+    return initializeMasterKey(configurationRoot, service, async () => {
+      const existing = await store.get(options);
+      if (existing !== null) {
+        if (!/^[a-f0-9]{64}$/.test(existing)) throw new Error("Invalid master key");
+        return Buffer.from(existing, "hex");
+      }
+      const master = randomBytes(32);
+      await store.set({ ...options, value: master.toString("hex") });
+      return master;
+    });
   };
   return aesSecretEncryption((create) => {
     if (!loading) {

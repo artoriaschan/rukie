@@ -31,3 +31,7 @@ Evidence (commands run from repository root unless noted):
 - `rtk proxy bun run check:docs` passed (146 Markdown files).
 
 Verification ownership: root coordinates aggregate static, desktop package acceptance, final agent-browser acceptance and CI. No layout/style/primitive geometry changes. Existing shell browser regression passed. ADR coverage: this ticket implements ADR-0037 native ownership and path authorization, continuing ADR-0031 WS auth and ADR-0029 browser-compatible host boundary. Actual system dialogs and terminal/file-manager launching remain user-authorized native acceptance, not claimed by these injected tests.
+
+## 评审修复验证
+
+2026-10-12：浏览器 host 测试取得 wire server 后，将 history 修改、fetch 与 render 初始化全部放入清理保护；render 未成功时允许无 screen 清理，卸载或停服务失败时仍执行后续恢复。`env -u NO_COLOR bunx --no vitest run packages/ui/tests/app/host.browser.test.tsx`：4 pass，0 fail，5.86 s；覆盖 selected/cancelled/unsupported 与模型服务保存、显示、隐藏、删除。仅测试清理改变，复用既有 desktop 包级与隔离浏览器验收结果。

@@ -28,3 +28,7 @@ Blocked by: 01
 - 对任务文件运行 oxfmt；格式检查与 diff check 在提交前完成。集成 `check:dev`、`check:docs` 与后续 isolated 浏览器验收由主代理统一执行；没有在子代理重复包级或全量验收。真实钥匙串与默认浏览器未运行。
 
 本票沿用 spec 的 ADR Coverage，启动器编排没有额外长期架构决定。为 05 保留的接口是 launchWebDevelopment 的已解析 paths、AbortSignal 与进程参数向量，runWebDevelopment 拥有真实 CLI 信号生命周期；05 可在此入口提供临时目录并扩展 memory 后端，不在本票实现 isolated。
+
+## 评审修复验证
+
+2026-10-12：握手超时、非法握手、Vite 启动失败、sidecar/Vite 崩溃与隔离启动失败用例在启动前登记 AbortController 与 running Promise 清理，结束时先 abort 并等待进程退出，再删除临时目录。已有 readiness/失败断言不变；`bun test packages/server/tests/storage/secrets.test.ts packages/server/tests/startup.test.ts scripts/tests/desktop-web.test.ts` 共 28 pass（启动器 14），3.17 s。该用例清理修复不改变生产启动器，既有包级与浏览器证据继续有效。

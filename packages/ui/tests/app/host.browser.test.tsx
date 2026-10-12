@@ -11,21 +11,22 @@ for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
     const connection = await commands.startWire();
     const url = `http://127.0.0.1:${connection.port}`;
     const original = location.href;
-    history.replaceState(null, "", `#port=${connection.port}&token=${connection.token}`);
-    const host = browserHost();
-    expect(location.hash).toBe("");
-    await fetch(`${url}/${outcome === "unsupported" ? "error" : "folder"}`, {
-      method: "POST",
-      body: JSON.stringify(
-        outcome === "unsupported"
-          ? { type: "host.pickFolder", code: "unsupported" }
-          : outcome === "selected"
-            ? "/chosen/project"
-            : null,
-      ),
-    });
-    const screen = await render(<App host={host} locale="en" />);
+    let screen: Awaited<ReturnType<typeof render>> | undefined;
     try {
+      history.replaceState(null, "", `#port=${connection.port}&token=${connection.token}`);
+      const host = browserHost();
+      expect(location.hash).toBe("");
+      await fetch(`${url}/${outcome === "unsupported" ? "error" : "folder"}`, {
+        method: "POST",
+        body: JSON.stringify(
+          outcome === "unsupported"
+            ? { type: "host.pickFolder", code: "unsupported" }
+            : outcome === "selected"
+              ? "/chosen/project"
+              : null,
+        ),
+      });
+      screen = await render(<App host={host} locale="en" />);
       await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
       await screen.getByRole("button", { name: "Add project", exact: true }).click();
       if (outcome !== "selected") {
@@ -64,9 +65,15 @@ for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
           .toMatchObject([{ path: "/project" }]);
       }
     } finally {
-      await screen.unmount();
-      await commands.stopWire(connection.port);
-      history.replaceState(null, "", original);
+      try {
+        await screen?.unmount();
+      } finally {
+        try {
+          await commands.stopWire(connection.port);
+        } finally {
+          history.replaceState(null, "", original);
+        }
+      }
     }
   });
 }
@@ -75,10 +82,11 @@ test("browser model service settings save, reveal and delete through the single 
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
   const original = location.href;
-  history.replaceState(null, "", `#port=${connection.port}&token=${connection.token}`);
-  const host = browserHost();
-  const screen = await render(<App host={host} locale="en" />);
+  let screen: Awaited<ReturnType<typeof render>> | undefined;
   try {
+    history.replaceState(null, "", `#port=${connection.port}&token=${connection.token}`);
+    const host = browserHost();
+    screen = await render(<App host={host} locale="en" />);
     await screen.getByRole("button", { name: "Model services", exact: true }).click();
     await screen.getByRole("button", { name: "Add provider", exact: true }).first().click();
     await screen.getByRole("button", { name: "Create custom provider" }).click();
@@ -105,8 +113,14 @@ test("browser model service settings save, reveal and delete through the single 
       .element(screen.getByRole("button", { name: "Add provider", exact: true }).first())
       .toBeVisible();
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
-    history.replaceState(null, "", original);
+    try {
+      await screen?.unmount();
+    } finally {
+      try {
+        await commands.stopWire(connection.port);
+      } finally {
+        history.replaceState(null, "", original);
+      }
+    }
   }
 });

@@ -23,3 +23,11 @@ Status: resolved
 - `rtk proxy env -u NO_COLOR bunx --no -- vitest run --project desktop packages/desktop/tests/main.test.ts`：11 pass，519 ms；覆盖正式和开发 main 的显式后端环境。
 - `rtk proxy bunx --no -- tsc -b packages/server packages/desktop`：通过（首次暴露测试 env 推断过窄，改为 `NodeJS.ProcessEnv` 后增量通过）。受影响源码与测试 `oxlint` 通过，受影响文件 `oxfmt` 完成，`git diff --check` 通过。root 协调 aggregate static / docs / desktop acceptance，本票不重复运行。
 - 已在交付前 fast-forward 合入 integration tip `36cf306b`（仅 spec claim，无测试证据失效）。本票沿用 spec ADR Coverage 的 ADR-0037 显式后端和凭证所有权，不增加额外长期取舍。待 integration 最终 review / CI；真实系统钥匙串验收未运行。
+
+## 评审修复验证
+
+2026-10-12：两个独立 `SecretEncryption` 实例在 fake secrets store 的缺失读取 barrier 后同时首次加密，原实现可确定产生两次主密钥写入（RED，5.04 ms）；修复在有效配置根内按 service 使用空 SQLite guard，取得跨进程锁后重新读取再创建。SQLite 自动释放退出进程的锁，不依赖 PID 或过期文件回收；guard 不保存密钥，等锁最多 15 秒，失败可重试。同一 service 的消费者必须共享配置根；startup 使用 `configurationRoot ?? dataRoot`，保持现有存储默认值。
+
+增量验证：`bun test packages/server/tests/storage/secrets.test.ts packages/server/tests/startup.test.ts scripts/tests/desktop-web.test.ts`：28 pass，0 fail，3.17 s。主密钥测试覆盖独立实例竞争（1.28 ms）、跨真实子进程提交后的重新读取（39.85 ms）、锁持有者 SIGKILL 后恢复（35.10 ms）、锁内读取失败与已写入但回包失败时重试不覆盖（1.65 ms）；全部 fake secrets store、临时目录，不访问系统钥匙串。原隔离入口整链路用例 1.20 s 为真实 sidecar/Vite/WS/Session 启动与停止成本。原包级证据复用；本次未重跑全套。
+
+增量静态验证通过：`bunx --no tsc -b`、变更 TypeScript 文件的 `bunx --no oxlint`、全部 12 个变更文件的 `bunx --no oxfmt --check`、`bun run check:docs`（146 Markdown）、`bun run check:test-policy`（414 test/fixture）与 `git diff --check`。未重跑 aggregate check:dev，复用主代理在集成基线的证据。

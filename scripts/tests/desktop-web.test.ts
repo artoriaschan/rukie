@@ -188,85 +188,110 @@ test("SIGINT waits for both real child exits and releases the web lock", async (
 
 test("handshake timeout preserves stderr diagnostics, stops sidecar and frees the lock", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-web-timeout-")));
-  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const controller = new AbortController();
+  let running: Promise<void> | undefined;
+  onTestFinished(async () => {
+    controller.abort();
+    await running?.catch(() => {}); // The case asserts the expected launch rejection separately.
+    await rm(root, { recursive: true, force: true });
+  });
   const paths = await webDevelopmentPaths(root, { home: root });
   let stderr = "";
   // A real subprocess emits stderr and withholds the handshake; the real deadline bounds that transport contract.
-  await expect(
-    launchWebDevelopment({
-      paths,
-      environment: {},
-      handshakeTimeoutMs: 250,
-      sidecarCommand: [
-        process.execPath,
-        "-e",
-        `process.on("SIGTERM", () => process.exit(0)); console.error("fixture startup stalled"); setInterval(() => {}, 100000);`,
-      ],
-      stderr: (text) => {
-        stderr += text;
-      },
-      stdout: () => {},
-    }),
-  ).rejects.toThrow("Sidecar handshake timed out");
+  running = launchWebDevelopment({
+    paths,
+    environment: {},
+    signal: controller.signal,
+    handshakeTimeoutMs: 250,
+    sidecarCommand: [
+      process.execPath,
+      "-e",
+      `process.on("SIGTERM", () => process.exit(0)); console.error("fixture startup stalled"); setInterval(() => {}, 100000);`,
+    ],
+    stderr: (text) => {
+      stderr += text;
+    },
+    stdout: () => {},
+  });
+  await expect(running).rejects.toThrow("Sidecar handshake timed out");
   expect(stderr).toContain("fixture startup stalled");
   await expect(readFile(join(paths.local, "launcher.lock"))).rejects.toThrow("ENOENT");
 });
 
 test("invalid sidecar handshake does not start Vite or print a credential URL", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-web-invalid-")));
-  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const controller = new AbortController();
+  let running: Promise<void> | undefined;
+  onTestFinished(async () => {
+    controller.abort();
+    await running?.catch(() => {}); // The case asserts the expected launch rejection separately.
+    await rm(root, { recursive: true, force: true });
+  });
   const paths = await webDevelopmentPaths(root, { home: root });
   let output = "";
-  await expect(
-    launchWebDevelopment({
-      paths,
-      environment: {},
-      sidecarCommand: [
-        process.execPath,
-        "-e",
-        `console.log(JSON.stringify({port: 0, token: "secret"})); setInterval(() => {}, 100000);`,
-      ],
-      viteCommand: [
-        process.execPath,
-        "-e",
-        `require("node:fs").writeFileSync("vite-started", "bad");`,
-      ],
-      stdout: (text) => {
-        output += text;
-      },
-      stderr: () => {},
-    }),
-  ).rejects.toThrow("Invalid sidecar handshake");
+  running = launchWebDevelopment({
+    paths,
+    environment: {},
+    signal: controller.signal,
+    sidecarCommand: [
+      process.execPath,
+      "-e",
+      `console.log(JSON.stringify({port: 0, token: "secret"})); setInterval(() => {}, 100000);`,
+    ],
+    viteCommand: [
+      process.execPath,
+      "-e",
+      `require("node:fs").writeFileSync("vite-started", "bad");`,
+    ],
+    stdout: (text) => {
+      output += text;
+    },
+    stderr: () => {},
+  });
+  await expect(running).rejects.toThrow("Invalid sidecar handshake");
   expect(output).not.toContain("secret");
   await expect(readFile(join(root, "vite-started"))).rejects.toThrow("ENOENT");
 });
 
 test("Vite port/startup failure stops sidecar and reports nonzero failure", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-web-vite-fail-")));
-  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const controller = new AbortController();
+  let running: Promise<void> | undefined;
+  onTestFinished(async () => {
+    controller.abort();
+    await running?.catch(() => {}); // The case asserts the expected launch rejection separately.
+    await rm(root, { recursive: true, force: true });
+  });
   const paths = await webDevelopmentPaths(root, { home: root });
-  await expect(
-    launchWebDevelopment({
-      paths,
-      environment: {},
-      sidecarCommand: [process.execPath, "-e", sidecarSource],
-      viteCommand: [process.execPath, "-e", "process.exit(37)"],
-      stdout: () => {},
-      stderr: () => {},
-    }),
-  ).rejects.toThrow("37");
+  running = launchWebDevelopment({
+    paths,
+    environment: {},
+    signal: controller.signal,
+    sidecarCommand: [process.execPath, "-e", sidecarSource],
+    viteCommand: [process.execPath, "-e", "process.exit(37)"],
+    stdout: () => {},
+    stderr: () => {},
+  });
+  await expect(running).rejects.toThrow("37");
   expect(await readFile(join(root, "events"), "utf8")).toBe("sidecar stopped\n");
   await expect(readFile(join(paths.local, "launcher.lock"))).rejects.toThrow("ENOENT");
 });
 
 test("sidecar crash after readiness stops Vite and --open dispatches only the fragment URL", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-web-crash-")));
-  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const controller = new AbortController();
+  let running: Promise<void> | undefined;
+  onTestFinished(async () => {
+    controller.abort();
+    await running?.catch(() => {}); // The case asserts the expected launch rejection separately.
+    await rm(root, { recursive: true, force: true });
+  });
   const paths = await webDevelopmentPaths(root, { home: root });
   let sidecarPid = 0;
-  const running = launchWebDevelopment({
+  running = launchWebDevelopment({
     paths,
     environment: {},
+    signal: controller.signal,
     open: true,
     sidecarCommand: [
       process.execPath,
@@ -293,12 +318,19 @@ test("sidecar crash after readiness stops Vite and --open dispatches only the fr
 
 test("Vite crash after readiness stops the surviving sidecar", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie-web-vite-crash-")));
-  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const controller = new AbortController();
+  let running: Promise<void> | undefined;
+  onTestFinished(async () => {
+    controller.abort();
+    await running?.catch(() => {}); // The case asserts the expected launch rejection separately.
+    await rm(root, { recursive: true, force: true });
+  });
   const paths = await webDevelopmentPaths(root, { home: root });
   const ready = Promise.withResolvers<void>();
-  const running = launchWebDevelopment({
+  running = launchWebDevelopment({
     paths,
     environment: {},
+    signal: controller.signal,
     sidecarCommand: [process.execPath, "-e", sidecarSource],
     viteCommand: [
       process.execPath,
@@ -319,19 +351,25 @@ test("Vite crash after readiness stops the surviving sidecar", async () => {
 
 test("isolated launcher owns temporary data and configuration and removes them on startup failure", async () => {
   const paths = await webDevelopmentPaths(process.cwd(), { isolated: true });
-  onTestFinished(() => rm(paths.local, { recursive: true, force: true }));
+  const controller = new AbortController();
+  let running: Promise<void> | undefined;
+  onTestFinished(async () => {
+    controller.abort();
+    await running?.catch(() => {});
+    await rm(paths.local, { recursive: true, force: true });
+  });
   expect(paths.local.startsWith(join(await realpath(tmpdir()), "rukie-web-isolated-"))).toBe(true);
   expect(paths.data).toBe(join(paths.local, "data"));
   expect(paths.configuration).toBe(join(paths.local, "configuration"));
-  await expect(
-    launchWebDevelopment({
-      paths,
-      environment: {},
-      sidecarCommand: [process.execPath, "-e", "process.exit(29)"],
-      stderr: () => {},
-      stdout: () => {},
-    }),
-  ).rejects.toThrow("29");
+  running = launchWebDevelopment({
+    paths,
+    environment: {},
+    signal: controller.signal,
+    sidecarCommand: [process.execPath, "-e", "process.exit(29)"],
+    stderr: () => {},
+    stdout: () => {},
+  });
+  await expect(running).rejects.toThrow("29");
   await expect(realpath(paths.local)).rejects.toThrow("ENOENT");
 });
 

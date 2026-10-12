@@ -11,6 +11,11 @@ test("sidecar requires an explicit encryption backend and complete parameters", 
       RUKIE_DESKTOP_SECRET_URL: "http://127.0.0.1:1/secret",
     },
     { RUKIE_DESKTOP_ENCRYPTION_BACKEND: "system-keychain" },
+    {
+      RUKIE_DESKTOP_ENCRYPTION_BACKEND: "system-keychain",
+      RUKIE_DESKTOP_SECRET_SERVICE: "private-service",
+      RUKIE_DESKTOP_CONFIGURATION_ROOT: "relative/configuration",
+    },
   ]) {
     expect(() => readSidecarStartup({ RUKIE_DESKTOP_DATA_ROOT: "/tmp/data", ...extra })).toThrow();
   }
@@ -74,4 +79,17 @@ test("sidecar process rejects a missing backend before emitting its handshake", 
   expect(code).not.toBe(0);
   expect(output).toBe("");
   expect(diagnostic).toContain("requires an explicit encryption backend");
+});
+
+test("system-keychain startup resolves the same configuration root as application storage", () => {
+  for (const configurationRoot of [undefined, "/tmp/configuration"]) {
+    const startup = readSidecarStartup({
+      RUKIE_DESKTOP_DATA_ROOT: "/tmp/unused-rukie-data",
+      RUKIE_DESKTOP_CONFIGURATION_ROOT: configurationRoot,
+      RUKIE_DESKTOP_SECRET_SERVICE: "private-service",
+      RUKIE_DESKTOP_ENCRYPTION_BACKEND: "system-keychain",
+    });
+    expect(startup.configurationRoot).toBe(configurationRoot);
+    expect(startup.encryptionBackend).toBe("system-keychain");
+  }
 });

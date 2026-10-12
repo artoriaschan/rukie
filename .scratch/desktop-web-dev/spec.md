@@ -34,7 +34,7 @@ Status: claimed
 
 - 配置根跨 checkout 共享，位于用户级应用数据目录下的 `Rukie Web Development/configuration`（macOS：`~/Library/Application Support/`；Linux：`$XDG_DATA_HOME` 或 `~/.local/share`；Windows：`%APPDATA%`），保存供应商、模型、凭证密文与设置；与 `dev:desktop` 的共享配置分开，二者密文后端不同。目录与父路径拒绝符号链接，沿用 `developmentPaths` 的检查。
 - sidecar 新增显式加密后端选择：`electron`（现有私有通道）、`system-keychain`、`memory`。未选择或参数不完整时启动失败，不推断。
-- `system-keychain` 经 `Bun.secrets` 在系统凭据库保存每个安装一把 AES-256-GCM 主密钥，服务名由启动方传入（本入口为 `Rukie Web Development`），密文绑定凭证身份，格式与现有 vault 的身份校验一致。首次加密时创建主密钥；读取失败或授权取消返回现有可重试错误，不新建覆盖。
+- `system-keychain` 经 `Bun.secrets` 在系统凭据库保存每个安装一把 AES-256-GCM 主密钥，服务名由启动方传入（本入口为 `Rukie Web Development`），密文绑定凭证身份，格式与现有 vault 的身份校验一致。首次加密时创建主密钥，在共享配置根内按 service 派生的 SQLite guard 下重新读取后创建，跨进程互斥，guard 不存密钥且进程退出自动释放锁；读取失败或授权取消返回现有可重试错误，不新建覆盖。
 - `memory` 主密钥只在进程内存，仅 `--isolated` 使用。
 
 ### wire 命令

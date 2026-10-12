@@ -35,7 +35,7 @@ export function readSidecarStartup(env: NodeJS.ProcessEnv): {
       break;
     case "system-keychain":
       if (!service?.trim()) throw new Error("System keychain encryption requires a service name.");
-      encryption = systemKeychainSecretEncryption(service);
+      encryption = systemKeychainSecretEncryption(service, configurationRoot ?? dataRoot);
       break;
     case "memory":
       encryption = memorySecretEncryption();
