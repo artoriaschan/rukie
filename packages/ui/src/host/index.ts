@@ -22,7 +22,6 @@ export interface DesktopHost {
     save(input: ModelServiceSave): Promise<void>;
     delete(id: string): Promise<void>;
     test(id: string, modelId: string): Promise<void>;
-    templates(): Promise<import("@rukie/shared").ModelService[]>;
   };
 }
 
@@ -108,12 +107,6 @@ export function browserHost(): DesktopHost {
           throw new Error("Invalid model service response");
         return result.value ?? undefined;
       },
-      templates: async () =>
-        checked(
-          await request({ type: "modelServices.templates" }),
-          (input): input is import("@rukie/shared").ModelService[] =>
-            Value.Check(Type.Array(ModelServiceSchema), input),
-        ),
       prices: async (input) => {
         const result = await request({ type: "modelServices.prices", ...input });
         return checked(result, isModelPriceResult);

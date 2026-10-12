@@ -128,10 +128,6 @@ export async function startDesktop(options: DesktopOptions) {
       if (!request) throw new Error("Invalid model price identity");
       return manage({ type: "prices", ...request });
     });
-    ipcMain.handle("rukie:modelServices:templates", async (event) => {
-      authorize(event);
-      return manage({ type: "templates" });
-    });
     ipcMain.handle("rukie:modelServices:test", async (event, id: unknown, modelId: unknown) => {
       authorize(event);
       if (

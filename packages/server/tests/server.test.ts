@@ -190,13 +190,6 @@ test("private provider management persists a redacted catalog without reading te
     });
   try {
     expect((await manage({ type: "list" }, server.token)).status).toBe(403);
-    const templates = await (await manage({ type: "templates" })).json();
-    expect(templates).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ api: "anthropic-messages", models: expect.any(Array) }),
-      ]),
-    );
-    expect(JSON.stringify(templates)).not.toContain("apiKey");
     expect((await manage({ type: "list" }, managementToken, "app://rukie")).status).toBe(403);
     expect(
       (
@@ -205,6 +198,7 @@ test("private provider management persists a redacted catalog without reading te
           provider: {
             id: "local",
             name: "Local",
+            icon: "deepseek",
             api: "openai-completions",
             baseUrl: "http://localhost/v1",
             models: [{ id: "m", name: "Independent label" }],
@@ -216,6 +210,7 @@ test("private provider management persists a redacted catalog without reading te
     expect((await client.command("models.list")).result).toEqual([
       expect.objectContaining({
         providerId: "local",
+        providerIcon: "deepseek",
         id: "m",
         name: "Independent label",
         authenticated: true,
@@ -229,6 +224,7 @@ test("private provider management persists a redacted catalog without reading te
     expect((await client.command("models.list")).result).toEqual([
       expect.objectContaining({
         providerId: "local",
+        providerIcon: "deepseek",
         id: "m",
         name: "Independent label",
         authenticated: true,
@@ -1825,7 +1821,7 @@ for (const backend of ["electron", "memory"] as const) {
       if (backend === "memory")
         expect((await client.command("modelServices.list")).result).toEqual([]);
       else
-        for (const type of ["list", "delete", "test", "revealKey", "templates", "prices"]) {
+        for (const type of ["list", "delete", "test", "revealKey", "prices"]) {
           const fields =
             type === "prices"
               ? { baseUrl: "http://127.0.0.1", modelId: "fixture" }

@@ -167,19 +167,6 @@ export class AppDatabase {
       )
         throw new Error("Invalid model compatibility");
     }
-    if (provider.models.length && !provider.baseUrl)
-      throw new Error("Configured models require a provider URL");
-    if (provider.baseUrl) {
-      const url = new URL(provider.baseUrl);
-      if (
-        !["http:", "https:"].includes(url.protocol) ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash
-      )
-        throw new Error("Invalid provider URL");
-    }
     await this.db.transaction(async (tx) => {
       await tx.run(
         "INSERT OR REPLACE INTO providers VALUES (?, ?)",

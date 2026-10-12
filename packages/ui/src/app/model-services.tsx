@@ -646,7 +646,6 @@ export function ModelServices({
                         </Button>
                         <h2 className="text-ui-lg">{t("services.addProvider")}</h2>
                       </div>
-                      <p className="text-ui-sm text-muted-foreground">{t("services.catalog")}</p>
                       <Button
                         variant="secondary"
                         className="model-services-custom-tile"

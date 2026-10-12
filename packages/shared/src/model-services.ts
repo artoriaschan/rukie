@@ -8,11 +8,16 @@ export const MODEL_SERVICE_THINKING_LEVELS = [
   ...THINKING_LEVELS.slice(1),
 ] as const;
 
+export const PROVIDER_ICONS = ["deepseek"] as const;
+export type ProviderIconKey = (typeof PROVIDER_ICONS)[number];
+
 /** Desktop configuration has no environment-variable authentication. */
 export const ModelServiceSchema = Type.Object(
   {
     id: Type.String({ minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" }),
     name: Type.String({ minLength: 1, maxLength: 256 }),
+    enabled: Type.Optional(Type.Boolean()),
+    icon: Type.Optional(Type.Enum([...PROVIDER_ICONS])),
     api: Type.Enum(["openai-completions", "openai-responses", "anthropic-messages"]),
     baseUrl: Type.String({ maxLength: 2048 }),
     models: Type.Array(
