@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: claimed
 
 # Spec: 浏览器开发模式 `dev:desktop:web`
 
@@ -102,4 +102,4 @@ Status: ready-for-agent
 
 ## 验证记录
 
-基线提交：`5b65547d`（`origin/main`）。分支 `feat/desktop-web-dev`。尚无本任务的验证证据。
+基线提交：`5b65547d`（`origin/main`）。设计提交：`d75580fc`。本次集成分支 `feat/desktop-web-dev-complete`。实施代理在各自 ticket 记录 focused TDD 与耗时，主代理协调集成静态检查、desktop 包级验收与隔离浏览器验收；集成与交接复用仍有效证据。
