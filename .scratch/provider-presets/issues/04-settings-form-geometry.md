@@ -1,6 +1,6 @@
 # 04：设置区表单间距、输入高度与圆角
 
-Status: claimed
+Status: resolved
 
 **What to build:** 按 [spec 设置区样式](../spec.md#设置区样式)和已确认的 rukie.pen C11、C16 统一设置区表单几何，同步 DESIGN.md。这是用户授权的布局变化，按 [DESIGN.md 布局保护规则](../../../DESIGN.md#layout-preservation)执行。
 
@@ -18,3 +18,7 @@ Status: claimed
 - Unchanged panel bounds: wide x660/y188/880×560; narrow x64/y204/344×580. Shell/Conversation/composer geometry and settings focus restoration regressions passed.
 - Focused Chromium: from `packages/ui`, `rtk proxy bunx --no vitest run --config vitest.config.ts --project ui-browser tests/app/model-services.browser.test.tsx tests/app/layout.browser.test.tsx tests/app/shell.browser.test.tsx`: 38 passed, 19.34s. Initial geometry tracer passed after its red failure, 2 cases/1.51s. Logs and verification ownership are in `/tmp/rukie-provider-presets-evidence/verification.md`; no real Electron, credentials or production data.
 - Removed two catalog paragraph CSS rules at ticket 01 owner's request; its subtitle consumer is removed by ticket 01. Aggregate static/docs and final package/browser acceptance are coordinated by integration owner/ticket 06.
+
+### 集成交付验收（2026-10-13）
+
+功能范围内实现、消费者、文档和四项评审修复完成。证据见 [验证记录](../verification.md)：桌面 150 个用例组合通过，定向 payload/schema/server/icon/布局与 Chromium 验收通过；完整 Bun 实际 3507 通过 / 25 失败，混合 TUI 失败未分类，其他失败家族有独立基线/环境证据。CI 待验收，真实接口及正式 Electron 待用户验收，resolved 不表示全量接受或已合并。

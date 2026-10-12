@@ -1,6 +1,6 @@
 # 02：`@lobehub/icons` 与 ProviderIcon
 
-Status: claimed
+Status: resolved
 
 Blocked by: 01
 
@@ -10,7 +10,7 @@ Blocked by: 01
 - [x] `provider-icon.tsx` 改为入参 `icon?: ProviderIconKey`，通过 `Record<ProviderIconKey, { mono, color }>` 穷尽映射，深导入 `es/DeepSeek/components/Mono` 与 `Color`；缺省使用 lucide `Box`；需要模块声明时补齐并注明原因
 - [x] 删除手写的 deepseek/openai/zhipu SVG 与别名表
 - [x] 模型选择器（`model-picker.tsx`）使用 `entry.providerIcon`；设置页供应商列表与详情头部使用服务的 `icon`
-- [ ] 确认深导入只经由 `provider-icon.tsx`，knip 与 lint 通过
+- [x] 确认深导入只经由 `provider-icon.tsx`，knip 与 lint 通过
 - [x] 更新 `docs/tech-stack.md`（界面一节）和 lockfile；DESIGN.md "Conversation model controls"中 Brand paths 相关的描述改为 `ProviderIcon` 和 `icon` 键
 - [x] 测试：Chromium 断言 DeepSeek 服务在三处渲染品牌图标，没有 `icon` 的服务显示 Box；图标有可访问名称或标记为装饰性，与周围文本一致
 
@@ -25,3 +25,7 @@ Blocked by: 01
 - `rtk proxy node node_modules/vite/bin/vite.js build packages/ui --config packages/ui/vite.config.ts --outDir /tmp/rukie-provider-presets-evidence/icon-vite-build`: passed, 3355 modules, 402ms. Existing chunk-size warning (>500kB) and external output path notice; no Electron launch. Library declarations resolve without ambient additions.
 - Vitest prebundles the two SVG paths to avoid the initial optimizer-triggered test reload. Owner runs aggregate static/docs and one full check due global dependency-install policy; ticket06 owns desktop/manual GUI evidence. Status stays claimed until final review and acceptance.
 - ADR coverage: ADR-0038 impact now records global peer installation policy; no new durable architecture decision outside existing provider-icon ownership.
+
+### 集成交付验收（2026-10-13）
+
+功能范围内实现、消费者、文档和四项评审修复完成。证据见 [验证记录](../verification.md)：桌面 150 个用例组合通过，定向 payload/schema/server/icon/布局与 Chromium 验收通过；完整 Bun 实际 3507 通过 / 25 失败，混合 TUI 失败未分类，其他失败家族有独立基线/环境证据。CI 待验收，真实接口及正式 Electron 待用户验收，resolved 不表示全量接受或已合并。

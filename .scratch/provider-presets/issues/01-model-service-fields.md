@@ -1,6 +1,6 @@
 # 01：Model Service 启用与图标字段、放宽校验、删除 templates
 
-Status: claimed
+Status: resolved
 
 **What to build:** 按 [spec](../spec.md#model-service-数据) 和 [spec 校验](../spec.md#校验)扩展 Model Service 数据合同，放宽 server 的 URL 校验，并按 [ADR-0038](../../../docs/adr/0038-hand-maintained-provider-presets.md) 删除未被使用的 templates 链路。
 
@@ -23,3 +23,7 @@ Status: claimed
 - `bun test packages/server/tests/wire.test.ts packages/server/tests/storage/app-database.test.ts packages/agent/tests/config/application-models.test.ts packages/server/tests/server.test.ts`: 46 passed, 0 failed, 2.11s; all individual cases <1s. Added server icon restart assertion afterward and focused `bun test packages/server/tests/server.test.ts -t 'private provider management persists'`: 1 passed, 191ms.
 - From `packages/ui`, `bunx --no vitest run tests/store/desktop.test.ts tests/app/host.browser.test.tsx`: 16 passed, 4.58s, Node store and real Chromium scripted host. From `packages/desktop`, `bunx --no vitest run tests/preload.test.ts tests/main/desktop.test.ts`: preload 1 passed, 122ms (second filter had no matching file).
 - Aggregate static, package desktop acceptance, documentation checks and GUI acceptance are coordinated by the integration owner; no real Electron or credentials used. Formatting-only changes preserve focused evidence.
+
+### 集成交付验收（2026-10-13）
+
+功能范围内实现、消费者、文档和四项评审修复完成。证据见 [验证记录](../verification.md)：桌面 150 个用例组合通过，定向 payload/schema/server/icon/布局与 Chromium 验收通过；完整 Bun 实际 3507 通过 / 25 失败，混合 TUI 失败未分类，其他失败家族有独立基线/环境证据。CI 待验收，真实接口及正式 Electron 待用户验收，resolved 不表示全量接受或已合并。

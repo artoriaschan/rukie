@@ -1,6 +1,6 @@
 # 05：自动保存、服务开关、预设目录与协议联动
 
-Status: claimed
+Status: resolved
 
 Blocked by: 01, 02, 03, 04
 
@@ -31,3 +31,7 @@ Blocked by: 01, 02, 03, 04
 - Fresh repair implementer on `fix/provider-presets-review`, based on integration `a6ce7041`, addressed all four review findings. Dialog saves track their originating editor and reject repeated submissions; obsolete completion or failure cannot close a reopened editor or display its errors there. Retrying a failed new model updates the original draft slot. Autosave remains editable. Saved-key reveals clear when saving begins without clearing typed replacement credentials. Selecting the current service flushes its queue while retaining pending or failed inputs. The fixed DeepSeek acquisition destination also accepts the empty referrer emitted by the existing `noreferrer` anchor, only while the app main frame is trusted; other addresses and nonempty untrusted referrers remain denied.
 - Public Chromium regressions were red before implementation for stale model/rename completion, repeated submission, failed model retry, same-service draft retention and revealed-key save clearing. Native mock regression was red for an empty referrer. Focused browser coverage passed14 cases in9.29s; incremental dialog/model consumers and failed retry passed7 cases in7.87s. New cases take135–735ms. Native mocked main tests passed12 in813ms. No geometry, primitive or native acceptance scope changed.
 - Repaired the new agent payload test's Request union overload and used the installed pi-ai simple API's omitted `reasoning` as its native off carrier; automatic Session policy remains unchanged. Payload tests passed10 in170ms. Scoped formatting/lint passed; affected ui/agent/desktop project typecheck passed1.581s. Full aggregate was not rerun; final policy, package and manual GUI verification remain coordinated by06. Exact commands, red/green logs and evidence invalidation scope are retained in the shared verification record. No real Electron, credentials, external navigation or production settings were used.
+
+### 集成交付验收（2026-10-13）
+
+功能范围内实现、消费者、文档和四项评审修复完成。证据见 [验证记录](../verification.md)：桌面 150 个用例组合通过，定向 payload/schema/server/icon/布局与 Chromium 验收通过；完整 Bun 实际 3507 通过 / 25 失败，混合 TUI 失败未分类，其他失败家族有独立基线/环境证据。CI 待验收，真实接口及正式 Electron 待用户验收，resolved 不表示全量接受或已合并。

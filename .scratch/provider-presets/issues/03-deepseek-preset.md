@@ -1,6 +1,6 @@
 # 03：供应商预设模块与 DeepSeek 三协议变体
 
-Status: claimed
+Status: resolved
 
 Blocked by: 01
 
@@ -15,3 +15,7 @@ Blocked by: 01
 ## Comments
 
 - 2026-10-13: 03 fresh implementer claimed; preset module, copy and independent agent payload fixtures implemented. Schema Node and fake-fetch Bun payload evidence recorded in `/tmp/rukie-provider-presets-evidence/verification.md`; final integrated review/acceptance remains with owner.
+
+### 集成交付验收（2026-10-13）
+
+功能范围内实现、消费者、文档和四项评审修复完成。证据见 [验证记录](../verification.md)：桌面 150 个用例组合通过，定向 payload/schema/server/icon/布局与 Chromium 验收通过；完整 Bun 实际 3507 通过 / 25 失败，混合 TUI 失败未分类，其他失败家族有独立基线/环境证据。CI 待验收，真实接口及正式 Electron 待用户验收，resolved 不表示全量接受或已合并。

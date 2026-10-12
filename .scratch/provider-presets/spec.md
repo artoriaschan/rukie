@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 模型服务供应商预设与设置页表单调整
 
@@ -192,12 +192,27 @@ DeepSeek 预设：
 
 ## ADR Coverage
 
-| 决定或修改                                     | 归属                                                                                   | 理由                                                                                      |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| 预设手工维护、与服务无执行关联、删除 templates | 新增 [ADR-0038](../../docs/adr/0038-hand-maintained-provider-presets.md)               | 难以撤销的数据来源与所有权取舍，替代桌面存储 spec 的"不展示预设"                          |
-| 模型服务 wire 命令列表去掉 templates           | 更新 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md#模型服务通道) | 只修改事实，通道与鉴权决定不变                                                            |
-| server 放宽 Base URL 校验                      | 沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)                | 凭证仍只经加密 vault 保存；URL 中的 userinfo 是用户自填配置，作为已知限制记录在本 spec 中 |
-| 服务整体启用开关                               | 无需 ADR                                                                               | 模型目录过滤的局部扩展，不改变存储、凭证或 Session 合同                                   |
-| 设置区样式与自动保存                           | 无需 ADR                                                                               | 局部呈现与交互调整，几何由 DESIGN.md 和 rukie.pen 管理                                    |
+| 决定或修改                                     | 归属                                                                                   | 理由                                                                                                                                                    |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 预设手工维护、与服务无执行关联、删除 templates | 新增 [ADR-0038](../../docs/adr/0038-hand-maintained-provider-presets.md)               | 难以撤销的数据来源与所有权取舍，替代桌面存储 spec 的"不展示预设"                                                                                        |
+| 模型服务 wire 命令列表去掉 templates           | 更新 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md#模型服务通道) | 只修改事实，通道与鉴权决定不变                                                                                                                          |
+| server 放宽 Base URL 校验                      | 沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)                | 凭证仍只经加密 vault 保存；URL 中的 userinfo 是用户自填配置，作为已知限制记录在本 spec 中                                                               |
+| 服务整体启用开关                               | 无需 ADR                                                                               | 模型目录过滤的局部扩展，不改变存储、凭证或 Session 合同                                                                                                 |
+| 设置区样式与自动保存                           | 无需 ADR                                                                               | 局部呈现与交互调整，几何由 DESIGN.md 和 rukie.pen 管理                                                                                                  |
+| 仓库级 `install.peer = false` 与显式依赖       | 更新 [ADR-0038](../../docs/adr/0038-hand-maintained-provider-presets.md)               | 全局安装策略影响所有 workspace，实际运行依赖须显式声明；完整本地检查覆盖依赖图风险                                                                      |
+| 固定 DeepSeek Key 获取外部链接                 | 更新 [ADR-0038](../../docs/adr/0038-hand-maintained-provider-presets.md)               | Electron main 仅允许受信任 app mainFrame 和固定地址；允许 noreferrer 产生的空 referrer，拒绝非空不可信来源；经系统浏览器打开，拒绝任意 URL 与应用内弹窗 |
 
 ## Comments
+
+### 待用户用真实 Key 验收
+
+以下项目未由代理验证，不计入自动化验收：
+
+- [ ] Anthropic Messages：`automatic` 与 `high` 各进行一次工具调用和两轮对话，检查 adaptive thinking。
+- [ ] Chat Completions：`automatic` 与 `high` 各进行一次工具调用和两轮对话，检查工具后回复与 reasoning 参数。
+- [ ] Responses：`automatic` 与 `high` 各进行一次工具调用和两轮对话，检查多轮推理连贯性。
+- [ ] 正式 Electron 中点击固定 Key 获取链接，检查系统浏览器打开与原生边界；代理只使用浏览器和 Electron mock。
+
+### ADR Coverage 交付复核（2026-10-13）
+
+对照最终实现核对预设所有权、依赖方向、凭据持久化、执行过滤、自动保存生命周期、原生固定链接与外部协议；ADR-0038 覆盖手工预设、全局 peer 策略与 native Key 链接，ADR-0037 命令清单移除 templates，ADR-0035 的 vault 合同保留。局部开关、自动保存与授权几何调整无需新 ADR；无未解决的 ADR 冲突。四项评审发现和遗漏的 host 自动保存消费者已修复。功能范围交付证据见 [验证记录](verification.md)；完整 Bun 实际失败、混合 TUI 未分类及 CI 待验收均保留，真实 Key 与正式 Electron 清单仍待用户验证。
