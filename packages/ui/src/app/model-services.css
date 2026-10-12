@@ -25,7 +25,7 @@
   --hover: color-mix(in srgb, var(--foreground) 5%, var(--background));
   --menu-hover: var(--hover);
   --selected: color-mix(in srgb, var(--foreground) 8%, var(--background));
-  font-family: "Noto Sans SC Variable", sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 :root:not(.dark) .model-services,
@@ -477,7 +477,7 @@
   gap: 5px;
 }
 .model-services-menu {
-  font-family: "Noto Sans SC Variable", sans-serif;
+  font-family: var(--font-sans);
   background: var(--popover);
   color: var(--foreground);
 }
@@ -622,7 +622,7 @@
   font-weight: 400;
 }
 .model-services-model-row .font-mono {
-  font-family: "JetBrains Mono Variable", monospace;
+  font-family: var(--font-mono);
 }
 .model-services-help-field {
   position: relative;
@@ -714,7 +714,7 @@
 }
 .model-services-delete-footer kbd {
   color: var(--muted-foreground);
-  font-family: "JetBrains Mono Variable", monospace;
+  font-family: var(--font-mono);
 }
 .model-services-toolbar > button:first-child {
   width: 32px;

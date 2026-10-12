@@ -1,3 +1,4 @@
+import { modelServicesFixture } from "../helpers/model-services";
 import { expect, onTestFinished, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -7,7 +8,12 @@ import "../../src/theme.css";
 test("titlebar keeps its blank space draggable and its controls clickable at narrow widths", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   const wasDark = document.documentElement.classList.contains("dark");
   const previousFontSize = document.documentElement.style.getPropertyValue("--ui-font-size");
   const region = (element: Element) =>
@@ -100,7 +106,12 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
 test("sidebar searches projects, selects a welcome target and creates a Session on first send", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     await expect
       .element(screen.getByRole("button", { name: "New chat", exact: true }))
@@ -141,7 +152,12 @@ test("sidebar searches projects, selects a welcome target and creates a Session 
 test("search is a modal keyboard surface and restores focus after selecting with Enter", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     const trigger = screen.getByRole("button", { name: "Search sessions", exact: true });
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
@@ -170,7 +186,12 @@ test("search is a modal keyboard surface and restores focus after selecting with
 test("composer selects reasoning from native capabilities, keeps IME input and uploads images", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   const wire = async () => (await fetch(`http://127.0.0.1:${connection.port}/commands`)).json();
   try {
     await expect.element(screen.getByRole("button", { name: "Choose model" })).toBeEnabled();
@@ -220,7 +241,12 @@ test("composer selects reasoning from native capabilities, keeps IME input and u
 test("narrow layout retains new-chat shortcuts, manual project entry and final-disconnect Retry", async () => {
   await page.viewport(420, 800);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     await screen.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
     await expect
@@ -241,9 +267,7 @@ test("narrow layout retains new-chat shortcuts, manual project entry and final-d
       .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
       .toBeVisible();
     await screen.getByRole("button", { name: "Session actions" }).click();
-    await expect
-      .element(screen.getByRole("menuitem", { name: "Open with" }))
-      .not.toBeInTheDocument();
+    await expect.element(screen.getByRole("menuitem", { name: "Open with" })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     window.dispatchEvent(new CustomEvent("rukie:connection-change", { detail: "disconnected" }));
     await expect.element(screen.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
@@ -267,7 +291,12 @@ test("narrow layout retains new-chat shortcuts, manual project entry and final-d
 test("paste and drop preserve named image attachments across final disconnect", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     const input = screen.getByRole("textbox", { name: "Prompt", exact: true });
     await expect.element(input).toBeEnabled();
@@ -321,7 +350,12 @@ test("paste and drop preserve named image attachments across final disconnect", 
 test("sidebar preferences, native context facts and readonly-busy Retry remain user visible", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
     await screen.getByRole("button", { name: "Sidebar options" }).click();
@@ -353,7 +387,12 @@ test("sidebar preferences, native context facts and readonly-busy Retry remain u
 test("stopping hands queued text and named images back before the current draft", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
     await userEvent.keyboard("{Control>}1{/Control}");
@@ -383,7 +422,12 @@ test("stopping hands queued text and named images back before the current draft"
 test("Chinese project errors and disconnected pending sends present localized actionable copy", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="zh" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="zh"
+    />,
+  );
   const url = `http://127.0.0.1:${connection.port}`;
   try {
     await screen.getByRole("button", { name: "添加项目", exact: true }).click();
@@ -429,7 +473,9 @@ test("Chinese project errors and disconnected pending sends present localized ac
 test("sidebar status follows fresh summaries across unselected permission waits and completion", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} />);
+  const screen = await render(
+    <App host={{ getConnection: async () => connection, modelServices: modelServicesFixture }} />,
+  );
   const send = async (message: object) =>
     fetch(`http://127.0.0.1:${connection.port}/message`, {
       method: "POST",
@@ -485,7 +531,12 @@ test("sidebar status follows fresh summaries across unselected permission waits 
 
 test("missing model errors remain actionable and preserve the current draft", async () => {
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     await expect.element(screen.getByRole("button", { name: "Choose model" })).toBeEnabled();
     await fetch(`http://127.0.0.1:${connection.port}/error`, {
@@ -519,7 +570,12 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
     <App
       host={{
         getConnection: async () => connection,
-        modelServices: { list: async () => [], save: async () => {}, delete: async () => {} },
+        modelServices: {
+          ...modelServicesFixture,
+          list: async () => [],
+          save: async () => {},
+          delete: async () => {},
+        },
       }}
       locale="en"
     />,

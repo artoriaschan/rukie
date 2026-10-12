@@ -1,3 +1,4 @@
+import { modelServicesFixture } from "../helpers/model-services";
 import { expect, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -7,7 +8,12 @@ import "../../src/theme.css";
 test("App shows committed and streaming replies, with failed tool output expanded", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   const send = async (facts: object) => {
     await fetch(`http://127.0.0.1:${connection.port}/message`, {
       method: "POST",
@@ -170,7 +176,12 @@ test("App shows committed and streaming replies, with failed tool output expande
 test("Run title toggles beUI activity without hiding the streaming or final response", async () => {
   await page.viewport(420, 800);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   const send = async (facts: object) => {
     await fetch(`http://127.0.0.1:${connection.port}/message`, {
       method: "POST",
@@ -302,7 +313,10 @@ test.each(["aborted", "error"])(
     await page.viewport(1280, 900);
     const connection = await commands.startWire();
     const screen = await render(
-      <App host={{ getConnection: async () => connection }} locale="zh" />,
+      <App
+        host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+        locale="zh"
+      />,
     );
     try {
       await screen
@@ -368,7 +382,12 @@ test.each(["aborted", "error"])(
 test("consecutive reasoning and tools form traces separated by persistent assistant messages", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   const send = async (facts: object) => {
     await fetch(`http://127.0.0.1:${connection.port}/message`, {
       method: "POST",
@@ -553,7 +572,12 @@ test("consecutive reasoning and tools form traces separated by persistent assist
 test("permission epochs reply by keyboard, stale replies disappear, and queue withdrawal preserves the current draft", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   const send = async (facts: object) => {
     await fetch(`http://127.0.0.1:${connection.port}/message`, {
       method: "POST",
@@ -683,7 +707,10 @@ test.each(["allow", "allow-session"] as const)(
     await page.viewport(1280, 900);
     const connection = await commands.startWire();
     const screen = await render(
-      <App host={{ getConnection: async () => connection }} locale="en" />,
+      <App
+        host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+        locale="en"
+      />,
     );
     const send = async (facts: object) => {
       await fetch(`http://127.0.0.1:${connection.port}/message`, {
@@ -805,7 +832,12 @@ test.each(["allow", "allow-session"] as const)(
 test("live Trace titles show the latest detail until every group tool settles", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   const send = async (facts: object) => {
     await fetch(`http://127.0.0.1:${connection.port}/message`, {
       method: "POST",
@@ -953,7 +985,12 @@ test("live Trace titles show the latest detail until every group tool settles", 
 test("virtualized response groups follow streaming height, preserve upward reading, expand and jump by scale", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   const send = async (facts: object) => {
     await fetch(`http://127.0.0.1:${connection.port}/message`, {
       method: "POST",
@@ -1082,7 +1119,12 @@ test("virtualized response groups follow streaming height, preserve upward readi
 test("an abort response hands queued inputs back to its originating Session after switching to a new chat", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   const url = `http://127.0.0.1:${connection.port}`;
   try {
     await screen
@@ -1130,7 +1172,12 @@ test("an abort response hands queued inputs back to its originating Session afte
 test("running elapsed display advances at the virtual one-second deadline", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     await screen
       .getByRole("button", { name: /Fix compiler/ })
@@ -1164,7 +1211,12 @@ test("running elapsed display advances at the virtual one-second deadline", asyn
 
 test("a pending prompt response preserves newly typed input when the previous Run has finished", async () => {
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     await screen
       .getByRole("button", { name: /Fix compiler/ })
@@ -1208,7 +1260,12 @@ test("a pending prompt response preserves newly typed input when the previous Ru
 
 test("new-session creation hands edited input to the created Session without selecting over another chat", async () => {
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   try {
     const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
     await expect.element(prompt).toBeEnabled();
@@ -1244,7 +1301,9 @@ test("navigation uses equal resting ticks and highlights only the previewed resp
   const wasDark = document.documentElement.classList.contains("dark");
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} />);
+  const screen = await render(
+    <App host={{ getConnection: async () => connection, modelServices: modelServicesFixture }} />,
+  );
   try {
     await screen
       .getByRole("button", { name: /Fix compiler/ })
@@ -1418,7 +1477,12 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
   };
   window.addEventListener("error", captureResizeError);
   const connection = await commands.startWire();
-  const screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
   const send = async (facts: object) => {
     await fetch(`http://127.0.0.1:${connection.port}/message`, {
       method: "POST",

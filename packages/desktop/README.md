@@ -12,7 +12,7 @@ macOS 启动时通过用户的登录交互 shell 读取环境变量，使 Finder
 
 ## 行为与限制
 
-[DesktopHost](../ui/src/host/index.ts) 提供 `getConnection`、`pickProjectFolder`、`revealPath`、`openInTerminal` 和 `modelServices.list/save/delete/revealKey`。模型服务列表仅包含凭证存在状态，保存可保留、替换或删除凭证；`revealKey(id)` 仅供主动显示指定供应商的 API Key，不开放任意解密；普通启动和列表不解密，展示值仅存在当前详情内存，失败保留密文。preload 暴露为 `window.rukieHost`；main 只接受本窗口的主 frame 且 URL 为 `app://rukie` 的 IPC。路径必须绝对且不含 NUL；打开 Terminal 使用参数数组，不拼 shell 或 AppleScript。
+[DesktopHost](../ui/src/host/index.ts) 提供 `getConnection`、`pickProjectFolder` 和 `modelServices.list/save/delete/revealKey`。模型服务列表仅包含凭证存在状态，保存可保留、替换或删除凭证；`revealKey(id)` 仅供主动显示指定供应商的 API Key，不开放任意解密；普通启动和列表不解密，展示值仅存在当前详情内存，失败保留密文。preload 暴露为 `window.rukieHost`；main 只接受本窗口的主 frame 且 URL 为 `app://rukie` 的 IPC。显示路径与打开终端由 app 经 `host.revealPath` / `host.openInTerminal` wire 命令交给 sidecar；main 与 preload 不再提供这两个 IPC。sidecar 只接受已存在的绝对路径，限制在已登记项目根或无项目 workspace 及其子路径，拒绝符号链接逃逸。外部进程使用参数向量，不拼 shell 或 AppleScript。
 
 [safeStorage 服务](src/main/secrets.ts) 由 main 持有，按供应商、OAuth 或配置身份绑定密文，sidecar 经独立随机 token 的私有 loopback 通道调用；renderer Origin 一律拒绝。加密不可用、系统授权取消、解密失败均返回可重试错误，保留旧密文，禁止明文及 basic_text fallback。服务仅在显式凭证操作或执行用途调用系统加解密，普通启动不初始化 Cookie 加密。真实系统加密验收与 mock 测试分开，见[存储票据 06](../../.scratch/desktop-storage/issues/06-integration-and-packaged-acceptance.md)。
 
@@ -41,6 +41,14 @@ bun run dev:desktop
 开发 app 使用 `rukie-desktop-development` 名称和 `dev.rukie.desktop.development` bundle identity。首次运行缓存锁定 Electron；若依赖尚无原生 runtime，调用锁定包的安装入口下载。开发 bundle 关闭 Cookie Encryption 并 ad-hoc 签名；后续启动校验身份、fuse 与签名，manifest 使用 bundle 内相对的 ESM bootstrap 入口，以正确的 file URL 等待当前 checkout 的 main 执行完成，保证 ready 前身份和路径配置的时序。源码产物在 bundle 外重建，不因每次源码修改重新签名；旧入口格式使缓存自动重建，只替换开发 runtime 缓存，保留业务和 Electron 数据。macOS safeStorage 的 service/account 来源及原生验收边界见 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)。显式保存凭证可能请求开发身份的系统钥匙串授权；独立数据目录本身不能证明系统凭证行为已验收。
 
 入口拒绝继承 `RUKIE_DESKTOP_*`、`NODE_OPTIONS`、`BUN_OPTIONS`、`BUN_BE_BUN`、`DYLD_*` 与 `ELECTRON_*` 启动覆盖项，提示先移除变量，不接受正式数据路径的参数。sidecar 每次从当前源码编译，禁用 dotenv、bunfig、package.json 与 tsconfig 自动加载，避免开发运行采用用户 Bun 配置或隐式凭据。`Ctrl+C`、`SIGTERM` 或关闭开发窗口时等待所属进程退出；优雅退出失败才按有界退出探测终止所属进程组，并确认组中已无可继续工作的成员；不能确认清理完成时以非零状态失败并保留 launcher 锁，保留开发数据。构建或启动失败以非零状态退出，不影响已打开的正式应用或其他预览窗口。
+
+## 浏览器开发
+
+从仓库根运行 `bun run dev:desktop:web`，直接运行 `packages/server/src/main.ts --dev` 与 Vite，无需构建或启动 Electron。命令打印 `http://localhost:5173/#port=…&token=…`，`--open` 交给系统默认浏览器。Vite 固定监听 localhost:5173，端口占用即失败；UI 支持 HMR，sidecar 修改需重启。浏览器入口与完整刷新后的握手规则见 [ui README](../ui/README.md#使用)。
+
+每个 checkout 的 `.desktop-dev/web/data/` 保存项目、Session 与附件，共享配置位于用户应用数据目录的 `Rukie Web Development/configuration/`：macOS 为 `~/Library/Application Support/`，Linux 为 `$XDG_DATA_HOME` 或 `~/.local/share/`，Windows 为 `%APPDATA%`。路径、父目录与已有业务树拒绝符号链接。sidecar 显式选择 `system-keychain`，系统凭据服务名为 `Rukie Web Development`，与 Electron 开发版配置分开；凭据操作可能触发系统授权。`--reset` 只清空当前 checkout 的 web data，不删除配置或凭据。
+
+启动器沿用 Electron 开发入口的环境覆盖拒绝规则，在 `.desktop-dev/web/launcher.lock` 取得独占锁，同一 checkout 只允许一个 web 实例，可以与 `dev:desktop` 同时运行。握手超时保留 stderr 诊断；启动失败或服务意外退出时非零退出并清理另一个服务。Ctrl+C / SIGTERM 先停 Vite 再停 sidecar，等待实际退出后释放锁；无法确认清理时保留锁。异常崩溃遗留锁时，仅在确认所属进程已退出后手动删除该锁。
 
 ## 本地构建
 

@@ -1,3 +1,4 @@
+import { modelServicesFixture } from "../helpers/model-services";
 import { expect, onTestFinished, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -17,7 +18,12 @@ test("Pencil P01-E empty provider state preserves shell and opens the custom cat
   const screen = await render(
     <UiLocaleProvider locale="zh">
       <ModelServices
-        services={{ list: async () => [], save: async () => {}, delete: async () => {} }}
+        services={{
+          ...modelServicesFixture,
+          list: async () => [],
+          save: async () => {},
+          delete: async () => {},
+        }}
         onClose={() => {}}
         onChanged={async () => {}}
       />
@@ -112,6 +118,7 @@ test("Pencil model footer keeps cancel surface and primary save colors in both t
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => [
             {
               id: "local",
@@ -174,6 +181,7 @@ test("Pencil model numeric fields hide native steppers while retaining numeric k
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => [
             {
               id: "local",
@@ -225,6 +233,7 @@ test("model services creates a provider and preserves input when encrypted save 
   let providers: ModelServiceSummary[] = [];
   let fail = false;
   const service = {
+    ...modelServicesFixture,
     list: async () => providers,
     save: async (input: import("@rukie/shared").ModelServiceSave) => {
       if (fail) throw new Error("unsafe-secret");
@@ -378,6 +387,7 @@ test("Chinese narrow settings preserves compatibility, maps, credentials and mod
   const credentials: string[] = [];
   const tested: string[] = [];
   const services = {
+    ...modelServicesFixture,
     list: async () => providers,
     save: async (input: import("@rukie/shared").ModelServiceSave) => {
       credentials.push(input.credential.type);
@@ -465,6 +475,7 @@ test("Pencil advanced settings contains only reference fields and preserves hidd
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => providers,
           save: async (input: import("@rukie/shared").ModelServiceSave) => {
             providers = [{ ...input.provider, hasCredential: true }];
@@ -496,11 +507,9 @@ test("Pencil advanced settings contains only reference fields and preserves hidd
     expect(content.querySelectorAll('[role="switch"], [role="checkbox"], textarea')).toHaveLength(
       0,
     );
-    expect(Array.from(content.querySelectorAll("h3"), (item) => item.textContent)).toEqual([
-      "Automatic compression",
-      "Runtime parameters",
-      "Price (USD / million tokens)",
-    ]);
+    expect(
+      Array.from(content.querySelectorAll("h3"), (item) => item.firstChild?.textContent),
+    ).toEqual(["Automatic compression", "Runtime parameters", "Price (USD / million tokens)"]);
     expect(getComputedStyle(content).gap).toBe("16px");
     expect(content.getBoundingClientRect().width).toBe(608);
     for (const card of content.querySelectorAll<HTMLElement>(".model-services-option-card")) {
@@ -574,6 +583,7 @@ test("provider API changes accept compatible models and preserve incompatible dr
   ];
   let saved = 0;
   const services = {
+    ...modelServicesFixture,
     list: async () => providers,
     save: async (input: import("@rukie/shared").ModelServiceSave) => {
       saved++;
@@ -626,7 +636,12 @@ test("provider API changes accept compatible models and preserve incompatible dr
 
 test("settings returns keyboard focus and preserves chat geometry and draft", async () => {
   const connection = await commands.startWire();
-  const services = { list: async () => [], save: async () => {}, delete: async () => {} };
+  const services = {
+    ...modelServicesFixture,
+    list: async () => [],
+    save: async () => {},
+    delete: async () => {},
+  };
   const screen = await render(
     <App host={{ getConnection: async () => connection, modelServices: services }} />,
   );
@@ -656,6 +671,7 @@ test("settings returns keyboard focus and preserves chat geometry and draft", as
 test("Pencil settings geometry uses current compact workspace and grouped model form", async () => {
   await page.viewport(1887, 1210);
   const services = {
+    ...modelServicesFixture,
     list: async () => [
       {
         id: "deepseek",
@@ -678,6 +694,7 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     await expect.element(screen.getByRole("heading", { name: "DeepSeek" })).toBeVisible();
     const workspace = document.querySelector<HTMLElement>(".model-services-workspace");
     expect(workspace).not.toBeNull();
+    expect(getComputedStyle(workspace!).fontFamily.startsWith("system-ui")).toBe(true);
     const box = workspace!.getBoundingClientRect();
     expect(box.width).toBe(880);
     expect(box.top).toBe(100);
@@ -745,6 +762,11 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
       .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().height))
       .toBe(180);
     expect(screen.getByRole("dialog").element().getBoundingClientRect().width).toBe(448);
+    expect(
+      getComputedStyle(
+        screen.getByRole("dialog").element().querySelector("kbd")!,
+      ).fontFamily.startsWith("ui-monospace"),
+    ).toBe(true);
     await expect
       .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().top))
       .toBe(520);
@@ -780,6 +802,7 @@ test.each([
       <UiLocaleProvider locale="en">
         <ModelServices
           services={{
+            ...modelServicesFixture,
             list: async () => [
               {
                 id: "local",
@@ -851,6 +874,7 @@ test("saved overview stays compact; dirty credentials and hidden mapping remain 
   ];
   const saved: import("@rukie/shared").ModelServiceSave[] = [];
   const services = {
+    ...modelServicesFixture,
     list: async () => providers,
     save: async (input: import("@rukie/shared").ModelServiceSave) => {
       saved.push(input);
@@ -903,6 +927,7 @@ test("keyboard Cancel preserves provider and credential while confirmation delet
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => providers,
           save: async () => {},
           delete: async () => {
@@ -963,6 +988,7 @@ test("provider directory offers only the custom path even when templates exist",
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => [],
           templates: async () => templates,
           save: async () => {},
@@ -1017,7 +1043,12 @@ test("Pencil overlay scrollbars appear only for overflow and map keyboard and wh
   const screen = await render(
     <UiLocaleProvider locale="en">
       <ModelServices
-        services={{ list: async () => providers, save: async () => {}, delete: async () => {} }}
+        services={{
+          ...modelServicesFixture,
+          list: async () => providers,
+          save: async () => {},
+          delete: async () => {},
+        }}
         onClose={() => {}}
         onChanged={async () => {}}
       />
@@ -1080,7 +1111,12 @@ test("expanded model form uses custom scrollbars at narrow widths", async () => 
   const screen = await render(
     <UiLocaleProvider locale="en">
       <ModelServices
-        services={{ list: async () => providers, save: async () => {}, delete: async () => {} }}
+        services={{
+          ...modelServicesFixture,
+          list: async () => providers,
+          save: async () => {},
+          delete: async () => {},
+        }}
         onClose={() => {}}
         onChanged={async () => {}}
       />
@@ -1131,6 +1167,7 @@ test("model default reasoning is selectable, saved and restricted to supported l
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => providers,
           save: async (input) => {
             providers = [{ ...input.provider, hasCredential: true }];
@@ -1223,6 +1260,7 @@ test("API Key reveals saved credentials only on request and toggles compact mask
   const saved: import("@rukie/shared").ModelServiceSave[] = [];
   let reads = 0;
   const services = {
+    ...modelServicesFixture,
     list: async () => [
       {
         id: "local",
@@ -1289,6 +1327,7 @@ test("API Key ignores cancelled and stale reveals and retries a safe failure", a
     hasCredential: true,
   }));
   const services = {
+    ...modelServicesFixture,
     list: async () => providers,
     save: async () => {},
     delete: async () => {},
@@ -1365,6 +1404,7 @@ test("model USD price autofill preserves manual drafts, saves prices and ignores
     <UiLocaleProvider locale="en">
       <ModelServices
         services={{
+          ...modelServicesFixture,
           list: async () => providers,
           save: async ({ provider }) => {
             providers = [{ ...provider, hasCredential: false }];
@@ -1440,4 +1480,103 @@ test("model USD price autofill preserves manual drafts, saves prices and ignores
   } finally {
     await screen.unmount();
   }
+});
+
+test("renaming a new provider draft does not require a Base URL", async () => {
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          save: async (input) => {
+            saved.push(input);
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  await screen.getByRole("button", { name: "Add provider", exact: true }).click();
+  await screen.getByRole("button", { name: "Create custom provider" }).click();
+  await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("");
+  await screen.getByRole("button", { name: "Provider actions" }).click();
+  await screen.getByRole("menuitem", { name: "Rename provider" }).click();
+  await screen.getByRole("textbox", { name: "Provider name" }).fill("Draft supplier");
+  await screen.getByRole("button", { name: "Save provider", exact: true }).last().click();
+  expect(saved).toEqual([]);
+  expect(screen.getByRole("alert").query()?.textContent ?? "").toBe("");
+  await expect.element(screen.getByRole("heading", { name: "Draft supplier" })).toBeVisible();
+  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("https://example.com/v1");
+  await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+  await expect.poll(() => saved[0]?.provider.name).toBe("Draft supplier");
+});
+
+test("renaming a saved provider persists its name and rejects blank names", async () => {
+  let providers: ModelServiceSummary[] = [
+    {
+      id: "rename-existing",
+      name: "Existing supplier",
+      api: "openai-responses",
+      baseUrl: "https://example.com/v1",
+      models: [],
+      hasCredential: false,
+    },
+  ];
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => providers,
+          save: async (input) => {
+            saved.push(input);
+            providers = [{ ...input.provider, hasCredential: false }];
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  await screen.getByRole("button", { name: "Provider actions" }).click();
+  await screen.getByRole("menuitem", { name: "Rename provider" }).click();
+  await screen.getByRole("textbox", { name: "Provider name" }).fill("   ");
+  await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+  await expect.element(screen.getByRole("alert")).toBeVisible();
+  expect(saved).toEqual([]);
+  await screen.getByRole("textbox", { name: "Provider name" }).fill("Renamed supplier");
+  await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+  await expect.element(screen.getByRole("heading", { name: "Renamed supplier" })).toBeVisible();
+  expect(saved).toEqual([
+    {
+      provider: {
+        id: "rename-existing",
+        name: "Renamed supplier",
+        api: "openai-responses",
+        baseUrl: "https://example.com/v1",
+        models: [],
+      },
+      credential: { type: "keep" },
+    },
+  ]);
+  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("");
+  await screen.getByLabelText("API Key", { exact: true }).fill("fake-draft-key");
+  await screen.getByRole("button", { name: "Provider actions" }).click();
+  await screen.getByRole("menuitem", { name: "Rename provider" }).click();
+  await screen.getByRole("textbox", { name: "Provider name" }).fill("Edited supplier");
+  await screen.getByRole("button", { name: "Save provider", exact: true }).last().click();
+  await expect.element(screen.getByRole("heading", { name: "Edited supplier" })).toBeVisible();
+  expect(screen.getByRole("alert").query()).toBeNull();
+  expect(saved).toHaveLength(1);
+  await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("");
+  await expect
+    .element(screen.getByLabelText("API Key", { exact: true }))
+    .toHaveValue("fake-draft-key");
 });

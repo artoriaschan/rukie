@@ -1,7 +1,7 @@
 import { ownResources } from "./helpers/owned-resources.ts";
 import FakeTimers from "@sinonjs/fake-timers";
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, realpath, mkdir, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
 import { join } from "node:path";
@@ -1580,3 +1580,266 @@ test("development workspaces share configuration and preferences while keeping h
     await owner.close();
   }
 });
+
+test("host wire authorizes registered roots and keeps paths in argument vectors", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-host-")),
+      (root) => rm(root, { recursive: true, force: true }),
+    );
+    const calls: string[][] = [];
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          hostPlatform: "darwin",
+          executeHost: async (argv) => {
+            calls.push([...argv]);
+            return { exitCode: 0, stdout: "" };
+          },
+          onHandshake: () => {},
+        }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect((await client.command("host.revealPath", { path: homeDir })).error).toEqual({
+      code: "invalid_command",
+    });
+    await client.command("project.add", { path: homeDir });
+    expect((await client.command("host.revealPath", { path: homeDir })).error).toBeUndefined();
+    expect(calls).toEqual([["/usr/bin/open", "-R", await realpath(homeDir)]]);
+  } finally {
+    await owner.close();
+  }
+});
+
+for (const platform of ["darwin", "linux", "win32"] as const) {
+  test(`host ${platform} uses safe native arguments and rejects path escapes`, async () => {
+    const owner = ownResources();
+    try {
+      const homeDir = await owner.acquire(
+        () => mkdtemp(join(tmpdir(), "rukie-host-platform-")),
+        (root) => rm(root, { recursive: true, force: true }),
+      );
+      const project = join(homeDir, "project ; $(echo injected)");
+      await mkdir(project);
+      const file = join(project, "file.txt");
+      await writeFile(file, "fixture");
+      await symlink(homeDir, join(project, "escape"));
+      const calls: string[][] = [];
+      let folder = project;
+      const server = await owner.acquire(
+        () =>
+          startServer({
+            homeDir,
+            hostPlatform: platform,
+            executeHost: async (argv) => {
+              calls.push([...argv]);
+              return { exitCode: 0, stdout: folder ? `${folder}\n` : "" };
+            },
+            onHandshake: () => {},
+          }),
+        (resource) => resource.close(),
+      );
+      const client = await connect(server, "app://rukie", owner);
+      await client.command("project.add", { path: project });
+      const canonical = await realpath(project);
+      expect((await client.command("host.revealPath", { path: file })).error).toBeUndefined();
+      expect(calls.pop()).toEqual(
+        platform === "darwin"
+          ? ["/usr/bin/open", "-R", join(canonical, "file.txt")]
+          : platform === "linux"
+            ? ["xdg-open", canonical]
+            : ["explorer.exe", "/select,", join(canonical, "file.txt")],
+      );
+      expect(
+        (await client.command("host.openInTerminal", { path: project })).error,
+      ).toBeUndefined();
+      expect(calls.pop()).toEqual(
+        platform === "darwin"
+          ? ["/usr/bin/open", "-a", "Terminal", canonical]
+          : platform === "linux"
+            ? ["x-terminal-emulator", "--working-directory", canonical]
+            : ["wt.exe", "-d", canonical],
+      );
+      for (const path of [
+        "relative",
+        join(project, "missing"),
+        join(project, "escape"),
+        homeDir,
+        `${project}\0`,
+      ])
+        expect((await client.command("host.revealPath", { path })).error).toEqual({
+          code: "invalid_command",
+        });
+      expect((await client.command("host.openInTerminal", { path: file })).error).toEqual({
+        code: "invalid_command",
+      });
+      const workspace = join(homeDir, "desktop-data", "workspace");
+      expect(
+        (await client.command("host.openInTerminal", { path: workspace })).error,
+      ).toBeUndefined();
+      calls.length = 0;
+      const selected = await client.command("host.pickFolder");
+      if (platform === "darwin") {
+        expect(selected.result).toBe(project);
+        expect(calls[0]?.slice(0, 2)).toEqual(["/usr/bin/osascript", "-e"]);
+        expect(calls[0]?.[2]).not.toContain(project);
+        folder = "";
+        expect((await client.command("host.pickFolder")).result).toBeNull();
+      } else {
+        expect(selected.error).toEqual({ code: "unsupported" });
+        expect(calls).toEqual([]);
+      }
+    } finally {
+      await owner.close();
+    }
+  });
+}
+
+test("browser model services encrypt, keep and delete credentials through authenticated wire", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-wire-models-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const warnings: string[] = [];
+    const { memorySecretEncryption } = await import("../src/storage/secrets.ts");
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          development: true,
+          encryptionBackend: "memory",
+          encryption: memorySecretEncryption(),
+          sessionOptions: fakeModel([fauxAssistantMessage("safe wire reply")]),
+          onWarning: (warning) => warnings.push(warning),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "http://localhost:5173", owner);
+    const provider = {
+      id: "fixture",
+      name: "Fixture",
+      api: "openai-completions",
+      baseUrl: "http://127.0.0.1:1",
+      models: [],
+    };
+    expect(
+      (
+        await client.command("modelServices.save", {
+          provider,
+          credential: { type: "replace", value: "wire-secret-fixture" },
+        })
+      ).error,
+    ).toBeUndefined();
+    expect((await client.command("modelServices.list")).result).toEqual([
+      { ...provider, hasCredential: true },
+    ]);
+    expect(JSON.stringify(client.messages)).not.toContain("wire-secret-fixture");
+    client.messages.length = 0;
+    expect(
+      (await client.command("session.create", { project: null, text: "hello" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(client.messages.some((message) => message.type === "snapshot")).toBe(true);
+    expect(JSON.stringify(client.messages)).not.toContain("wire-secret-fixture");
+    expect(
+      (await client.command("modelServices.revealKey", { providerId: "fixture" })).result,
+    ).toEqual({ value: "wire-secret-fixture" });
+    expect(
+      (
+        await client.command("modelServices.save", {
+          provider: { ...provider, name: "Updated" },
+          credential: { type: "keep" },
+        })
+      ).error,
+    ).toBeUndefined();
+    expect(
+      (await client.command("modelServices.revealKey", { providerId: "fixture" })).result,
+    ).toEqual({ value: "wire-secret-fixture" });
+    expect(
+      (await client.command("modelServices.save", { provider, credential: { type: "delete" } }))
+        .error,
+    ).toBeUndefined();
+    expect(
+      (await client.command("modelServices.revealKey", { providerId: "fixture" })).result,
+    ).toEqual({ value: null });
+    expect((await client.command("modelServices.list")).result).toEqual([
+      { ...provider, hasCredential: false },
+    ]);
+    await client.command("modelServices.delete", { providerId: "fixture" });
+    expect((await client.command("modelServices.list")).result).toEqual([]);
+    expect(warnings).toEqual([]);
+  } finally {
+    await owner.close();
+  }
+});
+
+for (const backend of ["electron", "memory"] as const) {
+  test(`model service ${backend} failures never expose credential exceptions`, async () => {
+    const owner = ownResources();
+    try {
+      const homeDir = await owner.acquire(
+        () => mkdtemp(join(tmpdir(), "rukie-wire-model-error-")),
+        (path) => rm(path, { recursive: true, force: true }),
+      );
+      const warnings: string[] = [];
+      const server = await owner.acquire(
+        () =>
+          startServer({
+            homeDir,
+            development: true,
+            encryptionBackend: backend,
+            encryption: {
+              encrypt: async () => {
+                throw new Error("unsafe-fixture-key");
+              },
+              decrypt: async () => {
+                throw new Error("unsafe-fixture-key");
+              },
+            },
+            onWarning: (warning) => warnings.push(warning),
+            onHandshake: () => {},
+          }),
+        (server) => server.close(),
+      );
+      const client = await connect(server, "http://localhost:5173", owner);
+      const provider = {
+        id: "fixture",
+        name: "Fixture",
+        api: "openai-completions",
+        baseUrl: "",
+        models: [],
+      };
+      const result = await client.command("modelServices.save", {
+        provider,
+        credential: { type: "replace", value: "unsafe-fixture-key" },
+      });
+      expect(result.error).toEqual({
+        code: backend === "electron" ? "model_services_unavailable" : "internal",
+      });
+      if (backend === "memory")
+        expect((await client.command("modelServices.list")).result).toEqual([]);
+      else
+        for (const type of ["list", "delete", "test", "revealKey", "templates", "prices"]) {
+          const fields =
+            type === "prices"
+              ? { baseUrl: "http://127.0.0.1", modelId: "fixture" }
+              : ["delete", "test", "revealKey"].includes(type)
+                ? { providerId: "fixture", ...(type === "test" ? { modelId: "fixture" } : {}) }
+                : {};
+          expect((await client.command(`modelServices.${type}`, fields)).error).toEqual({
+            code: "model_services_unavailable",
+          });
+        }
+      expect(JSON.stringify(client.messages)).not.toContain("unsafe-fixture-key");
+      expect(warnings.join(" ")).not.toContain("unsafe-fixture-key");
+    } finally {
+      await owner.close();
+    }
+  });
+}

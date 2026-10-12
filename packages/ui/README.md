@@ -4,9 +4,11 @@
 
 ## 使用
 
-`App` 接收 `host` 与 `locale`（`zh` / `en`）。Electron preload 注入 `window.rukieHost` 的 `getConnection`、`pickProjectFolder`、`revealPath` 和 `openInTerminal`；浏览器开发入口从 URL fragment 读取 `port` 与 `token`，立即从 history 清除 fragment，只提供 `getConnection`。完整刷新后需重新附加握手 fragment；当前页面中的 Retry 重用内存中的凭据。浏览器通过手动填写绝对路径添加项目，隐藏 Finder 与终端入口。
+`App` 接收 `host` 与 `locale`（`zh` / `en`）。Electron preload 注入 `window.rukieHost` 的 `getConnection`、`pickProjectFolder` 和模型服务能力；浏览器开发入口从 URL fragment 读取 `port` 与 `token`，立即从 history 清除 fragment，通过 `getConnection` 连接 sidecar，`pickProjectFolder` 经 `host.pickFolder` wire 命令选择项目。握手信息保存在当前标签页的 sessionStorage 中，完整刷新或 Vite 整页重载后复用；新的握手 fragment 会替换旧值，无效 fragment 清除缓存。关闭标签页后，或 sidecar 重启后，需要重新打开启动命令打印的完整地址。存储不可用时当前页面仍可连接，但刷新需重新附加握手 fragment。macOS 浏览器使用系统选择文件夹对话框；取消或平台返回 `unsupported` 时退回手动填写绝对路径。Electron 保留窗口内的文件夹对话框。两种入口的 Finder 与终端操作均通过 app 的 wire client 调用 sidecar，受已登记项目根与 workspace 的路径范围限制。浏览器 host 的 `bindClient` 由 app 在执行宿主操作前绑定唯一连接，host 不另开或关闭连接，避免抢占 app 的订阅。
 
-从仓库根运行 `bunx --no vite --config packages/ui/vite.config.ts packages/ui`，Vite 固定使用 `http://localhost:5173/`，占用端口时退出；打开此地址并附加 `#port=<sidecar-port>&token=<sidecar-token>`。sidecar 必须以开发模式运行，见 [server README](../server/README.md)。端口和 token 来自当前 sidecar 的 stdout 握手，不放进 query、文件或设置。入口跟随系统主题并按浏览器语言选择 zh/en。
+从仓库根运行 `bun run dev:desktop:web`，启动当前源码 sidecar 与固定在 `http://localhost:5173/` 的 Vite dev server，并打印带握手 fragment 的完整地址；`--open` 用默认浏览器打开。UI 源码修改由 HMR 更新，sidecar 源码修改需重启命令。端口占用、握手超时或任一服务退出时命令失败并停止另一个服务；Ctrl+C 或 SIGTERM 等待 Vite、sidecar 顺序退出后释放锁。端口和 token 来自 sidecar stdout 握手，不放进 query、文件或设置。入口跟随系统主题并按浏览器语言选择 zh/en。数据与配置隔离、`--reset` 及锁说明见 [desktop README](../desktop/README.md#浏览器开发)。
+
+代理手工浏览器验收使用 `bun run dev:desktop:web --isolated`，打开输出的带 fragment 地址。入口为本次运行分配临时配置与数据，使用 memory 加密与 loopback fake 供应商；模型服务和 Session 经真实 sidecar，固定回复为 `packaged protocol reply`。关闭浏览器后停止启动器，它等待服务退出并删除临时目录；自动 React DOM 测试仍使用模拟 DesktopHost。原生验收边界见 [testing.md](../../docs/testing.md#原生验收授权边界)。
 
 `App` 的可选 `Conversation` 组件接收持续归约的 TranscriptState、snapshot 元数据、pending Interaction、连接事实与请求接口，以及受控 draft / images。窗口层拥有标题栏、侧栏、项目选择与输入框；Conversation 层接收摘要开关并拥有对话与停靠内容。`SessionViewState` 归约 Run 开始与结束，保留每个 Session 的最新 snapshot；snapshot 替换全量消息，message_end 仅按 entryId 更新或追加该提交条目的投影，流式 partial 独立保存；Interaction 以 epoch 归约。组件只读 props，app 接线 client、store 和 host。侧栏状态只读 sessions_changed 的运行和权限汇总，等待确认优先于运行标记，未订阅会话同样更新；不从可能停更的历史视图猜测后台状态。
 
@@ -22,11 +24,11 @@ wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `
 
 会话输入框的模型入口按 Pencil C06/C07 展示已认证的模型目录、供应商品牌图标、名称和当前选择。打开时预览当前模型或首个可用模型；悬停和方向键聚焦仅更新输入能力、上下文容量与支持的推理档位。Right Arrow 进入推理按钮，Left Arrow 返回模型行；点击模型采用配置默认推理，点击档位显式选择模型与该档位，Escape 关闭并保留原选择。打开时只显示模型列表，hover 或键盘聚焦模型后展示对应详情，重新打开清除预览。详情出现时列表位置保持稳定；宽屏并排、窄屏上下排列，长列表使用已有 ScrollArea；尺寸、主题和字体由 [DESIGN.md](../../DESIGN.md#conversation-model-controls) 约束。未知自定义供应商使用通用图标。上下文面板只显示现有 ContextReport 事实，不展示尚未提供的五类消息统计或压缩阈值。
 
-宿主提供 `modelServices` 时，左侧导航开放模型服务设置；返回应用恢复原聊天布局与草稿。设置复用 beUI 字段、选择器、按钮、复选框和模态框，以及 shadcn 菜单，组合供应商总览、自定义供应商创建、详情、模型编辑与删除确认；添加入口只提供自定义供应商。模型 ID 与基础参数由用户填写；高级设置按当前 C16 展示自动压缩、运行参数与价格卡片，可选字段可填写或清空。协议更改保留全部模型参数，保存前校验目标协议的兼容字段，不匹配时要求编辑或移除相关模型。
+Electron 与浏览器宿主都提供完整 `modelServices`，左侧导航开放模型服务设置；返回应用恢复原聊天布局与草稿。设置复用 beUI 字段、选择器、按钮、复选框和模态框，以及 shadcn 菜单，组合供应商总览、自定义供应商创建、详情、模型编辑与删除确认；添加入口只提供自定义供应商。模型 ID 与基础参数由用户填写；高级设置按当前 C16 展示自动压缩、运行参数与价格卡片，可选字段可填写或清空。协议更改保留全部模型参数，保存前校验目标协议的兼容字段，不匹配时要求编辑或移除相关模型。
 
-供应商名称、Base URL、API 格式和模型配置通过宿主保存；已有密钥默认显示紧凑遮罩；主动点击显示时，宿主按指定供应商返回 API Key 到当前详情的临时内存。隐藏、切换供应商、保存和退出清除展示，过期请求不更新页面；展示本身不改变保存语义，留空保留，替换与删除明确提交。Electron main 负责受信任 IPC 与系统加密，renderer 不取得任意解密能力。保存失败保留输入；取消不提交。供应商删除确认同时移除配置与密文，历史 Transcript 保留，引用不可用模型的 Session 必须重新选择。保存后刷新聊天模型目录，启用且可认证的模型可以选择；连接验证显式发送一个短请求，失败展示安全文案，不暴露凭证或底层响应。
+供应商名称、Base URL、API 格式和模型配置通过宿主保存。尚未保存的供应商草稿可先改名，不要求填写 Base URL；已有供应商存在待保存字段时，改名保留这些输入，之后统一保存。无待保存改动的已有供应商确认改名即持久化；正式保存仍校验有效 HTTP(S) 地址和模型配置。已有密钥默认显示紧凑遮罩；主动点击显示时，宿主按指定供应商返回 API Key 到当前详情的临时内存。隐藏、切换供应商、保存和退出清除展示，过期请求不更新页面；展示本身不改变保存语义，留空保留，替换与删除明确提交。Electron main 负责受信任 IPC 与系统加密，renderer 不取得任意解密能力。保存失败保留输入；取消不提交。供应商删除确认同时移除配置与密文，历史 Transcript 保留，引用不可用模型的 Session 必须重新选择。保存后刷新聊天模型目录，启用且可认证的模型可以选择；连接验证显式发送一个短请求，失败展示安全文案，不暴露凭证或底层响应。
 
-当前适配器支持文本、图片、对话中系统消息兼容标志，以及从低到高的 Thinking Level 和原生参数映射；映射中的 `null` 表示该档位不支持；基础档位省略映射时仍可用，`xhigh`/`max` 需要显式映射。模型级默认推理等级通过 beUI Select 选择并保存在桌面供应商配置中；选择“自动”不保存默认值。新建 Session 和采用模型时使用模型默认值，显式会话等级优先；恢复已有 Session 保留已保存选择。取消支持当前默认档位时清除该默认值，编辑保留其余原生映射。视频输入控件禁用并说明限制；模型弹窗不显示协议兼容字段或原生参数映射编辑器，修改可见字段时保留模型已有兼容字段和映射。浏览器默认入口不开放凭证管理；模型服务开发验收须注入隔离数据根与脚本化非生产凭证宿主，不能把该测试当作真实系统加密验收。
+当前适配器支持文本、图片、对话中系统消息兼容标志，以及从低到高的 Thinking Level 和原生参数映射；映射中的 `null` 表示该档位不支持；基础档位省略映射时仍可用，`xhigh`/`max` 需要显式映射。模型级默认推理等级通过 beUI Select 选择并保存在桌面供应商配置中；选择“自动”不保存默认值。新建 Session 和采用模型时使用模型默认值，显式会话等级优先；恢复已有 Session 保留已保存选择。取消支持当前默认档位时清除该默认值，编辑保留其余原生映射。视频输入控件禁用并说明限制；模型弹窗不显示协议兼容字段或原生参数映射编辑器，修改可见字段时保留模型已有兼容字段和映射。浏览器宿主通过 app 绑定的唯一 wire client 调用 `modelServices.*`，不另开连接、不缓存命令输入或显示密钥结果；服务列表与模板响应经 schema 校验。浏览器新密钥经 loopback WS 传给 sidecar 立即加密，明文只存在于当前输入或显式显示状态；Electron 保留 main IPC 加密通道。浏览器自动测试使用脚本化 wire server 与非生产凭证，不能代替真实系统加密验收。
 
 模型 ID 失焦或打开缺少价格的已有模型时，宿主从用户指定的 [LiteLLM Cost Map](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) 原始美元数据补齐未填写的价格及来源，单位为 USD/百万 Token。手动设置的值（包括零）和请求期间修改或清空的字段保持不变；改变 ID 清除本次尚未保存的自动结果，保存后的价格属于用户配置，改 ID 时保留，须自行检查来源。关闭、切换模型或过期请求不更新表单；失败可再次使 ID 失焦重试。取价期间保存按钮禁用，结束或失败后恢复；状态显示在已有价格卡片标题行，完整文字可通过悬停标题查看。
 

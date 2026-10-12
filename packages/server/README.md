@@ -4,7 +4,11 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 ## 使用
 
-从包入口调用 `startServer({ homeDir, dataRoot })`，等待返回 `{ port, token, close }`。启动默认向 stdout 写一行 JSON `{port, token}`；诊断写 stderr。调用方负责在退出时等待 `close()`，释放 Run、Session lease 和 Background Job。`homeDir` 是工具与权限展开 `~/` 的真实 home，`dataRoot` 必须是显式绝对路径，不回退共享目录。进程入口 [src/main.ts](src/main.ts) 从私有启动环境 `RUKIE_DESKTOP_DATA_ROOT` 与 `RUKIE_DESKTOP_HOME_DIR` 接收这两个值，并处理 SIGTERM 和 SIGINT。浏览器开发模式也必须显式设置隔离的 `RUKIE_DESKTOP_DATA_ROOT`。
+从包入口调用 `startServer({ homeDir, dataRoot })`，等待返回 `{ port, token, close }`。启动默认向 stdout 写一行 JSON `{port, token}`；诊断写 stderr。调用方负责在退出时等待 `close()`，释放 Run、Session lease 和 Background Job。`homeDir` 是工具与权限展开 `~/` 的真实 home，`dataRoot` 必须是显式绝对路径，不回退共享目录。进程入口 [src/main.ts](src/main.ts) 从私有启动环境 `RUKIE_DESKTOP_DATA_ROOT` 与 `RUKIE_DESKTOP_HOME_DIR` 接收这两个值，并处理 SIGTERM 和 SIGINT。浏览器开发模式也必须显式设置隔离的 `RUKIE_DESKTOP_DATA_ROOT`。`RUKIE_DESKTOP_CONFIGURATION_ROOT` 可指定独立共享配置根；缺省时配置跟随数据根。
+
+进程入口必须通过 `RUKIE_DESKTOP_ENCRYPTION_BACKEND` 显式选择 `electron`、`system-keychain` 或 `memory`，未选择、未知值或必要参数缺失时在握手前启动失败，不探测或回退。`electron` 要求 `RUKIE_DESKTOP_SECRET_URL` 与 `RUKIE_DESKTOP_SECRET_TOKEN` 指向 main 的私有加密通道；`system-keychain` 要求非空 `RUKIE_DESKTOP_SECRET_SERVICE` 系统凭据服务名；`memory` 不需附加参数，仅用于隔离验收。`RUKIE_DESKTOP_MANAGEMENT_TOKEN` 供 main 的私有管理通道使用。所有 `RUKIE_DESKTOP_*` 启动变量在捕获后从进程环境删除，工具子进程只继承正常系统环境。
+
+`system-keychain` 经 `Bun.secrets` 首次加密时创建一把 AES-256-GCM 主密钥，后续进程从相同 service 的 `credential-master-key-v1` 项读取；读取失败、授权取消、已有主密钥无效或解密缺少主密钥均返回可重试凭证错误，不覆盖密钥或改用其他后端。首次创建在有效配置根（`RUKIE_DESKTOP_CONFIGURATION_ROOT`，未指定时为数据根）内按 service 派生的 SQLite guard 下重新读取并写入；同一 service 的启动方必须共享该配置根。guard 不保存密钥材料，等待锁最多 15 秒，进程退出时由 SQLite 释放锁，不按时间删除其他实例的锁。密文通过认证附加数据绑定 vault 凭证身份。`memory` 主密钥只保留在当前进程，退出后原密文失效。不同后端的密文不互通，调用方必须使用独立配置根；系统凭据验收边界见 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md)。
 
 客户端连接 `ws://127.0.0.1:<port>/ws`，subprotocol 按顺序传入 `rukie.v1` 和 `rukie.auth.<token>`，Origin 必须是 `app://rukie`。`development: true`（进程入口的 `--dev`）额外接受 `http://localhost:5173`。随机端口绑定 loopback，鉴权失败在升级前返回 401 或 403。
 
@@ -16,7 +20,7 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 权限请求发送 `interaction_requested`（`sessionId`、原生 `identity`、去掉 signal 的 `request`）。回复核对完整 identity 和 epoch；旧回复返回 `interaction_stale`。回复、取消或会话规则覆盖都会发送 `interaction_settled`。订阅先收到 snapshot，再补发挂起请求；接管新连接后同样可以订阅并补发。
 
-`models.list` 读取 `app.sqlite` 中已启用的模型及凭证存在状态，不解密密钥、刷新模型或启动 OAuth。实际模型请求通过私有 main/sidecar 通道按供应商身份取得凭证；认证不采用终端环境 API Key。配置变更在后续发送前刷新，已开始的请求保留其供应商配置；删除选中模型或供应商后发送返回 `model_unavailable`，不会改用另一个供应商。未在当前进程打开的 Session，订阅直接读取已提交历史并返回 `{ readonly: true, modelUnavailable }`；目录与历史阅读不解密执行配置或凭证。历史 snapshot 的 `agent.thinkingLevel` 是已提交的 Thinking Level；其 `permissionMode` 是当前非敏感配置的默认值，并非历史权限事实。只有明确发送或切换模型等执行命令才打开 Session，订阅随后转为实时事件；没有可用模型或凭证时 `modelUnavailable` 为 true。已打开 Session 的订阅和状态更新还提供 `session_state`（permissionMode、thinkingLevel、contextReport），不修改原始 SessionEvent。模型切换要求 Session 空闲，权限模式对下一次工具调用生效。置顶与侧栏偏好写入注册表；首次连接、Run 开始/结束、权限创建/结算和这些修改发送 `sessions_changed`，携带 `sessions`、`projects`、`pinned` 与 `preferences`。Session summary 的 running 和 waitingPermission 是侧栏状态的权威事实，覆盖未订阅的后台 Session；子代理权限回调归父 Session，等待状态同样归父会话。
+`models.list` 读取 `app.sqlite` 中已启用的模型及凭证存在状态，不解密密钥、刷新模型或启动 OAuth。实际模型请求通过选定加密后端按供应商身份取得凭证；认证不采用终端环境 API Key。配置变更在后续发送前刷新，已开始的请求保留其供应商配置；删除选中模型或供应商后发送返回 `model_unavailable`，不会改用另一个供应商。未在当前进程打开的 Session，订阅直接读取已提交历史并返回 `{ readonly: true, modelUnavailable }`；目录与历史阅读不解密执行配置或凭证。历史 snapshot 的 `agent.thinkingLevel` 是已提交的 Thinking Level；其 `permissionMode` 是当前非敏感配置的默认值，并非历史权限事实。只有明确发送或切换模型等执行命令才打开 Session，订阅随后转为实时事件；没有可用模型或凭证时 `modelUnavailable` 为 true。已打开 Session 的订阅和状态更新还提供 `session_state`（permissionMode、thinkingLevel、contextReport），不修改原始 SessionEvent。模型切换要求 Session 空闲，权限模式对下一次工具调用生效。置顶与侧栏偏好写入注册表；首次连接、Run 开始/结束、权限创建/结算和这些修改发送 `sessions_changed`，携带 `sessions`、`projects`、`pinned` 与 `preferences`。Session summary 的 running 和 waitingPermission 是侧栏状态的权威事实，覆盖未订阅的后台 Session；子代理权限回调归父 Session，等待状态同样归父会话。
 
 历史订阅通过 Agent Core 的只读快照显示已提交 Transcript，包括跨进程持有 lease 的 Session。展示快照后，通过独立 host mutex 的立即事务探测当前占用，随即回滚并关闭，不写数据或取得 Session 执行权；忙时仍返回 `session_busy`，客户端保留只读与 busy 提示。探测仅反映当时状态，明确执行命令仍重新取得执行 lease。只读访问不恢复任务、调用 Hooks 或解密 MCP 配置，不提供实时事件或别的进程的权限回复。快照保留消息、原生工具状态、排队输入、Run Summaries 与 Todo/Plan/Goal/子代理目录；不重建别的进程的 Background Job 或子代理活动。
 
@@ -31,3 +35,9 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 [server.ts](src/server.ts) 持有 Hono 接入、单个 ManagedRuntime、Layer 与输入回执 FiberMap；[command.ts](src/command.ts) 在进入业务处理前校验不可信输入。依赖和架构约束见 [tech-stack](../../docs/tech-stack.md) 与 [ADR-0030](../../docs/adr/0030-desktop-server-hono-and-effect.md)。
 
 模型美元价格查询通过同一私有管理入口，只接收 Base URL 和精确模型 ID，不读取凭证。固定读取 [llmprice.cn](https://llmprice.cn/) 首页采用的 [LiteLLM Cost Map](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) 原始 JSON（raw.githubusercontent.com），不回退到 CDN，8 秒超时、8 MiB 上限并拒绝重定向。当前只认 HTTPS 官方主机 api.openai.com、api.anthropic.com、api.deepseek.com、api.mistral.ai、api.groq.com、api.x.ai、openrouter.ai 和 generativelanguage.googleapis.com；自定义代理地址返回歧义，不推测其账单。仅接受 provider 相符的精确 ID 或 provider/ID 键；同 provider 同价格别名可合并，冲突或上下文分层返回歧义。普通每 Token 美元价换算为百万 Token；缺少、无效或零值不视为已知价格，缓存价格缺失保持空白。网络、大小或解析失败返回不可用，不写配置、不提供任意 URL 抓取。
+
+### 浏览器模型服务通道
+
+`system-keychain` 和 `memory` 后端通过鉴权会话 WS 提供 `modelServices.list / save / delete / test / revealKey / templates / prices`，复用 Electron 私有模型服务处理器。`delete`、`test` 与 `revealKey` 用 `providerId` 指定供应商；`save` 接收共享 schema 的供应商与 `keep`、`delete` 或 `replace` 明文凭证，立即按 `provider:<id>` 加密后由数据库同事务提交供应商与密文。加密失败不写供应商。`electron` 后端返回 `model_services_unavailable`，继续走 main 的私有通道。
+
+显式 `revealKey` 只返回指定供应商的 `{value: string | null}`；明文、显示结果和底层凭证错误不进入广播、snapshot、日志或模型上下文。WS 命令保留相同 Origin、token、字段校验和关闭时等待命令完成的规则；模型测试仅发送短连接探测，失败返回安全协议错误。凭证通道边界见 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md)。

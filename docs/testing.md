@@ -106,7 +106,7 @@ Bun 的文件 worker、CI 的四个 shard 和独立测试进程可能并行。�
 
 ## 原生验收授权边界
 
-样式、布局、字体、主题、响应式和普通前端交互使用 Chromium browser mode 与模拟 DesktopHost 验证，包括 Light/Dark、窄屏、键盘和焦点行为；这些变更不启动真实 Electron、打包应用或原生凭据辅助程序。桌面端适用的本地检查通过即可输出交付结果，无需等待 CI；合并仍遵循根规则的授权和分支检查要求。
+手工浏览器验收使用 `bun run dev:desktop:web --isolated` 与 Chromium，打开启动器输出的地址，验证样式、布局、字体、主题、响应式和普通前端交互，包括 Light/Dark、窄屏、键盘和焦点行为。该入口使用临时配置与数据、memory 加密和 loopback fake 供应商，模型服务与 Session 经真实 sidecar；退出时等待服务停止并删除本次临时目录。自动 React DOM 测试继续使用 Chromium browser mode 与模拟 DesktopHost；这些变更不启动真实 Electron、打包应用或原生凭据辅助程序。桌面端适用的本地检查通过即可输出交付结果，无需等待 CI；合并仍遵循根规则的授权和分支检查要求。
 
 普通 `test:desktop` 测试保持 Electron/safeStorage mock 边界，不访问系统钥匙串，不启动真实 Electron。原生验收使用独立的手动入口，不接入默认测试、`check` 或自动代理验收流程；mock 缺少行为时补充显式模拟或报错，不回退到真实加密实现。
 

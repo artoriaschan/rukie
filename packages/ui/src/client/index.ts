@@ -9,7 +9,7 @@ export type ClientCommand = WireCommand extends infer C
   : never;
 export class WireError extends Error {
   constructor(
-    readonly code: WireErrorCode | "disconnected" | "superseded",
+    readonly code: WireErrorCode | "disconnected" | "superseded" | "connection_missing",
     readonly params?: Record<string, string | number>,
   ) {
     super(code);
@@ -189,6 +189,7 @@ export function createWireClient(host: Pick<DesktopHost, "getConnection">) {
 
 function isErrorCode(code: string): code is WireErrorCode {
   return (
+    code === "model_services_unavailable" ||
     code === "model_unavailable" ||
     code === "session_busy" ||
     code === "session_not_found" ||
@@ -196,6 +197,7 @@ function isErrorCode(code: string): code is WireErrorCode {
     code === "invalid_command" ||
     code === "not_queued" ||
     code === "interaction_stale" ||
+    code === "unsupported" ||
     code === "internal"
   );
 }
@@ -208,3 +210,5 @@ function isErrorParams(value: unknown): value is Record<string, string | number>
     Object.values(value).every((item) => typeof item === "string" || typeof item === "number")
   );
 }
+
+export type WireClient = ReturnType<typeof createWireClient>;

@@ -15,7 +15,7 @@ import {
   readlink,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, parse, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   flipFuses,
@@ -80,22 +80,7 @@ export async function developmentPaths(checkout: string, home = homedir()) {
     await checkedFile(path);
   await checkedFile(paths.renderer, true);
   await checkedFile(join(paths.cache, "Rukie Development.app"), true);
-  // Check each parent before creating its child; recursive mkdir would follow a redirected parent.
-  let configurationDirectory = await realpath(home);
-  for (const name of ["Library", "Application Support", "Rukie Development", "configuration"]) {
-    configurationDirectory = join(configurationDirectory, name);
-    try {
-      const info = await lstat(configurationDirectory);
-      if (info.isSymbolicLink())
-        throw new Error("Desktop development configuration cannot be a symbolic link");
-      if (!info.isDirectory())
-        throw new Error("Desktop development configuration must be a directory");
-    } catch (error) {
-      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT")
-        throw error;
-      await mkdir(configurationDirectory, { mode: 0o700 });
-    }
-  }
+  await ensureDevelopmentDirectory(paths.configuration);
   await checkPersistentData(paths.configuration);
   await checkPersistentData(paths.data);
   await checkPersistentData(paths.userData, true);
@@ -103,7 +88,28 @@ export async function developmentPaths(checkout: string, home = homedir()) {
   return paths;
 }
 
-async function checkPersistentData(directory: string, electronStorage = false): Promise<void> {
+/** Check every parent before creating children, so development state never follows symlinks. */
+export async function ensureDevelopmentDirectory(directory: string): Promise<void> {
+  const absolute = resolve(directory);
+  let current = parse(absolute).root;
+  for (const segment of absolute.slice(current.length).split(sep).filter(Boolean)) {
+    current = join(current, segment);
+    try {
+      const info = await lstat(current);
+      if (info.isSymbolicLink()) throw new Error("Development directory cannot be a symbolic link");
+      if (!info.isDirectory()) throw new Error("Development state must be a directory");
+    } catch (error) {
+      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT")
+        throw error;
+      await mkdir(current, { mode: 0o700 });
+    }
+  }
+}
+
+export async function checkPersistentData(
+  directory: string,
+  electronStorage = false,
+): Promise<void> {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     const info = await lstat(path);
@@ -145,7 +151,7 @@ export async function acquireDevelopmentLock(local: string) {
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "EEXIST")
       throw new Error(
-        "Desktop development launcher is already active; if it crashed, remove .desktop-dev/launcher.lock only after confirming its processes have exited",
+        `Desktop development launcher is already active; if it crashed, remove ${path} only after confirming its processes have exited`,
       );
     throw error;
   }
@@ -211,7 +217,7 @@ async function processGroupMembers(group: number): Promise<number[]> {
   });
 }
 
-async function stopRemainingGroup(group: number) {
+export async function stopRemainingGroup(group: number) {
   const started = performance.now();
   let killed = false;
   for (let probe = 0; probe < 128; probe++) {

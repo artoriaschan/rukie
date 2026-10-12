@@ -1,3 +1,4 @@
+import { modelServicesFixture } from "../helpers/model-services";
 import { expect, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -36,7 +37,12 @@ test.each([
       await page.viewport(width, height);
       root.classList.toggle("dark", dark);
       root.style.setProperty("--ui-font-size", `${fontSize}px`);
-      screen = await render(<App host={{ getConnection: async () => connection }} locale="en" />);
+      screen = await render(
+        <App
+          host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+          locale="en"
+        />,
+      );
       await expect.element(screen.getByRole("button", { name: "Choose model" })).toBeEnabled();
       if (width < 768)
         await screen.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
@@ -60,6 +66,17 @@ test.each([
       expect(getComputedStyle(main).backgroundColor).toBe(
         dark ? "rgb(24, 24, 24)" : "rgb(255, 255, 255)",
       );
+      expect(getComputedStyle(document.body).fontFamily.startsWith("system-ui")).toBe(true);
+      expect(
+        getComputedStyle(
+          screen.getByRole("button", { name: "Choose model" }).element(),
+        ).fontFamily.startsWith("system-ui"),
+      ).toBe(true);
+      expect(
+        [...document.fonts].some((face) =>
+          /Noto Sans SC Variable|JetBrains Mono Variable/.test(face.family),
+        ),
+      ).toBe(false);
       const input = screen.getByRole("textbox", { name: "Prompt", exact: true });
       const form = input.element().closest("form")!;
       const controls = ["Attach images", "Permission mode", "Choose model", "Send prompt"];

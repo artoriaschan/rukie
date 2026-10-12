@@ -1,4 +1,3 @@
-import "@fontsource-variable/jetbrains-mono";
 import { useRef, useState } from "react";
 import {
   Plus,

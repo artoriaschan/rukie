@@ -41,6 +41,7 @@ import {
   modelServiceThinkingLevels,
   parseModelServiceSave,
   ModelCompatSchemas,
+  ModelServiceSchema,
   type ModelService,
   type ModelServiceSummary,
 } from "@rukie/shared";
@@ -54,14 +55,12 @@ import { Tooltip } from "../components/motion/tooltip";
 import { Switch } from "../components/motion/switch";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "../components/motion/radio";
-import "@fontsource-variable/noto-sans-sc";
-import "@fontsource-variable/jetbrains-mono";
 import "./model-services.css";
 import * as Menu from "../components/ui/dropdown-menu";
 import { useAppText } from "../lib/i18n";
 import { reasoningLabels } from "../lib/reasoning-labels";
 
-type Services = NonNullable<DesktopHost["modelServices"]>;
+type Services = DesktopHost["modelServices"];
 type ServiceModel = ModelService["models"][number];
 const advancedNumericFields = [
   "compressionThreshold",
@@ -146,7 +145,7 @@ export function ModelServices({
     [],
   );
   const fillPrices = async (candidate: ServiceModel) => {
-    if (!draft || !candidate.id.trim() || !services.prices) return;
+    if (!draft || !candidate.id.trim()) return;
     const identity = `${draft.id}|${draft.baseUrl}|${candidate.id}`;
     if (activePriceIdentity.current === identity) return;
     activePriceIdentity.current = identity;
@@ -252,7 +251,6 @@ export function ModelServices({
     setRevealing(true);
     setError("");
     try {
-      if (!services.revealKey) throw new Error("Unavailable host capability");
       const value = await services.revealKey(selected.id);
       if (request !== revealRequest.current) return;
       if (!value) throw new Error("Credential unavailable");
@@ -387,7 +385,6 @@ export function ModelServices({
     if (activePriceIdentity.current) return;
     if (
       draft &&
-      services.prices &&
       model.id.trim() &&
       priceFields.some((field) => model[field] === undefined) &&
       attemptedPriceIdentity.current !== `${draft.id}|${draft.baseUrl}|${model.id}`
@@ -415,7 +412,7 @@ export function ModelServices({
     else setModelError(t("services.saveFailure"));
   };
   const testConnection = async (modelId: string) => {
-    if (!services.test || !draft || pending) return;
+    if (!draft || pending) return;
     if (!(await persist(draft))) return;
     setPending(true);
     setStatus(t("services.testing"));
@@ -848,7 +845,7 @@ export function ModelServices({
                               size="icon"
                               aria-label={t("services.test")}
                               variant="ghost"
-                              disabled={!services.test || pending}
+                              disabled={pending}
                               onClick={() => void testConnection(item.id)}
                             >
                               <Unplug className="size-4" />
@@ -1269,10 +1266,20 @@ export function ModelServices({
             className="flex flex-col gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              if (draft)
-                void persist({ ...draft, name: rename }).then((saved) => {
-                  if (saved) setDialog(null);
-                });
+              if (!draft) return;
+              if (!rename.trim() || !Value.Check(ModelServiceSchema.properties.name, rename)) {
+                setError(t("services.invalid"));
+                return;
+              }
+              if (dirty) {
+                setDraft({ ...draft, name: rename });
+                setError("");
+                setDialog(null);
+                return;
+              }
+              void persist({ ...draft, name: rename }).then((saved) => {
+                if (saved) setDialog(null);
+              });
             }}
           >
             <h2 className="font-medium">{t("services.rename")}</h2>

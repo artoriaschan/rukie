@@ -8,7 +8,6 @@ import * as Menu from "./ui/dropdown-menu";
 import { ScrollArea } from "./ui/scroll-area";
 import { ProviderIcon } from "./provider-icon";
 import { useAppText } from "../lib/i18n";
-import "@fontsource-variable/noto-sans-sc";
 import "./conversation-controls.css";
 import { formatCapacity } from "../lib/format-capacity";
 import { reasoningLabels } from "../lib/reasoning-labels";

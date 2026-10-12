@@ -4,12 +4,9 @@ import {
   dialog,
   ipcMain,
   protocol,
-  shell,
   safeStorage,
   type IpcMainInvokeEvent,
 } from "electron";
-import { spawn } from "node:child_process";
-import { stat } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { Sidecar, type SidecarOptions } from "./sidecar.ts";
@@ -87,6 +84,7 @@ export async function startDesktop(options: DesktopOptions) {
         RUKIE_DESKTOP_DATA_ROOT: dataRoot,
         RUKIE_DESKTOP_CONFIGURATION_ROOT: options.configurationRoot,
         RUKIE_DESKTOP_HOME_DIR: userInfo().homedir,
+        RUKIE_DESKTOP_ENCRYPTION_BACKEND: "electron",
         RUKIE_DESKTOP_SECRET_URL: secrets.url,
         RUKIE_DESKTOP_SECRET_TOKEN: secrets.token,
         RUKIE_DESKTOP_MANAGEMENT_TOKEN: managementToken,
@@ -206,23 +204,6 @@ export async function startDesktop(options: DesktopOptions) {
       });
       return result.canceled ? null : (result.filePaths[0] ?? null);
     });
-    ipcMain.handle("rukie:revealPath", async (event, input: unknown) => {
-      authorize(event);
-      shell.showItemInFolder(pathArgument(input));
-    });
-    ipcMain.handle("rukie:openInTerminal", async (event, input: unknown) => {
-      authorize(event);
-      const path = pathArgument(input);
-      if (!(await stat(path)).isDirectory()) throw new Error("Terminal path must be a directory");
-      await new Promise<void>((resolve, reject) => {
-        // Argument-vector execution keeps project paths out of shell/AppleScript source.
-        const child = spawn("/usr/bin/open", ["-a", "Terminal", path], { stdio: "ignore" });
-        child.once("error", reject);
-        child.once("exit", (code) =>
-          code === 0 ? resolve() : reject(new Error("Terminal could not be opened")),
-        );
-      });
-    });
     let stopped: Promise<void> | undefined;
     const stop = () => {
       closing = true;
@@ -269,9 +250,4 @@ function trustedAddress(address: string): boolean {
   } catch {
     return false;
   }
-}
-function pathArgument(input: unknown): string {
-  if (typeof input !== "string" || !isAbsolute(input) || input.includes("\0"))
-    throw new Error("Expected an absolute path");
-  return input;
 }

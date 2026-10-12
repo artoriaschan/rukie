@@ -31,7 +31,7 @@ status: accepted
 - token 经 WS subprotocol 传递：`["rukie.v1", "rukie.auth." + token]`，`rukie.v1` 排在首位，server 只回显它。
 - 升级前的中间件精确校验 Host（`127.0.0.1:<port>`）、Origin 白名单与 token（恒定时间比较），任何一项失败都拒绝升级。
 - 生产 Origin 是 Electron 自定义 scheme `app://rukie`。token 由 main 持有，经 preload 的 `getConnection()` 交给渲染进程，main 校验调用来自 `app://rukie`。
-- 浏览器开发模式直连 sidecar，不经 Vite proxy。只在 sidecar 以开发标志启动时放行 Vite 地址，token 经 URL fragment 传入。
+- 浏览器开发模式直连 sidecar，不经 Vite proxy。只在 sidecar 以开发标志启动时放行 Vite 地址，token 经 URL fragment 传入；入口立即清除 fragment，并在当前标签页的 sessionStorage 中保留端口与 token，以支持完整刷新。新 fragment 替换缓存，无效 fragment 清除缓存；不保存 API Key，不使用 localStorage、query 或 cookie。sidecar 重启后需使用新的启动地址。
 
 规划依据见[桌面端地图](../../.scratch/desktop/map.md)的 02、06、10 与 16。
 

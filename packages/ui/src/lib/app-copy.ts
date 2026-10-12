@@ -2,6 +2,8 @@ import { modelServiceCopy } from "./model-service-copy";
 export const appCopy = {
   en: {
     ...modelServiceCopy.en,
+    "app.error-model_services_unavailable":
+      "Model service management requires the browser sidecar encryption backend.",
     "app.error-model_unavailable": "Choose an available model service before sending.",
     "app.error-session_busy": "This Session is open elsewhere. Close it there, then retry.",
     "app.error-session_not_found": "This Session is unavailable. Choose another conversation.",
@@ -9,8 +11,11 @@ export const appCopy = {
     "app.error-invalid_command": "This action could not be processed. Retry.",
     "app.error-not_queued": "This input is no longer queued.",
     "app.error-interaction_stale": "This request is no longer waiting for confirmation.",
+    "app.error-unsupported": "This action is unavailable on this platform.",
     "app.error-internal": "The action could not be completed. Retry.",
     "app.error-disconnected": "Connection lost. Retry.",
+    "app.error-connection_missing":
+      "Connection details are missing. Open the full URL printed by dev:desktop:web.",
     "app.error-superseded": "Another window took over this connection. Retry to continue here.",
     "conversation.action-read": "Read file",
     "conversation.action-edit": "Edited file",
@@ -174,6 +179,7 @@ export const appCopy = {
   },
   zh: {
     ...modelServiceCopy.zh,
+    "app.error-model_services_unavailable": "模型服务管理需要浏览器 sidecar 加密后端。",
     "app.error-model_unavailable": "发送前请选择可用的模型服务。",
     "app.error-session_busy": "这个 Session 正在别处打开，关闭后再试。",
     "app.error-session_not_found": "这个 Session 已不可用，请选择其他会话。",
@@ -181,8 +187,10 @@ export const appCopy = {
     "app.error-invalid_command": "无法处理此操作，请重试。",
     "app.error-not_queued": "此输入已不在队列中。",
     "app.error-interaction_stale": "此请求已不再等待确认。",
+    "app.error-unsupported": "当前平台不支持此操作。",
     "app.error-internal": "无法完成此操作，请重试。",
     "app.error-disconnected": "连接已断开，请重试。",
+    "app.error-connection_missing": "缺少连接信息，请打开 dev:desktop:web 启动时打印的完整地址。",
     "app.error-superseded": "另一个窗口已接管连接，请重试以在此继续。",
     "conversation.action-read": "读取了文件",
     "conversation.action-edit": "修改了文件",
