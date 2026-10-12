@@ -12,17 +12,9 @@ test("preload exposes fixed native methods and explicit credential reveal with f
   const call = electron.contextBridge.exposeInMainWorld.mock.calls[0]!;
   expect(call[0]).toBe("rukieHost");
   const host: DesktopHost = call[1];
-  expect(Object.keys(host).sort()).toEqual([
-    "getConnection",
-    "modelServices",
-    "openInTerminal",
-    "pickProjectFolder",
-    "revealPath",
-  ]);
+  expect(Object.keys(host).sort()).toEqual(["getConnection", "modelServices", "pickProjectFolder"]);
   await host.getConnection();
   await host.pickProjectFolder();
-  await host.revealPath("/tmp");
-  await host.openInTerminal("/tmp");
   expect(Object.keys(host.modelServices!).sort()).toEqual([
     "delete",
     "list",
@@ -44,8 +36,6 @@ test("preload exposes fixed native methods and explicit credential reveal with f
   expect(electron.ipcRenderer.invoke.mock.calls).toEqual([
     ["rukie:getConnection"],
     ["rukie:pickProjectFolder"],
-    ["rukie:revealPath", "/tmp"],
-    ["rukie:openInTerminal", "/tmp"],
     [
       "rukie:modelServices:prices",
       { baseUrl: "https://api.deepseek.com", modelId: "deepseek-chat" },
