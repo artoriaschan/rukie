@@ -1,9 +1,63 @@
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { App } from "../../src/app";
 import { modelServicesFixture } from "../helpers/model-services";
 import "../../src/theme.css";
+
+test("rename save keeps neutral inverse colors and geometry in both themes", async () => {
+  const originalClass = document.documentElement.className;
+  onTestFinished(() => {
+    document.documentElement.className = originalClass;
+  });
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  try {
+    await screen
+      .getByRole("button", { name: "Session actions Explore ideas", exact: true })
+      .click();
+    await screen.getByRole("menuitem", { name: "Rename", exact: true }).click();
+    const dialog = screen.getByRole("dialog", { name: "Rename chat", exact: true });
+    const input = dialog.getByRole("textbox", { name: "Chat title", exact: true });
+    const save = dialog.getByRole("button", { name: "Save", exact: true });
+    const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+    await input.fill("Changed title");
+    await expect.element(save).toBeEnabled();
+    const bounds = save.element().getBoundingClientRect();
+    for (const dark of [false, true]) {
+      document.documentElement.classList.toggle("dark", dark);
+      document.documentElement.classList.toggle("light", !dark);
+      const fill = dark ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)";
+      const text = dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
+      await input.hover();
+      await expect.poll(() => getComputedStyle(save.element()).backgroundColor).toBe(fill);
+      await expect.poll(() => getComputedStyle(save.element()).color).toBe(text);
+      await save.hover();
+      await expect.poll(() => getComputedStyle(save.element()).backgroundColor).toBe(fill);
+      cancel.element().focus();
+      await userEvent.keyboard("{Tab}");
+      await expect.element(save).toHaveFocus();
+      expect(getComputedStyle(save.element()).outlineStyle).not.toBe("none");
+      expect(save.element().getBoundingClientRect().width).toBe(bounds.width);
+      expect(save.element().getBoundingClientRect().height).toBe(bounds.height);
+      await input.fill("Explore ideas");
+      await expect.element(save).toBeDisabled();
+      expect(getComputedStyle(save.element()).cursor).toBe("not-allowed");
+      await input.fill("Changed title");
+      await expect.element(save).toBeEnabled();
+    }
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+    document.documentElement.className = originalClass;
+  }
+});
 
 test("rename dialog selects the current title, disables invalid saves and Enter saves without opening the Session", async () => {
   await page.viewport(1280, 900);

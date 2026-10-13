@@ -643,14 +643,12 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
       screen.getByRole("feed").element().querySelectorAll('[data-state="approved"]'),
     ).toHaveLength(0);
     await ask("denied");
-    await screen.getByRole("button", { name: "Deny Esc", exact: true }).element().focus();
+    await screen.getByRole("button", { name: "Deny", exact: true }).element().focus();
     await userEvent.keyboard("{Enter}");
     await expect.element(screen.getByText("Permission: Denied", { exact: true })).toBeVisible();
     await ask("offline");
     window.dispatchEvent(new CustomEvent("rukie:connection-change", { detail: "disconnected" }));
-    await expect
-      .element(screen.getByRole("button", { name: "Allow ↵", exact: true }))
-      .toBeDisabled();
+    await expect.element(screen.getByRole("button", { name: "Allow", exact: true })).toBeDisabled();
     await screen.getByRole("button", { name: "Retry", exact: true }).click();
     await expect
       .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
@@ -675,7 +673,7 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "interaction.reply", code: "interaction_stale" }),
     });
-    await screen.getByRole("button", { name: "Allow ↵", exact: true }).click();
+    await screen.getByRole("button", { name: "Allow", exact: true }).click();
     await expect
       .element(screen.getByRole("region", { name: "Permission required" }))
       .not.toBeInTheDocument();
@@ -773,7 +771,7 @@ test.each(["allow", "allow-session"] as const)(
       });
       await ask("first-epoch", command);
       await expect
-        .element(screen.getByRole("button", { name: "Allow ↵", exact: true }))
+        .element(screen.getByRole("button", { name: "Allow", exact: true }))
         .toBeVisible();
       // New activity arrives while approval is pending; it must not move the earlier request.
       await send({
@@ -783,7 +781,7 @@ test.each(["allow", "allow-session"] as const)(
       });
       await screen
         .getByRole("button", {
-          name: reply === "allow" ? "Allow ↵" : "Allow for this Session A",
+          name: reply === "allow" ? "Allow" : "Allow for this Session",
           exact: true,
         })
         .click();
@@ -793,7 +791,7 @@ test.each(["allow", "allow-session"] as const)(
         .click();
       expect(response.element().querySelectorAll('[data-state="approved"]')).toHaveLength(0);
       await ask("second-epoch", "second-command");
-      await screen.getByRole("button", { name: "Deny Esc", exact: true }).click();
+      await screen.getByRole("button", { name: "Deny", exact: true }).click();
       await expect.element(screen.getByText("Permission: Denied", { exact: true })).toBeVisible();
       const denied = screen
         .getByText("Permission: Denied", { exact: true })
@@ -1558,9 +1556,9 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
       .getByRole("button", { name: "Toggle sidebar", exact: true })
       .click();
     await page.viewport(1280, 900);
-    await screen.getByRole("button", { name: "Allow ↵", exact: true }).click();
+    await screen.getByRole("button", { name: "Allow", exact: true }).click();
     await expect.element(screen.getByText("Second approval", { exact: true })).toBeVisible();
-    await screen.getByRole("button", { name: "Deny Esc", exact: true }).click();
+    await screen.getByRole("button", { name: "Deny", exact: true }).click();
     await expect
       .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
       .toHaveValue("Preserved draft");

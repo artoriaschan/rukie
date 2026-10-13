@@ -51,6 +51,10 @@ test("search lists every unarchived chat in updated order and matches title or P
     await expect.poll(() => dialog.element().querySelectorAll('[role="option"]').length).toBe(13);
     const labels = () =>
       Array.from(dialog.element().querySelectorAll('[role="option"]')).map((el) => el.textContent);
+    for (const option of dialog.element().querySelectorAll<HTMLElement>('[role="option"]')) {
+      expect(getComputedStyle(option).transitionDuration).toBe("0s");
+      expect(option.querySelector("span.absolute.inset-0")).toBeNull();
+    }
     expect(labels()).toEqual([
       "Chat 11Project",
       "Chat 9Project",

@@ -36,7 +36,7 @@ test("tool permission dock uses default Tool Approval details and unclipped acti
       </div>
     </UiLocaleProvider>,
   );
-  const allow = screen.getByRole("button", { name: "允许 ↵", exact: true });
+  const allow = screen.getByRole("button", { name: "允许", exact: true });
   const verifyFocusBounds = (button: Element) => {
     expect(button.matches(":focus-visible")).toBe(true);
     const style = getComputedStyle(button);
@@ -57,6 +57,7 @@ test("tool permission dock uses default Tool Approval details and unclipped acti
     }
   };
   try {
+    expect(screen.getByRole("region").element().querySelector("kbd")).toBeNull();
     expect(allow.element()).not.toBe(document.activeElement);
     expect(allow.element().matches(":focus-visible")).toBe(false);
     expect(getComputedStyle(allow.element()).boxShadow).toBe("none");
@@ -77,11 +78,11 @@ test("tool permission dock uses default Tool Approval details and unclipped acti
     await page.viewport(420, 700);
     verifyFocusBounds(allow.element());
     await userEvent.keyboard("{Tab}");
-    const session = screen.getByRole("button", { name: "本会话内允许 A", exact: true });
+    const session = screen.getByRole("button", { name: "本会话内允许", exact: true });
     await expect.element(session).toHaveFocus();
     verifyFocusBounds(session.element());
     await userEvent.keyboard("{Tab}");
-    const deny = screen.getByRole("button", { name: "拒绝 Esc", exact: true });
+    const deny = screen.getByRole("button", { name: "拒绝", exact: true });
     await expect.element(deny).toHaveFocus();
     verifyFocusBounds(deny.element());
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(innerWidth);

@@ -32,7 +32,6 @@ test("service list and detail use the explicit brand key and keep unmarked names
             },
           ],
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,

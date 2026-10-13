@@ -94,18 +94,20 @@ const defaultModel: ServiceModel = {
 /** Settings owns drafts; the trusted host owns secret storage and connection checks. */
 export function ModelServices({
   services,
-  onClose,
   onChanged,
 }: {
   services: Services;
-  onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
   const t = useAppText();
   const surface = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    surface.current?.querySelector<HTMLElement>("button")?.focus();
+    const current = surface.current?.querySelector<HTMLButtonElement>(
+      'button[aria-current="page"]',
+    );
+    const target = current?.getClientRects().length ? current : surface.current;
+    target?.focus({ preventScroll: true });
     return () => previous?.focus();
   }, []);
   const [providers, setProviders] = useState<ModelServiceSummary[]>([]);
@@ -503,6 +505,7 @@ export function ModelServices({
   return (
     <section
       ref={surface}
+      tabIndex={-1}
       aria-label={t("services.title")}
       className="model-services fixed inset-x-0 bottom-0 top-11 z-30 flex min-h-0 text-foreground text-ui-base"
     >
@@ -514,17 +517,6 @@ export function ModelServices({
         viewportClassName="model-services-navigation"
         aria-label={t("services.navigation")}
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            void flush();
-            onClose();
-          }}
-        >
-          <ArrowLeft className="size-4" />
-          {t("services.back")}
-        </Button>
         <Input
           disabled
           placeholder={t("services.search")}
@@ -1425,7 +1417,6 @@ export function ModelServices({
                 disabled={pending}
               >
                 {t("services.cancel")}
-                <kbd aria-hidden="true">esc</kbd>
               </Button>
               <Button
                 aria-label={t("services.confirm")}

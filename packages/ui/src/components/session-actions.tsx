@@ -11,7 +11,6 @@ interface SessionAction {
   disabled: boolean;
   destructive: boolean;
   onSelect: () => void;
-  shortcut?: string;
 }
 
 /** All Session menu entries are derived here; presentation chooses its menu primitive. */
@@ -39,7 +38,6 @@ export function sessionActions(
       disabled: false,
       destructive: false,
       onSelect: () => onPin(session.id, !pinned),
-      shortcut: "⌥⌘P",
     },
     {
       id: "archive",
@@ -60,13 +58,7 @@ export function sessionActions(
   ];
 }
 
-export function SessionDropdownItems({
-  actions,
-  shortcuts = false,
-}: {
-  actions: SessionAction[];
-  shortcuts?: boolean;
-}) {
+export function SessionDropdownItems({ actions }: { actions: SessionAction[] }) {
   const t = useAppText();
   return actions.map((action) => (
     <Menu.DropdownMenuItem
@@ -77,9 +69,6 @@ export function SessionDropdownItems({
     >
       <action.icon />
       {t(action.label)}
-      {shortcuts && action.shortcut ? (
-        <Menu.DropdownMenuShortcut>{action.shortcut}</Menu.DropdownMenuShortcut>
-      ) : null}
     </Menu.DropdownMenuItem>
   ));
 }

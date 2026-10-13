@@ -29,7 +29,6 @@ export type CommandItem = {
   id: string;
   label: string;
   group?: string;
-  hint?: string;
   keywords?: string[];
   icon?: LucideIcon;
   badge?: ReactNode;
@@ -349,26 +348,12 @@ export function CommandPalette({
                                 onFocus={() => moveTo(it.id)}
                                 onClick={() => choose(it)}
                                 className={cn(
-                                  "relative isolate flex w-full min-w-0 cursor-pointer items-center min-h-[31px] gap-2 rounded-xl px-[10px] py-1 text-left text-ui-base outline-none transition-colors hover:bg-menu-hover active:bg-menu-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
-                                  isActive ? "text-foreground" : "text-muted-foreground",
+                                  "relative isolate flex w-full min-w-0 cursor-pointer items-center min-h-[31px] gap-2 rounded-xl px-[10px] py-1 text-left text-ui-base outline-none hover:bg-menu-hover active:bg-menu-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
+                                  isActive
+                                    ? "bg-menu-hover text-foreground"
+                                    : "text-muted-foreground",
                                 )}
                               >
-                                {isActive ? (
-                                  <motion.span
-                                    layoutId={`${uid}-active`}
-                                    className="absolute inset-0 z-0 rounded-xl bg-menu-hover"
-                                    transition={
-                                      reduce
-                                        ? { duration: 0 }
-                                        : // Tracks rapid arrow-key navigation — keep it tighter
-                                          // than SPRING_LAYOUT so it never lags the active row.
-                                          {
-                                            duration: 0.16,
-                                            ease: EASE_OUT,
-                                          }
-                                    }
-                                  />
-                                ) : null}
                                 {Icon ? (
                                   <Icon className="relative z-10 h-4 w-4" />
                                 ) : (
@@ -381,11 +366,6 @@ export function CommandPalette({
                                   <span className="relative z-10 max-w-[108px] shrink-0 truncate text-right text-ui-caption text-muted-foreground">
                                     {it.badge}
                                   </span>
-                                ) : null}
-                                {it.hint ? (
-                                  <kbd className="relative z-10 rounded-sm border border-border bg-background px-1 font-mono text-ui-xs text-muted-foreground">
-                                    {it.hint}
-                                  </kbd>
                                 ) : null}
                               </button>
                             );

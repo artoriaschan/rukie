@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   Folder,
   FolderOpen,
@@ -29,7 +29,6 @@ export interface SidebarProps {
   archived: string[];
   preferences: WirePreferences;
   selected: string | null;
-  ctrl: boolean;
   onSelect: (id: string) => void;
   onNew: (project: string | null) => void;
   onSearch: () => void;
@@ -42,6 +41,25 @@ export interface SidebarProps {
 }
 export function Sidebar(props: SidebarProps) {
   const t = useAppText();
+  const scrollArea = useRef<HTMLDivElement>(null);
+  const [scrolled, setScrolled] = useState(false);
+  useLayoutEffect(() => {
+    const viewport = scrollArea.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    if (!viewport) return;
+    const measure = () =>
+      setScrolled(viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0);
+    const resize = new ResizeObserver(measure);
+    resize.observe(viewport);
+    if (viewport.firstElementChild) resize.observe(viewport.firstElementChild);
+    viewport.addEventListener("scroll", measure, { passive: true });
+    measure();
+    return () => {
+      resize.disconnect();
+      viewport.removeEventListener("scroll", measure);
+    };
+  }, []);
   const { preferences: p } = props;
   const [expandedProjects, setExpandedProjects] = useState(false);
   const [expandedSessions, setExpandedSessions] = useState<string[]>([]);
@@ -56,7 +74,6 @@ export function Sidebar(props: SidebarProps) {
     });
   const row = (session: WireSessionSummary) => {
     const pinned = props.pinned.includes(session.id);
-    const shortcut = props.recent.findIndex((value) => value.id === session.id) + 1;
     const actions = sessionActions(
       session,
       pinned,
@@ -70,10 +87,7 @@ export function Sidebar(props: SidebarProps) {
         <ContextMenuTrigger>
           <div
             tabIndex={-1}
-            className={cn(
-              "group/row relative flex min-w-0 items-center rounded-lg px-1 outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-card",
-              props.selected === session.id && "bg-card",
-            )}
+            className="group/row relative flex min-w-0 items-center rounded-lg px-1 outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-hover"
           >
             <button
               onClick={() => props.onSelect(session.id)}
@@ -94,9 +108,6 @@ export function Sidebar(props: SidebarProps) {
               <span className="session-row-title min-w-0 flex-1 overflow-hidden whitespace-nowrap">
                 {session.title}
               </span>
-              {props.ctrl && shortcut > 0 && shortcut <= 9 ? (
-                <kbd className="font-mono text-ui-xs">⌃{shortcut}</kbd>
-              ) : null}
             </button>
             <div className="absolute right-1 flex items-center">
               <Tooltip content={t(pinned ? "app.unpin" : "app.pin")}>
@@ -146,7 +157,7 @@ export function Sidebar(props: SidebarProps) {
         <button
           onClick={() => toggle(id)}
           aria-expanded={!groups.includes(id)}
-          className="flex cursor-pointer active:bg-muted min-w-0 flex-1 items-center gap-1 py-1 min-h-7 text-left text-ui-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex cursor-pointer active:bg-muted min-w-0 flex-1 items-center gap-1 py-1 min-h-7 text-left text-ui-base text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {t(`app.${id}`)}
           <ChevronDown
@@ -266,7 +277,6 @@ export function Sidebar(props: SidebarProps) {
         >
           <Plus className="size-4" />
           {t("app.new-chat")}
-          <kbd className="ml-auto font-mono text-ui-xs">⌘N</kbd>
         </Button>
         <Tooltip content={t("app.search")}>
           <Button size="icon" variant="ghost" aria-label={t("app.search")} onClick={props.onSearch}>
@@ -278,8 +288,10 @@ export function Sidebar(props: SidebarProps) {
         decorative
         data-slot="separator"
         className="h-px shrink-0 mb-2 bg-(--layout-divider)"
+        style={{ opacity: scrolled ? 1 : 0 }}
       />
       <ScrollArea
+        ref={scrollArea}
         className="min-h-0 flex-1"
         viewportLabel={t("app.session-navigation")}
         // Prevent Radix's measuring table from adopting a long title's intrinsic width.

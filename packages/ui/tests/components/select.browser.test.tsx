@@ -35,6 +35,7 @@ test("Select options stay compact without the browser test runner's list reset",
     const options = Array.from(content.querySelectorAll<HTMLElement>("[role=option]"));
     expect(options).toHaveLength(2);
     for (const option of options) {
+      expect(frame.contentWindow!.getComputedStyle(option).transitionDuration).toBe("0s");
       expect(frame.contentWindow!.getComputedStyle(option.parentElement!).listStyleType).toBe(
         "none",
       );
