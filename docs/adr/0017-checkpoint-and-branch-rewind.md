@@ -6,6 +6,8 @@ status: accepted
 
 本决定的 main branch tip 与旧恢复引擎约定由新决定部分替代；真实用户输入锚点、文件备份范围和保留原历史继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。下文保留旧存储实现的历史决定；当前原生 fork 与文件恢复契约由 [Agent README](../../packages/agent/README.md#checkpoint-and-rewind)维护，实施边界见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
 
+Session Move 的移动事实与告知进度不随 Conversation Rewind 撤销；跨越最近移动的代码恢复范围由 [ADR-0040](0040-session-move-transcript-boundary.md) 部分替代。其他原生 fork、恢复、任务所有权和备份规则继续有效。
+
 ## 问题
 
 用户需要同时或分别撤回代码与对话；子代理和内部续跑也会修改文件。使用项目 Git 无法可靠覆盖未跟踪文件，还会影响用户已有工作区状态。

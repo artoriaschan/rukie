@@ -864,10 +864,12 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(4);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(5);
     for (const item of screen.getByRole("menuitem").all()) {
-      expect(getComputedStyle(item.element()).cursor).toBe("pointer");
-      expect(getComputedStyle(item.element().querySelector("svg")!).cursor).toBe("pointer");
+      const cursor =
+        item.element().getAttribute("aria-disabled") === "true" ? "not-allowed" : "pointer";
+      expect(getComputedStyle(item.element()).cursor).toBe(cursor);
+      expect(getComputedStyle(item.element().querySelector("svg")!).cursor).toBe(cursor);
     }
     expect(
       screen
@@ -900,11 +902,13 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(4);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(5);
     const menu = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
     expect(menu.querySelector('span[style*="transform"]')).toBeNull();
-    for (const item of screen.getByRole("menuitem").all())
-      expect(getComputedStyle(item.element()).cursor).toBe("pointer");
+    for (const item of screen.getByRole("menuitem").all()) {
+      const cursor = item.element().hasAttribute("disabled") ? "not-allowed" : "pointer";
+      expect(getComputedStyle(item.element()).cursor).toBe(cursor);
+    }
     const point = session.element().getBoundingClientRect();
     await expect
       .poll(() => Math.abs(menu.getBoundingClientRect().left - (point.left + 24)))
@@ -1072,15 +1076,18 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
       .toBeDisabled();
     const disabledContextArchive = screen.getByRole("menuitem", { name: "Archive", exact: true });
     expect(getComputedStyle(disabledContextArchive.element()).cursor).toBe("not-allowed");
-    const contextBounds = disabledContextArchive.element().getBoundingClientRect();
-    expect(
-      document
-        .elementFromPoint(
-          contextBounds.x + contextBounds.width / 2,
-          contextBounds.y + contextBounds.height / 2,
-        )
-        ?.closest("button"),
-    ).toBe(disabledContextArchive.element());
+    // The opening morph and ResizeObserver placement complete after the initial render.
+    await expect
+      .poll(() => {
+        const contextBounds = disabledContextArchive.element().getBoundingClientRect();
+        return document
+          .elementFromPoint(
+            contextBounds.x + contextBounds.width / 2,
+            contextBounds.y + contextBounds.height / 2,
+          )
+          ?.closest("button");
+      })
+      .toBe(disabledContextArchive.element());
     await disabledContextArchive.click({ force: true });
     await expect.element(disabledContextArchive).toBeVisible();
     await userEvent.keyboard("{Escape}");

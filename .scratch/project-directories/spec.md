@@ -120,14 +120,14 @@ Status: ready-for-agent
 
 ## ADR Coverage
 
-| 决定或修改                                                           | 归属                                                                    | 理由                                                                                        |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Session 的 cwd 可经 Session Move 改绑，移动记录写入 Transcript       | 新增 ADR（待编号）                                                      | 改变 Session“固定在一个工作目录”的语义，影响恢复、reminder 与回退，是长期取舍               |
-| Session 可带不改变 cwd 的附加目录，只贡献路径与 Project Instructions | 同上新增 ADR                                                            | 确定附加目录不参与配置合并与信任继承的边界                                                  |
-| 桌面端 Trusted Project 来自 Project 上的显式信任状态，按精确路径匹配 | 新增 ADR（待编号）；沿用 Trusted Project 由用户层决定的既有规则         | 信任来源从手写 settings 扩展为桌面端确认，且明确不采用子目录继承                            |
-| Project 多目录、信任状态与 Session Move 的持久化位置                 | 沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md) | Project 与信任属于桌面端组织信息，存于应用数据库；cwd 与移动记录仍只有 Session 存储一个来源 |
-| 未打开 Session 的移动只取租约改元数据                                | 沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md) | 与 `session.rename` 相同，遵守单写者租约，组织操作不启动恢复                                |
-| 目录列表、确认框与移动菜单样式                                       | 无需 ADR                                                                | 局部界面规则，由 DESIGN.md 维护                                                             |
+| 决定或修改                                                                       | 归属                                                                                                                                                                                                              | 理由                                                                                                 |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| SQLite Session Move 原地改绑 cwd、保留身份、以 Transcript 记录移动事实和告知进度 | 新增 [ADR-0040](../../docs/adr/0040-session-move-transcript-boundary.md)；沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)                                                                 | store 取得单写者租约并原子写入，不开启 Resume、不解析模型或凭据、不搬动文件；JSONL 拒绝移动          |
+| Run 原子告知最新移动及新环境；Conversation Rewind 不撤销移动；跨移动禁止代码恢复 | 新增 [ADR-0040](../../docs/adr/0040-session-move-transcript-boundary.md)，部分替代 [ADR-0017](../../docs/adr/0017-checkpoint-and-branch-rewind.md) 与 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md) | 明确持久化告知进度与代码恢复的安全边界；原生 fork、任务所有权、恢复和备份规则继续有效                |
+| 附加目录只贡献环境路径与各自 AGENTS.md，不合并可执行配置                         | 新增 [ADR-0039](../../docs/adr/0039-session-additional-directories.md)；沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                          | Frontend 每次提供目录集合，Session 保留一个 cwd；指令提醒存于 Transcript，Resume 可重建输入          |
+| 多目录 Project registry、主目录与信任状态；旧记录为未信任；应用数据根保留        | 新增 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)                                                                   | 组织信息保存在应用 SQLite；真实路径精确去重与冲突，嵌套目录可独立登记；切换主目录不移动旧 Session    |
+| 显式信任仅派生到打开 Session 的 settings，闲置配置重载不打断 Run                 | 新增 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md)                                                                | 确认先于创建或目标移动，不写回用户 settings；保留精确匹配，不继承父目录信任，主目录独占可执行配置    |
+| 三个会话菜单共用操作定义、目录列表、主目录操作与信任框、zh/en 文案               | 无需 ADR                                                                                                                                                                                                          | 使用既有 UI 分层与安装的 primitives，局部交互与菜单组合由 DESIGN.md 维护；不改变外部持久化或执行合同 |
 
 ## Further Notes
 
