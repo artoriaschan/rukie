@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 多目录 Project、显式信任与 Session Move
 
@@ -134,7 +134,7 @@ Status: claimed
 - 决策来源：2026-10-13 的设计访谈。共用 `workspace/` 参考 ZCode 的 `~/.zcode/workspace/default`；Codex 桌面端按对话生成目录的方案因位置、命名与信任误判问题未采用；Trusted Project 不采用 Claude Code 的父目录继承。
 - 现有 `project.add` 不做兼容，按 AGENTS.md 一次替换所有消费方。
 
-## Delivery Evidence
+## Delivery Evidence (initial handoff)
 
 - Implementation 01–04, acceptance 05 and all review corrections are integrated on `feat/project-directories`. Every ticket, merger, review and correction task used a fresh subagent; implementers used isolated worktrees.
 - Final Standards and Spec delta review has no actionable findings; initial README, canonical legacy ownership, same-Project Move and concurrent canonical creation findings are fixed. ADR Coverage is complete for 0039/0040/0041 and existing storage/trust/Rewind decisions.
@@ -142,3 +142,10 @@ Status: claimed
 - Implementation and local feature verification are resolved for PR review. CI for the latest PR commit and merge acceptance remain separate; no full local pass, CI pass or merge is claimed. Unresolved broad-run evidence prevents full acceptance claims and is preserved in ticket 05.
 
 - 2026-10-13 follow-up: user explicitly requests repair of both remaining TUI failures and successful local full acceptance plus latest-commit CI. Acceptance reopened; previous run/diagnosis facts remain. Every new diagnosis, implementation, review and integration uses a fresh subagent. Root coordinates verification in `/tmp/rukie-project-directories-evidence/tui-repair/verification.md`; do not rerun the aggregate until causal fixes and focused checks are complete.
+
+## TUI Acceptance Follow-up
+
+- Both remaining TUI failures were causally reproduced with controlled input/frame ordering. Ink now retains the painted press owner and local coordinates across selection repaint, rejecting removed/obscured owners, moved gestures and screen lifecycle changes. Fourteen public renderer cases lock down the behavior; the original Mixed and Folding assertions remain, with controlled renderer deadlines and actual Reporter completion.
+- Fresh two-axis review and cleanup-delta review have no remaining findings. The implementation is a local runtime correction under ADR-0013, documented in the renderer README; no new architectural decision is introduced.
+- One reviewed local full check passed: Bun3607/0, release included, desktop190/0, total3797/0, exit0 in558.262s. Original failures remain as historical evidence in05. All repair-owned worktrees/fixtures are cleaned.
+- Implementation and local full acceptance are resolved before final push. Final delivery still requires all applicable CI checks for the final PR commit to pass; post-push status is recorded in PR checks/description and the delivery reply under the tracker rules. No merge authorization is inferred.
