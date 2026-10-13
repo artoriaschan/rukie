@@ -1046,6 +1046,81 @@ test("models, selection, mode, pin and preferences are public and durable", asyn
   }
 }, 5000);
 
+test.each(["success", "failure"])(
+  "archive %s after the idle deadline still retires its unobserved Session",
+  async (outcome) => {
+    const owner = ownResources();
+    let clock: ReturnType<typeof FakeTimers.install> | undefined;
+    try {
+      const homeDir = await owner.acquire(
+        () => mkdtemp(join(tmpdir(), "rukie-archive-idle-")),
+        (directory) => rm(directory, { recursive: true, force: true }),
+      );
+      const fake = fakeModel([fauxAssistantMessage("done")]);
+      let expiredDuringDiscovery = false;
+      // Restore global time only after the owned server and its timers have closed.
+      owner.add(() => clock?.uninstall());
+      const server = await owner.acquire(
+        () =>
+          startServer({
+            homeDir,
+            sessionOptions: fake,
+            onHandshake: () => {},
+            onWarning: () => {
+              if (!clock || expiredDuringDiscovery) return;
+              // Public discovery diagnostics place the deadline inside archive's awaited work.
+              expiredDuringDiscovery = true;
+              clock.tick(1);
+              if (outcome === "failure") throw new Error("discovery diagnostic failed");
+            },
+          }),
+        (resource) => resource.close(),
+      );
+      const client = await connect(server, "app://rukie", owner);
+      const created = await client.command("session.create", { project: null, text: "hello" });
+      const sessionId = (created.result as { sessionId: string }).sessionId;
+      await client.next((message) => message.type === "result");
+      clock = FakeTimers.install({
+        now: Date.now(),
+        toFake: ["Date", "setTimeout", "clearTimeout"],
+      });
+      await client.command("session.unsubscribe", { sessionId });
+      const dataRoot = join(homeDir, "desktop-data");
+      const cwd = join(dataRoot, "workspace");
+      await clock.tickAsync(600000 - 1);
+      await expect(
+        createSession({ ...fake, homeDir, dataRoot, cwd, resumeId: sessionId }),
+      ).rejects.toMatchObject({ code: "session-busy" });
+      // Malformed external storage is reported through the public diagnostic callback.
+      const malformed = join(dataRoot, "sessions", "unreadable-fixture");
+      await mkdir(malformed);
+      await writeFile(join(malformed, "session.sqlite"), "not a SQLite database");
+      const archived = await client.command("session.archive", { sessionId });
+      if (outcome === "success") expect(archived.error).toBeUndefined();
+      else expect(archived.error).toEqual({ code: "internal" });
+      expect(expiredDuringDiscovery).toBe(true);
+      await rm(malformed, { recursive: true });
+      client.messages.length = 0;
+      await clock.tickAsync(600000 - 1);
+      await expect(
+        createSession({ ...fake, homeDir, dataRoot, cwd, resumeId: sessionId }),
+      ).rejects.toMatchObject({ code: "session-busy" });
+      clock.tick(1);
+      const retired = await client.next(
+        (message) => message.type === "sessions_changed" && message.closedSessionId === sessionId,
+      );
+      expect(retired.archived).toEqual(outcome === "success" ? [sessionId] : []);
+      const reopened = await owner.acquire(
+        () => createSession({ ...fake, homeDir, dataRoot, cwd, resumeId: sessionId }),
+        (session) => session.close(),
+      );
+      expect(reopened.id).toBe(sessionId);
+    } finally {
+      await owner.close();
+    }
+  },
+);
+
 test("idle unsubscribed Session releases its lease exactly at ten minutes", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-idle-wire-"));
   const fake = fakeModel([fauxAssistantMessage("done")]);

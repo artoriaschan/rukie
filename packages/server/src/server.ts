@@ -943,6 +943,8 @@ export async function startServer(options: ServerOptions) {
           return await executeCommand(command, socket);
         } finally {
           organizing.delete(id);
+          const session = sessions.get(id);
+          if (session) refreshIdle(session);
         }
       }
       sessionCommands.set(id, (sessionCommands.get(id) ?? 0) + 1);

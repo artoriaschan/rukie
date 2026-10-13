@@ -26,7 +26,7 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 历史订阅通过 Agent Core 的只读快照显示已提交 Transcript，包括跨进程持有 lease 的 Session。展示快照后，通过独立 host mutex 的立即事务探测当前占用，随即回滚并关闭，不写数据或取得 Session 执行权；忙时仍返回 `session_busy`，客户端保留只读与 busy 提示。探测仅反映当时状态，明确执行命令仍重新取得执行 lease。只读访问不恢复任务、调用 Hooks 或解密 MCP 配置，不提供实时事件或别的进程的权限回复。快照保留消息、原生工具状态、排队输入、Run Summaries 与 Todo/Plan/Goal/子代理目录；不重建别的进程的 Background Job 或子代理活动。
 
-无订阅且没有 Run、挂起权限请求、Queued Input、运行中 Background Job 或子代理的 Session，在持续空闲 10 分钟后关闭并释放 lease。进程收到 SIGTERM/SIGINT，先等待全部 Session abort，再释放 Effect runtime 和 Session、Job 进程组；调用方应等待 close 完成。SIGKILL 无法执行这些清理，孤儿 Job 不回收。
+无订阅且没有 Run、挂起权限请求、Queued Input、运行中 Background Job 或子代理的 Session，在持续空闲 10 分钟后关闭并释放 lease。归档或删除的准入保护结束后，无论成功或失败，仍由服务持有的空闲 Session 重新开始计时；已删除的 Session 不重新打开。进程收到 SIGTERM/SIGINT，先等待全部 Session abort，再释放 Effect runtime 和 Session、Job 进程组；调用方应等待 close 完成。SIGKILL 无法执行这些清理，孤儿 Job 不回收。
 
 应用库位于 `dataRoot/app.sqlite`，默认工作区位于同级 `workspace/`。应用写入使用事务及 WAL/FULL；失败不报告保存成功。Session 索引从数据根内各 Session 库的已提交元数据核对，不依赖项目注册表，发现不取得执行 lease、不恢复任务。损坏元数据记录 warning，不读取旧目录。添加项目需要绝对目录。
 
