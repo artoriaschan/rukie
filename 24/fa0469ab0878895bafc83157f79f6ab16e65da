@@ -1,0 +1,57 @@
+packages/ui/src/components/session-actions.tsx
+  s_aa5016c0b422e7::t_a93bb403f5c0c7 61
+packages/ui/src/components/sidebar.tsx
+  s_aa5016c0b422e7::t_1bcff525c6fbde 90,160
+packages/ui/tests/components/conversation-dock.browser.test.tsx
+  s_aa5016c0b422e7::t_7457032bb12aff 39,81,85
+  s_aa5016c0b422e7::t_336f69dbc07db7 60
+.scratch/session-sidebar/spec.md
+  s_aa5016c0b422e7::t_779c380cf7c3d8 78,84
+packages/ui/tests/app/shell.browser.test.tsx
+  s_aa5016c0b422e7::t_69e877b583fa8b 90-92
+  s_aa5016c0b422e7::t_e180e523fbde3c 897
+  s_aa5016c0b422e7::t_a51329f1e0c811 93-95
+  s_aa5016c0b422e7::t_a26ea98f8cc7d1 921
+packages/ui/src/lib/app-copy.ts
+  s_aa5016c0b422e7::t_ed6eaac74d6113 29-31,225-227
+packages/ui/tests/app/sidebar.browser.test.tsx
+  s_aa5016c0b422e7::t_a2c6a5f2161dc4 1,3-8,10-20,24,26-65
+  s_aa5016c0b422e7::t_a8d6f9a73c8c37 25
+  s_aa5016c0b422e7::t_e18da6bdbb767a 2,9,21-23
+packages/ui/tests/app/session-search.browser.test.tsx
+  s_aa5016c0b422e7::t_0dfb82579fe926 54-57
+packages/ui/tests/components/select.browser.test.tsx
+  s_aa5016c0b422e7::t_0dfb82579fe926 38
+packages/ui/src/components/motion/context-menu.tsx
+  s_aa5016c0b422e7::t_7b78db711b4a4d 585
+DESIGN.md
+  s_aa5016c0b422e7::t_8a1e2c0daa0f13 166,249-250,254,355,357
+packages/ui/src/components/motion/command-palette.tsx
+  s_aa5016c0b422e7::t_69e877b583fa8b 352-354
+  s_aa5016c0b422e7::t_7b78db711b4a4d 351
+.scratch/session-sidebar/issues/06-acceptance.md
+  s_aa5016c0b422e7::t_a02baa8805b4b5 62-63
+packages/ui/src/components/motion/select.tsx
+  s_aa5016c0b422e7::t_7b78db711b4a4d 354
+packages/ui/tests/app/model-services.browser.test.tsx
+  s_aa5016c0b422e7::t_5e00eb6adcd126 793
+packages/ui/tests/app/transcript.browser.test.tsx
+  s_aa5016c0b422e7::t_7457032bb12aff 646,676,774,784,794,1559,1561
+  s_aa5016c0b422e7::t_69e877b583fa8b 651
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "24fa0469ab0878895bafc83157f79f6ab16e65da",
+  "prompts": {},
+  "sessions": {
+    "s_aa5016c0b422e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13344-369d-7633-a1db-f9b9b5115c54",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
