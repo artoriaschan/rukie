@@ -118,6 +118,14 @@ _Avoid_: model route, active model, model switch（指动作时说"切换 Model 
 请求模型时要求的推理强度档位，从 `off` 到 `max`。模型不支持 reasoning 时明确强度档位不可用；模型不支持所选档位时降到它支持的下一个较低档，没有更低档时取它支持的最低档，从不升档。`automatic` 是不指定推理等级、开关或预算的选择，由供应商决定，不参与强度降档，也不等同明确关闭；它作为 Model Selection 保存、恢复和回退。
 _Avoid_: reasoning effort, effort, thinking budget
 
+**Model Service**:
+用户在桌面端配置的一个模型端点：名称、协议、Base URL、凭据和它提供的模型。Model Selection 中的 `provider` 指它；它只属于用户，项目不能定义。可整体停用，停用后它的模型不可选择，各模型自身的启用状态保持不变。
+_Avoid_: provider config, endpoint
+
+**Provider Preset**:
+Rukie 内置的一份供应商接入资料，作为创建 Model Service 的起点。创建出的 Model Service 归用户所有，之后与预设没有执行关联；预设随版本更新不会改变已创建的服务。
+_Avoid_: template, catalog
+
 ### 给模型的上下文
 
 **System Prompt**:
