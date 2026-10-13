@@ -1,14 +1,25 @@
 # 04：桌面端“移动到项目”
 
-Status: ready-for-agent
+Status: claimed
 
 Blocked by: 02, 03
 
 **What to build:** 按 [spec](../spec.md#session-move) 新增 `session.move` 并在会话菜单三个入口提供“移动到项目”。
 
-- [ ] `session.move { sessionId, projectId }`：目标为已登记 Project，cwd 改为其主目录；拒绝移回“对话”、目标主目录等于当前 cwd、执行中或有挂起交互；租约占用返回 `session_busy`
-- [ ] 已打开且空闲的 Session 先关闭，再调用 02 的移动接口；未打开的 Session 不产生 Run 或 Resume；`sessions_changed` 推送新 cwd
-- [ ] 会话操作单一定义新增“移动到项目”子菜单，列出除当前所属外的 Project；右键、行内更多、标题栏一致；执行中或等待确认时禁用
-- [ ] 目标 Project 未信任时先显示信任确认框，确认后发送 `project.trust` 再移动；取消不移动
-- [ ] 失败（会话被占用等）显示用户可见错误；zh 与 en 同步
-- [ ] 测试：服务端 wire 覆盖准入、打开与未打开两种 Session、分组变化；UI browser 覆盖三个入口一致、禁用、未信任先确认、移动后分组变化
+- [x] `session.move { sessionId, projectId }`：目标为已登记 Project，cwd 改为其主目录；拒绝移回“对话”、目标主目录等于当前 cwd、执行中或有挂起交互；租约占用返回 `session_busy`
+- [x] 已打开且空闲的 Session 先关闭，再调用 02 的移动接口；未打开的 Session 不产生 Run 或 Resume；`sessions_changed` 推送新 cwd
+- [x] 会话操作单一定义新增“移动到项目”子菜单，列出除当前所属外的 Project；右键、行内更多、标题栏一致；执行中或等待确认时禁用
+- [x] 目标 Project 未信任时先显示信任确认框，确认后发送 `project.trust` 再移动；取消不移动
+- [x] 失败（会话被占用等）显示用户可见错误；zh 与 en 同步
+- [x] 测试：服务端 wire 覆盖准入、打开与未打开两种 Session、分组变化；UI browser 覆盖三个入口一致、禁用、未信任先确认、移动后分组变化
+
+## Comments
+
+- 2026-10-13: fresh implementer, `feat/project-directories-04`, baseline `64aff96c`; approved seams server wire and App fake-wire Chromium. Reuse 03 layout baseline (4/4 Chromium, <=1px) and unchanged shell geometry; changes confined to menu overlays and existing ProjectTrust composition. Focused acceptance owner 04; aggregate/static/package/manual acceptance owner 05.
+
+- Implementation: public wire `session.move` accepts a registered Project and rejects unchanged cwd, nonexistent ids and conversation/null targets. The same organizing reservation as archive/delete excludes concurrent prompts before the first await. Running, background work, pending interactions and foreign writer leases reject with `session_busy`. An idle opened owner closes and drops observation/subscription ownership before public Core `moveSession`; unopened storage never schedules Resume, Run or model resolution. Organization flags and title remain unchanged; `sessions_changed` publishes cwd. Selected UI Sessions resubscribe through the existing single socket after moving.
+- UI: one `sessionActions` definition feeds right-click, row-more and title-bar menus; targets exclude membership in any current Project directory. All targets also disable if execution/waiting begins after opening. Reused installed dropdown Sub and ProjectTrust. The installed beUI context menu has no Sub export: nested targets compose existing items, with ArrowRight/Left, Escape, focus, accessible nested menu and ResizeObserver viewport clamp. DESIGN records this local composition and the move-specific trust cancellation rule. Untrusted targets require `project.trust` completion before move; cancellation sends neither command; errors stay visible with existing localized wire-error presentation and new zh/en move labels. No dependencies or native launch.
+- Red/green: initial missing worktree dependencies blocked collection; frozen install passed (888 packages, 1.20s). Wire reproducer red 0/1 (278ms, `invalid_command`), green 1/1 (246ms); canonical macOS realpath fixture corrected. Chromium first public three-entry test red absent move entry 0/1 (15.88s), green 1/1 (2.68s). Expanded UI initial failures were full-string matcher expectations and status-bearing accessible names; corrected fixtures/assertions, focused remaining 2/2 passed (3.82s). No production behavior was weakened for expectations.
+- Server acceptance: `bun test packages/server/tests/server.test.ts` 49/49 passed, 3.00s, Bun/real WS/SQLite. Covers opened and unopened movement, crashed pending work untouched/no model calls, foreign lease preservation, same-cwd/null/missing errors, new cwd publications and next prompt environment/reminder, plus existing running/waiting admission tests extended for move. Existing server file scope was invalidated by shared dispatch admission change. Later test-only concurrent move/prompt assertion: `bun test packages/server/tests/server.test.ts -t 'session.move closes'` 1/1 passed, 284ms; no production changes invalidate the 49-case evidence. New Core-wire cases each <300ms; crash test child process timing is required native-store recovery evidence.
+- Chromium acceptance: from `packages/ui`, `node ../../node_modules/vitest/vitest.mjs run --project ui-browser tests/app/session-move.browser.test.tsx tests/app/layout.browser.test.tsx` 9/9 passed, 6.85s. Three menus, excludes secondary-dir membership, unchanged titlebar/main/navigation geometry (<=1px), regroup, trust cancel/confirm ordering, visible busy error, both status states, narrow Dark keyboard and viewport fit. After review added target-disabled-on-transition guard and stronger target-group assertion; only affected move file rerun, 5/5 passed 7.58s (`04-ui-final-incremental.log`); shell layout evidence remains valid (no shell/primitive geometry change in incremental diff).
+- Node: from `packages/ui`, `node ../../node_modules/vitest/vitest.mjs run --project ui-node tests/client/wire.test.ts tests/store/desktop.test.ts` 17/17 passed, 321ms. Static focused oxlint and `bunx --no tsc -b` exit 0; scoped oxfmt passed. `bun run check:docs` passed (150 Markdown files); `git diff --check` passed. Logs under `/tmp/rukie-project-directories-evidence/04-*`. Aggregate static, package acceptance and final isolated agent-browser acceptance are owned by 05 and are not claimed here. ADR coverage: follows implemented ADR-0040 Session Move store contract and ADR-0041 desktop Project trust; menu composition is a local DESIGN rule and needs no new ADR. Ticket remains claimed pending final review/integration.

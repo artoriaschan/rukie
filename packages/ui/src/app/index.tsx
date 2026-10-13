@@ -314,6 +314,24 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     safe(() => client.request({ type: pinned ? "session.pin" : "session.unpin", sessionId: id }));
   const archive = (sessionId: string) =>
     safe(() => client.request({ type: "session.archive", sessionId }));
+  const move = (session: WireSessionSummary, project: WireProject) => {
+    const perform = async () => {
+      await client.request({ type: "session.move", sessionId: session.id, projectId: project.id });
+      if (store.getState().selected === session.id) await client.subscribe(session.id);
+    };
+    if (project.trusted) safe(perform);
+    else
+      setTrust({
+        project,
+        creating: false,
+        confirm: async () => {
+          await client.request({ type: "project.trust", projectId: project.id });
+          await perform();
+          setTrust(null);
+        },
+        cancel: () => setTrust(null),
+      });
+  };
   const preferences = (preferences: WirePreferences) =>
     safe(() => client.request({ type: "preferences.set", preferences }));
   const openSearch = () => {
@@ -809,6 +827,8 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                         setRenaming,
                         archive,
                         setDeleting,
+                        state.projects,
+                        move,
                       )}
                     />
                     <Menu.DropdownMenuSub>
@@ -926,6 +946,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   onRename={setRenaming}
                   onArchive={archive}
                   onDelete={setDeleting}
+                  onMove={move}
                   onPreferences={preferences}
                 />
               </div>

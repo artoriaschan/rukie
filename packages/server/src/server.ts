@@ -11,6 +11,7 @@ import {
   listSessions,
   renameSessionTitle,
   deleteSession,
+  moveSession,
   discoverSqliteSessions,
   isSqliteSessionBusy,
   readSessionSnapshot,
@@ -905,6 +906,44 @@ export async function startServer(options: ServerOptions) {
           await changed();
           return { mode: command.mode };
         }
+        case "session.move": {
+          const project = registry.projects.find((item) => item.id === command.projectId);
+          if (!project) throw new CommandError("project_not_found");
+          const summary = (await summaries()).find((item) => item.id === command.sessionId);
+          if (!summary) throw new CommandError("session_not_found");
+          if (summary.cwd === project.primary) throw new CommandError("invalid_command");
+          const current = sessions.get(command.sessionId);
+          if (
+            openings.has(command.sessionId) ||
+            (current && executing(current)) ||
+            [...pending.values()].some((item) => item.sessionId === command.sessionId)
+          )
+            throw new CommandError("session_busy");
+          if (current) {
+            clearTimeout(idleTimers.get(current.id));
+            idleTimers.delete(current.id);
+            await current.close();
+            observations.get(current.id)?.();
+            observations.delete(current.id);
+            sessions.delete(current.id);
+            openedTrust.delete(current.id);
+            children.delete(current.id);
+            admissions.delete(current.id);
+            for (const subscribed of subscriptions.values()) {
+              subscribed.get(current.id)?.();
+              subscribed.delete(current.id);
+            }
+          }
+          await moveSession({
+            cwd: summary.cwd,
+            homeDir: options.homeDir,
+            dataRoot: options.dataRoot,
+            id: summary.id,
+            newCwd: project.primary,
+          });
+          await changed();
+          return {};
+        }
         case "session.delete": {
           const summary = (await summaries()).find((session) => session.id === command.sessionId);
           if (!summary) throw new CommandError("session_not_found");
@@ -1015,7 +1054,11 @@ export async function startServer(options: ServerOptions) {
       if (!("sessionId" in command)) return executeCommand(command, socket);
       const id = command.sessionId;
       if (organizing.has(id)) throw new CommandError("session_busy");
-      if (command.type === "session.delete" || command.type === "session.archive") {
+      if (
+        command.type === "session.delete" ||
+        command.type === "session.archive" ||
+        command.type === "session.move"
+      ) {
         if ((sessionCommands.get(id) ?? 0) > 0) throw new CommandError("session_busy");
         organizing.add(id);
         try {

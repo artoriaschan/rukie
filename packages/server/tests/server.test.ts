@@ -2303,6 +2303,11 @@ test("archive refuses running and waiting Sessions but accepts a subscribed idle
     );
     owner.add(() => proceed.resolve());
     const client = await connect(server, "app://rukie", owner);
+    const moveDirectory = join(homeDir, "move-target");
+    await mkdir(moveDirectory);
+    const moveProject = (
+      await client.command("project.create", { directories: [moveDirectory], trusted: true })
+    ).result as { id: string };
     const created = await client.command("session.create", { project: null, text: "write" });
     const sessionId = (created.result as { sessionId: string }).sessionId;
     await entered.promise;
@@ -2312,6 +2317,9 @@ test("archive refuses running and waiting Sessions but accepts a subscribed idle
     expect((await client.command("session.delete", { sessionId })).error).toEqual({
       code: "session_busy",
     });
+    expect(
+      (await client.command("session.move", { sessionId, projectId: moveProject.id })).error,
+    ).toEqual({ code: "session_busy" });
     proceed.resolve();
     const asked = await client.next((message) => message.type === "interaction_requested");
     expect((await client.command("session.archive", { sessionId })).error).toEqual({
@@ -2320,6 +2328,9 @@ test("archive refuses running and waiting Sessions but accepts a subscribed idle
     expect((await client.command("session.delete", { sessionId })).error).toEqual({
       code: "session_busy",
     });
+    expect(
+      (await client.command("session.move", { sessionId, projectId: moveProject.id })).error,
+    ).toEqual({ code: "session_busy" });
     expect((await client.command("session.pin", { sessionId })).error).toBeUndefined();
     await client.command("interaction.reply", { identity: asked.identity, reply: "allow" });
     await client.next((message) => message.type === "result");
@@ -2694,6 +2705,177 @@ test("archive reserves command admission before committing and refuses a concurr
       (resource) => resource.close(),
     );
     expect(await database.registry()).toMatchObject({ archived: [sessionId] });
+  } finally {
+    await owner.close();
+  }
+});
+
+test("session.move preserves an unopened Session and publishes its new Project cwd without execution", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      async () => realpath(await mkdtemp(join(tmpdir(), "rukie-move-wire-"))),
+      (dir) => rm(dir, { recursive: true, force: true }),
+    );
+    const dataRoot = join(homeDir, "desktop-data");
+    const target = join(homeDir, "target");
+    await mkdir(target);
+    const history = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot,
+          cwd: homeDir,
+          ...fakeModel([fauxAssistantMessage("history")]),
+        }),
+      (session) => session.close(),
+    );
+    await history.run("original");
+    await history.rename("Preserved title");
+    await history.close();
+    const before = await readSessionSnapshot({ homeDir, dataRoot, cwd: homeDir, id: history.id });
+    const execution = fakeModel([fauxAssistantMessage("must not run")]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: execution, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", { directories: [target], trusted: true })
+    ).result as { id: string };
+    await client.command("session.pin", { sessionId: history.id });
+    client.messages.length = 0;
+    expect(
+      (await client.command("session.move", { sessionId: history.id, projectId: project.id }))
+        .error,
+    ).toBeUndefined();
+    const changed = await client.next((message) => message.type === "sessions_changed");
+    expect(changed).toMatchObject({
+      sessions: [
+        expect.objectContaining({ id: history.id, cwd: target, title: "Preserved title" }),
+      ],
+      pinned: [history.id],
+    });
+    expect(
+      (await readSessionSnapshot({ homeDir, dataRoot, cwd: target, id: history.id })).messages,
+    ).toEqual(before.messages);
+    expect(execution.contexts).toHaveLength(0);
+    expect(
+      client.messages.some(
+        (message) =>
+          message.type === "run_start" ||
+          message.type === "result" ||
+          message.type === "session_state",
+      ),
+    ).toBe(false);
+    expect(
+      (await client.command("session.move", { sessionId: history.id, projectId: project.id }))
+        .error,
+    ).toEqual({ code: "invalid_command" });
+    expect(
+      (await client.command("session.move", { sessionId: history.id, projectId: "missing" })).error,
+    ).toEqual({ code: "project_not_found" });
+    expect(
+      (await client.command("session.move", { sessionId: "missing", projectId: project.id })).error,
+    ).toEqual({ code: "session_not_found" });
+    expect(
+      (await client.command("session.move", { sessionId: history.id, projectId: null })).error,
+    ).toEqual({ code: "invalid_command" });
+  } finally {
+    await owner.close();
+  }
+});
+
+test("session.move closes an idle owner and the next prompt executes in the target directory", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      async () => realpath(await mkdtemp(join(tmpdir(), "rukie-live-move-"))),
+      (dir) => rm(dir, { recursive: true, force: true }),
+    );
+    const target = join(homeDir, "target");
+    await mkdir(target);
+    const execution = fakeModel([fauxAssistantMessage("before"), fauxAssistantMessage("after")]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: execution, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", { directories: [target], trusted: true })
+    ).result as { id: string };
+    const created = (await client.command("session.create", { project: null, text: "hello" }))
+      .result as { sessionId: string };
+    const sessionId = created.sessionId;
+    await client.next((message) => message.type === "result");
+    const [moved, concurrent] = await Promise.all([
+      client.command("session.move", { sessionId, projectId: project.id }),
+      client.command("prompt", { sessionId, text: "must not execute while moving" }),
+    ]);
+    expect(moved.error).toBeUndefined();
+    expect(concurrent.error).toEqual({ code: "session_busy" });
+    expect(execution.contexts).toHaveLength(1);
+    // Subscription is history-only; only a prompt may resume execution at the new cwd.
+    expect((await client.command("session.subscribe", { sessionId })).error).toBeUndefined();
+    expect(execution.contexts).toHaveLength(1);
+    client.messages.length = 0;
+    expect((await client.command("prompt", { sessionId, text: "continue" })).error).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    expect(JSON.stringify(execution.contexts[1]?.messages)).toContain(target);
+    expect(JSON.stringify(execution.contexts[1]?.messages)).toContain("Working directory changed");
+    expect((await client.command("sessions.list")).result).toEqual([
+      expect.objectContaining({ id: sessionId, cwd: target }),
+    ]);
+  } finally {
+    await owner.close();
+  }
+});
+
+test("session.move rejects an external writer and leaves pending unopened work untouched", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      async () => realpath(await mkdtemp(join(tmpdir(), "rukie-busy-move-"))),
+      (dir) => rm(dir, { recursive: true, force: true }),
+    );
+    const dataRoot = join(homeDir, "desktop-data");
+    const target = join(homeDir, "target");
+    await mkdir(target);
+    const crashed = await crashUnsafeEffect(homeDir, true, { dataRoot });
+    const options = { homeDir, dataRoot, cwd: homeDir, id: crashed.sessionId };
+    const before = await readSessionSnapshot(options);
+    const execution = fakeModel([fauxAssistantMessage("must not recover")]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: execution, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", { directories: [target], trusted: true })
+    ).result as { id: string };
+    const occupied = await owner.acquire(
+      () => createSession({ homeDir, dataRoot, cwd: homeDir, ...fakeModel([]) }),
+      (resource) => resource.close(),
+    );
+    expect(
+      (await client.command("session.move", { sessionId: occupied.id, projectId: project.id }))
+        .error,
+    ).toEqual({ code: "session_busy" });
+    expect((await client.command("sessions.list")).result).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: occupied.id, cwd: homeDir })]),
+    );
+    expect(
+      (
+        await client.command("session.move", {
+          sessionId: crashed.sessionId,
+          projectId: project.id,
+        })
+      ).error,
+    ).toBeUndefined();
+    const after = await readSessionSnapshot({ ...options, cwd: target });
+    expect(after.messages).toEqual(before.messages);
+    expect(after.inbox).toEqual(before.inbox);
+    expect(execution.contexts).toHaveLength(0);
   } finally {
     await owner.close();
   }
