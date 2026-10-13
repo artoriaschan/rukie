@@ -1,0 +1,35 @@
+.scratch/session-sidebar/issues/06-acceptance.md
+  s_43306de4f70666::t_13b204f51759a5 1-13
+.scratch/session-sidebar/issues/05-search-overlay.md
+  s_43306de4f70666::t_d2c1030e08666c 1-16
+CONTEXT.md
+  s_43306de4f70666::t_e0dc6f0a62efb0 97-104
+.scratch/session-sidebar/issues/02-rename-session.md
+  s_43306de4f70666::t_9de28271af8159 1-14
+.scratch/session-sidebar/issues/03-archive-session.md
+  s_43306de4f70666::t_1f40714fdd440b 1-15
+.scratch/session-sidebar/spec.md
+  s_43306de4f70666::t_74e0f8f5ce9b14 149-154
+  s_43306de4f70666::t_18c39579a699bd 70-148,155-159
+  s_43306de4f70666::t_b705762b1684d2 1-69
+.scratch/session-sidebar/issues/04-delete-session.md
+  s_43306de4f70666::t_319e94777f170a 1-14
+.scratch/session-sidebar/issues/01-sidebar-categories.md
+  s_43306de4f70666::t_351d75efb01cc8 1-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "e2e7da811ffddad9224a76a58b55dbaa8644e7aa",
+  "prompts": {},
+  "sessions": {
+    "s_43306de4f70666": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_e8ckd2wjo2f2",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
