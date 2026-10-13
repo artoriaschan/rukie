@@ -245,15 +245,12 @@
   height: 14px;
 }
 .model-services-catalog {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+  padding: 10px;
 }
-.model-services-catalog > button:not(:first-child):not(.model-services-custom-tile) {
-  width: 298px;
-  max-width: 100%;
-  height: 56px;
-  justify-content: flex-start;
+.model-services-catalog-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 .model-services-modal {
   color: var(--foreground);
@@ -603,15 +600,62 @@
   min-width: 16px;
   padding: 0;
 }
-.model-services-catalog > .model-services-custom-tile {
-  height: 44px;
-  width: 298px;
-  max-width: 100%;
+.model-services-catalog-cards > .model-services-catalog-tile {
+  height: 68px;
+  min-width: 0;
+  width: 100%;
   border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--surface);
-  padding: 0 12px 0 16px;
-  gap: 16px;
-  font-weight: 400;
+  padding: 0 18px;
+  gap: 14px;
+  font-weight: 500;
+  font-size: var(--text-ui-lg);
+  justify-content: flex-start;
+}
+.model-services-catalog-tile:not(:disabled),
+.model-services-catalog-tile:not(:disabled) * {
+  cursor: pointer;
+}
+.model-services-catalog-tile:disabled,
+.model-services-catalog-tile:disabled * {
+  cursor: not-allowed;
+}
+:root:not(.dark) .model-services-catalog-tile {
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+}
+.model-services-catalog-cards > .model-services-catalog-tile:hover:not(:disabled) {
+  background: var(--secondary);
+}
+.model-services-catalog-label {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.4;
+}
+.model-services-custom-icon,
+.model-services-preset-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+.model-services-custom-icon {
+  border-radius: 8px;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+.model-services-catalog-tile > svg {
+  color: var(--foreground);
+  opacity: 0.3;
+}
+@media (max-width: 640px) {
+  .model-services-catalog-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .model-services-model-row .font-mono {
   font-family: var(--font-mono);
@@ -863,7 +907,8 @@
   min-height: 28px;
 }
 .model-services-catalog-heading {
-  margin-bottom: 16px;
+  height: 28px;
+  margin-bottom: 24px;
 }
 .model-services-model-modal > div {
   padding: 0;
