@@ -117,12 +117,12 @@ test("sidebar searches projects, selects a welcome target and creates a Session 
       .element(screen.getByRole("button", { name: "New chat", exact: true }))
       .toBeVisible();
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
-    await screen.getByRole("button", { name: "Search sessions", exact: true }).click();
+    await screen.getByRole("button", { name: "Search chats", exact: true }).click();
     await userEvent.keyboard("Project");
     await expect.element(screen.getByRole("option", { name: /Fix compiler/ })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await expect
-      .element(screen.getByRole("button", { name: "Search sessions", exact: true }))
+      .element(screen.getByRole("button", { name: "Search chats", exact: true }))
       .toHaveFocus();
     await screen.getByRole("button", { name: "Workspace", exact: true }).click();
     await screen.getByRole("menuitem", { name: "Project", exact: true }).click();
@@ -159,7 +159,7 @@ test("search is a modal keyboard surface and restores focus after selecting with
     />,
   );
   try {
-    const trigger = screen.getByRole("button", { name: "Search sessions", exact: true });
+    const trigger = screen.getByRole("button", { name: "Search chats", exact: true });
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
     await trigger.click();
     const input = screen.getByRole("combobox");
@@ -167,7 +167,7 @@ test("search is a modal keyboard surface and restores focus after selecting with
     await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
     expect(
       screen
-        .getByRole("dialog", { name: "Command palette" })
+        .getByRole("dialog", { name: "Search chats" })
         .element()
         .contains(document.activeElement),
     ).toBe(true);
@@ -816,7 +816,7 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     expect(getComputedStyle(more.element()).opacity).toBe("0");
     await session.hover();
     expect(getComputedStyle(more.element()).opacity).toBe("1");
-    await screen.getByRole("button", { name: "Search sessions", exact: true }).hover();
+    await screen.getByRole("button", { name: "Search chats", exact: true }).hover();
     session.element().focus();
     expect(getComputedStyle(more.element()).opacity).toBe("1");
     await more.click();
@@ -912,7 +912,7 @@ test("archive menu hides a current Session from sidebar and search and returns t
     await expect
       .element(screen.getByRole("region", { name: "Pinned", exact: true }))
       .not.toBeInTheDocument();
-    await screen.getByRole("button", { name: "Search sessions", exact: true }).click();
+    await screen.getByRole("button", { name: "Search chats", exact: true }).click();
     await expect.element(screen.getByRole("option", { name: /Explore ideas/ })).toBeVisible();
     await expect
       .element(screen.getByRole("option", { name: /Fix compiler/ }))

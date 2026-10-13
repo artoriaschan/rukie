@@ -254,6 +254,12 @@ Default controls and content are opaque, neutral surfaces. Existing glass/neon c
 - Under `prefers-reduced-motion`, remove translation, scale, height animation, shimmer, marquee, and spin. Preserve state copy and static glyphs; an opacity transition may last at most 120ms.
 - Do not animate every streamed token or every row on scroll. Animation must not change layout geometry needed by virtualization or scrollbar mapping.
 
+### Search overlay
+
+The C25 search overlay is a centered `popover` surface with `popover-border`, `shadow-md`, a 520px maximum width and a 20px shell radius. It clamps to viewport width and height minus 32px. Its input stays at the top, chat results scroll in a bounded A13 ScrollArea, and the Quick actions group remains below that viewport. At the default text size, chat and action rows target 31px minimum height; group labels and right-aligned Project names use `text-ui-caption`. Chat rows reserve a 12px status column for a Running glyph and omit an idle icon; quick actions use 16px icons and 12px row radius. The shell and these rows form a dedicated role rather than changing ordinary dialog or menu geometry.
+
+Opening and closing use scale 0.98 to 1 plus opacity, with a 160ms ease-out transition and no translation. Under `prefers-reduced-motion`, the panel, backdrop and active-row highlight switch directly with zero transition duration; the Running glyph remains static. Exit releases focus and pointer interaction immediately through PresenceGate. Closing restores the search trigger; a quick action that opens another dialog transfers focus after the search overlay releases it.
+
 ## Components and states
 
 Component sourcing (existing → beUI → shadcn/ui → dedicated libraries → custom) remains defined in [AGENTS.md](AGENTS.md#ui-components). Every source follows the same compact geometry, semantic palette, typography, radius, and localization rules.

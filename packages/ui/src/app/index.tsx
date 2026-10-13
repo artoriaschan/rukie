@@ -13,6 +13,7 @@ import {
   Home,
   ListTree,
   MessageSquare,
+  Plus,
   PanelLeft,
   Ellipsis,
   WifiOff,
@@ -178,12 +179,24 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       ? { provider: catalogDefault.providerId, modelId: catalogDefault.id }
       : undefined);
   const [sending, setSending] = useState(false);
-  const opener = useRef<HTMLElement | null>(null);
+  const pathOpener = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    // Modal cleanup runs before this effect. Restoring inside closePath would
+    // still be intercepted by the folder dialog's focus trap.
+    if (!pathOpen) pathOpener.current?.focus();
+  }, [pathOpen]);
   const recent = useMemo(
     () => recentSessions(state).filter((session) => !state.archived.includes(session.id)),
     [state.sessions, state.preferences, state.archived],
   );
   const current = state.sessions.find((session) => session.id === state.selected);
+  const searchSessions = useMemo(
+    () =>
+      state.sessions
+        .filter((session) => !state.archived.includes(session.id))
+        .toSorted((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)),
+    [state.sessions, state.archived],
+  );
   const view = state.selected ? (state.views[state.selected] ?? emptyView) : emptyView;
   const targetProject = state.projects.find((project) => project.id === state.target);
   const currentProject = state.projects.find((project) => project.path === current?.cwd);
@@ -248,15 +261,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const preferences = (preferences: WirePreferences) =>
     safe(() => client.request({ type: "preferences.set", preferences }));
   const openSearch = () => {
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSearch(true);
   };
   const changeSearch = (open: boolean) => {
-    if (open && !search)
-      opener.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSearch(open);
-    if (!open) opener.current?.focus();
   };
   useEffect(() => {
     const offMessages = client.subscribeMessages((message) => {
@@ -465,12 +473,12 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         return;
       }
     }
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    pathOpener.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPathOpen(true);
   };
   const closePath = () => {
     setPathOpen(false);
-    opener.current?.focus();
   };
   const markdown = () =>
     view.transcript?.committed
@@ -890,27 +898,38 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         open={search}
         onOpenChange={changeSearch}
         placeholder={t("app.search")}
-        emptyLimit={8}
-        items={recent.map((session) => ({
-          id: session.id,
-          label: session.title,
-          group: t("app.conversations"),
-          keywords: [
-            state.projects.find((project) => project.path === session.cwd)?.name ??
-              t("app.conversations"),
-          ],
-          icon: state.projects.some((project) => project.path === session.cwd)
-            ? Folder
-            : MessageSquare,
-          badge: (
-            <span className="text-ui-xs text-muted-foreground">
-              {state.projects.find((project) => project.path === session.cwd)?.name ??
-                t("app.conversations")}{" "}
-              · {new Date(session.updatedAt).toLocaleDateString()}
-            </span>
-          ),
-          onSelect: () => safe(() => select(session.id)),
-        }))}
+        items={[
+          ...searchSessions.map((session) => ({
+            id: session.id,
+            label: session.title,
+            group: t("app.chats"),
+            keywords: [state.projects.find((project) => project.path === session.cwd)?.name ?? ""],
+            status: session.running ? (
+              <LoaderCircle
+                aria-label={t("app.running")}
+                className="size-3 animate-spin motion-reduce:animate-none"
+              />
+            ) : undefined,
+            badge: state.projects.find((project) => project.path === session.cwd)?.name,
+            onSelect: () => safe(() => select(session.id)),
+          })),
+          {
+            id: "action-new-chat",
+            label: t("app.new-chat"),
+            group: t("app.quick-actions"),
+            section: "actions",
+            icon: Plus,
+            onSelect: () => newChat(null),
+          },
+          {
+            id: "action-open-folder",
+            label: t("app.open-folder"),
+            group: t("app.quick-actions"),
+            section: "actions",
+            icon: Folder,
+            onSelect: () => safe(addProject),
+          },
+        ]}
       />
       <MorphingModal
         label={t("app.add-project")}

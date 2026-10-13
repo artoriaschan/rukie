@@ -20,6 +20,8 @@ wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `
 
 ⌘N 新建对话，⌘K / Ctrl+K 打开搜索，⌃1–⌃9 按当前未归档 Session 的排序选择 Session，⌥⌘P 置顶或取消置顶。分组折叠、显示与排序通过 `preferences.set` 保存。输入框 Enter 发送、Shift+Enter 换行；输入法组合中的 Enter 不发送。纯图标控件带 tooltip 和可访问名称。
 
+搜索聊天浮层沿用 CommandPalette，聊天结果列出全部未归档 Session，独立按更新时间降序排列，匹配 Session Title 和 Project 名称；右侧仅显示所属 Project，执行中的 Session 显示 Running 图标。结果在 A13 ScrollArea 内滚动，快捷操作固定在其下方，提供新聊天与打开文件夹。方向键跨两个分组移动，Enter 执行，Esc 或点击背景关闭并恢复搜索入口焦点；打开文件夹沿用添加项目流程，并在搜索释放焦点后交给文件夹选择器或路径对话框。浮层几何与直接切换的减少动态效果规则见 [DESIGN.md](../../DESIGN.md#search-overlay)。
+
 store 严格校验 `sessions_changed.archived` 的 Session id 列表，并保留完整 Session 摘要；侧栏、搜索与数字导航排除 Archived Session。会话行右键、行内更多和标题栏菜单共用归档操作，执行中或等待确认时禁用。归档当前选择的 Session 后 App 取消订阅并返回首页新聊天，其他 Session 的归档不切换当前对话；`closedSessionId` 使对应缓存视图失效。归档不删除 Transcript 或 Session Store，也没有取消归档入口。
 
 ## 模型服务
