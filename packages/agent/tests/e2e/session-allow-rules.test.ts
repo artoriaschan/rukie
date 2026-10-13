@@ -30,6 +30,7 @@ import {
 } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
+import { ownSessionFixture } from "../helpers/owned-session.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 let toolJobs: ReturnType<typeof createJobs> | undefined;
@@ -125,7 +126,8 @@ test.each([
   ["printf one && printf two", "printf one && printf three"],
   ["printf one\nprintf two", "printf one\nprintf three"],
 ] as const)("session grant keeps %s exact", async (command, other) => {
-  dirs = await tempDirs();
+  const owner = ownSessionFixture();
+  const fixture = await owner.initialize();
   const fake = fakeModel([
     commandTurn(command),
     commandTurn(command),
@@ -133,15 +135,15 @@ test.each([
     fauxAssistantMessage("done"),
   ]);
   const asked: unknown[] = [];
-  const session = await openSession({
-    ...dirs,
+  const session = await owner.open({
+    ...fixture,
     ...fake,
     onPermissionAsk: async (request) => {
       asked.push(request.args);
       return asked.length === 1 ? "allow-session" : "deny";
     },
   });
-  await session.run("run");
+  await owner.run(session, "run");
   expect(asked).toEqual([
     { description: "Run test command", command },
     { description: "Run test command", command: other },
@@ -149,6 +151,7 @@ test.each([
   expect(
     fake.contexts[3]!.messages.filter((message) => message.role === "toolResult"),
   ).toMatchObject([{ isError: false }, { isError: false }, { isError: true }]);
+  await owner.cleanup();
 });
 
 const writeTurn = (path: string) =>

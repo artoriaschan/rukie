@@ -1,8 +1,98 @@
-import { expect, jest, test } from "bun:test";
+import { expect, onTestFinished, test } from "bun:test";
 import { act, useLayoutEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { dark, renderSync, AlternateScreen, ThemeProvider } from "../../../../src/ink/index.ts";
 import { Logo, mergeColoredCells, renderBigText } from "../../../../src/tui/components/logo";
 import { createTerminal } from "../../../ink/helpers/terminal";
+import { testClock } from "../../helpers/test-clock";
+
+function createAnimatedHeader() {
+  const previousActEnvironment = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "IS_REACT_ACT_ENVIRONMENT",
+  );
+  let terminal: ReturnType<typeof createTerminal> | undefined;
+  let app: ReturnType<typeof renderSync> | undefined;
+  let ownsClock = false;
+  let changedActEnvironment = false;
+  let finished = false;
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup = () => {
+    if (cleanupPromise) return cleanupPromise;
+    finished = true;
+    cleanupPromise = (async () => {
+      try {
+        if (app) {
+          try {
+            act(() => app?.unmount());
+            await app.waitUntilExit();
+          } finally {
+            app.cleanup();
+          }
+        }
+      } finally {
+        try {
+          terminal?.dispose();
+        } finally {
+          try {
+            if (ownsClock) testClock.useRealTimers();
+          } finally {
+            if (changedActEnvironment) {
+              if (previousActEnvironment) {
+                Object.defineProperty(
+                  globalThis,
+                  "IS_REACT_ACT_ENVIRONMENT",
+                  previousActEnvironment,
+                );
+              } else {
+                Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+              }
+            }
+          }
+        }
+      }
+    })();
+    return cleanupPromise;
+  };
+  onTestFinished(cleanup);
+  testClock.useFakeTimers();
+  ownsClock = true;
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  changedActEnvironment = true;
+  const ownedTerminal = createTerminal(80, 24, (ms) => testClock.advanceTimersByTime(ms));
+  terminal = ownedTerminal;
+  const flush = async () => {
+    if (finished) await new Promise<never>(() => {});
+    const pending = ownedTerminal.flush();
+    testClock.advanceTimersByTime(0);
+    try {
+      await pending;
+    } catch (error) {
+      if (finished) await new Promise<never>(() => {});
+      throw error;
+    }
+    // An expired body must not resume and advance a later test's global clock.
+    if (finished) await new Promise<never>(() => {});
+  };
+  return {
+    terminal: ownedTerminal,
+    render(node: ReactNode) {
+      act(() => {
+        app = renderSync(node, ownedTerminal);
+      });
+      if (!app) throw new Error("The animated header renderer was not created");
+      return app;
+    },
+    flush,
+    async advance(ms: number) {
+      if (finished) await new Promise<never>(() => {});
+      act(() => testClock.advanceTimersByTime(ms));
+      testClock.advanceTimersByTime(16);
+      await flush();
+    },
+    cleanup,
+  };
+}
 
 test("RUKIE is five rows with the horizontal gradient reaching both colored edge columns", () => {
   const rows = renderBigText("RUKIE", "#000000", "#ffffff");
@@ -106,9 +196,8 @@ test("narrow and short headers keep metadata readable and clear the avatar on re
 });
 
 test("avatar blinks and nods, then permanently freezes on the first Run and releases timers", async () => {
-  jest.useFakeTimers();
-  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  const terminal = createTerminal(80, 24, (ms) => jest.advanceTimersByTime(ms));
+  const header = createAnimatedHeader();
+  const { terminal, flush, advance } = header;
   let update = (_running: boolean) => {};
   function View() {
     const [running, setRunning] = useState(false);
@@ -117,20 +206,7 @@ test("avatar blinks and nods, then permanently freezes on the first Run and rele
     }, []);
     return <Logo model="local/model" cwd="/project" working={running} />;
   }
-  let app!: ReturnType<typeof renderSync>;
-  act(() => {
-    app = renderSync(<View />, terminal);
-  });
-  const flush = async () => {
-    const pending = terminal.flush();
-    jest.advanceTimersByTime(0);
-    await pending;
-  };
-  const advance = async (ms: number) => {
-    act(() => jest.advanceTimersByTime(ms));
-    jest.advanceTimersByTime(16);
-    await flush();
-  };
+  const app = header.render(<View />);
   const cell = (x: number, y: number) => terminal.terminal.buffer.active.getLine(y)!.getCell(x)!;
   try {
     await flush();
@@ -152,80 +228,48 @@ test("avatar blinks and nods, then permanently freezes on the first Run and rele
         .map((row) => row.slice(42)),
     ).toEqual(metadata);
     act(() => update(true));
-    jest.advanceTimersByTime(16);
+    testClock.advanceTimersByTime(16);
     await flush();
     expect(cell(18, 0).getChars()).toBe("▄");
-    expect(jest.getTimerCount()).toBe(0);
+    expect(testClock.getTimerCount()).toBe(0);
     act(() => update(false));
     await advance(16);
     const output = terminal.output();
     await advance(10000);
     expect(terminal.output()).toBe(output);
-    expect(jest.getTimerCount()).toBe(0);
+    expect(testClock.getTimerCount()).toBe(0);
     act(() => app.unmount());
     await app.waitUntilExit();
-    const flushed = terminal.flush();
-    jest.advanceTimersByTime(0);
-    await flushed;
-    expect(jest.getTimerCount()).toBe(0);
+    await flush();
+    expect(testClock.getTimerCount()).toBe(0);
   } finally {
-    act(() => app.unmount());
-    jest.useRealTimers();
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
-    app.cleanup();
-    terminal.dispose();
+    await header.cleanup();
   }
 });
 
 test("removing the welcome header cancels its pending animation", async () => {
-  jest.useFakeTimers();
-  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  const terminal = createTerminal(80, 24, (ms) => jest.advanceTimersByTime(ms));
-  let app!: ReturnType<typeof renderSync>;
-  act(() => {
-    app = renderSync(<Logo model="local/model" cwd="/project" />, terminal);
-  });
+  const header = createAnimatedHeader();
+  const { terminal, flush } = header;
+  const app = header.render(<Logo model="local/model" cwd="/project" />);
   try {
-    const pending = terminal.flush();
-    jest.advanceTimersByTime(0);
-    await pending;
-    expect(jest.getTimerCount()).toBeGreaterThan(0);
+    await flush();
+    expect(testClock.getTimerCount()).toBeGreaterThan(0);
     act(() => app.unmount());
     await app.waitUntilExit();
-    const flushed = terminal.flush();
-    jest.advanceTimersByTime(0);
-    await flushed;
-    expect(jest.getTimerCount()).toBe(0);
+    await flush();
+    expect(testClock.getTimerCount()).toBe(0);
     const output = terminal.output();
-    jest.advanceTimersByTime(10000);
+    testClock.advanceTimersByTime(10000);
     expect(terminal.output()).toBe(output);
   } finally {
-    act(() => app.unmount());
-    jest.useRealTimers();
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
-    app.cleanup();
-    terminal.dispose();
+    await header.cleanup();
   }
 });
 
 test("settled welcome animation rests between idle blinks and nods, and stops when hidden", async () => {
-  jest.useFakeTimers();
-  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  const terminal = createTerminal(80, 24, (ms) => jest.advanceTimersByTime(ms));
-  let app!: ReturnType<typeof renderSync>;
-  act(() => {
-    app = renderSync(<Logo model="local/model" cwd="/project" />, terminal);
-  });
-  const flush = async () => {
-    const pending = terminal.flush();
-    jest.advanceTimersByTime(0);
-    await pending;
-  };
-  const advance = async (ms: number) => {
-    act(() => jest.advanceTimersByTime(ms));
-    jest.advanceTimersByTime(16);
-    await flush();
-  };
+  const header = createAnimatedHeader();
+  const { terminal, flush, advance } = header;
+  header.render(<Logo model="local/model" cwd="/project" />);
   const cell = (x: number, y: number) => terminal.terminal.buffer.active.getLine(y)!.getCell(x)!;
   try {
     await flush();
@@ -241,19 +285,15 @@ test("settled welcome animation rests between idle blinks and nods, and stops wh
     expect(cell(18, 0).getChars()).toBe(" ");
     await advance(500);
     expect(cell(18, 0).getChars()).toBe("▄");
-    expect(jest.getTimerCount()).toBe(1);
+    expect(testClock.getTimerCount()).toBe(1);
     act(() => terminal.resize(40, 24));
     await advance(16);
-    expect(jest.getTimerCount()).toBe(0);
+    expect(testClock.getTimerCount()).toBe(0);
     const hidden = terminal.output();
     await advance(10000);
     expect(terminal.output()).toBe(hidden);
   } finally {
-    act(() => app.unmount());
-    jest.useRealTimers();
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
-    app.cleanup();
-    terminal.dispose();
+    await header.cleanup();
   }
 });
 

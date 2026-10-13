@@ -36,4 +36,20 @@ ADR Coverage：实际 store/title-only ownership、永久外部 canonical mutex�
 
 最终交付审阅：以 main 基线 46a643e2 对照实现，两个全新只读代理分别完成 Standards 与 Spec 轴。Standards 的 3 项 P2（危险按钮对比、长内容 body、JSONL 身份校验）和 Spec 的 1 项 P1（归档执行准入）均由一个新的实施代理修复；新的只读代理确认原四项已解决，并指出组织操作 idle finally 的 P2 回归。该增量由另一个新的实施代理修复，最终新的只读确认代理报告已解决 1、剩余 0。所有集成均由新 merger 快进，源码与验证提交的 tree 相同；行为实现最终为 02e6b3f7，记录在外部 review.md、review-fixes-confirmation.md 与 idle-cleanup-confirmation.md。
 
+后续本地整套复验（56c32394）实际为 3550 pass、5 fail、3555 tests / 338 files、516.33s；静态通过，desktop 独立 172/172 通过。用户扩大授权为复现并修复全部五项及整套交互，再完成完整本地验证。公开 Store commit barrier 证明模型 header 先于持久化完成；下一 prompt 的忙错误由等待已提交的 Model changed notice 修复。公开主模型 barrier 证明权限评审的 300ms 包含 Run 准备，改为两项 review 同时开始且未结束、未写文件的功能合同。Rewind 保留二十次真实 Run 与原窗口断言，改为先创建历史再恢复 TUI，避免重复绘制二十次。发布信息命令与独立 tag 门禁分开，各自保留默认界限和结果断言；fixture 停止新工作、取消并等待子进程退出，再恢复资源。
+
+组合复现还证明只复用基础包不足以修复混合阶段：相同九个原始用例、四个 worker、共享基础包仍出现 rewind 初始终端 parse 失败；移出源码阶段后，四个发布 worker 仍会使嵌套实际 adapter 验收超时并出现迟到的 143 断言。无参数本地 test 入口分为四个阶段：Agent Core 模块测试、其余 workspace 与脚本测试保留配置的 worker 数（默认四个），Agent Core e2e 的真实 Session 集成使用一个 worker，coding-agent 前端与进程测试使用一个 worker，真实发布阶段使用一个 worker；有参数或 CI 提供包时保持 Bun 原生收集与 shard 语义。该变化只涉及测试执行与资源所有权，沿用 ADR-0004 和 testing.md，无生产 Session 协议或架构决定变化。新的 Standards / Spec 代理发现过期测试体阻止 finally 后的资源恢复，交由另一个全新实施代理补齐 owner 清理与实际超时回归。完整通过结果将在最终复验后追加，原始失败日志保留。
+
 ADR Coverage 最终核对：只写标题、规范单写者租约、完整删除及桌面 registry 组织状态由 ADR-0035 覆盖；执行准入和 idle 释放沿用 server 资源所有权，未增加协议或架构取舍。搜索与弹窗的局部尺寸、对比和滚动规则由 DESIGN.md 拥有，CONTEXT.md 与两种语言契约一致，无遗漏的持久决定。关闭 06 和 spec 的本次变更仅更新交付记录，复用已有行为、静态和 GUI 证据；执行文档、tracker、格式与 diff 检查。原完整检查失败、desktop 首次失败和未解释的整套交互保持上述事实，resolved 不表示整套验收、CI 或合并已通过。最终推送至 PR #21，最新提交 CI 待验收；未授权合并 main。
+
+本轮完整检查的第一次实际结果为静态通过、源码 3399 pass / 56 fail / 15 errors（3455 tests / 328 files，395.33s），发布和 desktop 因前序失败未执行。相同 59 个失败相关用例对照证明测试进程的 `--no-orphans` 会破坏 escaped descendant 契约，移除后该精确用例通过；仅基础包构建保留该参数。修复终端 parser 的资源所有权及退出请求边界后，相同 64 个用例由四个 worker 的 54 pass / 10 fail / 1 error 变为一个 worker 的 63 pass / 1 fail；剩余的 child resume 用例在发送退出键前等待公开 committed output，精确增量通过。原失败结果保留，最终整套验收尚待执行。
+
+终端回归通过公开 stdout 注入 ANSI、汉字和 ZWJ，两种 terminal factory 都强制实际 parser performance 每次推进 13ms，覆盖超过 xterm 12ms 的异步 continuation；前端 Date、1ms 截止期限保持冻结。原共享 helper 对同一控制用例 0 pass / 2 fail，资源隔离后 2/2 通过（22.86 / 8.33ms），全部颜色、字符宽度、两次 write callback 和时钟断言保持。仅测试时钟/进程所有权发生变化，仍使用锁定 xterm 与 Bun，不涉及 GUI 或 Session 生产语义；无需新 ADR。
+
+第二次整套检查静态通过，但核心组合阶段实际 1928 pass / 3 fail / 2 errors（1931 tests / 149 files，111.93s），后续阶段未执行。精确三项相同四 worker 为 3/3；同一 1931 项仅改为一个 worker 后 1931/1931（238.62s），证明组合执行条件影响真实 Session 的期限，未发现共享目录、设置、模型或权限状态。因而真实 Session e2e 单独使用一个 worker，Agent Core 模块、其余 workspace 和脚本仍并行，不改变 CI/shard 原生路径。另修复已确认的超时后操作清理，并用既有长路径方案降低 near-full 预算集成的真实提交数量；具体增量和最终结果待追加。
+
+第三次整套检查静态通过；模块/脚本 483/483（45 files，8.45s），Core e2e 1450/1450（105 files，223.96s），前端 1523 pass / 3 fail / 2 errors（1526 tests / 180 files，356.67s），发布及 desktop 未执行。三个 Logo 动画失败是本轮终端隔离修复与残留 Bun 内建假时钟的兼容性回归：原 56 helper 对照 3/3，修复后的共享 parser 加旧 clock 精确 0/3；公开 Node timer 对照证明 Bun fake mode 接管预先捕获的函数，而既有 testClock 保留真实 parser I/O。只换 clock provider 为 3/3；新的独立实施代理补同幂等 owner 与原 React act 属性恢复，Logo 8 + parser 2 共 10/10、86 断言、904ms。没有生产 Logo 修改，原动画时间和断言保留；第三次完整失败也保留，最终完整验证待后续结果。
+
+最终完整本地验证完成：`env -u NO_COLOR -u RUKIE_RELEASE_ARTIFACTS -u RUKIE_TEST_WORKERS bun run check` exit0。静态全部通过；模块/其他 workspace/脚本 483/483（45 files，8.63s），Core e2e 1450/1450（105 files，239.02s），CLI/TUI/renderer 1526/1526（180 files，368.05s），真实 release/install 113/113（12 files，320.53s）；Bun 合计 3572/3572、342 files、0 fail。最后 ui/desktop Vitest 172/172、33 files、43.30s。真实打包、npm、进程退出与恢复验收保留其不可虚拟化的集成成本；未以扩大原期限、重试或跳过取得通过。验证源码的 23 文件 SHA-256 在完整命令前后完全一致。原始五项和三轮修复中出现的完整失败均保留为历史事实，最小控制证据详见外部 diagnosis.md、verification.md 和 check-final-4.log。最终 fresh Standards / Spec 审阅及 Logo 时钟兼容确认均剩余 0。
+
+ADR Coverage：本轮只修改测试合同、时钟/进程所有权和本地测试调度，沿用 ADR-0004 与 docs/testing.md；锁定 harness/xterm、生产 Logo、权限/通知和 GUI 行为没有新增架构决定。先前 Sidebar 实现和生产修复仍由 ADR-0035 与 DESIGN.md 覆盖。工单 01–06 和 spec 保持 resolved；本地验收现已完整通过，CI 和合并仍是独立门禁，PR #21 尚未合并。后续只补交付记录，复用完整结果；仅重查文档、tracker、格式与 diff。

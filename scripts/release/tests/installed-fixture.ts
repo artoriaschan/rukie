@@ -17,6 +17,32 @@ export async function installRelease(
   const version = metadata.version;
   const packages = metadata.packages.map((value) => join(artifactDirectory, value.tarball));
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie installed release ")));
+  const active = new Set<{ kill(): void; settled: Promise<void> }>();
+  let closing = false;
+  let cleanupPromise: Promise<void> | undefined;
+  function own<T>(kill: () => void, result: Promise<T>) {
+    const owned = {
+      kill,
+      settled: result.then(
+        () => {},
+        () => {},
+      ),
+    };
+    active.add(owned);
+    void owned.settled.then(() => active.delete(owned));
+    return result;
+  }
+  async function cancelCommands() {
+    const pending = [...active];
+    for (const owned of pending) owned.kill();
+    await Promise.all(pending.map((owned) => owned.settled));
+  }
+  const cleanup = () =>
+    (cleanupPromise ??= (async () => {
+      closing = true;
+      await cancelCommands();
+      await rm(root, { recursive: true, force: true });
+    })());
   try {
     const prefix = join(root, "npm prefix with spaces");
     const homeDir = join(root, "isolated home");
@@ -57,11 +83,14 @@ export async function installRelease(
         signal: AbortSignal.timeout(30_000),
       },
     );
-    const [installCode, stdout, stderr] = await Promise.all([
-      installer.exited,
-      new Response(installer.stdout).text(),
-      new Response(installer.stderr).text(),
-    ]);
+    const [installCode, stdout, stderr] = await own(
+      () => installer.kill(),
+      Promise.all([
+        installer.exited,
+        new Response(installer.stdout).text(),
+        new Response(installer.stderr).text(),
+      ]),
+    );
     if (installCode !== 0) throw new Error(`Tarball installation failed: ${stdout}\n${stderr}`);
     const command = join(prefix, "node_modules/.bin/rukie");
     const binary = join(prefix, "node_modules", PLATFORM_PACKAGE, "bin/rukie");
@@ -85,6 +114,7 @@ export async function installRelease(
         timeoutMs?: number;
       } = {},
     ) {
+      if (closing) throw new Error("Installed release fixture is closing");
       const child = Bun.spawn([options.command ?? command, ...argv], {
         cwd,
         env: { ...env, ...options.env },
@@ -93,13 +123,16 @@ export async function installRelease(
         stderr: "pipe",
         signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
       });
+      const result = own(
+        () => child.kill(),
+        Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ]).then(([code, stdout, stderr]) => ({ code, stdout, stderr })),
+      );
       child.stdin.write(options.stdin ?? "");
       child.stdin.end();
-      const result = Promise.all([
-        child.exited,
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-      ]).then(([code, stdout, stderr]) => ({ code, stdout, stderr }));
       return { child, result };
     }
     return {
@@ -115,10 +148,11 @@ export async function installRelease(
       env,
       start,
       run: (argv: string[], options?: Parameters<typeof start>[1]) => start(argv, options).result,
-      cleanup: () => rm(root, { recursive: true, force: true }),
+      cancelCommands,
+      cleanup,
     };
   } catch (error) {
-    await rm(root, { recursive: true, force: true });
+    await cleanup();
     throw error;
   }
 }

@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
+import { ownSessionFixture } from "../helpers/owned-session.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
@@ -256,7 +257,8 @@ async function waitForExit(pid: number) {
 }
 
 test("child permission notification includes child session identity", async () => {
-  dirs = await tempDirs();
+  const owner = ownSessionFixture();
+  const fixture = await owner.initialize();
   const notified = Promise.withResolvers<void>();
   const fake = fakeModel([
     fauxAssistantMessage(
@@ -274,13 +276,19 @@ test("child permission notification includes child session identity", async () =
       },
     ),
     async () => {
-      await waitForNotification(notified.promise);
+      await awaitWithContext(
+        notified.promise,
+        withAbortSignal(
+          AbortSignal.any([owner.signal, AbortSignal.timeout(2000)]),
+          BACKGROUND_CONTEXT,
+        ),
+      );
       return fauxAssistantMessage("child done");
     },
     fauxAssistantMessage("parent done"),
   ]);
-  const session = await createSession({
-    ...dirs,
+  const session = await owner.open({
+    ...fixture,
     ...fake,
     permissionMode: "ask",
     settings: {
@@ -304,7 +312,7 @@ test("child permission notification includes child session identity", async () =
   try {
     expect(
       (
-        await session.run("delegate", {
+        await owner.run(session, "delegate", {
           onEvent(event) {
             if (event.type === "subagent_event" && event.event.type === "hook_message")
               notified.resolve();
@@ -312,13 +320,13 @@ test("child permission notification includes child session identity", async () =
         })
       ).text,
     ).toBe("parent done");
-    const input = await Bun.file(join(dirs.cwd, "child.json")).json();
+    const input = await owner.step(() => Bun.file(join(fixture.cwd, "child.json")).json());
     expect(input.agent_id).toBe(input.session_id);
     expect(input.agent_id).not.toBe(session.id);
     expect(input.agent_type).toBe("general-purpose");
     expect(input.notification_type).toBe("permission_prompt");
   } finally {
-    await session.close();
+    await owner.cleanup();
   }
 });
 

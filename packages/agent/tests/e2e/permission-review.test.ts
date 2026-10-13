@@ -6,7 +6,7 @@ import {
   deferredModelStream,
   type ModelStream,
 } from "../helpers/auxiliary-model.ts";
-import { afterEach, expect, jest, test } from "bun:test";
+import { afterEach, expect, jest, onTestFinished, test } from "bun:test";
 import {
   fauxAssistantMessage,
   fauxToolCall,
@@ -14,11 +14,6 @@ import {
   type Api,
   type Model,
 } from "@earendil-works/pi-ai";
-import {
-  awaitWithContext,
-  withAbortSignal,
-  BACKGROUND_CONTEXT,
-} from "@earendil-works/chord/context";
 import { join } from "node:path";
 import {
   createSession as createSessionImpl,
@@ -440,6 +435,8 @@ test("parallel tool calls start their reviews before either review completes", a
   ]);
   const both = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
+  const mainStarted = Promise.withResolvers<void>();
+  const mainRelease = Promise.withResolvers<void>();
   let started = 0;
   fake.reviewer.models = withModelStream(
     fake.reviewer.models,
@@ -462,30 +459,66 @@ test("parallel tool calls start their reviews before either review completes", a
         (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
       )
         ? modelStream(fake.reviewer.models)(model, context, options)
-        : modelStream(main.models)(model, context, options),
+        : deferredModelStream(
+            (async () => {
+              mainStarted.resolve();
+              await mainRelease.promise;
+              return modelStream(main.models)(model, context, options);
+            })(),
+          ),
     ),
   );
   const session = await createSession({ ...dirs, ...main, models, permissionMode: "auto-review" });
   const controller = new AbortController();
-  const run = session.run("create both files", { signal: controller.signal });
+  const events: SessionEvent[] = [];
+  const run = session.run("create both files", {
+    signal: controller.signal,
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
   void run.catch(() => {});
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup = () =>
+    (cleanupPromise ??= (async () => {
+      mainRelease.resolve();
+      release.resolve();
+      controller.abort();
+      await run.catch(() => {});
+    })());
+  onTestFinished(cleanup);
   try {
-    // This deadline bounds an event wait; it does not pace or synchronize the test.
-    await awaitWithContext(
+    await Promise.race([
+      mainStarted.promise,
+      run.then(() => {
+        throw new Error("Run finished before its main model request started");
+      }),
+    ]);
+    expect(started).toBe(0);
+    expect(events.filter((event) => event.type === "permission_review")).toEqual([]);
+    mainRelease.resolve();
+
+    // The contract is overlap after the tool calls arrive, independent of Run preparation speed.
+    await Promise.race([
       both.promise,
-      withAbortSignal(AbortSignal.timeout(300), BACKGROUND_CONTEXT),
-    );
-  } catch (error) {
-    throw new Error(`Only ${started} permission reviews started before completion`, {
-      cause: error,
-    });
-  } finally {
+      run.then(() => {
+        throw new Error(`Run finished with only ${started} permission reviews started`);
+      }),
+    ]);
+    const reviews = events.filter((event) => event.type === "permission_review");
+    expect(started).toBe(2);
+    expect(new Set(reviews.map((event) => event.toolCallId))).toEqual(new Set(["a", "b"]));
+    expect(reviews.map((event) => event.phase)).toEqual(["start", "start"]);
+    expect(await Bun.file(join(dirs.cwd, "a.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.cwd, "b.txt")).exists()).toBe(false);
+
     release.resolve();
-    if (started !== 2) controller.abort();
-    await run.catch(() => {});
+    expect((await run).text).toBe("done");
+    expect(await Bun.file(join(dirs.cwd, "a.txt")).text()).toBe("a");
+    expect(await Bun.file(join(dirs.cwd, "b.txt")).text()).toBe("b");
+  } finally {
+    await cleanup();
   }
-  expect(await Bun.file(join(dirs.cwd, "a.txt")).text()).toBe("a");
-  expect(await Bun.file(join(dirs.cwd, "b.txt")).text()).toBe("b");
 });
 
 test.each(["medium", "high"])(

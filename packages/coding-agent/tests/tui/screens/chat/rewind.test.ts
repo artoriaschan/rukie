@@ -1,11 +1,12 @@
 import { testClock } from "../../helpers/test-clock";
 import { startWithClock } from "../../helpers/clock-app";
 import { auxiliaryModels } from "../../helpers/auxiliary-model.ts";
-import { expect, test } from "bun:test";
+import { expect, onTestFinished, test } from "bun:test";
 import { createSession } from "@rukie/agent";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { start } from "../../helpers/app";
 
 const esc = "\x1b";
@@ -372,9 +373,70 @@ test("picker cells match dsh title, focus, description, hover and native cursor"
 });
 
 test("focus-centered window balances both sides and puts scroll indicators in the left gutter", async () => {
-  const app = await ready({ rows: 48 }, true);
+  const root = await mkdtemp(join(tmpdir(), "rukie-rewind-window-"));
+  const lifetime = new AbortController();
+  let preparing: Promise<void> | undefined;
+  let seedOpening: ReturnType<typeof createSession> | undefined;
+  let seedClosing: Promise<void> | undefined;
+  let appOpening: ReturnType<typeof startWithClock> | undefined;
+  let finished = false;
+  let cleanupPromise: Promise<void> | undefined;
+  const closeSeed = (seed: Awaited<ReturnType<typeof createSession>>) =>
+    (seedClosing ??= seed.close());
+  const cleanup = () =>
+    (cleanupPromise ??= (async () => {
+      lifetime.abort();
+      try {
+        if (appOpening)
+          await appOpening.then(
+            (app) => app.cleanup(),
+            () => {},
+          );
+      } finally {
+        try {
+          if (seedOpening) await seedOpening.then(closeSeed, () => {});
+        } finally {
+          await preparing?.catch(() => {});
+          await rm(root, { recursive: true, force: true });
+        }
+      }
+    })());
+  // Register the whole fixture before Session acquisition. FIFO runner teardown
+  // must close the frontend and seed before removing their shared storage.
+  onTestFinished(() => {
+    finished = true;
+    return cleanup();
+  });
   try {
-    for (let index = 0; index < 20; index++) await prompt(app, `window ${index}`);
+    // The window needs twenty real checkpoints, without repainting twenty Runs.
+    await (preparing = mkdir(join(root, ".rukie/file-history"), { recursive: true }).then(
+      () => {},
+    ));
+    lifetime.signal.throwIfAborted();
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
+    faux.setResponses(
+      Array.from({ length: 20 }, (_, index) => fauxAssistantMessage(`answer ${index}`)),
+    );
+    const seed = await (seedOpening = createSession({
+      cwd: root,
+      homeDir: root,
+      model: faux.getModel(),
+      models: auxiliaryModels(faux.provider.streamSimple),
+      initializationSignal: lifetime.signal,
+    }));
+    for (let index = 0; index < 20; index++) {
+      lifetime.signal.throwIfAborted();
+      await seed.run(`window ${index}`);
+    }
+    await closeSeed(seed);
+    lifetime.signal.throwIfAborted();
+    const app = await (appOpening = startWithClock(["--resume", seed.id], {
+      rows: 48,
+      env: { LANG: "en_US.UTF-8" },
+      signal: lifetime.signal,
+      session: { cwd: root, homeDir: root },
+    }));
+    await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
     await open(app);
     app.stdin.write("\x1b[B".repeat(10));
     await app.waitFor(() => app.screen().some((line) => line.startsWith("  ❯ window 9")));
@@ -385,8 +447,11 @@ test("focus-centered window balances both sides and puts scroll indicators in th
     expect(focus - first).toBe(3);
     expect(last - focus).toBe(3);
     expect(lines[focus]).toBe("  ❯ window 9");
+  } catch (error) {
+    if (finished) return new Promise<void>(() => {});
+    throw error;
   } finally {
-    await app.cleanup();
+    await cleanup();
   }
 });
 

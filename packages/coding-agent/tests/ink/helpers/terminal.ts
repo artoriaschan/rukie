@@ -1,15 +1,14 @@
 import { setImmediate } from "node:timers/promises";
-import { acquireTerminalColor, writeTerminal, flushTerminal } from "../../helpers/terminal-io";
+import { acquireTerminalColor, createIoTerminal, flushTerminal } from "../../helpers/terminal-io";
 import { PassThrough, Writable } from "node:stream";
 import type { RenderOptions } from "../../../src/ink";
-import xterm from "@xterm/headless";
 import unicodeGraphemes from "@xterm/addon-unicode-graphemes";
 
 /** Real ANSI interpretation at the renderer's IO boundary, with deterministic dimensions. */
 export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: number) => void) {
   // All injected xterm roots share the runner but support truecolor. Restore when released.
   const releaseColor = acquireTerminalColor();
-  const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
+  const terminal = createIoTerminal({ cols: columns, rows, allowProposedApi: true });
   terminal.loadAddon(new unicodeGraphemes.UnicodeGraphemesAddon());
   const stdin = Object.assign(new PassThrough(), {
     ref() {
@@ -35,7 +34,7 @@ export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: numb
         output += chunk.toString();
         if (chunk.length) writes.push({ text: chunk.toString(), time: performance.now() });
         // xterm's parse queue is real I/O; frontend clocks must not strand its completion.
-        writeTerminal(terminal, chunk, callback);
+        terminal.write(chunk, callback);
       },
     }),
     { isTTY: true, columns, rows },
@@ -48,7 +47,6 @@ export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: numb
       stdout,
       () =>
         `bytes=${bytesWritten}; cursor=${terminal.buffer.active.cursorX},${terminal.buffer.active.cursorY}`,
-      advanceTimers,
     );
   }
   return {
