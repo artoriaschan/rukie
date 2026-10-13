@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   Folder,
   FolderOpen,
@@ -42,6 +42,25 @@ export interface SidebarProps {
 }
 export function Sidebar(props: SidebarProps) {
   const t = useAppText();
+  const scrollArea = useRef<HTMLDivElement>(null);
+  const [scrolled, setScrolled] = useState(false);
+  useLayoutEffect(() => {
+    const viewport = scrollArea.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    if (!viewport) return;
+    const measure = () =>
+      setScrolled(viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0);
+    const resize = new ResizeObserver(measure);
+    resize.observe(viewport);
+    if (viewport.firstElementChild) resize.observe(viewport.firstElementChild);
+    viewport.addEventListener("scroll", measure, { passive: true });
+    measure();
+    return () => {
+      resize.disconnect();
+      viewport.removeEventListener("scroll", measure);
+    };
+  }, []);
   const { preferences: p } = props;
   const [expandedProjects, setExpandedProjects] = useState(false);
   const [expandedSessions, setExpandedSessions] = useState<string[]>([]);
@@ -266,7 +285,6 @@ export function Sidebar(props: SidebarProps) {
         >
           <Plus className="size-4" />
           {t("app.new-chat")}
-          <kbd className="ml-auto font-mono text-ui-xs">⌘N</kbd>
         </Button>
         <Tooltip content={t("app.search")}>
           <Button size="icon" variant="ghost" aria-label={t("app.search")} onClick={props.onSearch}>
@@ -278,8 +296,10 @@ export function Sidebar(props: SidebarProps) {
         decorative
         data-slot="separator"
         className="h-px shrink-0 mb-2 bg-(--layout-divider)"
+        style={{ opacity: scrolled ? 1 : 0 }}
       />
       <ScrollArea
+        ref={scrollArea}
         className="min-h-0 flex-1"
         viewportLabel={t("app.session-navigation")}
         // Prevent Radix's measuring table from adopting a long title's intrinsic width.

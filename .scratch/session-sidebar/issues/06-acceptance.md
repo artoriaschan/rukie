@@ -53,3 +53,7 @@ ADR Coverage 最终核对：只写标题、规范单写者租约、完整删除�
 最终完整本地验证完成：`env -u NO_COLOR -u RUKIE_RELEASE_ARTIFACTS -u RUKIE_TEST_WORKERS bun run check` exit0。静态全部通过；模块/其他 workspace/脚本 483/483（45 files，8.63s），Core e2e 1450/1450（105 files，239.02s），CLI/TUI/renderer 1526/1526（180 files，368.05s），真实 release/install 113/113（12 files，320.53s）；Bun 合计 3572/3572、342 files、0 fail。最后 ui/desktop Vitest 172/172、33 files、43.30s。真实打包、npm、进程退出与恢复验收保留其不可虚拟化的集成成本；未以扩大原期限、重试或跳过取得通过。验证源码的 23 文件 SHA-256 在完整命令前后完全一致。原始五项和三轮修复中出现的完整失败均保留为历史事实，最小控制证据详见外部 diagnosis.md、verification.md 和 check-final-4.log。最终 fresh Standards / Spec 审阅及 Logo 时钟兼容确认均剩余 0。
 
 ADR Coverage：本轮只修改测试合同、时钟/进程所有权和本地测试调度，沿用 ADR-0004 与 docs/testing.md；锁定 harness/xterm、生产 Logo、权限/通知和 GUI 行为没有新增架构决定。先前 Sidebar 实现和生产修复仍由 ADR-0035 与 DESIGN.md 覆盖。工单 01–06 和 spec 保持 resolved；本地验收现已完整通过，CI 和合并仍是独立门禁，PR #21 尚未合并。后续只补交付记录，复用完整结果；仅重查文档、tracker、格式与 diff。
+
+合并后人工验收补充：用户明确要求新聊天按钮不显示快捷键，并要求顶部分隔线仅在列表溢出且 scrollTop>0 时显示，回顶或内容适配后隐藏。移除提示，复用既有 ScrollArea；Sidebar 自身观察 viewport、内容尺寸及滚动，透明分隔线保留原占位，卸载时断开 observer/listener。1280/420px 的公开键盘 End/Home、内容缩减与几何回归先 red（旧 ⌘N）后 green 2/2；完整 layout browser 4/4，4.77s；check:dev 全通过。既有 package/full 证据对未改变代码继续有效，没有重复整套。
+
+实际隔离 Web Chromium 的 Light/Dark、420px 窄屏，以及缩短视口产生溢出的真实滚动验证通过；End 显示、Home 隐藏，扩大视口后无溢出与分隔线均恢复。按钮和嵌套 icon cursor 均 pointer，页面 error 为空，136 个 HTTP 请求均 200。新建独立 launcher 因既有用户服务占用 5173 而正确失败并清理，最终只读复用用户的既有隔离服务，未创建/删除任何 Session 或调用原生 picker；自己的浏览器会话已关闭，用户人工验收服务保留。截图和日志在本次外部 sidebar-divider 验证目录。仅局部视觉状态与原有组件组合，沿用 DESIGN.md，不需新 ADR。

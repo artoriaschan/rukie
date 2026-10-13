@@ -331,6 +331,7 @@ test.each([1280, 420])(
       });
       const sidebar = screen.getByRole("complementary", { name: "Home", exact: true }).element();
       const newChat = screen.getByRole("button", { name: "New chat", exact: true }).element();
+      expect(newChat.querySelector("kbd")).toBeNull();
       const top = newChat.getBoundingClientRect();
       const viewport = sidebar.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
       expect(viewport).not.toBeNull();
@@ -341,6 +342,7 @@ test.each([1280, 420])(
       const divider = sidebar.querySelector('[data-slot="separator"]')!;
       const separatorBox = divider.getBoundingClientRect();
       expect(separatorBox.height).toBe(1);
+      expect(getComputedStyle(divider).opacity).toBe("0");
       const scrollbar = screen.getByRole("scrollbar", { name: "Session navigation", exact: true });
       await expect.element(scrollbar).toBeVisible();
       near(scrollbar.element().getBoundingClientRect().width, 8);
@@ -351,6 +353,25 @@ test.each([1280, 420])(
       await expect
         .poll(() => viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop)
         .toBeLessThanOrEqual(1);
+      await expect.poll(() => getComputedStyle(divider).opacity).toBe("1");
+      await userEvent.keyboard("{Home}");
+      await expect.poll(() => viewport.scrollTop).toBe(0);
+      await expect.poll(() => getComputedStyle(divider).opacity).toBe("0");
+      await userEvent.keyboard("{End}");
+      await expect.poll(() => getComputedStyle(divider).opacity).toBe("1");
+      await fetch(`http://127.0.0.1:${connection.port}/message`, {
+        method: "POST",
+        body: JSON.stringify({
+          type: "sessions_changed",
+          projects: [],
+          pinned: [],
+          archived: [],
+          preferences: {},
+          sessions: [],
+        }),
+      });
+      await expect.poll(() => viewport.scrollHeight <= viewport.clientHeight).toBe(true);
+      await expect.poll(() => getComputedStyle(divider).opacity).toBe("0");
       near(newChat.getBoundingClientRect().top, top.top);
       near(divider.getBoundingClientRect().top, separatorBox.top);
       near(viewport.getBoundingClientRect().width, before.width);
