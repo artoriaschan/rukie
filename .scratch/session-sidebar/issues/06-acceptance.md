@@ -1,6 +1,6 @@
 # 06：整体验收
 
-Status: claimed
+Status: resolved
 
 Blocked by: 02, 03, 04, 05
 
@@ -10,7 +10,7 @@ Blocked by: 02, 03, 04, 05
 - [x] 使用 agent-browser 在 `bun run dev:desktop:web --isolated` 下验收侧栏三分类、行尾操作、右键与更多菜单、重命名、归档、永久删除与搜索浮层；Light、Dark 与窄宽度截图；检查 cursor、hover、焦点、控制台与网络错误
 - [x] 按验证记录规则运行受影响测试与 `bun run check:dev`，记录结果
 - [x] 完成 spec 的 ADR Coverage 审阅，确认 CONTEXT.md、DESIGN.md 与实现一致
-- [ ] 关闭本票并将 spec 设为 resolved
+- [x] 关闭本票并将 spec 设为 resolved
 
 ## Comments
 
@@ -33,3 +33,7 @@ ADR Coverage：实际 store/title-only ownership、永久外部 canonical mutex�
 审阅修复验证：Core 身份校验 4 项复用通过加 SQLite 精确增量 1 项；归档/删除公开 wire 7/7，加实际已打开 Session 的 prompt-first 增量 1/1。删除颜色的 Chromium red 证明 Light pressed 错继承 primary、对比仅 3.71:1，修复后两主题 default/hover/pressed 全达 4.5；长标题 red 证明窄高 footer bottom 2283px，修复后普通 480×190 不变，420×320 与 14/18px 字体下 body 滚动、footer 持续可见且 Cancel Enter 无删除，精确增量通过。delete 消费者 5/5、rename 代表消费者 2/2、agent/server/ui types、changed-file lint、docs147 与 test-policy422 通过。局部隔离 GUI 的实际鼠标对比 Light 5.24/4.67/5.24、Dark 5.65/4.80/5.65；15999 字标题在 18px 窄高屏滚动到末尾时 footer bottom 279，标题栏仍 44。console error 为空，133 HTTP 请求均 200；浏览器和 launcher/sidecar 已停止，隔离根已删除。截图与原始 JSON 存于外部 `/tmp/rukie-session-sidebar-evidence/review-gui`；即时 Cancel 后的退出帧采样仍保留，不以该帧宣称 settled closure，公开 App 回归明确验证关闭。
 
 第二次只读审阅发现并修复组织操作的闲置清理：归档 discovery/save/broadcast 跨过已有 idle deadline 时，准入释放后的 finally 对仍存在的 Session 重新安排计时，成功与异常均覆盖；删除已移除的 Session 不重新打开。公开 onWarning 与临时损坏文件控制 discovery 边界，现有虚拟 clock 分别证明截止前 lease busy、截止时 closedSessionId 与公开 createSession 可重新取得 lease。成功、异常均先确定性 red，再修复；新两项与旧 idle/订阅归档/删除/并发准入消费者共 6/6，case 最长 185ms。只修复 server 资源生命周期，无 UI、Core 协议或架构扩展，已有所有权覆盖无需新 ADR；原全量失败及 claimed 状态保持。详细日志与增量检查保存在外部 idle-cleanup-verification.md。
+
+最终交付审阅：以 main 基线 46a643e2 对照实现，两个全新只读代理分别完成 Standards 与 Spec 轴。Standards 的 3 项 P2（危险按钮对比、长内容 body、JSONL 身份校验）和 Spec 的 1 项 P1（归档执行准入）均由一个新的实施代理修复；新的只读代理确认原四项已解决，并指出组织操作 idle finally 的 P2 回归。该增量由另一个新的实施代理修复，最终新的只读确认代理报告已解决 1、剩余 0。所有集成均由新 merger 快进，源码与验证提交的 tree 相同；行为实现最终为 02e6b3f7，记录在外部 review.md、review-fixes-confirmation.md 与 idle-cleanup-confirmation.md。
+
+ADR Coverage 最终核对：只写标题、规范单写者租约、完整删除及桌面 registry 组织状态由 ADR-0035 覆盖；执行准入和 idle 释放沿用 server 资源所有权，未增加协议或架构取舍。搜索与弹窗的局部尺寸、对比和滚动规则由 DESIGN.md 拥有，CONTEXT.md 与两种语言契约一致，无遗漏的持久决定。关闭 06 和 spec 的本次变更仅更新交付记录，复用已有行为、静态和 GUI 证据；执行文档、tracker、格式与 diff 检查。原完整检查失败、desktop 首次失败和未解释的整套交互保持上述事实，resolved 不表示整套验收、CI 或合并已通过。最终推送至 PR #21，最新提交 CI 待验收；未授权合并 main。
