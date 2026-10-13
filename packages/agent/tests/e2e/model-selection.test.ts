@@ -139,29 +139,32 @@ test("resume reads v1 model facts and migrates the mirror from native Model Sele
   dirs = await tempDirs();
   const fake = selectionModels([fauxAssistantMessage("answer")]);
   const lease = await createJsonlStore(dirs).open({}, BACKGROUND_CONTEXT);
-  const native = await Harness.open(
-    lease.storage,
-    { models: fake.models, registry: createRegistry() },
-    BACKGROUND_CONTEXT,
-  );
-  const legacy = defineDoc({
-    kind: "rukie.model",
-    version: 1,
-    scope: "conversation",
-    history: "rewindable",
-    fork: "asOf",
-    initial: () => ({ value: "selection/plain" }),
-  });
   try {
-    // Seed a genuine v1 mirror before the current Session initializer creates v2.
-    await native.root(BACKGROUND_CONTEXT, {
-      agent: { model: { provider: "selection", modelId: "full" }, thinkingLevel: "high" },
-      init: async (tx, id) => {
-        await tx.doc(legacy, id);
-      },
-    });
+    const native = await Harness.open(
+      lease.storage,
+      { models: fake.models, registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const legacy = defineDoc({
+        kind: "rukie.model",
+        version: 1,
+        scope: "conversation",
+        history: "rewindable",
+        fork: "asOf",
+        initial: () => ({ value: "selection/plain" }),
+      });
+      // Seed a genuine v1 mirror before the current Session initializer creates v2.
+      await native.root(BACKGROUND_CONTEXT, {
+        agent: { model: { provider: "selection", modelId: "full" }, thinkingLevel: "high" },
+        init: async (tx, id) => {
+          await tx.doc(legacy, id);
+        },
+      });
+    } finally {
+      await native.close(BACKGROUND_CONTEXT);
+    }
   } finally {
-    await native.close(BACKGROUND_CONTEXT);
     await lease.release();
   }
   const resumed = await createSession({
