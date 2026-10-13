@@ -731,29 +731,43 @@ export function ModelServices({
                         </Button>
                         <h2 className="text-ui-lg">{t("services.addProvider")}</h2>
                       </div>
-                      <Button
-                        variant="secondary"
-                        className="model-services-custom-tile"
-                        onClick={() => void create()}
-                        disabled={pending}
-                      >
-                        <Plus className="size-6" />
-                        {t("services.create")}
-                        <ChevronRight className="ml-auto size-3.5" />
-                      </Button>
-                      {PROVIDER_PRESETS.map((preset) => (
+                      <div className="model-services-catalog-cards">
                         <Button
-                          key={preset.id}
                           variant="secondary"
-                          className="model-services-custom-tile"
-                          onClick={() => void create(preset)}
+                          className="model-services-catalog-tile"
+                          onClick={() => void create()}
                           disabled={pending}
                         >
-                          <ProviderIcon icon={preset.icon} variant="color" className="size-6" />
-                          {t(`services.presets.${preset.id}`)}
+                          <span className="model-services-custom-icon">
+                            <Plus className="size-5" />
+                          </span>
+                          <span className="model-services-catalog-label">
+                            {t("services.create")}
+                          </span>
                           <ChevronRight className="ml-auto size-3.5" />
                         </Button>
-                      ))}
+                        {PROVIDER_PRESETS.map((preset) => (
+                          <Button
+                            key={preset.id}
+                            variant="secondary"
+                            className="model-services-catalog-tile"
+                            onClick={() => void create(preset)}
+                            disabled={pending}
+                          >
+                            <span className="model-services-preset-icon">
+                              <ProviderIcon
+                                icon={preset.icon}
+                                variant="color"
+                                className="size-[34px]"
+                              />
+                            </span>
+                            <span className="model-services-catalog-label">
+                              {t(`services.presets.${preset.id}`)}
+                            </span>
+                            <ChevronRight className="ml-auto size-3.5" />
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   ) : draft ? (
                     <div className="model-services-provider-form">

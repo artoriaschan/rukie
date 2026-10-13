@@ -1634,6 +1634,58 @@ test.each([1887, 420])("settings field geometry across themes at %i px", async (
   }
 });
 
+test("Pencil C13 preset catalog uses spaced cards without moving the workspace", async () => {
+  const originalClass = document.documentElement.className;
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={modelServicesFixture}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(async () => {
+    await screen.unmount();
+    document.documentElement.className = originalClass;
+    await page.viewport(1280, 900);
+  });
+  await screen.getByRole("button", { name: "Add provider", exact: true }).click();
+  const custom = screen.getByRole("button", { name: "Create custom provider" }).element();
+  const preset = screen.getByRole("button", { name: "DeepSeek", exact: true }).last().element();
+  for (const width of [1887, 420]) {
+    await page.viewport(width, 1210);
+    const panel = document.querySelector(".model-services-panel")!;
+    const baseline = panel.getBoundingClientRect().toJSON();
+    console.log("C13 panel baseline", width, baseline);
+    for (const dark of [false, true]) {
+      document.documentElement.classList.toggle("dark", dark);
+      const first = custom.getBoundingClientRect();
+      const second = preset.getBoundingClientRect();
+      expect(first.height).toBe(68);
+      expect(second.height).toBe(68);
+      if (width === 1887) {
+        expect(first.width).toBe(297);
+        expect(second.top).toBe(first.top);
+        expect(second.left - first.right).toBe(10);
+        expect(
+          first.left -
+            document.querySelector(".model-services-details")!.getBoundingClientRect().left,
+        ).toBe(26);
+      } else {
+        expect(second.top - first.bottom).toBe(10);
+        expect(document.documentElement.scrollWidth).toBe(width);
+        expect(second.right).toBeLessThanOrEqual(panel.getBoundingClientRect().right);
+      }
+      expect(getComputedStyle(custom).borderRadius).toBe("8px");
+      expect(getComputedStyle(custom).cursor).toBe("pointer");
+      expect(custom.querySelector("svg")!.getBoundingClientRect().width).toBe(20);
+      expect(preset.querySelector("svg")!.getBoundingClientRect().width).toBe(34);
+      expect(panel.getBoundingClientRect().toJSON()).toEqual(baseline);
+    }
+  }
+});
+
 test("preset catalog immediately creates independent services with incrementing names", async () => {
   let providers: ModelServiceSummary[] = [];
   const screen = await render(
