@@ -1,10 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import {
-  createSession as createNativeSession,
-  defineDoc,
-  ROOT_CONVERSATION_ID,
-} from "@earendil-works/pi-durable";
+import { createRegistry, Harness, defineDoc } from "@earendil-works/pi-durable";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createJsonlStore, createSession, type Session } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -142,23 +138,28 @@ test("Rewind and cold resume restore both fields and the actual request independ
 test("resume reads v1 model facts and migrates the mirror from native Model Selection", async () => {
   dirs = await tempDirs();
   const fake = selectionModels([fauxAssistantMessage("answer")]);
-  const session = await createSession({ ...dirs, ...fake, settings: { thinking: "high" } });
-  sessions.push(session);
-  await session.close();
-  const lease = await createJsonlStore(dirs).open({ id: session.id }, BACKGROUND_CONTEXT);
-  const native = createNativeSession(lease.storage);
+  const lease = await createJsonlStore(dirs).open({}, BACKGROUND_CONTEXT);
+  const native = await Harness.open(
+    lease.storage,
+    { models: fake.models, registry: createRegistry() },
+    BACKGROUND_CONTEXT,
+  );
   const legacy = defineDoc({
     kind: "rukie.model",
     version: 1,
     scope: "conversation",
     history: "rewindable",
     fork: "asOf",
-    initial: () => ({ value: "selection/full" }),
+    initial: () => ({ value: "selection/plain" }),
   });
   try {
-    await native.commit(async (tx) => {
-      await tx.doc(legacy, ROOT_CONVERSATION_ID);
-    }, BACKGROUND_CONTEXT);
+    // Seed a genuine v1 mirror before the current Session initializer creates v2.
+    await native.root(BACKGROUND_CONTEXT, {
+      agent: { model: { provider: "selection", modelId: "full" }, thinkingLevel: "high" },
+      init: async (tx, id) => {
+        await tx.doc(legacy, id);
+      },
+    });
   } finally {
     await native.close(BACKGROUND_CONTEXT);
     await lease.release();
@@ -167,9 +168,10 @@ test("resume reads v1 model facts and migrates the mirror from native Model Sele
     ...dirs,
     ...fake,
     settings: { thinking: "low" },
-    resumeId: session.id,
+    resumeId: lease.id,
   });
   sessions.push(resumed);
+  expect(resumed.model).toBe("selection/full");
   expect(resumed.thinkingLevel).toBe("high");
   expect(resumed.toolState("model")).toEqual({ model: "selection/full", thinkingLevel: "high" });
   await resumed.run("question");
