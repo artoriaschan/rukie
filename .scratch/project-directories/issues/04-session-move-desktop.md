@@ -1,6 +1,6 @@
 # 04：桌面端“移动到项目”
 
-Status: claimed
+Status: resolved
 
 Blocked by: 02, 03
 
@@ -28,3 +28,5 @@ Blocked by: 02, 03
 - Incremental verification owner review_fixes: frozen install passed (888 packages, 1.228s); initial focused collection failed missing dependencies (9ms), then original scope resumed. Legacy alias public wire red: duplicate canonical Project, 0/1, 321ms; green 1/1, 265ms. Primary-switch same-target wire red: move accepted, 0/1, 269ms; green 1/1, 267ms. Both fixtures retain original cwd, migration membership and history through public wire/Core read interfaces.
 - Canonical identities compare existing Project ownership for create reuse/conflicts, execution trust/additional directories and move admission; persisted legacy alias fields and Session cwd remain unchanged. Missing registered directories retain their stored-path identity without rewriting the registry. No new migration or compatibility command. ADR coverage: existing 0041 precise directory ownership/trust and 0040 Session Move boundaries suffice; no new durable decision.
 - The server open/find changes invalidate only shared server behavior evidence: first file run 26 pass/25 fail, 5.17s due to a newly scoped trustedAtOpen reference; corrected its ownership, focused trust case 1/1 passed 448ms, then changed server file 51/51 passed, 3.70s (`/tmp/rukie-project-directories-evidence/review-server.log`). Scoped oxlint exit 0; `bunx --no tsc -b` exit 0; `bun run check:docs` passed 150 Markdown files; scoped oxfmt and diff checks passed. New tests <100ms each; real WS/SQLite establish the contract. All unchanged UI/desktop/browser evidence remains valid; no package/full aggregate/manual GUI rerun here. 05 owns final aggregate and browser acceptance.
+
+- Root closure 2026-10-13: integrated, final two-axis review corrections completed; applicable focused evidence reused. Resolved with spec and ticket 05 for PR handoff, not CI or merged acceptance. See 05 Comments for preserved aggregate/package results and limitations.

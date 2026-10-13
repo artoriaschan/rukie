@@ -1,6 +1,6 @@
 # 01：Agent Core 附加目录
 
-Status: claimed
+Status: resolved
 
 Blocked by: None (can start immediately)
 
@@ -28,3 +28,5 @@ Blocked by: None (can start immediately)
 
 - 静态/文档：`rtk proxy bunx --no oxlint packages/agent/src/session/index.ts packages/agent/src/reminders/index.ts packages/agent/tests/e2e/reminders.test.ts`、`rtk proxy bunx --no tsc -b packages/agent`、`rtk proxy bun run docs:update`、`rtk proxy bun run check:docs`（148 Markdown files）、修改文件 `oxfmt --check` 与 `rtk git diff --check` 均通过。未运行 aggregate check:dev/full suite 或 GUI，由主代理统一组织。
 - 共享 reminder 收集器也用于 Compaction，增量消费者检查：`rtk proxy env -u NO_COLOR bun test packages/agent/tests/e2e/compaction-hooks.test.ts -t 'manual compaction hooks receive'`，2 pass / 0 fail / 15 filtered，14 assertions，321 ms；复用此前 reminders 的 11 pass 证据。
+
+- Root closure 2026-10-13: integrated, final two-axis review corrections completed; applicable focused evidence reused. Resolved with spec and ticket 05 for PR handoff, not CI or merged acceptance. See 05 Comments for preserved aggregate/package results and limitations.

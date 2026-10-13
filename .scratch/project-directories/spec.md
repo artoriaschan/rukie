@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 多目录 Project、显式信任与 Session Move
 
@@ -133,3 +133,10 @@ Status: ready-for-agent
 
 - 决策来源：2026-10-13 的设计访谈。共用 `workspace/` 参考 ZCode 的 `~/.zcode/workspace/default`；Codex 桌面端按对话生成目录的方案因位置、命名与信任误判问题未采用；Trusted Project 不采用 Claude Code 的父目录继承。
 - 现有 `project.add` 不做兼容，按 AGENTS.md 一次替换所有消费方。
+
+## Delivery Evidence
+
+- Implementation 01–04, acceptance 05 and all review corrections are integrated on `feat/project-directories`. Every ticket, merger, review and correction task used a fresh subagent; implementers used isolated worktrees.
+- Final Standards and Spec delta review has no actionable findings; initial README, canonical legacy ownership, same-Project Move and concurrent canonical creation findings are fixed. ADR Coverage is complete for 0039/0040/0041 and existing storage/trust/Rewind decisions.
+- Feature-focused Core, TUI, server, Node and Chromium results and Light/Dark/narrow GUI evidence are recorded per ticket. Final server file 53/53 passed. Full local check remains failed: 3474 pass, 2 TUI failures; one reproduces on main with a click-coordinate mismatch, the other remains unresolved. Release stage was not reached. Desktop package had 188 pass/2 failing consumers, followed by focused repairs passing both; this does not rewrite the package result as all green.
+- Implementation and local feature verification are resolved for PR review. CI for the latest PR commit and merge acceptance remain separate; no full local pass, CI pass or merge is claimed. Unresolved broad-run evidence prevents full acceptance claims and is preserved in ticket 05.

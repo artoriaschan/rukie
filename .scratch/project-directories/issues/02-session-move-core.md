@@ -1,6 +1,6 @@
 # 02：Agent Core Session Move 与跨移动回退
 
-Status: claimed
+Status: resolved
 
 Blocked by: None (can start immediately)
 
@@ -33,3 +33,5 @@ Blocked by: None (can start immediately)
 - Integration merge: own implementation commit `a952f08`; merged integration tip `2977cf69` (01). Conflicts only CONTEXT Session definition and generated ADR index, resolved by preserving both contracts. Auto-merged Reminder/Session sources combine additional-directory environment data with move refresh, so combined source evidence required `rtk proxy bun test packages/agent/tests/e2e/session-move.test.ts packages/agent/tests/e2e/reminders.test.ts`: exit 0, 17 pass / 82 assertions / 1.131s, log `/tmp/rukie-project-directories-evidence/02-merged-reminders.log`. No TUI changes in integration; terminal evidence remains valid. Current check:docs exit 0 (149 files) and affected tsc exit 0. Added explicit moved Run environment additionalDirectories assertion; focused result recorded below. Root owns remaining review/aggregate acceptance.
 
 - Explicit merged environment assertion: `rtk proxy bun test packages/agent/tests/e2e/session-move.test.ts -t 'Resume announces'`: exit 0, 1 pass / 5 filtered / 8 assertions / 230ms. Fresh move environment includes caller-supplied additional directories in actual fake-model input. All other previously passed tests reused. Merge conflict skill applied; no invented behavior. Final hooks remain enabled.
+
+- Root closure 2026-10-13: integrated, final two-axis review corrections completed; applicable focused evidence reused. Resolved with spec and ticket 05 for PR handoff, not CI or merged acceptance. See 05 Comments for preserved aggregate/package results and limitations.

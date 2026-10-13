@@ -1,6 +1,6 @@
 # 03：桌面端多目录 Project 与信任确认
 
-Status: claimed
+Status: resolved
 
 Blocked by: 01
 
@@ -42,3 +42,5 @@ Blocked by: 01
 - Red/green at approved public wire seam: real filesystem realpath is paused at the application-root validation boundary until both candidate requests arrive; existing registry identities force the vulnerable async snapshot overlap. Real symlink aliases, WS, SQLite, projects.list and server restart establish ownership and persistence. Same canonical primary red: two different Project ids (0 pass/1 fail, 233ms, case 26.02ms); green 1/1, 190ms. Shared secondary alias red: both create succeeded instead of one named conflict (0/1, 186ms, case 22.04ms); combined green 2/2, 193ms. The first secondary fixture omitted the required archived array and failed before product execution (175ms); correcting the fixture exposed the real race. No sleeps, retries or timing thresholds were used.
 - Verification state: server.ts queue and both new server.test.ts cases on baseline `12ac42f`; `bun install --frozen-lockfile` passed (888 packages, 1.063s). `bun test packages/server/tests/server.test.ts` passed 53/53, 3.10s (new cases 8.81/10.03ms); this file is the minimal scope covering Project command dispatch and existing canonical/trust/Session consumers. Later fixture-only encoding typing correction left server behavior and other file evidence valid; affected two concurrent cases passed 2/2, 195ms. Adding a post-conflict setPrimary assertion verified queue recovery with only that case rerun: 1/1, 191ms (30.89ms), plus persisted simultaneous seed trust/primary changes. Each test uses isolated home/dataRoot and waits for owned sockets/server shutdown.
 - Scoped static: `bunx --no tsc -b packages/server` and `bunx --no oxlint packages/server/src/server.ts packages/server/tests/server.test.ts` passed after final test changes. Initial type runs failed on the overloaded filesystem spy; the documented fixture invariant is that server realpath calls request string results without encoding options. `bun run check:docs` passed (150 Markdown files); scoped `oxfmt --check` and `git diff --check` passed. Logs: `/tmp/rukie-project-directories-evidence/race-*.log`; failure diagnostics also in `race-types-failures.md`. Existing full/package failed evidence and unchanged UI/desktop/browser screenshots remain valid as recorded by 05; no aggregate, package, full or manual GUI rerun was performed for this server-only correction.
+
+- Root closure 2026-10-13: integrated, final two-axis review corrections completed; applicable focused evidence reused. Resolved with spec and ticket 05 for PR handoff, not CI or merged acceptance. See 05 Comments for preserved aggregate/package results and limitations.
