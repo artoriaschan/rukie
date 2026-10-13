@@ -1,0 +1,21 @@
+.scratch/session-sidebar/issues/06-acceptance.md
+  s_aa5016c0b422e7::t_9f7ee821ca7ed7 3,13,36-39
+.scratch/session-sidebar/spec.md
+  s_aa5016c0b422e7::t_9f7ee821ca7ed7 1,160-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "56c32394a5600564d0fd1f5dc6ad4b106c6042d9",
+  "prompts": {},
+  "sessions": {
+    "s_aa5016c0b422e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13344-369d-7633-a1db-f9b9b5115c54",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
