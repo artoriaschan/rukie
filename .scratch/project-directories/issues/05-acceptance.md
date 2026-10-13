@@ -1,6 +1,6 @@
 # 05：整体验收
 
-Status: resolved
+Status: claimed
 
 Blocked by: 01, 02, 03, 04
 
@@ -35,3 +35,5 @@ Blocked by: 01, 02, 03, 04
 - Root delivery review, 2026-10-13: Standards originally found one owning-README contract gap; Spec found legacy-alias duplicate ownership and same-Project Move after primary switch. Corrections were reviewed, then a new canonical-lookup creation race was reproduced and fixed. Final fresh delta review of `12ac42f9...124f0847` has no actionable Standards or Spec findings. Server ownership/admission focused acceptance is 53/53 with incremental rejection recovery; docs/type/lint evidence remains valid. ADR Coverage and reciprocal partial-replacement pointers are complete.
 - Full-run diagnosis: Mixed failure reproduces on unchanged main `fceef7f9` (2/6), with parsed row18 versus live arrow row19 at mouse dispatch. Folding failure remains unresolved; isolated and same-file probes pass, which does not prove an unrelated defect or contention. No unrelated production/tests were changed. Detailed diagnostic evidence remains in `/tmp/rukie-project-directories-evidence/diagnosis.md`; original aggregate exit1 is retained. These results block claiming local full-suite acceptance. Feature-focused checks and review permit PR handoff; latest-commit CI and merge acceptance remain separate and pending. Release phase was not reached locally.
 - Closure: implementation, affected consumers, documentation, two-axis review corrections, feature-local verification and GUI acceptance are complete. All implementation tickets and spec resolved together for PR review; this status does not claim aggregate success, CI success or merge. Manual Chromium/picker-mock boundaries and unresolved full-run limitation above remain explicit.
+
+- 2026-10-13 follow-up: user explicitly requests repair of both remaining TUI failures and successful local full acceptance plus latest-commit CI. Acceptance reopened; previous run/diagnosis facts remain. Every new diagnosis, implementation, review and integration uses a fresh subagent. Root coordinates verification in `/tmp/rukie-project-directories-evidence/tui-repair/verification.md`; do not rerun the aggregate until causal fixes and focused checks are complete.

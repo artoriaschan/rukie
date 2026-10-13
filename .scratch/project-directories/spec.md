@@ -1,4 +1,4 @@
-Status: resolved
+Status: claimed
 
 # Spec: 多目录 Project、显式信任与 Session Move
 
@@ -140,3 +140,5 @@ Status: resolved
 - Final Standards and Spec delta review has no actionable findings; initial README, canonical legacy ownership, same-Project Move and concurrent canonical creation findings are fixed. ADR Coverage is complete for 0039/0040/0041 and existing storage/trust/Rewind decisions.
 - Feature-focused Core, TUI, server, Node and Chromium results and Light/Dark/narrow GUI evidence are recorded per ticket. Final server file 53/53 passed. Full local check remains failed: 3474 pass, 2 TUI failures; one reproduces on main with a click-coordinate mismatch, the other remains unresolved. Release stage was not reached. Desktop package had 188 pass/2 failing consumers, followed by focused repairs passing both; this does not rewrite the package result as all green.
 - Implementation and local feature verification are resolved for PR review. CI for the latest PR commit and merge acceptance remain separate; no full local pass, CI pass or merge is claimed. Unresolved broad-run evidence prevents full acceptance claims and is preserved in ticket 05.
+
+- 2026-10-13 follow-up: user explicitly requests repair of both remaining TUI failures and successful local full acceptance plus latest-commit CI. Acceptance reopened; previous run/diagnosis facts remain. Every new diagnosis, implementation, review and integration uses a fresh subagent. Root coordinates verification in `/tmp/rukie-project-directories-evidence/tui-repair/verification.md`; do not rerun the aggregate until causal fixes and focused checks are complete.
