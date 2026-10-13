@@ -821,10 +821,11 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(1);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(2);
     expect(
       screen
         .getByRole("menuitem")
+        .first()
         .element()
         .querySelector("kbd,[data-slot=dropdown-menu-shortcut]"),
     ).toBeNull();
@@ -835,6 +836,9 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Rename", exact: true }))
+      .toHaveFocus();
     await userEvent.keyboard("{ArrowDown}");
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
@@ -845,7 +849,7 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(1);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(2);
     const menu = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
     const point = session.element().getBoundingClientRect();
     await expect

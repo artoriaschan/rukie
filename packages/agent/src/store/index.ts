@@ -26,7 +26,7 @@ import { err, ok, FileError, type FileSystem } from "@earendil-works/pi-durable/
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { createUserVisibleError, type Settings } from "@rukie/shared";
-import type { TitleSource } from "../session-title/index.ts";
+import { normalizeUserTitle, titleSourceState, type TitleSource } from "../session-title/index.ts";
 import { CommittedFiles } from "./files.ts";
 
 const metadataSchema = Type.Object(
@@ -182,6 +182,100 @@ export function isSqliteSessionBusy(
     database.close();
   }
 }
+/** Commit a user-owned title and release the lease before resolving. No model or credential access.
+ * Missing/cwd-mismatched storage rejects with session-not-found; occupied leases reject with session-busy
+ * before any Session data changes. Empty normalized titles reject with session-title-empty.
+ */
+export async function renameSessionTitle(
+  options: UserDataOptions & { cwd: string; id: string; title: string },
+): Promise<void> {
+  const { id, title } = options;
+  const cwd = resolve(options.cwd);
+  const sqlite = !!options.dataRoot;
+  const storageName = sqlite ? "session.sqlite" : "main.jsonl";
+  const context = BACKGROUND_CONTEXT;
+  validId(id);
+  const normalized = normalizeUserTitle(title);
+  const directory = createSessionStore(options).key(id);
+  const path = join(directory, storageName);
+  if (!(await Bun.file(path).exists()))
+    throw createUserVisibleError(`Session not found: ${id}`, {
+      code: "session-not-found",
+      params: { id },
+    });
+  const lease = acquireWriterLease(directory, id);
+  const files = new CommittedFiles({ cwd });
+  let database: SqliteDatabase | undefined;
+  let kernel: ReturnType<typeof createNativeSession> | undefined;
+  try {
+    if (sqlite) {
+      // Validate the existing schema and identity before opening a mutable adapter.
+      const reader = createNativeSession(await openReadonlySqliteStorage(path));
+      try {
+        const metadata = parseSessionMetadata(await reader.snapshot(SessionMetadataDoc, context));
+        if (metadata.id !== id || metadata.cwd !== cwd)
+          throw createUserVisibleError(`Session not found: ${id}`, {
+            code: "session-not-found",
+            params: { id },
+          });
+      } finally {
+        await reader.close(BACKGROUND_CONTEXT);
+      }
+      database = await openBunSqliteDatabase(path);
+    }
+    const storage = database
+      ? await SqliteStorage.open(database)
+      : await JsonlStorage.open(directory, files, context, { fsync: true });
+    kernel = createNativeSession(storage);
+    const metadata = parseSessionMetadata(await kernel.snapshot(SessionMetadataDoc, context));
+    const conversation = (
+      await storage.scanConversations({}, 100000, undefined, context)
+    ).items.find((row) => Number(row.id) === metadata.activeConversationId);
+    if (!conversation) throw new Error("Active conversation is missing.");
+    await kernel.commit(async (tx) => {
+      const doc = await tx.doc(SessionMetadataDoc);
+      doc.title = normalized;
+      doc.titleSource = "user";
+      doc.updatedAt = Date.now();
+      (await tx.doc(titleSourceState.document, conversation.id)).value = titleSourceState.parse(
+        titleSourceState.version,
+        "user",
+      );
+    }, context);
+  } finally {
+    try {
+      if (kernel) await kernel.close(BACKGROUND_CONTEXT);
+      else await database?.close();
+    } finally {
+      try {
+        await files.cleanup(BACKGROUND_CONTEXT);
+      } finally {
+        lease.close();
+      }
+    }
+  }
+}
+
+function acquireWriterLease(directory: string, id: string): Database {
+  // Retain the mutex inode: unlinking permits a second owner to lock another inode.
+  // Its writer reservation excludes other hosts without EXCLUSIVE lock upgrades.
+  const lease = new Database(join(directory, "host-lease.sqlite"), { create: true });
+  try {
+    lease.exec("PRAGMA busy_timeout = 0; BEGIN IMMEDIATE;");
+    return lease;
+  } catch (error) {
+    lease.close();
+    throw createUserVisibleError(
+      `Session already open: ${id}`,
+      {
+        code: "session-busy",
+        params: { id },
+      },
+      { cause: error },
+    );
+  }
+}
+
 function createStore(options: UserDataOptions & { cwd: string }, sqlite: boolean): SessionStore {
   const cwd = resolve(options.cwd);
   const project = createHash("sha256").update(cwd).digest("hex");
@@ -202,23 +296,7 @@ function createStore(options: UserDataOptions & { cwd: string }, sqlite: boolean
           params: { id },
         });
       await mkdir(directory, { recursive: true });
-      // This database contains no Session records; its kernel lease protects the Harness.
-      // Retain its inode forever: unlinking permits a second owner to lock another inode.
-      // A writer reservation excludes other hosts without competing EXCLUSIVE lock upgrades.
-      const lease = new Database(join(directory, "host-lease.sqlite"), { create: true });
-      try {
-        lease.exec("PRAGMA busy_timeout = 0; BEGIN IMMEDIATE;");
-      } catch (error) {
-        lease.close();
-        throw createUserVisibleError(
-          `Session already open: ${sessionId}`,
-          {
-            code: "session-busy",
-            params: { id: sessionId },
-          },
-          { cause: error },
-        );
-      }
+      const lease = acquireWriterLease(directory, sessionId);
       const files = new CommittedFiles({ cwd });
       let database: SqliteDatabase | undefined;
       try {

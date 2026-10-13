@@ -89,6 +89,7 @@ export const WireCommandSchema = Type.Union([
   command("steer_now", { ...session, requestId: id }),
   command("withdraw", { ...session, requestId: id }),
   command("abort", session),
+  command("session.rename", { ...session, title: Type.String({ minLength: 1 }) }),
   command("session.pin", session),
   command("session.unpin", session),
   command("models.list", {}),

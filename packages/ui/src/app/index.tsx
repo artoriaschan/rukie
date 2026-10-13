@@ -22,7 +22,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import type { Locale } from "@rukie/i18n";
-import type { PermissionMode, WirePreferences } from "@rukie/shared";
+import type { PermissionMode, WirePreferences, WireSessionSummary } from "@rukie/shared";
 import { createWireClient, WireError, type ClientCommand } from "../client";
 import { createDesktopStore, recentSessions, type SessionViewState } from "../store";
 import type { DesktopHost } from "../host";
@@ -40,6 +40,7 @@ import { cn } from "../lib/utils";
 import type { PermissionDecision } from "../lib/transcript";
 import { ModelServices } from "./model-services";
 import { AppConversation } from "./conversation";
+import { RenameSession } from "./rename-session";
 import { useErrorText } from "./error";
 
 export type AppHost = Pick<DesktopHost, "getConnection" | "modelServices"> &
@@ -103,6 +104,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [ctrl, setCtrl] = useState(false);
   const [search, setSearch] = useState(false);
   const [summary, setSummary] = useState(false);
+  const [renaming, setRenaming] = useState<WireSessionSummary | null>(null);
   const [pathOpen, setPathOpen] = useState(false);
   const [path, setPath] = useState("");
   const [error, setError] = useState("");
@@ -663,7 +665,12 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 <Menu.DropdownMenuContent align="end">
                   <Menu.DropdownMenuGroup>
                     <SessionDropdownItems
-                      actions={sessionActions(current, state.pinned.includes(current.id), pin)}
+                      actions={sessionActions(
+                        current,
+                        state.pinned.includes(current.id),
+                        pin,
+                        setRenaming,
+                      )}
                       shortcuts
                     />
                     <Menu.DropdownMenuSub>
@@ -778,6 +785,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   onSearch={openSearch}
                   onAdd={() => safe(addProject)}
                   onPin={pin}
+                  onRename={setRenaming}
                   onPreferences={preferences}
                 />
               </div>
@@ -851,6 +859,15 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           onChanged={async () => {
             store.setModels(await client.request({ type: "models.list" }));
           }}
+        />
+      ) : null}
+      {renaming ? (
+        <RenameSession
+          session={renaming}
+          onClose={() => setRenaming(null)}
+          onSave={(title) =>
+            client.request({ type: "session.rename", sessionId: renaming.id, title })
+          }
         />
       ) : null}
       <CommandPalette

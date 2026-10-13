@@ -9,6 +9,7 @@ import {
   createSession,
   createApplicationModels,
   listSessions,
+  renameSessionTitle,
   discoverSqliteSessions,
   isSqliteSessionBusy,
   readSessionSnapshot,
@@ -815,6 +816,24 @@ export async function startServer(options: ServerOptions) {
           await changed();
           return { mode: command.mode };
         }
+        case "session.rename": {
+          if (!command.title.trim()) throw new CommandError("invalid_command");
+          const current = sessions.get(command.sessionId);
+          if (current) await current.rename(command.title);
+          else {
+            const summary = (await summaries()).find((item) => item.id === command.sessionId);
+            if (!summary) throw new CommandError("session_not_found");
+            await renameSessionTitle({
+              cwd: summary.cwd,
+              homeDir: options.homeDir,
+              dataRoot: options.dataRoot,
+              id: summary.id,
+              title: command.title,
+            });
+          }
+          await changed();
+          return {};
+        }
         case "session.pin":
         case "session.unpin": {
           if (!(await summaries()).some((session) => session.id === command.sessionId))
@@ -949,7 +968,15 @@ export async function startServer(options: ServerOptions) {
                     ? error.code
                     : error instanceof Error && "code" in error && error.code === "session-busy"
                       ? "session_busy"
-                      : "internal";
+                      : error instanceof Error &&
+                          "code" in error &&
+                          error.code === "session-not-found"
+                        ? "session_not_found"
+                        : error instanceof Error &&
+                            "code" in error &&
+                            error.code === "session-title-empty"
+                          ? "invalid_command"
+                          : "internal";
                 if (code === "internal") warning(String(error));
                 send(socket, { type: "response", id: command.id, error: { code } });
               },

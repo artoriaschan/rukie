@@ -34,6 +34,7 @@ export interface SidebarProps {
   onSearch: () => void;
   onAdd: () => void;
   onPin: (id: string, pinned: boolean) => void;
+  onRename: (session: WireSessionSummary) => void;
   onPreferences: (preferences: WirePreferences) => void;
 }
 export function Sidebar(props: SidebarProps) {
@@ -53,7 +54,7 @@ export function Sidebar(props: SidebarProps) {
   const row = (session: WireSessionSummary) => {
     const pinned = props.pinned.includes(session.id);
     const shortcut = props.recent.findIndex((value) => value.id === session.id) + 1;
-    const actions = sessionActions(session, pinned, props.onPin);
+    const actions = sessionActions(session, pinned, props.onPin, props.onRename);
     return (
       <ContextMenu key={session.id}>
         <ContextMenuTrigger>
