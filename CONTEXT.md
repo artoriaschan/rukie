@@ -23,7 +23,7 @@ _Avoid_: CLI（会和 TUI 混淆）
 _Avoid_: CLI, REPL
 
 **Session**:
-用户与 agent 在同一个工作目录下的一段连续对话，可以凭 id 恢复。
+用户与 agent 的一段连续对话，拥有一个工作目录，可以凭 id 恢复。Frontend 可在打开时提供附加目录；这些目录只贡献环境快照中的路径与各自 `AGENTS.md` 的 Project Instructions，不改变工具执行目录、权限路径解析或文件跟踪，也不合并 settings、hooks、MCP 与技能。
 _Avoid_: conversation, thread, chat
 
 **Transcript**:

@@ -157,6 +157,12 @@ Frontend 创建 Session 时通过 `SessionOptions.applicationVersion` 注入自�
 
 源码运行经 `@vscode/ripgrep` 的锁定平台包定位 rg。npm 编译产物由 release builder 的 `RUKIE_COMPILED` 常量选择平台执行文件 `realpath(process.execPath)` 同目录的 `rg`，避免 Bun 虚拟源码路径和用户 cwd 影响定位；二者使用同一 grep 工具和权限路径。缺失或不可执行的资源返回 `ripgrep-unavailable`；编译产物提示平台包不完整和重新安装 optionalDependencies。分发资源与验收见[构建教程](../../docs/release-building.md)。
 
+## 附加目录
+
+`createSession` 的 `additionalDirectories` 接受绝对路径列表，按规范化路径去重并排除 cwd 本身；相对路径会在打开存储前被拒绝。Session 仍以 cwd 执行工具、解析权限路径和跟踪文件。首次 Run 的环境快照列出附加目录，每个目录只加载自己的 `AGENTS.md`，不使用 `CLAUDE.md` fallback，也不发现该目录的 settings、hooks、MCP 或技能。
+
+附加目录的 Project Instructions 按各自来源比较内容，变化后追加 System Reminder；原有 reminder 随 Transcript 重建模型输入。目录选项由 Frontend 在每次打开或 Session Resume 时重新提供，不单独持久化为 Session 配置。边界与取舍见 [ADR-0039](../../docs/adr/0039-session-additional-directories.md)。
+
 ## 模型目录
 
 `await listModelCatalog(settings)` 返回内置与自定义 provider 的全部已知聊天模型，以及 provider 显示名、输入能力、reasoning、支持的 Thinking Level、context window、自定义来源和本地凭据是否配置的事实。目录不刷新模型、不刷新 OAuth，也不发送模型请求；无凭据模型仍保留，由 Frontend 决定显示哪些 provider。每次调用重新检测凭据，失败向调用方传播；目录不会改写 settings 或 Session。
