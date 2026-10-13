@@ -31,7 +31,7 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - render-node-to-output.ts/renderer.ts/hit-test.ts：绝对覆盖层的绘制区域、命中列表和 image occlusion 历史属于各自根；另一根绘制不会改变当前根的点击目标或覆盖层修复判断。output.ts 的绝对区域 clear 只排除其之前的旧区域 blit，之后绘制的当前子树 border、header、首 glyph 和 prompt 保留。
 - ink.tsx/render-node-to-output.ts：搜索扫描复用当前 Yoga 布局，但在一次性 DOM 副本和独立帧状态中绘制；扫描不改写正常帧的节点坐标缓存、鼠标命中区域、滚动或覆盖层历史，扫描后无需等待下一帧即可点击原位置。
 - node-cache.ts/renderer.ts：绝对浮层移除标记按 root 保存在 WeakSet 中，仅由所属 root 消耗；另一 root 先绘制不会抢走禁用旧帧 blit 的标记，移除后的首帧完整恢复底层字形。
-- App.tsx/ink.tsx/hit-test.ts/events/click-event.ts：click 事件携带 press 的屏幕和目标局部坐标；通用 click 路由语义不变，产品编辑器校验 press/release 位于同一原子单位。
+- App.tsx/ink.tsx/hit-test.ts/events/click-event.ts：click 事件携带 press 的屏幕和目标局部坐标，产品编辑器校验 press/release 位于同一原子单位。静止的左键手势在 press 的已绘制路径上分发当前 handler，使用该帧的局部坐标、空白与链接信息；selection repaint 或异步 layout 移动不会把 release 转交给新目标。原 owner 脱离根、替换、隐藏、裁剪或被浮层覆盖时取消点击；指针移动、键盘、滚轮、resize 和 screen swap 取消路径，每根独立拥有手势。
 - root.ts/ink.tsx/selection.ts：selectionIncludeNoSelectCells 每根可选择原始区域 fence 或严格装饰排除，char/word/line 由同一起点策略初始化；默认保持 dsh 行为。
 - parse-keypress.ts：普通 text token 的 C0/DEL 按顺序拆成独立 key，保留同一 stdin read 中 printable + Enter/清空/删除；bracketed paste 保持一次原始 payload。
 - log-update.ts：右边界完整可容纳的双列 grapheme（包括 ZWJ emoji）照常绘制，避免完整 emoji 比 CJK 多丢一列。

@@ -23,7 +23,7 @@ import { KeyboardEvent } from './events/keyboard-event.js';
 import type { DragEvent } from './events/drag-event.js';
 import { FocusManager } from './focus.js';
 import { emptyFrame, type Frame, type FrameEvent } from './frame.js';
-import { dispatchClick, dispatchContextMenu, dispatchDragEvent as bubbleDragEvent, dispatchHover, dispatchWheel, findDragTarget, clearHovered, invalidateNoInterestRect, hitTestWithOverlays } from './hit-test.js';
+import { captureClick, type PaintedClick, dispatchClick, dispatchContextMenu, dispatchDragEvent as bubbleDragEvent, dispatchHover, dispatchWheel, findDragTarget, clearHovered, invalidateNoInterestRect, hitTestWithOverlays } from './hit-test.js';
 import { logMouseDebug } from './utils/debug.js';
 import { noteTerminalFlush } from './flush-tick.js';
 import instances from './instances.js';
@@ -2374,10 +2374,16 @@ export default class Ink {
     return null;
   }
 
+  captureClickAt(col: number, row: number): PaintedClick {
+    const capture = captureClick(this.rootNode, col, row, isEmptyCellAt(this.frontFrame.screen, col, row));
+    capture.hyperlink = this.getHyperlinkAt(col, row);
+    return capture;
+  }
+
   clickProbeAtBatchTail = (): void => {
     this.probeAltScreenHealth({ skipMouseReassert: true });
   };
-  dispatchClick(col: number, row: number, button = 0, deferProbe = false, press?: { col: number; row: number }): boolean {
+  dispatchClick(col: number, row: number, button = 0, deferProbe = false, press?: { col: number; row: number }, capture?: PaintedClick | null): boolean {
     // Safe-boundary probe: clicks are dispatched from the RELEASE tail,
     // after App cleared the gesture latch — no button is held here. A
     // received mouse report proves tracking is alive but says nothing about
@@ -2397,7 +2403,7 @@ export default class Ink {
       return false;
     }
     const blank = isEmptyCellAt(this.frontFrame.screen, col, row);
-    const handled = dispatchClick(this.rootNode, col, row, blank, button, press);
+    const handled = dispatchClick(this.rootNode, col, row, blank, button, press, capture);
     logMouseDebug('dispatchClick', { col, row, handled });
     return handled;
   }

@@ -13,6 +13,7 @@ import { InputEvent } from "../events/input-event.js";
 import instances from "../instances.js";
 import { TerminalFocusEvent } from "../events/terminal-focus-event.js";
 import { DragEvent } from "../events/drag-event.js";
+import type { PaintedClick } from "../hit-test.js";
 import type { DOMElement } from "../dom.js";
 import {
 	INITIAL_STATE,
@@ -101,7 +102,7 @@ type Props = {
 	// deferProbe: release-path clicks defer the health probe to the batch
 	// tail — a single stdin chunk can carry `release → next press`, and the
 	// probe must not write before the next press latch is established.
-	readonly onClickAt: (col: number, row: number, button?: number, deferProbe?: boolean, press?: { col: number; row: number }) => boolean;
+	readonly onClickAt: (col: number, row: number, button?: number, deferProbe?: boolean, press?: { col: number; row: number }, capture?: PaintedClick | null) => boolean;
 	// Dispatch a context-menu event at (col, row) on RIGHT-button press —
 	// hit-tests the DOM tree and bubbles onContextMenu handlers, mirroring
 	// the DOM contextmenu event that shows on mousedown. Returns true if a
@@ -270,6 +271,8 @@ export default class App extends PureComponent<Props, State> {
 	lastClickCol = -1;
 	lastClickRow = -1;
 	clickCount = 0;
+	paintedClick: PaintedClick | null = null;
+	clickCancelled = false;
 	lastClickRegion: ReturnType<Ink["getClickRegionAt"]> = null;
 	// Deferred hyperlink-open timer — cancelled if a second click arrives
 	// within MULTI_CLICK_TIMEOUT_MS (so double-clicking a hyperlink selects
@@ -366,6 +369,8 @@ export default class App extends PureComponent<Props, State> {
 	 * a double-click).
 	 */
 	resetPointerState(cancelSelection = false, dispatchDrag = this.props.onDragDispatch): void {
+		this.paintedClick = null;
+		this.clickCancelled = true;
 		this.lastClickRegion = null;
 		this.clickCount = 0;
 		this.lastClickTime = 0;
@@ -921,8 +926,16 @@ function processKeysInBatch(
 	) {
 		updateLastInteractionTime();
 	}
+	const cancelMovedClick = (item: ParsedInput) => {
+		if (item.kind === "mouse" && (item.button & 0x20) !== 0 && app.paintedClick &&
+			(item.col - 1 !== app.paintedClick.col || item.row - 1 !== app.paintedClick.row)) {
+			app.paintedClick = null;
+			app.clickCancelled = true;
+		}
+	};
 	for (let i = 0; i < items.length; i++) {
 		let item = items[i]!;
+		cancelMovedClick(item);
 		// Only the latest point of an uninterrupted text drag needs painting.
 		// Keep releases, wheel/key boundaries, hover and component drags in order.
 		if (
@@ -934,6 +947,7 @@ function processKeysInBatch(
 			while (i + 1 < items.length) {
 				const next = items[i + 1]!;
 				if (next.kind !== "mouse" || next.button !== item.button || next.action !== item.action) break;
+				cancelMovedClick(next);
 				item = next;
 				i++;
 			}
@@ -1031,6 +1045,8 @@ function processKeysInBatch(
 				item.name === "wheelup" || item.name === "wheeldown" ? step : 0;
 			const deltaX =
 				item.name === "wheelleft" || item.name === "wheelright" ? step : 0;
+			app.paintedClick = null;
+			app.clickCancelled = true;
 			const consumed = app.props.onWheelAt(
 				item.mouseCol,
 				item.mouseRow,
@@ -1049,6 +1065,8 @@ function processKeysInBatch(
 				continue;
 			}
 		}
+		app.paintedClick = null;
+		app.clickCancelled = true;
 		if (!item.name?.startsWith("wheel") && app.heldButtons === 0 && !app.ambiguousHeld && !app.props.selection.isDragging) {
 			app.clickCount = 0; app.lastClickTime = 0; app.lastClickRegion = null;
 		}
@@ -1104,6 +1122,13 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
 	// focus-out, or a fresh press identifying the still-held button).
 	const wasLatched = app.heldButtons !== 0 || app.ambiguousHeld;
 	if (m.action === "press") {
+		if ((m.button & 0x20) === 0) {
+			app.clickCancelled = baseButton !== 0;
+			app.paintedClick = baseButton === 0 ? app.props.renderer.captureClickAt(col, row) : null;
+		} else if (app.paintedClick && (col !== app.paintedClick.col || row !== app.paintedClick.row || baseButton !== 0)) {
+			app.paintedClick = null;
+			app.clickCancelled = true;
+		}
 		if ((m.button & 0x20) !== 0 && baseButton === 3) {
 			// Mode-1003 no-button motion: no button held.
 			app.heldButtons = 0;
@@ -1384,7 +1409,8 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
 		// set anchor+focus (hasSelection true), so release just keeps the
 		// highlight. The anchor check guards against an orphaned release (no
 		// prior press — e.g. button was held when mouse tracking was enabled).
-		if (!hasSelection(sel) && sel.anchor) {
+		if (!hasSelection(sel) && sel.anchor && !app.clickCancelled &&
+			(!app.paintedClick || (col === app.paintedClick.col && row === app.paintedClick.row))) {
 			// Single click: dispatch DOM click immediately (cursor repositioning
 			// etc. are latency-sensitive). If no DOM handler consumed it, defer
 			// the hyperlink check so a second click can cancel it. deferProbe:
@@ -1392,11 +1418,12 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
 			// chunk can carry `release → next press`, and the probe must not
 			// write before the next press latch is established.
 			app.pendingClickProbe = true;
-			if (!app.props.onClickAt(col, row, m.button, true, sel.anchor)) {
+			if (!app.props.onClickAt(col, row, m.button, true, sel.anchor, app.paintedClick && col === app.paintedClick.col && row === app.paintedClick.row ? app.paintedClick : null)) {
 				// Resolve the hyperlink URL synchronously while the screen buffer
 				// still reflects what the user clicked — deferring only the
 				// browser-open so double-click can cancel it.
-				const url = app.props.getHyperlinkAt(col, row);
+				const url = app.paintedClick && col === app.paintedClick.col && row === app.paintedClick.row
+					? app.paintedClick.hyperlink : app.props.getHyperlinkAt(col, row);
 				// xterm.js (VS Code, Cursor, Windsurf, etc.) has its own OSC 8 link
 				// handler that fires on Cmd+click *without consuming the mouse event*
 				// (Linkifier._handleMouseUp calls link.activate() but never
@@ -1428,6 +1455,7 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
 		}
 		app.props.onSelectionChange();
 	} finally {
+		app.paintedClick = null;
 		// The gesture latch cleared at the START of this release. Mark the
 		// batch for a deferred drain at the batch tail — a single stdin chunk
 		// can carry `release → next press`, and draining between them would

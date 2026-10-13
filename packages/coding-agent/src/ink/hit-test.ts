@@ -127,11 +127,57 @@ export function hitTestWithOverlays(
   return hitTest(root, col, row)
 }
 
+export type PaintedClick = {
+  path: { node: DOMElement; x: number; y: number; clickable: boolean }[]
+  owner: DOMElement | undefined
+  col: number
+  row: number
+  cellIsBlank: boolean
+  hyperlink?: string
+}
+
+/** Capture the visible click path before selection can paint pending layout. */
+export function captureClick(root: DOMElement, col: number, row: number, cellIsBlank: boolean): PaintedClick {
+  let node = hitTestWithOverlays(root, col, row)
+  const path: PaintedClick['path'] = []
+  let owner: DOMElement | undefined
+  while (node) {
+    const rect = nodeCache.get(node)
+    if (rect) path.push({ node, x: rect.x, y: rect.y, clickable: Boolean(node._eventHandlers?.onClick) })
+    if (!owner && node._eventHandlers?.onClick) owner = node
+    node = node.parentNode ?? null
+  }
+  return { path, owner: owner ?? path[0]?.node, col, row, cellIsBlank }
+}
+
+/** An obscured, replaced, detached or clipped press owner cannot receive release. */
+function isCapturedClickVisible(root: DOMElement, capture: PaintedClick): boolean {
+  if (!capture.owner) return false
+  const entry = capture.path.find(entry => entry.node === capture.owner)
+  const rect = nodeCache.get(capture.owner)
+  if (!entry || !rect) return false
+  for (let i = 0; i < capture.path.length - 1; i++) {
+    let ancestor = capture.path[i]!.node.parentNode
+    const expected = capture.path[i + 1]!.node
+    while (ancestor && ancestor !== expected) ancestor = ancestor.parentNode
+    if (ancestor !== expected) return false
+  }
+  let ancestor: DOMElement | undefined = capture.owner
+  while (ancestor && ancestor !== root) ancestor = ancestor.parentNode
+  if (ancestor !== root) return false
+  const col = rect.x + capture.col - entry.x
+  const row = rect.y + capture.row - entry.y
+  if (col < rect.x || col >= rect.x + rect.width || row < rect.y || row >= rect.y + rect.height) return false
+  let hit = hitTestWithOverlays(root, col, row)
+  while (hit && hit !== capture.owner) hit = hit.parentNode ?? null
+  return hit === capture.owner
+}
+
 /**
  * Hit-test the root at (col, row) and bubble a ClickEvent from the deepest
  * containing node up through parentNode. Only nodes with an onClick handler
  * fire. Stops when a handler calls stopImmediatePropagation(). Returns
- * true if at least one onClick handler fired.
+ * true when consumed by a handler or cancelled captured owner.
  *
  * Each handler call is isolated: a throwing handler is logged and the
  * bubbling continues, so one broken onClick cannot swallow the click from
@@ -142,7 +188,7 @@ export function hitTestWithOverlays(
  * @param row - the screen row of the click.
  * @param cellIsBlank - whether the clicked cell is blank, reported on the event.
  * @param button - raw SGR release byte (carries shift/alt/ctrl modifier bits).
- * @returns true when at least one onClick handler fired.
+ * @returns true when consumed; invalid captured owners suppress replacement and hyperlink dispatch.
  */
 export function dispatchClick(
   root: DOMElement,
@@ -151,9 +197,12 @@ export function dispatchClick(
   cellIsBlank = false,
   button = 0,
   press?: { col: number; row: number },
+  capture?: PaintedClick | null,
 ): boolean {
+  // Consume an invalid lease: a replacement must not inherit the old gesture.
+  if (capture && !isCapturedClickVisible(root, capture)) return true
   let target: DOMElement | undefined =
-    hitTestWithOverlays(root, col, row) ?? undefined
+    capture?.path[0]?.node ?? hitTestWithOverlays(root, col, row) ?? undefined
   if (!target) return false
 
   // Click-to-focus: find the closest focusable ancestor and focus it.
@@ -168,15 +217,15 @@ export function dispatchClick(
       focusTarget = focusTarget.parentNode
     }
   }
-  const event = new ClickEvent(col, row, cellIsBlank, { button, pressCol: press?.col, pressRow: press?.row })
+  const event = new ClickEvent(col, row, capture?.cellIsBlank ?? cellIsBlank, { button, pressCol: press?.col, pressRow: press?.row })
   let handled = false
   while (target) {
     const handler = target._eventHandlers?.onClick as
       | ((event: ClickEvent) => void)
       | undefined
-    if (handler) {
+    if (handler && (!capture || capture.path.some(entry => entry.node === target && entry.clickable))) {
       handled = true
-      const rect = nodeCache.get(target)
+      const rect = capture?.path.find(entry => entry.node === target) ?? nodeCache.get(target)
       if (rect) {
         event.localCol = col - rect.x
         event.localRow = row - rect.y
