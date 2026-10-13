@@ -12,7 +12,7 @@ macOS 启动时通过用户的登录交互 shell 读取环境变量，使 Finder
 
 ## 行为与限制
 
-[DesktopHost](../ui/src/host/index.ts) 提供 `getConnection`、`pickProjectFolder` 和 `modelServices.list/save/delete/revealKey`。模型服务列表仅包含凭证存在状态，保存可保留、替换或删除凭证；`revealKey(id)` 仅供主动显示指定供应商的 API Key，不开放任意解密；普通启动和列表不解密，展示值仅存在当前详情内存，失败保留密文。preload 暴露为 `window.rukieHost`；main 只接受本窗口的主 frame 且 URL 为 `app://rukie` 的 IPC。显示路径与打开终端由 app 经 `host.revealPath` / `host.openInTerminal` wire 命令交给 sidecar；main 与 preload 不再提供这两个 IPC。sidecar 只接受已存在的绝对路径，限制在已登记项目根或无项目 workspace 及其子路径，拒绝符号链接逃逸。外部进程使用参数向量，不拼 shell 或 AppleScript。
+[DesktopHost](../ui/src/host/index.ts) 提供 `getConnection`、`pickProjectFolder` 和 `modelServices.list/save/delete/revealKey`。`pickProjectFolder()` 支持多选文件夹，返回 `Promise<string[] | null>`，取消返回 `null`；Project 创建与信任确认由 [UI](../ui/README.md#连接与交互) 负责。模型服务列表仅包含凭证存在状态，保存可保留、替换或删除凭证；`revealKey(id)` 仅供主动显示指定供应商的 API Key，不开放任意解密；普通启动和列表不解密，展示值仅存在当前详情内存，失败保留密文。preload 暴露为 `window.rukieHost`；main 只接受本窗口的主 frame 且 URL 为 `app://rukie` 的 IPC。显示路径与打开终端由 app 经 `host.revealPath` / `host.openInTerminal` wire 命令交给 sidecar；main 与 preload 不再提供这两个 IPC。sidecar 只接受已存在的绝对路径，限制在已登记项目根或无项目 workspace 及其子路径，拒绝符号链接逃逸。外部进程使用参数向量，不拼 shell 或 AppleScript。
 
 [safeStorage 服务](src/main/secrets.ts) 由 main 持有，按供应商、OAuth 或配置身份绑定密文，sidecar 经独立随机 token 的私有 loopback 通道调用；renderer Origin 一律拒绝。加密不可用、系统授权取消、解密失败均返回可重试错误，保留旧密文，禁止明文及 basic_text fallback。服务仅在显式凭证操作或执行用途调用系统加解密，普通启动不初始化 Cookie 加密。真实系统加密验收与 mock 测试分开，见[存储票据 06](../../.scratch/desktop-storage/issues/06-integration-and-packaged-acceptance.md)。
 

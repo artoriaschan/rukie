@@ -121,6 +121,22 @@ export async function startServer(options: ServerOptions) {
         })
       ).settings;
     const registry = await localDatabase.registry();
+    // Legacy registry paths and Session cwd retain their spelling; ownership uses filesystem identity.
+    // An unavailable registered directory still owns its stored path until it becomes resolvable.
+    const directoryIdentity = (path: string) => realpath(path).catch(() => path);
+    const projectIdentities = () =>
+      Promise.all(
+        registry.projects.map(async (project) => ({
+          project,
+          primary: await directoryIdentity(project.primary),
+          directories: await Promise.all(project.directories.map(directoryIdentity)),
+        })),
+      );
+    const projectForCwd = async (cwd: string) => {
+      const identity = await directoryIdentity(cwd);
+      return (await projectIdentities()).find((item) => item.directories.includes(identity));
+    };
+
     if (sharedConfiguration) registry.preferences = await database.preferences();
     const configuredModels = async () =>
       createApplicationModels({
@@ -328,9 +344,11 @@ export async function startServer(options: ServerOptions) {
       const existing = openings.get(key);
       if (existing) return existing;
       let owner: Session | undefined;
-      const trustedAtOpen =
-        registry.projects.find((p) => p.directories.includes(cwd))?.trusted ?? false;
+      let trustedAtOpen = false;
       const opening = (async () => {
+        const owningProject = await projectForCwd(cwd);
+        const cwdIdentity = await directoryIdentity(cwd);
+        trustedAtOpen = owningProject?.project.trusted ?? false;
         const configuredSettings =
           options.sessionOptions?.settings ?? (await configuration.settings());
         const userSettings = {
@@ -339,6 +357,9 @@ export async function startServer(options: ServerOptions) {
             ...new Set([
               ...(configuredSettings.trustedProjects ?? []),
               ...registry.projects.filter((p) => p.trusted).flatMap((p) => p.directories),
+              ...(await projectIdentities())
+                .filter((item) => item.project.trusted)
+                .flatMap((item) => item.directories),
             ]),
           ],
         };
@@ -393,9 +414,9 @@ export async function startServer(options: ServerOptions) {
           model: selected ?? options.sessionOptions?.model,
           permissionMode: initial?.permissionMode,
           cwd,
-          additionalDirectories: registry.projects
-            .find((p) => p.directories.includes(cwd))
-            ?.directories.filter((path) => path !== cwd),
+          additionalDirectories: owningProject?.project.directories.filter(
+            (_, index) => owningProject.directories[index] !== cwdIdentity,
+          ),
           homeDir: options.homeDir,
           dataRoot: options.dataRoot,
           mcpPersistence: applicationMcpPersistence(vault),
@@ -482,9 +503,7 @@ export async function startServer(options: ServerOptions) {
       const current = sessions.get(id);
       if (current) {
         const opened = openedTrust.get(id);
-        const trusted =
-          registry.projects.find((p) => p.directories.includes(opened?.cwd ?? ""))?.trusted ??
-          false;
+        const trusted = (await projectForCwd(opened?.cwd ?? ""))?.project.trusted ?? false;
         if (opened?.trusted === trusted || executing(current)) return current;
         // Applying newly granted trust waits for the next idle execution boundary.
         // Closing here reloads cwd configuration without interrupting an active Run.
@@ -711,12 +730,14 @@ export async function startServer(options: ServerOptions) {
           )
             throw new CommandError("project_reserved");
           const primary = directories[0]!;
-          const existing = registry.projects.find((p) => p.primary === primary);
-          if (existing) return existing;
-          const conflict = registry.projects.find((p) =>
-            p.directories.some((path) => directories.includes(path)),
+          const identities = await projectIdentities();
+          const existing = identities.find((item) => item.primary === primary);
+          if (existing) return existing.project;
+          const conflict = identities.find((item) =>
+            item.directories.some((path) => directories.includes(path)),
           );
-          if (conflict) throw new CommandError("project_conflict", { project: conflict.name });
+          if (conflict)
+            throw new CommandError("project_conflict", { project: conflict.project.name });
           const project: WireProject = {
             id: crypto.randomUUID(),
             name: basename(primary),
@@ -911,7 +932,8 @@ export async function startServer(options: ServerOptions) {
           if (!project) throw new CommandError("project_not_found");
           const summary = (await summaries()).find((item) => item.id === command.sessionId);
           if (!summary) throw new CommandError("session_not_found");
-          if (summary.cwd === project.primary) throw new CommandError("invalid_command");
+          if ((await projectForCwd(summary.cwd))?.project.id === project.id)
+            throw new CommandError("invalid_command");
           const current = sessions.get(command.sessionId);
           if (
             openings.has(command.sessionId) ||

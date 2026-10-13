@@ -5,7 +5,13 @@ import { mkdtemp, rm, realpath, mkdir, writeFile, symlink, stat } from "node:fs/
 import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
 import { join } from "node:path";
-import { createSession, createSessionStore, listSessions, readSessionSnapshot } from "@rukie/agent";
+import {
+  createSession,
+  createSessionStore,
+  listSessions,
+  readSessionSnapshot,
+  openBunSqliteDatabase,
+} from "@rukie/agent";
 import { crashUnsafeEffect } from "../../agent/tests/helpers/native-recovery.ts";
 import { startServer as startServerImpl, AppDatabase, type ServerOptions } from "../src/index.ts";
 
@@ -871,6 +877,139 @@ test("multi-directory Projects canonicalize, require trust and keep exact owners
     expect((await client.command("project.add", { path: first })).error).toEqual({
       code: "invalid_command",
     });
+  } finally {
+    await owner.close();
+  }
+});
+
+test("legacy alias Projects retain Session membership and canonical directory ownership", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-project-alias-")),
+      (dir) => rm(dir, { recursive: true, force: true }),
+    );
+    const canonical = await realpath(await mkdtemp(join(homeDir, "repository-")));
+    const alias = join(homeDir, "link");
+    await symlink(canonical, alias);
+    const dataRoot = join(homeDir, "desktop-data");
+    const history = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot,
+          cwd: alias,
+          ...fakeModel([fauxAssistantMessage("stored")]),
+        }),
+      (session) => session.close(),
+    );
+    await history.run("retain original cwd");
+    await history.close();
+    const app = await owner.acquire(
+      () => AppDatabase.open(dataRoot),
+      (db) => db.close(),
+    );
+    const fixture = await owner.acquire(
+      () => openBunSqliteDatabase(join(dataRoot, "app.sqlite")),
+      (db) => db.close(),
+    );
+    // Seed the explicit pre-multi-directory registry format; observe migration only through wire.
+    await fixture.run(
+      "INSERT OR REPLACE INTO documents VALUES (?, ?)",
+      "registry",
+      JSON.stringify({
+        projects: [{ id: "legacy", name: "Original", path: alias }],
+        pinned: [],
+        preferences: {},
+      }),
+    );
+    await fixture.close();
+    await app.close();
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const legacy = {
+      id: "legacy",
+      name: "Original",
+      directories: [alias],
+      primary: alias,
+      trusted: false,
+    };
+    expect((await client.command("projects.list")).result).toEqual([legacy]);
+    expect(
+      (await client.command("project.create", { directories: [canonical], trusted: true })).result,
+    ).toEqual(legacy);
+    const other = await realpath(await mkdtemp(join(homeDir, "other-")));
+    expect(
+      (await client.command("project.create", { directories: [other, canonical], trusted: true }))
+        .error,
+    ).toEqual({ code: "project_conflict", params: { project: "Original" } });
+    expect((await client.command("projects.list")).result).toEqual([legacy]);
+    expect(
+      (await client.command("session.move", { sessionId: history.id, projectId: "legacy" })).error,
+    ).toEqual({ code: "invalid_command" });
+    expect((await client.command("sessions.list")).result).toEqual([
+      expect.objectContaining({ id: history.id, cwd: alias }),
+    ]);
+  } finally {
+    await owner.close();
+  }
+});
+
+test("session.move rejects its owning Project after a primary switch without changing history", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-move-same-project-")),
+      (dir) => rm(dir, { recursive: true, force: true }),
+    );
+    const first = await realpath(await mkdtemp(join(homeDir, "first-")));
+    const second = await realpath(await mkdtemp(join(homeDir, "second-")));
+    const dataRoot = join(homeDir, "desktop-data");
+    const history = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot,
+          cwd: first,
+          ...fakeModel([fauxAssistantMessage("unchanged")]),
+        }),
+      (session) => session.close(),
+    );
+    await history.run("original Transcript");
+    await history.close();
+    const before = await readSessionSnapshot({ homeDir, dataRoot, cwd: first, id: history.id });
+    const db = await owner.acquire(
+      () => AppDatabase.open(dataRoot),
+      (db) => db.close(),
+    );
+    await db.saveRegistry({
+      projects: [
+        { id: "p", name: "Project", directories: [first, second], primary: first, trusted: true },
+      ],
+      pinned: [],
+      archived: [],
+      preferences: {},
+    });
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect(
+      (await client.command("project.setPrimary", { projectId: "p", directory: second })).error,
+    ).toBeUndefined();
+    expect(
+      (await client.command("session.move", { sessionId: history.id, projectId: "p" })).error,
+    ).toEqual({ code: "invalid_command" });
+    expect((await client.command("sessions.list")).result).toEqual([
+      expect.objectContaining({ id: history.id, cwd: first }),
+    ]);
+    expect(await readSessionSnapshot({ homeDir, dataRoot, cwd: first, id: history.id })).toEqual(
+      before,
+    );
   } finally {
     await owner.close();
   }
