@@ -22,6 +22,8 @@ export interface UserVisibleErrorParams {
   "session-title-empty": Record<string, never>;
   "model-switch-busy": Record<string, never>;
   "session-run-active": Record<string, never>;
+  "session-move-unsupported": Record<string, never>;
+  "rewind-cross-session-move": Record<string, never>;
   "session-rewinding": Record<string, never>;
   "session-compacting": Record<string, never>;
   "session-switching-models": Record<string, never>;

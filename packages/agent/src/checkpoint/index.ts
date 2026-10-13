@@ -34,6 +34,7 @@ type CheckpointState = Static<typeof checkpointSchema>;
 export interface Checkpoint {
   promptEntryId: string;
   preview: string;
+  codeRestoreBlocked?: "session-moved";
   files: Array<{ path: string; backup: string | null }>;
 }
 

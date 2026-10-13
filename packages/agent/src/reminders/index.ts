@@ -59,14 +59,20 @@ export async function collectReminders(options: {
   sources: ReminderSource[];
   /** Environment is a one-time snapshot, never part of compaction reinjection. */
   includeEnvironment?: boolean;
+  /** Session Move requires a fresh cwd snapshot even with existing user history. */
+  refreshEnvironment?: boolean;
 }): Promise<SystemReminder[]> {
   const { messages, cwd, now } = options;
   const latest = latestReminderContents(messages);
   const sources: ReminderSource[] = [];
   const firstRun = !messages.some((message) => message.role === "user");
-  if (options.includeEnvironment !== false && firstRun && !latest.has("environment")) {
+  if (
+    options.includeEnvironment !== false &&
+    (options.refreshEnvironment || (firstRun && !latest.has("environment")))
+  ) {
     sources.push({
       source: "environment",
+      compareContent: !options.refreshEnvironment,
       currentContent: async () => {
         const branch = await git(cwd, ["branch", "--show-current"]);
         const status = await git(cwd, ["status", "--short"]);
