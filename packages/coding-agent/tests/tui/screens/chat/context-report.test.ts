@@ -86,18 +86,14 @@ test("context reports during a Run stay local and keep their original provider t
   const secondRelease = Promise.withResolvers<Response>();
   let stopRequests = 0;
   let server: Bun.Server<undefined> | undefined;
-  let appOpening: ReturnType<typeof start> | undefined;
+  let acquiredApp: Awaited<ReturnType<typeof start>> | undefined;
   let cleanupPromise: Promise<void> | undefined;
   const cleanup = () =>
     (cleanupPromise ??= (async () => {
       release.resolve(Response.json({}));
       secondRelease.resolve(Response.json({}));
       try {
-        if (appOpening)
-          await appOpening.then(
-            (app) => app.cleanup(),
-            () => {},
-          );
+        await acquiredApp?.cleanup();
       } finally {
         await server?.stop(true);
       }
@@ -114,13 +110,14 @@ test("context reports during a Run stay local and keep their original provider t
         return Response.json({});
       },
     });
-    const app = await (appOpening = start([], {
+    const app = await start([], {
       rows: 60,
       env: { LANG: "en_US.UTF-8" },
       session: {
         settings: { hooks: { Stop: [{ hooks: [{ type: "http", url: server.url.href }] }] } },
       },
-    }));
+    });
+    acquiredApp = app;
     await app.waitFor(() => screen(app).includes("╭"));
     app.stdin.write("first question\r");
     await app.waitFor(() => app.calls.length === 1);
