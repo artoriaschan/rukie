@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, stat, realpath } from "node:fs/promises";
 import {
   BACKGROUND_CONTEXT,
   awaitWithContext,
@@ -89,7 +90,13 @@ for (const backend of ["jsonl", "sqlite"] as const)
         throw new Error("Invalid readiness identity");
       const id = summary.id;
       const store = createSessionStore(options);
-      const leaseFile = join(store.key(id), "host-lease.sqlite");
+      const leaseFile = join(
+        options.dataRoot ?? join(dirs.homeDir, ".rukie"),
+        ".session-leases",
+        createHash("sha256")
+          .update(await realpath(store.key(id)))
+          .digest("hex") + ".sqlite",
+      );
       const inode = (await stat(leaseFile)).ino;
       const fake = fakeModel([]);
       await expect(createSession({ ...options, ...fake, resumeId: id })).rejects.toMatchObject({
@@ -144,6 +151,30 @@ for (const backend of ["jsonl", "sqlite"] as const)
       expect(await final.line()).toStartWith("READY ");
       expect((await stat(leaseFile)).ino).toBe(inode);
       await final.close();
+      // A real second process races removal against resume, exercising the stable inode after root removal.
+      const deletion = worker("delete", id);
+      const reopening = worker("contend", id);
+      expect(await Promise.all([deletion.line(), reopening.line()])).toEqual(["WAIT", "WAIT"]);
+      deletion.child.stdin.write("GO\n");
+      reopening.child.stdin.write("GO\n");
+      await Promise.all([deletion.child.stdin.flush(), reopening.child.stdin.flush()]);
+      const [deleted, reopened] = await Promise.all([deletion.line(), reopening.line()]);
+      if (deleted === "DELETED") {
+        expect(reopened).toMatch(/^REJECT Session (not found|already open):/);
+        expect(await Bun.file(storagePath).exists()).toBe(false);
+        expect(await listSessions(options)).toEqual([]);
+        await expect(
+          createSession({ ...options, ...fakeModel([]), resumeId: id }),
+        ).rejects.toMatchObject({ code: "session-not-found" });
+      } else {
+        expect(deleted).toStartWith("REJECT Session already open:");
+        expect(reopened).toStartWith("READY ");
+        await reopening.close();
+        expect((await listSessions(options)).map((item) => item.id)).toEqual([id]);
+      }
+      expect((await stat(leaseFile)).ino).toBe(inode);
+      expect(await bounded(deletion.child.exited)).toBe(0);
+      expect(await deletion.stderr).toBe("");
     } finally {
       for (const item of workers) {
         item.child.kill();

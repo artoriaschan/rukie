@@ -93,6 +93,7 @@ export const WireCommandSchema = Type.Union([
   command("session.pin", session),
   command("session.unpin", session),
   command("session.archive", session),
+  command("session.delete", session),
   command("models.list", {}),
   command("session.set_model", {
     ...session,

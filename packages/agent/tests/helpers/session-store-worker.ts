@@ -1,5 +1,5 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { createSession, listSessions } from "../../src/index.ts";
+import { createSession, listSessions, deleteSession } from "../../src/index.ts";
 import { fakeModel } from "./fake-model.ts";
 
 const [mode, cwd, homeDir, id, dataRootArg] = process.argv.slice(2);
@@ -9,9 +9,25 @@ if (mode === "list") {
   console.log(JSON.stringify(await listSessions({ cwd, homeDir, dataRoot })));
 } else {
   const input = Bun.stdin.stream().getReader();
-  if (mode === "contend") {
+  if (mode === "contend" || mode === "delete") {
     console.log("WAIT");
     if ((await input.read()).done) throw new Error("Admission barrier closed");
+  }
+  if (mode === "delete") {
+    if (!id) throw new Error("Missing deletion identity");
+    try {
+      await deleteSession({ cwd, homeDir, dataRoot, id });
+      console.log("DELETED");
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        (error.code !== "session-busy" && error.code !== "session-not-found")
+      )
+        throw error;
+      console.log("REJECT " + error.message);
+    }
+    process.exit(0);
   }
   const fake = fakeModel(mode === "seed" ? [fauxAssistantMessage("Persisted lease fixture")] : []);
   let session;
@@ -24,7 +40,11 @@ if (mode === "list") {
       ...(id ? { resumeId: id } : {}),
     });
   } catch (error) {
-    if (!(error instanceof Error) || !("code" in error) || error.code !== "session-busy")
+    if (
+      !(error instanceof Error) ||
+      !("code" in error) ||
+      (error.code !== "session-busy" && error.code !== "session-not-found")
+    )
       throw error;
     console.log("REJECT " + error.message);
     process.exit(0);

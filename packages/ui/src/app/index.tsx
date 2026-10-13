@@ -41,6 +41,7 @@ import { cn } from "../lib/utils";
 import type { PermissionDecision } from "../lib/transcript";
 import { ModelServices } from "./model-services";
 import { AppConversation } from "./conversation";
+import { DeleteSession } from "./delete-session";
 import { RenameSession } from "./rename-session";
 import { useErrorText } from "./error";
 
@@ -105,6 +106,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [ctrl, setCtrl] = useState(false);
   const [search, setSearch] = useState(false);
   const [summary, setSummary] = useState(false);
+  const [deleting, setDeleting] = useState<WireSessionSummary | null>(null);
   const [renaming, setRenaming] = useState<WireSessionSummary | null>(null);
   const [pathOpen, setPathOpen] = useState(false);
   const [path, setPath] = useState("");
@@ -270,7 +272,12 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     const offMessages = client.subscribeMessages((message) => {
       store.receive(message);
       const latest = store.getState();
-      if (latest.selected && latest.archived.includes(latest.selected)) newChat(null);
+      if (
+        latest.selected &&
+        (latest.archived.includes(latest.selected) ||
+          !latest.sessions.some((session) => session.id === latest.selected))
+      )
+        newChat(null);
     });
     const offSubscriptions = client.subscribeSubscriptions(store.setBusy);
     const offState = client.subscribeState(() => {
@@ -692,6 +699,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                         pin,
                         setRenaming,
                         archive,
+                        setDeleting,
                       )}
                       shortcuts
                     />
@@ -810,6 +818,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   onPin={pin}
                   onRename={setRenaming}
                   onArchive={archive}
+                  onDelete={setDeleting}
                   onPreferences={preferences}
                 />
               </div>
@@ -883,6 +892,13 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           onChanged={async () => {
             store.setModels(await client.request({ type: "models.list" }));
           }}
+        />
+      ) : null}
+      {deleting ? (
+        <DeleteSession
+          session={state.sessions.find((session) => session.id === deleting.id) ?? deleting}
+          onClose={() => setDeleting(null)}
+          onDelete={() => client.request({ type: "session.delete", sessionId: deleting.id })}
         />
       ) : null}
       {renaming ? (

@@ -823,7 +823,7 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(3);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(4);
     expect(
       screen
         .getByRole("menuitem")
@@ -855,7 +855,7 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(3);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(4);
     const menu = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
     const point = session.element().getBoundingClientRect();
     await expect
@@ -985,6 +985,9 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
     await expect
       .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
       .toHaveAttribute("aria-disabled", "true");
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Permanently delete", exact: true }))
+      .toHaveAttribute("aria-disabled", "true");
     await userEvent.keyboard("{Escape}");
     await expect.element(more).toHaveFocus();
     const waiting = screen.getByRole("button", {
@@ -995,11 +998,17 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
     await expect
       .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
       .toBeDisabled();
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Permanently delete", exact: true }))
+      .toBeDisabled();
     await userEvent.keyboard("{Escape}");
     await screen.getByRole("button", { name: "Running Fix compiler", exact: true }).click();
     await screen.getByRole("button", { name: "Session actions", exact: true }).click();
     await expect
       .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
+      .toHaveAttribute("aria-disabled", "true");
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Permanently delete", exact: true }))
       .toHaveAttribute("aria-disabled", "true");
     await userEvent.keyboard("{ArrowDown}{Enter}");
     const sent = await fetch(`http://127.0.0.1:${connection.port}/commands`).then((response) =>
@@ -1034,6 +1043,123 @@ test("archiving another Session keeps the selected conversation open", async () 
       .element(screen.getByRole("button", { name: "Explore ideas", exact: true }))
       .not.toBeInTheDocument();
     await expect.element(screen.getByText("Open one", { exact: true })).toBeVisible();
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("permanent delete confirms from all Session menus, cancellation sends nothing and current deletion opens new chat", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      Conversation={({ sessionId }) => <div>Open {sessionId}</div>}
+      locale="en"
+    />,
+  );
+  const sent = () =>
+    fetch(`http://127.0.0.1:${connection.port}/commands`).then((response) => response.json());
+  try {
+    const row = screen.getByRole("button", { name: "Fix compiler", exact: true });
+    const more = screen.getByRole("button", { name: "Session actions Fix compiler", exact: true });
+    await more.click();
+    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await expect
+      .element(screen.getByRole("dialog", { name: "Permanently delete chat?", exact: true }))
+      .toBeVisible();
+    await expect
+      .element(
+        screen.getByText(
+          "This cannot be undone. The chat, subagents, attachments and file history will be permanently removed.",
+          { exact: true },
+        ),
+      )
+      .toBeVisible();
+    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    await row.click({ button: "right" });
+    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await userEvent.keyboard("{Escape}");
+    await expect
+      .element(screen.getByRole("dialog", { name: "Permanently delete chat?", exact: true }))
+      .not.toBeInTheDocument();
+    await row.click();
+    await expect.element(screen.getByText("Open one", { exact: true })).toBeVisible();
+    await screen.getByRole("button", { name: "Session actions", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await expect.element(screen.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
+    expect(
+      (await sent()).some((command: { type: string }) => command.type === "session.delete"),
+    ).toBe(false);
+    await screen.getByRole("button", { name: "Permanently delete", exact: true }).click();
+    await expect.element(screen.getByText("Open one", { exact: true })).not.toBeInTheDocument();
+    await expect.element(row).not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toBeVisible();
+    expect(
+      (await sent()).filter((command: { type: string }) => command.type === "session.delete"),
+    ).toMatchObject([{ sessionId: "one" }]);
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("permanent delete keeps failures visible and submitting once preserves another selected Session", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      Conversation={({ sessionId }) => <div>Open {sessionId}</div>}
+      locale="zh"
+    />,
+  );
+  try {
+    await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
+    await expect.element(screen.getByText("Open one", { exact: true })).toBeVisible();
+    await screen.getByRole("button", { name: "会话更多 Explore ideas", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "永久删除", exact: true }).click();
+    await expect
+      .element(screen.getByRole("dialog", { name: "永久删除聊天？", exact: true }))
+      .toBeVisible();
+    await fetch(`http://127.0.0.1:${connection.port}/error`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "session.delete", code: "session_busy" }),
+    });
+    await screen.getByRole("button", { name: "永久删除", exact: true }).click();
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("会话被占用，请在空闲后重试。");
+    await expect
+      .element(screen.getByRole("dialog", { name: "永久删除聊天？", exact: true }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Explore ideas", exact: true }))
+      .toBeVisible();
+    await fetch(`http://127.0.0.1:${connection.port}/hold`);
+    const confirm = screen.getByRole("button", { name: "永久删除", exact: true });
+    await confirm.click();
+    await expect.element(confirm).toBeDisabled();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("button", { name: "取消", exact: true })).toBeDisabled();
+    await fetch(`http://127.0.0.1:${connection.port}/flush`);
+    await expect
+      .element(screen.getByRole("dialog", { name: "永久删除聊天？", exact: true }))
+      .not.toBeInTheDocument();
+    await expect.element(screen.getByText("Open one", { exact: true })).toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Explore ideas", exact: true }))
+      .not.toBeInTheDocument();
+    const sent = await fetch(`http://127.0.0.1:${connection.port}/commands`).then((response) =>
+      response.json(),
+    );
+    expect(
+      sent.filter((command: { type: string }) => command.type === "session.delete"),
+    ).toMatchObject([{ sessionId: "two" }, { sessionId: "two" }]);
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);

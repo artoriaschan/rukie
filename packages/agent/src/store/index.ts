@@ -1,10 +1,11 @@
 import { withExternalImages, cleanupExternalFiles } from "./external-files.ts";
 import { userDataDirectory, type UserDataOptions } from "../config/paths.ts";
 import { Database } from "bun:sqlite";
+import { lstatSync, realpathSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, stat, realpath, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, relative, isAbsolute } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Context } from "@earendil-works/chord";
 import {
@@ -167,10 +168,12 @@ export function isSqliteSessionBusy(
   validId(options.id);
   if (!options.dataRoot)
     throw new Error("Desktop busy observation requires an application data root.");
-  const database = new Database(
-    join(createSqliteStore(options).key(options.id), "host-lease.sqlite"),
-    { readwrite: true, create: false },
-  );
+  const directory = createSqliteStore(options).key(options.id);
+  assertStorageFilePath(join(directory, "session.sqlite"));
+  const database = new Database(writerLeasePath(options, directory), {
+    readwrite: true,
+    create: false,
+  });
   try {
     database.exec("PRAGMA busy_timeout = 0; BEGIN IMMEDIATE;");
     database.exec("ROLLBACK;");
@@ -203,11 +206,12 @@ export async function renameSessionTitle(
       code: "session-not-found",
       params: { id },
     });
-  const lease = acquireWriterLease(directory, id);
+  const lease = await acquireWriterLease(options, directory, id);
   const files = new CommittedFiles({ cwd });
   let database: SqliteDatabase | undefined;
   let kernel: ReturnType<typeof createNativeSession> | undefined;
   try {
+    await requireStorage(path, id);
     if (sqlite) {
       // Validate the existing schema and identity before opening a mutable adapter.
       const reader = createNativeSession(await openReadonlySqliteStorage(path));
@@ -256,10 +260,70 @@ export async function renameSessionTitle(
   }
 }
 
-function acquireWriterLease(directory: string, id: string): Database {
-  // Retain the mutex inode: unlinking permits a second owner to lock another inode.
-  // Its writer reservation excludes other hosts without EXCLUSIVE lock upgrades.
-  const lease = new Database(join(directory, "host-lease.sqlite"), { create: true });
+function canonicalPath(path: string): string {
+  let ancestor = resolve(path);
+  let suffix = "";
+  while (true) {
+    try {
+      return join(realpathSync(ancestor), suffix);
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+      suffix = join(basename(ancestor), suffix);
+      ancestor = dirname(ancestor);
+    }
+  }
+}
+
+function writerLeasePath(options: UserDataOptions, directory: string): string {
+  const root = realpathSync(userDataDirectory(options));
+  rejectSymlinks(directory, resolve(userDataDirectory(options)));
+  const canonical = canonicalPath(directory);
+  if (canonical !== join(root, relative(resolve(userDataDirectory(options)), resolve(directory))))
+    throw new Error("Session storage contains a symlink");
+  const identity = createHash("sha256").update(canonical).digest("hex");
+  const path = join(root, ".session-leases", identity + ".sqlite");
+  rejectSymlinks(path, root);
+  if (canonicalPath(path) !== path) throw new Error("Session lease contains a symlink");
+  return path;
+}
+
+function rejectSymlinks(path: string, root: string) {
+  const boundary = resolve(root);
+  for (let current = resolve(path); current !== boundary; current = dirname(current)) {
+    if (current === dirname(current)) throw new Error("Session path escapes its data root");
+    try {
+      if (lstatSync(current).isSymbolicLink()) throw new Error("Session path contains a symlink");
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+    }
+  }
+}
+
+function assertStorageFilePath(path: string) {
+  rejectSymlinks(path, dirname(path));
+  if (canonicalPath(path) !== join(realpathSync(dirname(path)), basename(path)))
+    throw new Error("Session storage contains a symlink");
+}
+
+async function requireStorage(path: string, id: string) {
+  if (!(await Bun.file(path).exists()))
+    throw createUserVisibleError(`Session not found: ${id}`, {
+      code: "session-not-found",
+      params: { id },
+    });
+  assertStorageFilePath(path);
+}
+
+async function acquireWriterLease(
+  options: UserDataOptions,
+  directory: string,
+  id: string,
+): Promise<Database> {
+  // Coordination files outlive deleted Session storage. Every contender locks the same inode.
+  await mkdir(userDataDirectory(options), { recursive: true });
+  const path = writerLeasePath(options, directory);
+  await mkdir(dirname(path), { recursive: true });
+  const lease = new Database(path, { create: true });
   try {
     lease.exec("PRAGMA busy_timeout = 0; BEGIN IMMEDIATE;");
     return lease;
@@ -267,12 +331,69 @@ function acquireWriterLease(directory: string, id: string): Database {
     lease.close();
     throw createUserVisibleError(
       `Session already open: ${id}`,
-      {
-        code: "session-busy",
-        params: { id },
-      },
+      { code: "session-busy", params: { id } },
       { cause: error },
     );
+  }
+}
+
+/** Permanently remove a root Session and its shared child storage and application-owned files.
+ * No Session execution or recovery occurs. Occupied leases reject with session-busy before deletion;
+ * missing/cwd-mismatched storage rejects with session-not-found. Symlinked targets reject before any removal.
+ * Stable coordination leases remain outside Session storage so concurrent opens cannot recreate a deleted Session.
+ */
+export async function deleteSession(
+  options: UserDataOptions & { cwd: string; id: string },
+): Promise<void> {
+  validId(options.id);
+  const root = userDataDirectory(options);
+  const directory = createSessionStore(options).key(options.id);
+  const sqlite = !!options.dataRoot;
+  const path = join(directory, sqlite ? "session.sqlite" : "main.jsonl");
+  await requireStorage(path, options.id);
+  const targets = [
+    directory,
+    join(root, "attachments", options.id),
+    join(root, "file-history", options.id),
+  ];
+  // Validate every optional target before the first destructive operation, including absent descendants.
+  const canonicalRoot = await realpath(root);
+  async function validate(target: string) {
+    const suffix = relative(resolve(root), resolve(target));
+    if (suffix.startsWith("..") || isAbsolute(suffix))
+      throw new Error("Session deletion escapes its data root");
+    rejectSymlinks(target, root);
+    let ancestor = target;
+    while (true) {
+      try {
+        const canonical = await realpath(ancestor);
+        const expected = join(canonicalRoot, relative(resolve(root), resolve(ancestor)));
+        if (canonical !== expected) throw new Error("Session deletion target contains a symlink");
+        return;
+      } catch (error) {
+        if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+        ancestor = dirname(ancestor);
+      }
+    }
+  }
+  for (const target of [...targets, path]) await validate(target);
+  const lease = await acquireWriterLease(options, directory, options.id);
+  try {
+    await requireStorage(path, options.id);
+    await readSessionStorage(options, async (storage) => {
+      const kernel = createNativeSession(storage);
+      const metadata = parseSessionMetadata(
+        await kernel.snapshot(SessionMetadataDoc, BACKGROUND_CONTEXT),
+      );
+      if (metadata.id !== options.id || metadata.cwd !== resolve(options.cwd))
+        throw createUserVisibleError(`Session not found: ${options.id}`, {
+          code: "session-not-found",
+          params: { id: options.id },
+        });
+    });
+    for (const target of targets) await rm(target, { recursive: true, force: true });
+  } finally {
+    lease.close();
   }
 }
 
@@ -295,11 +416,13 @@ function createStore(options: UserDataOptions & { cwd: string }, sqlite: boolean
           code: "session-not-found",
           params: { id },
         });
-      await mkdir(directory, { recursive: true });
-      const lease = acquireWriterLease(directory, sessionId);
+      const lease = await acquireWriterLease(options, directory, sessionId);
       const files = new CommittedFiles({ cwd });
       let database: SqliteDatabase | undefined;
       try {
+        // A delete may have won after the initial existence check; never recreate existing storage.
+        if (id) await requireStorage(join(directory, storageName), id);
+        await mkdir(directory, { recursive: true });
         if (sqlite && id) {
           const reader = createNativeSession(
             await openReadonlySqliteStorage(join(directory, storageName)),

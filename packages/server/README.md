@@ -34,6 +34,8 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 `session.archive { sessionId }` 只修改应用 registry：从 `pinned` 移除并加入 `archived`，Session 摘要、Transcript 与 Session Store 保留；未打开的 Session 不启动 Session Resume。执行中的 Run、Queued Input、Background Job、子代理或挂起 Interaction 返回 `session_busy`，空闲 Session 的只读或实时订阅不阻止归档。成功的 `sessions_changed` 携带 `closedSessionId`，客户端只对当前选择的该 Session 返回新聊天；此字段也用于空闲关闭后的视图失效，不表示归档释放执行租约。`session.pin` 对 Archived Session 返回 `session_archived`；不存在的 id 返回 `session_not_found`。本次没有取消归档命令。
 
+`session.delete { sessionId }` 拒绝执行中、Queued Input、Background Job、子代理和挂起 Interaction 的 Session，也拒绝已获命令或打开准入的 Session。空闲已打开 Session 先关闭、释放租约并撤销订阅，再调用 Core 的永久删除；整个命令持有准入保护，期间的 prompt、订阅和其他 Session 命令返回 `session_busy`。成功后清理 `pinned` 与 `archived`，广播带 `closedSessionId` 的 `sessions_changed`，不存在返回 `session_not_found`。另一个宿主赢得写入租约时删除返回 `session_busy` 并保留组织信息，客户端可重试。Core 的存储及文件边界见 [Session Store](../agent/README.md#session-store)。
+
 ## 实现导航
 
 [server.ts](src/server.ts) 持有 Hono 接入、单个 ManagedRuntime、Layer 与输入回执 FiberMap；[command.ts](src/command.ts) 在进入业务处理前校验不可信输入。依赖和架构约束见 [tech-stack](../../docs/tech-stack.md) 与 [ADR-0030](../../docs/adr/0030-desktop-server-hono-and-effect.md)。

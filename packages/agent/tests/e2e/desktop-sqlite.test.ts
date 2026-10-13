@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { mkdir, readdir, rm, stat, symlink } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, symlink, rename } from "node:fs/promises";
 import { Database } from "bun:sqlite";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createSession as createKernel } from "@earendil-works/pi-durable";
@@ -11,6 +11,9 @@ import { join } from "node:path";
 import {
   createSession,
   discoverSqliteSessions,
+  deleteSession,
+  isSqliteSessionBusy,
+  renameSessionTitle,
   listSessions,
   readSessionSnapshot,
   type Session,
@@ -233,5 +236,183 @@ test("desktop attachment write refuses a symlink escape before submitting or inv
     expect(await readdir(dirs.cwd)).toEqual([".keep"]);
   } finally {
     await rm(link);
+  }
+});
+
+test("permanent deletion removes the root Session, child storage and external files", async () => {
+  dirs = await tempDirs();
+  const dataRoot = join(dirs.homeDir, "desktop-data");
+  const crashed = await crashUnsafeEffect(dirs.cwd, true, { dataRoot });
+  const options = { cwd: dirs.cwd, homeDir: dirs.cwd, dataRoot };
+  expect(crashed.childId).toBeString();
+  expect(
+    JSON.stringify(await readSessionSnapshot({ ...options, id: crashed.sessionId })),
+  ).toContain("Unknown child");
+  for (const kind of ["attachments", "file-history"]) {
+    await mkdir(join(dataRoot, kind, crashed.sessionId), { recursive: true });
+    await Bun.write(join(dataRoot, kind, crashed.sessionId, "owned"), "bytes");
+  }
+  await deleteSession({ ...options, id: crashed.sessionId });
+  expect(await listSessions(options)).toEqual([]);
+  expect(await discoverSqliteSessions(options)).toEqual([]);
+  for (const kind of ["sessions", "attachments", "file-history"])
+    expect(await readdir(join(dataRoot, kind))).not.toContain(crashed.sessionId);
+  for (const directory of ["sessions", "attachments", "file-history"])
+    expect(
+      await Bun.file(
+        join(
+          dataRoot,
+          directory,
+          crashed.sessionId,
+          directory === "sessions" ? "session.sqlite" : "owned",
+        ),
+      ).exists(),
+    ).toBe(false);
+  expect(await Bun.file(join(dirs.cwd, "uncertain-effect.txt")).text()).toBe("saved effect");
+  await expect(
+    createSession({ ...options, resumeId: crashed.sessionId, ...fakeModel([]) }),
+  ).rejects.toMatchObject({ code: "session-not-found" });
+});
+
+test("permanent deletion rejects an occupied lease without removing any Session files", async () => {
+  dirs = await tempDirs();
+  const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };
+  session = await createSession({ ...options, ...fakeModel([]) });
+  const id = session.id;
+  await mkdir(join(options.dataRoot, "file-history", id), { recursive: true });
+  await Bun.write(join(options.dataRoot, "file-history", id, "kept"), "history");
+  const storage = join(options.dataRoot, "sessions", id, "session.sqlite");
+  const before = await Bun.file(storage).bytes();
+  await expect(deleteSession({ ...options, id })).rejects.toMatchObject({ code: "session-busy" });
+  expect(await Bun.file(storage).bytes()).toEqual(before);
+  expect(await Bun.file(join(options.dataRoot, "file-history", id, "kept")).text()).toBe("history");
+  const alias = join(dirs.homeDir, "desktop-alias");
+  await symlink(options.dataRoot, alias, "dir");
+  await expect(deleteSession({ ...options, dataRoot: alias, id })).rejects.toMatchObject({
+    code: "session-busy",
+  });
+  expect(isSqliteSessionBusy({ ...options, dataRoot: alias, id })).toBe(true);
+  await expect(
+    renameSessionTitle({ ...options, dataRoot: alias, id, title: "Rejected alias" }),
+  ).rejects.toMatchObject({ code: "session-busy" });
+  await expect(
+    createSession({ ...options, dataRoot: alias, resumeId: id, ...fakeModel([]) }),
+  ).rejects.toMatchObject({ code: "session-busy" });
+  await session.close();
+  session = undefined;
+  expect(isSqliteSessionBusy({ ...options, dataRoot: alias, id })).toBe(false);
+  expect((await listSessions(options)).map((item) => item.id)).toEqual([id]);
+});
+
+test("permanent deletion validates every target before deleting and never follows symlink parents", async () => {
+  dirs = await tempDirs();
+  const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };
+  session = await createSession({ ...options, ...fakeModel([]) });
+  const id = session.id;
+  await session.close();
+  session = undefined;
+  const outside = join(dirs.cwd, "outside-history");
+  await mkdir(outside);
+  await mkdir(join(outside, id));
+  await Bun.write(join(outside, id, "precious"), "outside");
+  await symlink(outside, join(options.dataRoot, "file-history"), "dir");
+  await expect(deleteSession({ ...options, id })).rejects.toThrow("symlink");
+  expect((await listSessions(options)).map((item) => item.id)).toEqual([id]);
+  expect(await Bun.file(join(outside, id, "precious")).text()).toBe("outside");
+  await rm(join(options.dataRoot, "file-history"));
+  const missing = join(dirs.cwd, "missing-history");
+  await symlink(missing, join(options.dataRoot, "file-history"), "dir");
+  await expect(deleteSession({ ...options, id })).rejects.toThrow("symlink");
+  expect((await listSessions(options)).map((item) => item.id)).toEqual([id]);
+  expect(await Bun.file(missing).exists()).toBe(false);
+  await expect(deleteSession({ ...options, id: "../outside-history" })).rejects.toMatchObject({
+    code: "session-not-found",
+  });
+});
+
+test("writer leases reject redirected Session parents instead of creating a second lock identity", async () => {
+  dirs = await tempDirs();
+  const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };
+  session = await createSession({ ...options, ...fakeModel([]) });
+  const id = session.id;
+  await session.close();
+  session = undefined;
+  const outside = join(dirs.cwd, "redirected-sessions");
+  await rename(join(options.dataRoot, "sessions"), outside);
+  await symlink(outside, join(options.dataRoot, "sessions"), "dir");
+  const path = join(outside, id, "session.sqlite");
+  const before = await Bun.file(path).bytes();
+  const fake = fakeModel([]);
+  const opening = createSession({ ...options, ...fake, resumeId: id });
+  void opening.then(
+    (owner) => {
+      session = owner;
+    },
+    () => {},
+  );
+  await expect(opening).rejects.toThrow("symlink");
+  await expect(renameSessionTitle({ ...options, id, title: "Unsafe" })).rejects.toThrow("symlink");
+  expect(() => isSqliteSessionBusy({ ...options, id })).toThrow("symlink");
+  await expect(deleteSession({ ...options, id })).rejects.toThrow("symlink");
+  expect(fake.contexts).toEqual([]);
+  expect(await Bun.file(path).bytes()).toEqual(before);
+});
+
+test("writer leases reject redirected coordination files and storage files for every lease consumer", async () => {
+  dirs = await tempDirs();
+  const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };
+  session = await createSession({ ...options, ...fakeModel([]) });
+  const id = session.id;
+  await session.close();
+  session = undefined;
+  const coordination = join(options.dataRoot, ".session-leases");
+  const mutexName = (await readdir(coordination)).find((name) => name.endsWith(".sqlite"));
+  if (!mutexName) throw new Error("Missing stable coordination file");
+  const storage = join(options.dataRoot, "sessions", id, "session.sqlite");
+  const outside = join(dirs.cwd, "redirected");
+  await mkdir(outside);
+  for (const target of [coordination, join(coordination, mutexName), storage]) {
+    const moved = join(outside, "moved");
+    await rename(target, moved);
+    await symlink(moved, target);
+    const fake = fakeModel([]);
+    const opening = createSession({ ...options, ...fake, resumeId: id });
+    try {
+      void opening.then(
+        (owner) => {
+          session = owner;
+        },
+        () => {},
+      );
+      await expect(opening).rejects.toThrow("symlink");
+      await expect(renameSessionTitle({ ...options, id, title: "Unsafe" })).rejects.toThrow(
+        "symlink",
+      );
+      expect(() => isSqliteSessionBusy({ ...options, id })).toThrow("symlink");
+      await expect(deleteSession({ ...options, id })).rejects.toThrow("symlink");
+      expect(fake.contexts).toEqual([]);
+      expect(await Bun.file(storage).exists()).toBe(true);
+    } finally {
+      await (await opening.catch(() => undefined))?.close();
+      session = undefined;
+      await rm(target);
+      await rename(moved, target);
+    }
+  }
+  const mutex = join(coordination, mutexName);
+  const saved = join(outside, "saved-mutex");
+  const missing = join(outside, "must-not-create.sqlite");
+  await rename(mutex, saved);
+  await symlink(missing, mutex);
+  try {
+    await expect(
+      renameSessionTitle({ ...options, id, title: "Unsafe dangling lease" }),
+    ).rejects.toThrow("symlink");
+    await expect(deleteSession({ ...options, id })).rejects.toThrow("symlink");
+    expect(() => isSqliteSessionBusy({ ...options, id })).toThrow("symlink");
+    expect(await Bun.file(missing).exists()).toBe(false);
+  } finally {
+    await rm(mutex);
+    await rename(saved, mutex);
   }
 });

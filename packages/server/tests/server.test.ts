@@ -1111,6 +1111,9 @@ test("Run, pending Interaction and Queued Input prevent idle reclamation", async
     expect((await client.command("session.archive", { sessionId })).error).toEqual({
       code: "session_busy",
     });
+    expect((await client.command("session.delete", { sessionId })).error).toEqual({
+      code: "session_busy",
+    });
     clock = FakeTimers.install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout"] });
     await client.command("session.unsubscribe", { sessionId });
     await clock.tickAsync(600001);
@@ -1161,6 +1164,9 @@ test("a running Background Job holds an unsubscribed idle Session", async () => 
     const cwd = join(homeDir, "desktop-data", "workspace");
     const pid = await waitForPidFile(join(cwd, "pid"));
     expect((await client.command("session.archive", { sessionId })).error).toEqual({
+      code: "session_busy",
+    });
+    expect((await client.command("session.delete", { sessionId })).error).toEqual({
       code: "session_busy",
     });
     clock = FakeTimers.install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout"] });
@@ -1224,6 +1230,9 @@ test("a native background Subagent holds a parent Session after its Run ends", a
         (message.background as { active: boolean }[]).some((item) => item.active),
     );
     expect((await client.command("session.archive", { sessionId })).error).toEqual({
+      code: "session_busy",
+    });
+    expect((await client.command("session.delete", { sessionId })).error).toEqual({
       code: "session_busy",
     });
     clock = FakeTimers.install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout"] });
@@ -1951,9 +1960,15 @@ test("archive refuses running and waiting Sessions but accepts a subscribed idle
     expect((await client.command("session.archive", { sessionId })).error).toEqual({
       code: "session_busy",
     });
+    expect((await client.command("session.delete", { sessionId })).error).toEqual({
+      code: "session_busy",
+    });
     proceed.resolve();
     const asked = await client.next((message) => message.type === "interaction_requested");
     expect((await client.command("session.archive", { sessionId })).error).toEqual({
+      code: "session_busy",
+    });
+    expect((await client.command("session.delete", { sessionId })).error).toEqual({
       code: "session_busy",
     });
     expect((await client.command("session.pin", { sessionId })).error).toBeUndefined();
@@ -2099,6 +2114,108 @@ test("session.rename uses an open owner and reports another host's occupied leas
         expect.objectContaining({ id: occupied.id, title: "External owner" }),
       ]),
     );
+  } finally {
+    await owner.close();
+  }
+});
+
+test("session.delete closes an idle opened Session and removes pinned and archived storage", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-delete-wire-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const created = await client.command("session.create", { project: null, text: "hello" });
+    const sessionId = (created.result as { sessionId: string }).sessionId;
+    await client.next((message) => message.type === "result");
+    expect((await client.command("session.pin", { sessionId })).error).toBeUndefined();
+    expect((await client.command("session.archive", { sessionId })).error).toBeUndefined();
+    const [deletion, concurrentPrompt] = await Promise.all([
+      client.command("session.delete", { sessionId }),
+      client.command("prompt", { sessionId, text: "cannot reopen during deletion" }),
+    ]);
+    expect(deletion.error).toBeUndefined();
+    expect(concurrentPrompt.error).toEqual({ code: "session_busy" });
+    expect(
+      await client.next(
+        (message) =>
+          message.type === "sessions_changed" &&
+          message.closedSessionId === sessionId &&
+          Array.isArray(message.sessions) &&
+          message.sessions.length === 0,
+      ),
+    ).toMatchObject({ sessions: [], pinned: [], archived: [] });
+    expect(
+      await Bun.file(
+        join(homeDir, "desktop-data", "sessions", sessionId, "session.sqlite"),
+      ).exists(),
+    ).toBe(false);
+    expect(
+      (await client.command("prompt", { sessionId, text: "must not recreate" })).error,
+    ).toEqual({ code: "session_not_found" });
+    expect((await client.command("session.delete", { sessionId: "missing" })).error).toEqual({
+      code: "session_not_found",
+    });
+    await server.close();
+    const restarted = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fakeModel([]), onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const second = await connect(restarted, "app://rukie", owner);
+    expect(await second.next((message) => message.type === "sessions_changed")).toMatchObject({
+      sessions: [],
+      pinned: [],
+      archived: [],
+    });
+  } finally {
+    await owner.close();
+  }
+});
+
+test("session.delete refuses another host's lease and preserves its organization records", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-delete-busy-wire-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const options = { homeDir, dataRoot: join(homeDir, "desktop-data"), cwd: homeDir };
+    const occupied = await owner.acquire(
+      () => createSession({ ...options, ...fakeModel([]) }),
+      (resource) => resource.close(),
+    );
+    await occupied.rename("Kept");
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fakeModel([]), onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const sessionId = occupied.id;
+    expect((await client.command("session.pin", { sessionId })).error).toBeUndefined();
+    expect((await client.command("session.delete", { sessionId })).error).toEqual({
+      code: "session_busy",
+    });
+    expect(await client.command("sessions.list")).toMatchObject({
+      result: [expect.objectContaining({ id: sessionId, title: "Kept" })],
+    });
+    await occupied.close();
+    expect((await client.command("session.delete", { sessionId })).error).toBeUndefined();
+    expect(
+      await client.next(
+        (message) => message.type === "sessions_changed" && message.closedSessionId === sessionId,
+      ),
+    ).toMatchObject({ sessions: [], pinned: [], archived: [] });
   } finally {
     await owner.close();
   }

@@ -4,6 +4,7 @@ export {
   createSqliteStore,
   createSessionStore,
   discoverSqliteSessions,
+  deleteSession,
   isSqliteSessionBusy,
   readSessionStorage,
   listSessions,

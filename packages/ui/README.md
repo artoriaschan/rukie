@@ -24,6 +24,8 @@ wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `
 
 store 严格校验 `sessions_changed.archived` 的 Session id 列表，并保留完整 Session 摘要；侧栏、搜索与数字导航排除 Archived Session。会话行右键、行内更多和标题栏菜单共用归档操作，执行中或等待确认时禁用。归档当前选择的 Session 后 App 取消订阅并返回首页新聊天，其他 Session 的归档不切换当前对话；`closedSessionId` 使对应缓存视图失效。归档不删除 Transcript 或 Session Store，也没有取消归档入口。
 
+三个 Session 菜单共用“永久删除”危险操作，执行中或等待确认时禁用。确认弹窗先聚焦取消，明确说明不可撤销及 Session、子代理、附件和文件历史的移除；取消、Esc 与关闭不发命令，确认期间禁用重复提交，失败保留弹窗与错误。成功删除当前 Session 后 App 取消订阅并返回首页新聊天；删除其他 Session 保持当前选择，失效缓存由 `closedSessionId` 清理。
+
 ## 模型服务
 
 会话输入框的模型入口按 Pencil C06/C07 展示已认证的模型目录、供应商品牌图标、名称和当前选择。打开时预览当前模型或首个可用模型；悬停和方向键聚焦仅更新输入能力、上下文容量与支持的推理档位。Right Arrow 进入推理按钮，Left Arrow 返回模型行；点击模型采用配置默认推理，点击档位显式选择模型与该档位，Escape 关闭并保留原选择。打开时只显示模型列表，hover 或键盘聚焦模型后展示对应详情，重新打开清除预览。详情出现时列表位置保持稳定；宽屏并排、窄屏上下排列，长列表使用已有 ScrollArea；尺寸、主题和字体由 [DESIGN.md](../../DESIGN.md#conversation-model-controls) 约束。未知自定义供应商使用通用图标。上下文面板只显示现有 ContextReport 事实，不展示尚未提供的五类消息统计或压缩阈值。

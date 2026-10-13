@@ -10,6 +10,7 @@ import {
   createApplicationModels,
   listSessions,
   renameSessionTitle,
+  deleteSession,
   discoverSqliteSessions,
   isSqliteSessionBusy,
   readSessionSnapshot,
@@ -258,6 +259,8 @@ export async function startServer(options: ServerOptions) {
     const observations = new Map<string, () => void>();
     const children = new Map<string, boolean>();
     const admissions = new Map<string, number>();
+    const sessionCommands = new Map<string, number>();
+    const deleting = new Set<string>();
     const retirements = new Set<Promise<void>>();
     const commands = new Set<Promise<unknown>>();
     const changes = new Set<Promise<void>>();
@@ -271,7 +274,10 @@ export async function startServer(options: ServerOptions) {
       session.jobs().some((job) => job.status === "running" || job.status === "stopping") ||
       [...pending.values()].some((item) => item.sessionId === session.id);
     const held = (session: Session) =>
-      executing(session) || [...subscriptions.values()].some((map) => map.has(session.id));
+      executing(session) ||
+      deleting.has(session.id) ||
+      (sessionCommands.get(session.id) ?? 0) > 0 ||
+      [...subscriptions.values()].some((map) => map.has(session.id));
     const refreshIdle = (session: Session) => {
       if (shuttingDown) return;
       clearTimeout(idleTimers.get(session.id));
@@ -308,6 +314,8 @@ export async function startServer(options: ServerOptions) {
       initial?: Extract<WireCommand, { type: "session.create" }>,
       resumeModelSelection?: SessionOptions["resumeModelSelection"],
     ) => {
+      if (resumeId && deleting.has(resumeId))
+        return Promise.reject(new CommandError("session_busy"));
       const current = resumeId ? sessions.get(resumeId) : undefined;
       if (current) return Promise.resolve(current);
       const key = resumeId ?? crypto.randomUUID();
@@ -564,7 +572,7 @@ export async function startServer(options: ServerOptions) {
         refreshIdle(session);
       }
     };
-    const dispatch = async (command: WireCommand, socket: WSContext): Promise<unknown> => {
+    const executeCommand = async (command: WireCommand, socket: WSContext): Promise<unknown> => {
       if (shuttingDown) throw new CommandError("internal");
       if (command.type.startsWith("modelServices.")) {
         if ((options.encryptionBackend ?? "electron") === "electron")
@@ -819,6 +827,42 @@ export async function startServer(options: ServerOptions) {
           await changed();
           return { mode: command.mode };
         }
+        case "session.delete": {
+          const summary = (await summaries()).find((session) => session.id === command.sessionId);
+          if (!summary) throw new CommandError("session_not_found");
+          const current = sessions.get(command.sessionId);
+          if (
+            openings.has(command.sessionId) ||
+            (current && executing(current)) ||
+            [...pending.values()].some((item) => item.sessionId === command.sessionId)
+          )
+            throw new CommandError("session_busy");
+          if (current) {
+            clearTimeout(idleTimers.get(current.id));
+            idleTimers.delete(current.id);
+            await current.close();
+            observations.get(current.id)?.();
+            observations.delete(current.id);
+            sessions.delete(current.id);
+            children.delete(current.id);
+            admissions.delete(current.id);
+            for (const subscribed of subscriptions.values()) {
+              subscribed.get(current.id)?.();
+              subscribed.delete(current.id);
+            }
+          }
+          await deleteSession({
+            cwd: summary.cwd,
+            homeDir: options.homeDir,
+            dataRoot: options.dataRoot,
+            id: summary.id,
+          });
+          registry.pinned = registry.pinned.filter((id) => id !== command.sessionId);
+          registry.archived = registry.archived.filter((id) => id !== command.sessionId);
+          await save();
+          await changed(command.sessionId);
+          return {};
+        }
         case "session.archive": {
           if (!(await summaries()).some((session) => session.id === command.sessionId))
             throw new CommandError("session_not_found");
@@ -879,6 +923,32 @@ export async function startServer(options: ServerOptions) {
     };
     const token = randomBytes(32).toString("hex");
     let port = 0;
+    // Reserve each Session for the entire command, including awaited model/auth/open work.
+    // Deletion owns admission until storage and registry commit; no prompt can reuse a closing owner.
+    const dispatch = async (command: WireCommand, socket: WSContext): Promise<unknown> => {
+      if (!("sessionId" in command)) return executeCommand(command, socket);
+      const id = command.sessionId;
+      if (deleting.has(id)) throw new CommandError("session_busy");
+      if (command.type === "session.delete") {
+        if ((sessionCommands.get(id) ?? 0) > 0) throw new CommandError("session_busy");
+        deleting.add(id);
+        try {
+          return await executeCommand(command, socket);
+        } finally {
+          deleting.delete(id);
+        }
+      }
+      sessionCommands.set(id, (sessionCommands.get(id) ?? 0) + 1);
+      try {
+        return await executeCommand(command, socket);
+      } finally {
+        const count = (sessionCommands.get(id) ?? 1) - 1;
+        if (count) sessionCommands.set(id, count);
+        else sessionCommands.delete(id);
+        const session = sessions.get(id);
+        if (session) refreshIdle(session);
+      }
+    };
     const app = new Hono();
     app.post("/private/model-services", async (c) => {
       const supplied = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
