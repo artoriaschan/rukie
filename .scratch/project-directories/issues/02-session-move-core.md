@@ -1,15 +1,35 @@
 # 02：Agent Core Session Move 与跨移动回退
 
-Status: ready-for-agent
+Status: claimed
 
 Blocked by: None (can start immediately)
 
 **What to build:** 按 [spec](../spec.md#session-move) 在 Agent Core 的 store 能力中增加移动接口，在 Run 中告知模型工作目录变化，并按 [spec](../spec.md#跨越移动的回退) 禁止恢复移动之前的代码。
 
-- [ ] store 新增移动接口：取得写入租约，追加 Session Move 记录（旧 cwd、新 cwd），更新会话元数据 cwd，释放租约；不创建 Session、不调度 Resume、不解析模型或凭据
-- [ ] 存储缺失或 cwd 不匹配返回 `session-not-found`，租约占用返回 `session-busy`，二者都不改动数据；JSONL 存储明确拒绝
-- [ ] 下一次 Run 由最新且未告知的 Session Move 记录生成 system reminder，并补发新目录环境快照；同一记录只告知一次，Resume 后行为一致
-- [ ] `rewind` 选中的 prompt 早于最近一次 Session Move 时拒绝恢复代码并返回明确错误码，对话回退仍可用
-- [ ] TUI 回退选择器在该情况下禁用“恢复代码”并显示原因，zh 与 en 同步
-- [ ] ADR 记录 Session cwd 可改绑与移动记录规则（见 01 的 ADR 说明）；CONTEXT.md 新增 Session Move 词条并修订 Session 词条
-- [ ] 测试：公开 store 接口与 `createSession` 覆盖移动写入、租约占用、Resume 后 reminder 与快照、不重复告知、跨移动回退；TUI 回退选择器终端断言
+- [x] store 新增移动接口：取得写入租约，追加 Session Move 记录（旧 cwd、新 cwd），更新会话元数据 cwd，释放租约；不创建 Session、不调度 Resume、不解析模型或凭据
+- [x] 存储缺失或 cwd 不匹配返回 `session-not-found`，租约占用返回 `session-busy`，二者都不改动数据；JSONL 存储明确拒绝
+- [x] 下一次 Run 由最新且未告知的 Session Move 记录生成 system reminder，并补发新目录环境快照；同一记录只告知一次，Resume 后行为一致
+- [x] `rewind` 选中的 prompt 早于最近一次 Session Move 时拒绝恢复代码并返回明确错误码，对话回退仍可用
+- [x] TUI 回退选择器在该情况下禁用“恢复代码”并显示原因，zh 与 en 同步
+- [x] ADR 记录 Session cwd 可改绑与移动记录规则（见 01 的 ADR 说明）；CONTEXT.md 新增 Session Move 词条并修订 Session 词条
+- [x] 测试：公开 store 接口与 `createSession` 覆盖移动写入、租约占用、Resume 后 reminder 与快照、不重复告知、跨移动回退；TUI 回退选择器终端断言
+
+## Comments
+
+- Claimed by ticket_02. Baseline: integration ancestor `19fdad9c7b784157ef4b0583b49e00070bd5181e`; clean task worktree. Approved seams: public store, createSession/fake model, TUI terminal. ADR-0040 reserved. Focused checks owned here; aggregate checks owned by root.
+
+- Verification progression (uncommitted ticket-owned source, Bun 1.4.2, isolated temp cwd/home/dataRoot): initial move test could not start because worktree dependencies were missing (0 pass, 1 fail/error, 5ms); `rtk proxy bun install --frozen-lockfile` installed 888 packages in 1.204s. Public export red: `rtk proxy bun test packages/agent/tests/e2e/session-move.test.ts` failed missing `moveSession` export (0 pass, 1 fail/error, 109ms). Initial test read fixture needed a conversationId; corrected to ROOT_CONVERSATION_ID after `Unknown conversation: undefined` (0 pass, 1 fail, 212ms). Path assertion corrected to existing resolve(cwd) Session contract rather than realpath; move uses resolve(newCwd) consistently with createSession. Reminder red failed missing move notification (1 pass, 1 fail, 244ms). First reminder implementation exposed absent optional native document snapshot; parseSessionMove now supplies the empty state only when absent and validates persisted documents. Focused green then 2 pass / 9 assertions / 270ms.
+- Atomic notification refinement commits move reminder, refreshed environment and notified entry in one transaction; returning to an earlier cwd forces a fresh snapshot. Expanded public tests verify busy/missing/cwd mismatch/JSONL, latest move only and persisted pending tasks unchanged. `rtk proxy bun test packages/agent/tests/e2e/session-move.test.ts`: 5 pass, 0 fail, 20 assertions, 610ms. Longest integration case 257ms (real crash/recovery child process; no fixed sleeps).
+- TUI red: `rtk proxy env -u NO_COLOR bun test packages/coding-agent/tests/tui/screens/chat/session-move-rewind.test.ts`; first fixture omitted --resume argv (0 pass, 2 fail, 4.79s). Corrected fixture then reproduced active code restore across move and absent reason (0 pass, 2 fail, 4.47s). TUI green after disabled modes, keyboard exclusion and zh/en reason: 2 pass, 0 fail, 4 assertions, 522ms. Isolated real Session storage, app terminal public seam and model fake; no user settings or Sessions.
+- Static progression: focused oxlint passed. Focused tsc first failed because new shared error codes needed the exhaustive TUI formatError switch; consumer updated. Documentation update and check passed for 148 Markdown files. Final affected source checks follow; root owns aggregate acceptance.
+
+- Related Agent Core regression run (after validated move document and atomic reminder commit): `rtk proxy env -u NO_COLOR bun test packages/agent/tests/e2e/session-move.test.ts packages/agent/tests/e2e/checkpoint.test.ts packages/agent/tests/e2e/reminders.test.ts`: exit 0, 39 pass / 226 assertions / 2.38s, log `/tmp/rukie-project-directories-evidence/02-agent-focused.log`. Covers existing Rewind consumers and reminder source comparisons; deliberate invalid-backup case emits expected ENOTDIR warning. Existing checkpoint/reminder results remain valid.
+- Review edge: after conversation Rewind to before a notified move, model input retained old cwd environment. Public case red (`rtk proxy bun test packages/agent/tests/e2e/session-move.test.ts -t 'conversation Rewind retains'`): 0 pass / 1 fail / 5 filtered / 224ms. Detect stale retained environment and refresh it without repeating Session Move notification; green after adding Resume between rewind and Run plus subsequent move: 1 pass / 6 assertions / 5 filtered / 273ms. Session scope preserves boundary and notification state across conversation forks. ADR explains this choice.
+- TUI scope expanded to 80×24 English and 40×12 Chinese; targeted green 2 pass / 4 assertions / 572ms. Disabled mouse target assertions added; final focused result below supersedes these affected cases. No GUI/Electron launch (terminal-only ticket).
+
+- Final terminal focused acceptance (new pointer guard assertions and existing mode consumers): `rtk proxy env -u NO_COLOR bun test packages/coding-agent/tests/tui/screens/chat/session-move-rewind.test.ts packages/coding-agent/tests/tui/screens/chat/rewind.test.ts -t 'moved Session|confirmation mouse click executes real rewind mode|picker shows recent prompts'`: exit 0, 6 pass / 53 filtered / 29 assertions / 2.27s, log `/tmp/rukie-project-directories-evidence/02-tui-focused.log`. New cases <300ms; existing mode cases <600ms. Both 80×24 en and 40×12 zh prevent keyboard and pointer code activation and preserve old file bytes.
+- Focused oxlint and diff whitespace checks pass; formatting applied to task files. TSC corrected exhaustive error mapping and passes (latest result recorded after command completion). All implementation checkboxes completed; Status stays claimed pending root review, integration acceptance and tracker closure.
+
+- Integration merge: own implementation commit `a952f08`; merged integration tip `2977cf69` (01). Conflicts only CONTEXT Session definition and generated ADR index, resolved by preserving both contracts. Auto-merged Reminder/Session sources combine additional-directory environment data with move refresh, so combined source evidence required `rtk proxy bun test packages/agent/tests/e2e/session-move.test.ts packages/agent/tests/e2e/reminders.test.ts`: exit 0, 17 pass / 82 assertions / 1.131s, log `/tmp/rukie-project-directories-evidence/02-merged-reminders.log`. No TUI changes in integration; terminal evidence remains valid. Current check:docs exit 0 (149 files) and affected tsc exit 0. Added explicit moved Run environment additionalDirectories assertion; focused result recorded below. Root owns remaining review/aggregate acceptance.
+
+- Explicit merged environment assertion: `rtk proxy bun test packages/agent/tests/e2e/session-move.test.ts -t 'Resume announces'`: exit 0, 1 pass / 5 filtered / 8 assertions / 230ms. Fresh move environment includes caller-supplied additional directories in actual fake-model input. All other previously passed tests reused. Merge conflict skill applied; no invented behavior. Final hooks remain enabled.

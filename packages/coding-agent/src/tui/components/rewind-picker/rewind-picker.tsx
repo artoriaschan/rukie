@@ -5,11 +5,13 @@ import { createTuiI18n } from "../../../view/i18n";
 export interface RewindEntry {
   promptEntryId: string;
   preview: string;
+  codeRestoreBlocked?: "session-moved";
   files: readonly { path: string; backup: string | null }[];
 }
 export interface RewindMode {
   code: boolean;
   conversation: boolean;
+  disabled?: boolean;
 }
 
 /** Content-sized flow pane. The screen supplies the space shared with persistent panels. */
@@ -159,15 +161,17 @@ export function RewindPicker({
                   singleLine
                   showScrollUp={absolute === start && start > 0}
                   showScrollDown={absolute === end - 1 && end < modes.length}
-                  onClick={busy ? undefined : () => onMode(absolute)}
+                  onClick={busy || choice.disabled ? undefined : () => onMode(absolute)}
                 >
-                  {t(
-                    choice.code
-                      ? choice.conversation
-                        ? "rewind.both"
-                        : "rewind.code"
-                      : "rewind.conversation",
-                  )}
+                  <ThemedText dim={choice.disabled}>
+                    {t(
+                      choice.code
+                        ? choice.conversation
+                          ? "rewind.both"
+                          : "rewind.code"
+                        : "rewind.conversation",
+                    )}
+                  </ThemedText>
                 </ListItem>
               );
             })
@@ -234,7 +238,13 @@ export function RewindPicker({
           </Box>
         )}
         <ThemedText dim italic wrap="truncate">
-          {t(confirm ? "rewind.confirm-hint" : "rewind.hint")}
+          {t(
+            confirm && entry.codeRestoreBlocked
+              ? "rewind.moved"
+              : confirm
+                ? "rewind.confirm-hint"
+                : "rewind.hint",
+          )}
         </ThemedText>
       </Box>
     </Box>

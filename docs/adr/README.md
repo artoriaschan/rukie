@@ -68,6 +68,7 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0037 浏览器形态由 sidecar 提供凭证加密、模型服务与原生能力](0037-browser-host-sidecar-capabilities.md) — `accepted`
 - [0038 Provider Preset 由 Rukie 手工维护，生成的 Model Service 与预设无执行关联](0038-hand-maintained-provider-presets.md) — `accepted`
 - [0039 Session 附加目录只提供路径和项目指令](0039-session-additional-directories.md) — `accepted`
+- [0040 Session Move 改绑 cwd 并以 Transcript 记录移动边界](0040-session-move-transcript-boundary.md) — `accepted`
 - [0041 桌面端 Project 通过显式确认授予精确目录信任](0041-desktop-project-explicit-trust.md) — `accepted`
 
 <!-- ADR_INDEX_END -->

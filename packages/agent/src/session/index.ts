@@ -81,6 +81,8 @@ import {
 } from "../config/index.ts";
 import {
   createSessionStore,
+  SessionMoveDoc,
+  parseSessionMove,
   registerSessionReader,
   SessionMetadataDoc,
   parseSessionMetadata,
@@ -782,6 +784,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       metadata = await harness.snapshot(SessionMetadataDoc, context);
     };
     await writeMetadata();
+    let sessionMove = parseSessionMove(await harness.snapshot(SessionMoveDoc, context));
     const assertAvailable = (idle = false) => {
       if (closed) throw new Error("Session is closed.");
       if (storageFailure !== undefined) throw storageFailure;
@@ -2097,7 +2100,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         tracking.reminderSource,
         ...(options.reminderSources ?? []),
       ];
+      const unannouncedMove =
+        afterCompactionId === undefined && sessionMove.entryId > sessionMove.notifiedEntryId;
+      const latestEnvironment = observation
+        ?.messages()
+        .findLast(
+          (message) => message.role === "system-reminder" && message.source === "environment",
+        );
+      // Conversation Rewind can retain an old cwd snapshot while Session scope keeps the move.
+      const staleEnvironment =
+        afterCompactionId === undefined &&
+        sessionMove.entryId > 0 &&
+        latestEnvironment?.role === "system-reminder" &&
+        !latestEnvironment.content.startsWith(`cwd: ${cwd}\n`);
       const reminders = await collectReminders({
+        refreshEnvironment: unannouncedMove || staleEnvironment,
         messages:
           afterCompactionId === undefined
             ? observation
@@ -2112,7 +2129,25 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         now: options.now?.() ?? new Date(),
         sources,
       });
-      for (const reminder of reminders)
+      if (unannouncedMove) {
+        const moveReminder = reminderEntry({
+          role: "system-reminder",
+          source: "session-move",
+          content: `Working directory changed from ${sessionMove.oldCwd} to ${sessionMove.newCwd}. Use the new working directory for subsequent work.`,
+          timestamp: (options.now?.() ?? new Date()).getTime(),
+        });
+        await conversation.commit(async (tx) => {
+          await tx.appendEntry(conversation.id, moveReminder);
+          const environment = reminders.find((reminder) => reminder.source === "environment");
+          if (environment) await tx.appendEntry(conversation.id, reminderEntry(environment));
+          const moved = await tx.doc(SessionMoveDoc);
+          moved.notifiedEntryId = moved.entryId;
+        }, ctx);
+        sessionMove = parseSessionMove(await harness.snapshot(SessionMoveDoc, ctx));
+      }
+      for (const reminder of reminders.filter(
+        (reminder) => !unannouncedMove || reminder.source !== "environment",
+      ))
         if (reminder.source === "file-changes") await tracking.persistReminder(reminder);
         else if (afterCompactionId === undefined) await appendReminder(reminder, ctx);
         else
@@ -3317,7 +3352,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           manualCompaction = false;
         }
       },
-      checkpoints: () => checkpoints.list(),
+      checkpoints: () =>
+        checkpoints.list().map((checkpoint) => ({
+          ...checkpoint,
+          ...(Number(checkpoint.promptEntryId) < sessionMove.entryId
+            ? { codeRestoreBlocked: "session-moved" as const }
+            : {}),
+        })),
       async rewind(id, input) {
         assertAvailable(true);
         if (!input.code && !input.conversation)
@@ -3326,6 +3367,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         if (inspection.tasks.length)
           throw new Error("Rewind requires all related work to be settled.");
         const prompt = checkpoints.prompt(id);
+        if (input.code && Number(id) < sessionMove.entryId)
+          throw createUserVisibleError("Code before a Session Move cannot be restored.", {
+            code: "rewind-cross-session-move",
+            params: {},
+          });
         const code = input.code ? await checkpoints.restoreCode(id) : { restored: [], deleted: [] };
         if (input.conversation) {
           const entries = await fullHistory();
