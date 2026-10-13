@@ -19,7 +19,13 @@ import {
 
 const RegistrySchema = Type.Object({
   projects: Type.Array(
-    Type.Object({ id: Type.String(), path: Type.String(), name: Type.String() }),
+    Type.Object({
+      id: Type.String(),
+      name: Type.String(),
+      directories: Type.Array(Type.String(), { minItems: 1, uniqueItems: true }),
+      primary: Type.String(),
+      trusted: Type.Boolean(),
+    }),
   ),
   pinned: Type.Array(Type.String()),
   archived: Type.Array(Type.String()),
@@ -86,11 +92,43 @@ export class AppDatabase {
       typeof stored === "object" && stored !== null && !("archived" in stored)
         ? { ...stored, archived: [] }
         : stored;
-    if (!Value.Check(RegistrySchema, value)) throw new Error("Invalid application registry");
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "projects" in value &&
+      Array.isArray(value.projects)
+    ) {
+      value.projects = value.projects.map((project: unknown) => {
+        if (
+          Value.Check(
+            Type.Object({ id: Type.String(), name: Type.String(), path: Type.String() }),
+            project,
+          ) &&
+          !("directories" in project)
+        )
+          return {
+            id: project.id,
+            name: project.name,
+            directories: [project.path],
+            primary: project.path,
+            trusted: false,
+          };
+        return project;
+      });
+    }
+    if (
+      !Value.Check(RegistrySchema, value) ||
+      value.projects.some((p) => !p.directories.includes(p.primary))
+    )
+      throw new Error("Invalid application registry");
     return value;
   }
   async saveRegistry(value: ApplicationRegistry): Promise<void> {
-    if (!Value.Check(RegistrySchema, value)) throw new Error("Invalid application registry");
+    if (
+      !Value.Check(RegistrySchema, value) ||
+      value.projects.some((p) => !p.directories.includes(p.primary))
+    )
+      throw new Error("Invalid application registry");
     await this.db.transaction((tx) => this.putDocument(tx, "registry", value));
   }
   async preferences(): Promise<Static<typeof WirePreferencesSchema>> {

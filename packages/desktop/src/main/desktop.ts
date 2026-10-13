@@ -209,9 +209,9 @@ export async function startDesktop(options: DesktopOptions) {
     ipcMain.handle("rukie:pickProjectFolder", async (event) => {
       authorize(event);
       const result = await dialog.showOpenDialog(window, {
-        properties: ["openDirectory", "createDirectory"],
+        properties: ["openDirectory", "createDirectory", "multiSelections"],
       });
-      return result.canceled ? null : (result.filePaths[0] ?? null);
+      return result.canceled || result.filePaths.length === 0 ? null : result.filePaths;
     });
     let stopped: Promise<void> | undefined;
     const stop = () => {

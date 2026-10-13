@@ -36,7 +36,15 @@ test("search lists every unarchived chat in updated order and matches title or P
           cwd: index % 2 ? "/project" : "/workspace",
           running: index === 11,
         })),
-        projects: [{ id: "project", name: "Project", path: "/project" }],
+        projects: [
+          {
+            id: "project",
+            name: "Project",
+            directories: ["/project"],
+            primary: "/project",
+            trusted: true,
+          },
+        ],
         pinned: [],
         archived: ["chat-10"],
         preferences: { sort: "created" },
@@ -103,7 +111,7 @@ test("Tab focused Open folder executes the host picker with Enter", async () => 
       host={{
         getConnection: async () => connection,
         modelServices: modelServicesFixture,
-        pickProjectFolder: async () => "/chosen-folder",
+        pickProjectFolder: async () => ["/chosen-folder"],
       }}
       locale="en"
     />,
@@ -118,9 +126,17 @@ test("Tab focused Open folder executes the host picker with Enter", async () => 
       .element(screen.getByRole("option", { name: "Open folder", exact: true }))
       .toHaveFocus();
     await userEvent.keyboard("{Enter}");
+    await screen.getByRole("button", { name: "Create project", exact: true }).click();
+    await screen.getByRole("button", { name: "Trust and create", exact: true }).click();
     await expect
       .poll(() => wireCommands(connection.port), { timeout: 3000 })
-      .toContainEqual(expect.objectContaining({ type: "project.add", path: "/chosen-folder" }));
+      .toContainEqual(
+        expect.objectContaining({
+          type: "project.create",
+          directories: ["/chosen-folder"],
+          trusted: true,
+        }),
+      );
     await expect.element(trigger).toHaveFocus();
     await expect
       .element(screen.getByRole("dialog", { name: "Add project", exact: true }))
@@ -320,11 +336,18 @@ test("search keyboard crosses both groups and hands folder dialog focus back to 
       .element(screen.getByRole("dialog", { name: "Search chats" }))
       .not.toBeInTheDocument();
     await userEvent.keyboard("/new-project");
-    await folder.getByRole("button", { name: "Add", exact: true }).click();
+    await folder.getByRole("button", { name: "Create project", exact: true }).click();
+    await screen.getByRole("button", { name: "Trust and create", exact: true }).click();
     await expect.element(trigger).toHaveFocus();
     await expect
       .poll(() => wireCommands(connection.port))
-      .toContainEqual(expect.objectContaining({ type: "project.add", path: "/new-project" }));
+      .toContainEqual(
+        expect.objectContaining({
+          type: "project.create",
+          directories: ["/new-project"],
+          trusted: true,
+        }),
+      );
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);

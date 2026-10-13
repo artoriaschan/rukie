@@ -6,6 +6,8 @@ Permission Rule 按 `deny` → `ask` → `allow` 的顺序匹配。显式 `deny`
 
 恢复未结算的调用时，Agent Core 重新读取当前规则、Trusted Project、Hook 和工具参数。审批的稳定请求身份可恢复，但 callback epoch、signal 与 session 临时 allow 不恢复；旧回复不能授权新阶段。原生 safe replay 的 execute 路径也经过当前授权，unsafe intent 不因当前规则放宽而重跑。Plan Mode 提供规划上下文，始终独立于 Permission Mode。请求恢复与执行阶段见 [Agent Core](../packages/agent/README.md#pending-interactions)。
 
+桌面端 Trusted Project 来自创建 Project 或首次使用旧 Project 时的显式信任确认。服务端把已信任 Project 的全部真实目录派生为 `trustedProjects`，不写回用户 settings；匹配要求路径精确相等，不继承父目录信任。拒绝旧 Project 的确认不阻止 Session 运行，但不加载项目 hooks、MCP 配置与 allow 规则。附加目录仅贡献项目指令，其可执行配置不合并。见 [ADR-0041](adr/0041-desktop-project-explicit-trust.md)。
+
 ## Web fetch 域名规则
 
 在 settings 中允许常用文档站、询问特定站点或拒绝某个域名：

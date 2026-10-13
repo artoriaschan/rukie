@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, stat } from "node:fs/promises";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { mkdir, stat, realpath } from "node:fs/promises";
+import { basename, isAbsolute, join, relative, sep } from "node:path";
 import { Hono } from "hono";
 import { upgradeWebSocket, websocket } from "@hono/bun";
 import type { WSContext } from "hono/ws";
@@ -63,7 +63,10 @@ export interface ServerOptions {
   onHandshake?: (connection: { port: number; token: string }) => void;
 }
 class CommandError extends Error {
-  constructor(readonly code: WireErrorCode) {
+  constructor(
+    readonly code: WireErrorCode,
+    readonly params?: Record<string, string | number>,
+  ) {
     super(code);
   }
 }
@@ -247,6 +250,7 @@ export async function startServer(options: ServerOptions) {
       }
     };
     const sessions = new Map<string, Session>();
+    const openedTrust = new Map<string, { cwd: string; trusted: boolean }>();
     const pending = new Map<
       string,
       {
@@ -292,6 +296,7 @@ export async function startServer(options: ServerOptions) {
             observations.get(session.id)?.();
             observations.delete(session.id);
             sessions.delete(session.id);
+            openedTrust.delete(session.id);
             children.delete(session.id);
             const retirement = session.close().then(() => changed(session.id));
             retirements.add(retirement);
@@ -322,17 +327,28 @@ export async function startServer(options: ServerOptions) {
       const existing = openings.get(key);
       if (existing) return existing;
       let owner: Session | undefined;
+      const trustedAtOpen =
+        registry.projects.find((p) => p.directories.includes(cwd))?.trusted ?? false;
       const opening = (async () => {
-        const settings =
-          options.sessionOptions?.settings ??
-          (
-            await loadSettings({
-              cwd,
-              homeDir: options.homeDir,
-              dataRoot: options.dataRoot,
-              userSettings: await configuration.settings(),
-            })
-          ).settings;
+        const configuredSettings =
+          options.sessionOptions?.settings ?? (await configuration.settings());
+        const userSettings = {
+          ...configuredSettings,
+          trustedProjects: [
+            ...new Set([
+              ...(configuredSettings.trustedProjects ?? []),
+              ...registry.projects.filter((p) => p.trusted).flatMap((p) => p.directories),
+            ]),
+          ],
+        };
+        const settings = (
+          await loadSettings({
+            cwd,
+            homeDir: options.homeDir,
+            dataRoot: options.dataRoot,
+            userSettings,
+          })
+        ).settings;
         await refreshModels();
         const models = options.sessionOptions?.models ?? applicationModels;
         const spec = initial?.modelSelection
@@ -376,6 +392,9 @@ export async function startServer(options: ServerOptions) {
           model: selected ?? options.sessionOptions?.model,
           permissionMode: initial?.permissionMode,
           cwd,
+          additionalDirectories: registry.projects
+            .find((p) => p.directories.includes(cwd))
+            ?.directories.filter((path) => path !== cwd),
           homeDir: options.homeDir,
           dataRoot: options.dataRoot,
           mcpPersistence: applicationMcpPersistence(vault),
@@ -416,6 +435,7 @@ export async function startServer(options: ServerOptions) {
         .then((session) => {
           owner = session;
           sessions.set(session.id, session);
+          openedTrust.set(session.id, { cwd, trusted: trustedAtOpen });
           observations.set(
             session.id,
             session.subscribe((event) => {
@@ -459,7 +479,29 @@ export async function startServer(options: ServerOptions) {
     };
     const find = async (id: string, selection?: SessionOptions["resumeModelSelection"]) => {
       const current = sessions.get(id);
-      if (current) return current;
+      if (current) {
+        const opened = openedTrust.get(id);
+        const trusted =
+          registry.projects.find((p) => p.directories.includes(opened?.cwd ?? ""))?.trusted ??
+          false;
+        if (opened?.trusted === trusted || executing(current)) return current;
+        // Applying newly granted trust waits for the next idle execution boundary.
+        // Closing here reloads cwd configuration without interrupting an active Run.
+        await current.close();
+        if (sessions.get(id) === current) {
+          clearTimeout(idleTimers.get(id));
+          idleTimers.delete(id);
+          observations.get(id)?.();
+          observations.delete(id);
+          sessions.delete(id);
+          children.delete(id);
+          openedTrust.delete(id);
+          for (const subscribed of subscriptions.values()) {
+            subscribed.get(id)?.();
+            subscribed.delete(id);
+          }
+        }
+      }
       const summary = (await summaries()).find((s) => s.id === id);
       if (!summary) throw new CommandError("session_not_found");
       return open(summary.cwd, id, undefined, selection);
@@ -640,7 +682,7 @@ export async function startServer(options: ServerOptions) {
           return hostOperation(command, {
             platform: options.hostPlatform ?? process.platform,
             execute: options.executeHost ?? executeHost,
-            roots: [...registry.projects.map((project) => project.path), workspace],
+            roots: [...registry.projects.flatMap((project) => project.directories), workspace],
           });
         case "projects.list":
           return runtime.runPromise(
@@ -648,19 +690,55 @@ export async function startServer(options: ServerOptions) {
               return (yield* DesktopRegistry).value.projects;
             }),
           );
-        case "project.add": {
-          if (
-            !isAbsolute(command.path) ||
-            !(await stat(command.path).catch(() => undefined))?.isDirectory()
-          )
-            throw new CommandError("project_not_found");
-          const path = resolve(command.path);
-          let project: WireProject | undefined = registry.projects.find((p) => p.path === path);
-          if (!project) {
-            project = { id: crypto.randomUUID(), path, name: basename(path) };
-            registry.projects.push(project);
-            await save();
+        case "project.create": {
+          const directories: string[] = [];
+          for (const input of command.directories) {
+            if (!isAbsolute(input) || !(await stat(input).catch(() => undefined))?.isDirectory())
+              throw new CommandError("project_not_found");
+            const path = await realpath(input);
+            if (!directories.includes(path)) directories.push(path);
           }
+          const root = await realpath(directory);
+          if (
+            directories.some((path) => {
+              const child = relative(root, path);
+              return (
+                child === "" ||
+                (!isAbsolute(child) && child !== ".." && !child.startsWith(`..${sep}`))
+              );
+            })
+          )
+            throw new CommandError("project_reserved");
+          const primary = directories[0]!;
+          const existing = registry.projects.find((p) => p.primary === primary);
+          if (existing) return existing;
+          const conflict = registry.projects.find((p) =>
+            p.directories.some((path) => directories.includes(path)),
+          );
+          if (conflict) throw new CommandError("project_conflict", { project: conflict.name });
+          const project: WireProject = {
+            id: crypto.randomUUID(),
+            name: basename(primary),
+            directories,
+            primary,
+            trusted: true,
+          };
+          registry.projects.push(project);
+          await save();
+          await changed();
+          return project;
+        }
+        case "project.trust":
+        case "project.setPrimary": {
+          const project = registry.projects.find((p) => p.id === command.projectId);
+          if (!project) throw new CommandError("project_not_found");
+          if (command.type === "project.trust") project.trusted = true;
+          else {
+            if (!project.directories.includes(command.directory))
+              throw new CommandError("invalid_command");
+            project.primary = command.directory;
+          }
+          await save();
           await changed();
           return project;
         }
@@ -670,7 +748,7 @@ export async function startServer(options: ServerOptions) {
           const cwd =
             command.project === null
               ? workspace
-              : registry.projects.find((p) => p.id === command.project)?.path;
+              : registry.projects.find((p) => p.id === command.project)?.primary;
           if (!cwd) throw new CommandError("project_not_found");
           const session = await runtime.runPromise(
             Effect.gen(function* () {
@@ -844,6 +922,7 @@ export async function startServer(options: ServerOptions) {
             observations.get(current.id)?.();
             observations.delete(current.id);
             sessions.delete(current.id);
+            openedTrust.delete(current.id);
             children.delete(current.id);
             admissions.delete(current.id);
             for (const subscribed of subscriptions.values()) {
@@ -1079,7 +1158,16 @@ export async function startServer(options: ServerOptions) {
                           ? "invalid_command"
                           : "internal";
                 if (code === "internal") warning(String(error));
-                send(socket, { type: "response", id: command.id, error: { code } });
+                send(socket, {
+                  type: "response",
+                  id: command.id,
+                  error: {
+                    code,
+                    ...(error instanceof CommandError && error.params
+                      ? { params: error.params }
+                      : {}),
+                  },
+                });
               },
             )
             .finally(() => commands.delete(task));

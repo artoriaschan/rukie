@@ -89,7 +89,7 @@ for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
           outcome === "unsupported"
             ? { type: "host.pickFolder", code: "unsupported" }
             : outcome === "selected"
-              ? "/chosen/project"
+              ? ["/chosen/project"]
               : null,
         ),
       });
@@ -98,15 +98,21 @@ for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
       await screen.getByRole("button", { name: "Add project", exact: true }).click();
       if (outcome !== "selected") {
         await screen.getByRole("textbox", { name: "Project folder path" }).fill("/manual/project");
-        await screen.getByRole("button", { name: "Add", exact: true }).click();
       }
+      await screen.getByRole("button", { name: "Create project", exact: true }).click();
+      await screen.getByRole("button", { name: "Trust and create", exact: true }).click();
       await expect
         .poll(async () =>
           (await fetch(`${url}/commands`).then((response) => response.json())).filter(
-            (command: { type: string }) => command.type === "project.add",
+            (command: { type: string }) => command.type === "project.create",
           ),
         )
-        .toMatchObject([{ path: outcome === "selected" ? "/chosen/project" : "/manual/project" }]);
+        .toMatchObject([
+          {
+            directories: [outcome === "selected" ? "/chosen/project" : "/manual/project"],
+            trusted: true,
+          },
+        ]);
       if (outcome === "selected") {
         await userEvent.keyboard("{Control>}1{/Control}");
         await screen.getByRole("button", { name: "Session actions" }).click();

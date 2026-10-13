@@ -341,6 +341,12 @@ Cards use quieter surfaces than overlays and 16px horizontal padding. Dialogs ke
 
 Ordinary cards use `card`, matching foreground, and `card-border` separation. Low-emphasis content may share that surface without adding another border; selected cards use `card-selected`. Avoid multiple unrelated card backgrounds on one screen. Toasts use compact padding and attention elevation; they do not turn ordinary content cards into attention panels.
 
+### Project directories and trust
+
+Project creation composes the installed beUI centered MorphingModal, Input and Button. Its body contains an ordered directory list: the first selected folder is primary. Rows use neutral compact spacing, `text-ui-base` paths with wrapping, and a trailing `text-ui-caption` Primary marker. A non-primary row reveals a ghost Set as primary action on hover or focus within; reserve its space so reveal never changes geometry and keep the action keyboard reachable. Creation permits choosing several directories or adding manual absolute paths before confirmation.
+
+The trust dialog follows the existing title/body/footer regions, with a bounded ScrollArea for all directory paths. Mark the primary directory and explain that its instructions, hooks, MCP configuration and allow rules take effect; additional directories contribute project instructions. Use one primary Trust and create action (Trust for an existing Project) and a neutral Cancel action. Cancellation creates no Project; declining existing trust continues the requested Session action. Pending submission disables actions. Dialogs restore focus through the installed primitive and never change title bar, sidebar, conversation or composer geometry. Existing Project directory controls use the same row role in a centered dialog; Set as primary affects future Sessions only.
+
 ### Tabs and selection
 
 - Inactive tabs remain neutral. Active tabs use stronger neutral surface/text contrast and an explicit active indicator, not brand-filled blocks.

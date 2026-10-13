@@ -11,7 +11,7 @@ test("application state survives restart and failed provider replacement preserv
   try {
     app = await AppDatabase.open(root);
     await app.saveRegistry({
-      projects: [{ id: "p", name: "project", path: root }],
+      projects: [{ id: "p", name: "project", directories: [root], primary: root, trusted: true }],
       pinned: ["s"],
       archived: ["archived"],
       preferences: { showPinned: true },
@@ -43,7 +43,7 @@ test("application state survives restart and failed provider replacement preserv
     await app.close();
     app = await AppDatabase.open(root);
     expect(await app.registry()).toEqual({
-      projects: [{ id: "p", name: "project", path: root }],
+      projects: [{ id: "p", name: "project", directories: [root], primary: root, trusted: true }],
       pinned: ["s"],
       archived: ["archived"],
       preferences: { showPinned: true },
@@ -196,7 +196,11 @@ test("registry adds archival to existing documents without discarding organizati
       "registry",
       JSON.stringify(legacy),
     );
-    expect(await app.registry()).toEqual({ ...legacy, archived: [] });
+    expect(await app.registry()).toEqual({
+      ...legacy,
+      projects: [{ id: "p", name: "Project", directories: [root], primary: root, trusted: false }],
+      archived: [],
+    });
     for (const archived of [null, "s", [1]]) {
       await fixture.run(
         "INSERT OR REPLACE INTO documents VALUES (?, ?)",

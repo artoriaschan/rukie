@@ -95,7 +95,7 @@ Transcript、documents、任务与父子 ownership 的持久化位置。Headless
 _Avoid_: database, history store
 
 **Project**:
-用户在桌面端登记的工作目录。工作目录等于某个 Project 路径的 Session 归属于该 Project；其余 Session 不属于任何 Project，桌面端将它们列在“对话”分类下，该分类只是导航呈现，不是领域概念。
+用户在桌面端登记的有序非空目录集合，具有一个主目录与显式信任状态。新 Session 使用当前主目录；已有 Session 保留 cwd，cwd 等于该 Project 任一目录时归属于它。其余 Session 列在“对话”分类下，共用应用数据根的 `workspace/`；该分类只是导航呈现，不是领域概念。Project 的真实目录不重叠且不包含应用数据根或其子目录。创建或补确认授予全部目录的精确信任；切换主目录不改变名称或重询信任。
 _Avoid_: workspace, folder
 
 **Archived Session**:
