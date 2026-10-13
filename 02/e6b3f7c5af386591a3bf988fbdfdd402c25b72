@@ -1,0 +1,23 @@
+packages/server/tests/server.test.ts
+  s_aa5016c0b422e7::t_14e5c4a3107fc0 1049-1051,1073-1074,1097-1100,1107-1108,1110-1112,1121-1122
+  s_aa5016c0b422e7::t_7bdab56ba8f268 1061-1062
+  s_aa5016c0b422e7::t_7a233faa247d96 1052-1060,1063-1072,1075-1096,1101-1106,1109,1113-1117,1123
+packages/server/src/server.ts
+  s_aa5016c0b422e7::t_c11f869c866663 946-947
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "02e6b3f7c5af386591a3bf988fbdfdd402c25b72",
+  "prompts": {},
+  "sessions": {
+    "s_aa5016c0b422e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13344-369d-7633-a1db-f9b9b5115c54",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
