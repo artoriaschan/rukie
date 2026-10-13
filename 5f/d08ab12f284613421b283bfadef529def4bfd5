@@ -1,0 +1,30 @@
+packages/ui/tests/app/layout.browser.test.tsx
+  s_aa5016c0b422e7::t_d79196cb3cf071 365-370
+  s_aa5016c0b422e7::t_be73c2ec50f05d 334,345,356-364,371-374
+DESIGN.md
+  s_aa5016c0b422e7::t_fd4b004c79664b 354
+.scratch/session-sidebar/issues/06-acceptance.md
+  s_aa5016c0b422e7::t_195b71e5a8a35d 56-59
+packages/ui/src/components/sidebar.tsx
+  s_aa5016c0b422e7::t_d79196cb3cf071 48-50,52-53
+  s_aa5016c0b422e7::t_fd4b004c79664b 1,45-47,51,54-63,299,302
+.scratch/session-sidebar/spec.md
+  s_aa5016c0b422e7::t_195b71e5a8a35d 163
+  s_aa5016c0b422e7::t_fd4b004c79664b 62,79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "5fd08ab12f284613421b283bfadef529def4bfd5",
+  "prompts": {},
+  "sessions": {
+    "s_aa5016c0b422e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13344-369d-7633-a1db-f9b9b5115c54",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
