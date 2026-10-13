@@ -1,6 +1,7 @@
 import { ownResources } from "./helpers/owned-resources.ts";
 import FakeTimers from "@sinonjs/fake-timers";
-import { expect, test } from "bun:test";
+import { expect, test, spyOn } from "bun:test";
+import * as filesystem from "node:fs/promises";
 import { mkdtemp, rm, realpath, mkdir, writeFile, symlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
@@ -878,6 +879,172 @@ test("multi-directory Projects canonicalize, require trust and keep exact owners
       code: "invalid_command",
     });
   } finally {
+    await owner.close();
+  }
+});
+
+test("concurrent project.create reuses one canonical Project and persists it once", async () => {
+  const owner = ownResources();
+  let release = () => {};
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-project-create-race-")),
+      (dir) => rm(dir, { recursive: true, force: true }),
+    );
+    const seed = await realpath(await mkdtemp(join(homeDir, "seed-")));
+    const primary = await realpath(await mkdtemp(join(homeDir, "primary-")));
+    const alias = join(homeDir, "alias");
+    await symlink(primary, alias);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    await client.command("project.create", { directories: [seed], trusted: true });
+    const original = filesystem.realpath;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let arrivals = 0;
+    // Hold the real filesystem boundary until both commands finish candidate validation.
+    // Existing seed identities force the ownership snapshot to cross an async realpath boundary.
+    // Server realpath calls use string results without encoding options; the fixture preserves that contract.
+    const lookup = spyOn(filesystem, "realpath").mockImplementation((async (
+      path: Parameters<typeof filesystem.realpath>[0],
+    ) => {
+      const result = await original(path);
+      if (path === join(homeDir, "desktop-data")) {
+        if (++arrivals === 2) release();
+        await barrier;
+      }
+      return result;
+    }) as typeof filesystem.realpath);
+    owner.add(() => {
+      release();
+      lookup.mockRestore();
+    });
+    const replies = await Promise.all([
+      client.command("project.create", { directories: [primary], trusted: true }),
+      client.command("project.create", { directories: [alias], trusted: true }),
+    ]);
+    lookup.mockRestore();
+    expect(replies[0]!.error).toBeUndefined();
+    expect(replies[1]!.result).toEqual(replies[0]!.result);
+    expect((await client.command("projects.list")).result).toEqual([
+      expect.objectContaining({ primary: seed }),
+      replies[0]!.result,
+    ]);
+    await server.close();
+    const reopened = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const restartedClient = await connect(reopened, "app://rukie", owner);
+    expect((await restartedClient.command("projects.list")).result).toEqual([
+      expect.objectContaining({ primary: seed }),
+      replies[0]!.result,
+    ]);
+  } finally {
+    release();
+    await owner.close();
+  }
+});
+
+test("concurrent project.create reports the owner of a shared canonical secondary directory", async () => {
+  const owner = ownResources();
+  let release = () => {};
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-project-overlap-race-")),
+      (dir) => rm(dir, { recursive: true, force: true }),
+    );
+    const seed = await realpath(await mkdtemp(join(homeDir, "seed-")));
+    const primary = join(await realpath(homeDir), "first");
+    const other = join(await realpath(homeDir), "second");
+    const shared = join(await realpath(homeDir), "shared");
+    for (const directory of [primary, other, shared]) await mkdir(directory);
+    const alias = join(homeDir, "alias");
+    await symlink(shared, alias);
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (db) => db.close(),
+    );
+    const seedProject = {
+      id: "seed",
+      name: "Seed",
+      directories: [seed, homeDir],
+      primary: seed,
+      trusted: false,
+    };
+    await database.saveRegistry({
+      projects: [seedProject],
+      pinned: [],
+      archived: [],
+      preferences: {},
+    });
+    await database.close();
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const original = filesystem.realpath;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let arrivals = 0;
+    // Synchronize candidate validation at the filesystem boundary, leaving registry behavior real.
+    // Server realpath calls use string results without encoding options; the fixture preserves that contract.
+    const lookup = spyOn(filesystem, "realpath").mockImplementation((async (
+      path: Parameters<typeof filesystem.realpath>[0],
+    ) => {
+      const result = await original(path);
+      if (path === join(homeDir, "desktop-data")) {
+        if (++arrivals === 2) release();
+        await barrier;
+      }
+      return result;
+    }) as typeof filesystem.realpath);
+    owner.add(() => {
+      release();
+      lookup.mockRestore();
+    });
+    const replies = await Promise.all([
+      client.command("project.create", { directories: [primary, shared], trusted: true }),
+      client.command("project.create", { directories: [other, alias], trusted: true }),
+      client.command("project.trust", { projectId: "seed" }),
+      client.command("project.setPrimary", { projectId: "seed", directory: homeDir }),
+    ]);
+    lookup.mockRestore();
+    const firstWon = replies[0]!.error === undefined;
+    const winner = replies[firstWon ? 0 : 1]!;
+    const loser = replies[firstWon ? 1 : 0]!;
+    expect(winner.result).toMatchObject({
+      primary: firstWon ? primary : other,
+      directories: [firstWon ? primary : other, shared],
+    });
+    expect(loser.error).toEqual({
+      code: "project_conflict",
+      params: { project: firstWon ? "first" : "second" },
+    });
+    expect(replies[2]!.error).toBeUndefined();
+    expect(replies[3]!.error).toBeUndefined();
+    // A rejected overlap must release the queue for later Project writes.
+    expect(
+      (await client.command("project.setPrimary", { projectId: "seed", directory: homeDir })).error,
+    ).toBeUndefined();
+    await server.close();
+    const reopened = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const restartedClient = await connect(reopened, "app://rukie", owner);
+    expect((await restartedClient.command("projects.list")).result).toEqual([
+      { ...seedProject, trusted: true, primary: homeDir },
+      winner.result,
+    ]);
+  } finally {
+    release();
     await owner.close();
   }
 });

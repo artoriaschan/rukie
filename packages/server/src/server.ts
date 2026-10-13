@@ -266,6 +266,16 @@ export async function startServer(options: ServerOptions) {
         throw error;
       }
     };
+    // Keep canonical ownership checks and all Project writes in one queue through persistence.
+    let projectMutationTail: Promise<unknown> = Promise.resolve();
+    const mutateProjects = <T>(operation: () => Promise<T>): Promise<T> => {
+      const result = projectMutationTail.then(operation);
+      projectMutationTail = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    };
     const sessions = new Map<string, Session>();
     const openedTrust = new Map<string, { cwd: string; trusted: boolean }>();
     const pending = new Map<
@@ -729,40 +739,44 @@ export async function startServer(options: ServerOptions) {
             })
           )
             throw new CommandError("project_reserved");
-          const primary = directories[0]!;
-          const identities = await projectIdentities();
-          const existing = identities.find((item) => item.primary === primary);
-          if (existing) return existing.project;
-          const conflict = identities.find((item) =>
-            item.directories.some((path) => directories.includes(path)),
-          );
-          if (conflict)
-            throw new CommandError("project_conflict", { project: conflict.project.name });
-          const project: WireProject = {
-            id: crypto.randomUUID(),
-            name: basename(primary),
-            directories,
-            primary,
-            trusted: true,
-          };
-          registry.projects.push(project);
-          await save();
-          await changed();
-          return project;
+          return mutateProjects(async () => {
+            const primary = directories[0]!;
+            const identities = await projectIdentities();
+            const existing = identities.find((item) => item.primary === primary);
+            if (existing) return existing.project;
+            const conflict = identities.find((item) =>
+              item.directories.some((path) => directories.includes(path)),
+            );
+            if (conflict)
+              throw new CommandError("project_conflict", { project: conflict.project.name });
+            const project: WireProject = {
+              id: crypto.randomUUID(),
+              name: basename(primary),
+              directories,
+              primary,
+              trusted: true,
+            };
+            registry.projects.push(project);
+            await save();
+            await changed();
+            return project;
+          });
         }
         case "project.trust":
         case "project.setPrimary": {
-          const project = registry.projects.find((p) => p.id === command.projectId);
-          if (!project) throw new CommandError("project_not_found");
-          if (command.type === "project.trust") project.trusted = true;
-          else {
-            if (!project.directories.includes(command.directory))
-              throw new CommandError("invalid_command");
-            project.primary = command.directory;
-          }
-          await save();
-          await changed();
-          return project;
+          return mutateProjects(async () => {
+            const project = registry.projects.find((p) => p.id === command.projectId);
+            if (!project) throw new CommandError("project_not_found");
+            if (command.type === "project.trust") project.trusted = true;
+            else {
+              if (!project.directories.includes(command.directory))
+                throw new CommandError("invalid_command");
+              project.primary = command.directory;
+            }
+            await save();
+            await changed();
+            return project;
+          });
         }
         case "sessions.list":
           return summaries();
