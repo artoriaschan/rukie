@@ -654,11 +654,11 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
       .toHaveValue("Second Session draft");
     await forward.click();
     await expect.element(screen.getByRole("heading", { name: "No model providers" })).toBeVisible();
-    await screen.getByRole("button", { name: "Back to app", exact: true }).click();
+    await back.click();
     await expect
       .element(screen.getByRole("heading", { name: "Explore ideas", exact: true }))
       .toBeVisible();
-    await expect.element(forward).toBeDisabled();
+    await expect.element(forward).toBeEnabled();
   } finally {
     await screen.unmount();
   }

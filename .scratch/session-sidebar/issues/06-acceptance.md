@@ -57,3 +57,5 @@ ADR Coverage：本轮只修改测试合同、时钟/进程所有权和本地测�
 合并后人工验收补充：用户明确要求新聊天按钮不显示快捷键，并要求顶部分隔线仅在列表溢出且 scrollTop>0 时显示，回顶或内容适配后隐藏。移除提示，复用既有 ScrollArea；Sidebar 自身观察 viewport、内容尺寸及滚动，透明分隔线保留原占位，卸载时断开 observer/listener。1280/420px 的公开键盘 End/Home、内容缩减与几何回归先 red（旧 ⌘N）后 green 2/2；完整 layout browser 4/4，4.77s；check:dev 全通过。既有 package/full 证据对未改变代码继续有效，没有重复整套。
 
 实际隔离 Web Chromium 的 Light/Dark、420px 窄屏，以及缩短视口产生溢出的真实滚动验证通过；End 显示、Home 隐藏，扩大视口后无溢出与分隔线均恢复。按钮和嵌套 icon cursor 均 pointer，页面 error 为空，136 个 HTTP 请求均 200。新建独立 launcher 因既有用户服务占用 5173 而正确失败并清理，最终只读复用用户的既有隔离服务，未创建/删除任何 Session 或调用原生 picker；自己的浏览器会话已关闭，用户人工验收服务保留。截图和日志在本次外部 sidebar-divider 验证目录。仅局部视觉状态与原有组件组合，沿用 DESIGN.md，不需新 ADR。
+
+设置人工验收补充：按 rukie.pen C03 xyqO6 移除顶部“返回应用”，设置导航直接从搜索框开始；搜索框 y96→60，268px 导航、52px 窄屏折叠和供应商工作区几何保留。删除废弃 close prop、双语文案和窄屏按钮样式；标题栏后退保留草稿、卸载刷新自动保存。宽屏聚焦当前设置项且不滚动，窄屏聚焦稳定设置容器，避免供应商加载替换按钮造成焦点丢失。新增几何先 red2/2；四文件首次64 pass/2 fail（测试旧入口/同名 locator），两失败及几何增量4/4；焦点修正增量3/3。check:dev 通过，后续变动增量格式/lint/types 通过。真实隔离 Chromium Light/Dark/420px、标题栏点击后退和键盘前进、草稿保留、搜索位置及无横向溢出通过；窄屏供应商加载完成仍保持焦点。页面 errors为空，HTTP请求均200。外部 settings-navigation 记录保存全部结果和截图；用户既有人工验收服务继续运行。沿用 C03 与 DESIGN.md，不涉及新架构决定。

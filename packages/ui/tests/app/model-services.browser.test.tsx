@@ -24,7 +24,6 @@ test("Pencil P01-E empty provider state preserves shell and opens the custom cat
           save: async () => {},
           delete: async () => {},
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -132,7 +131,6 @@ test("Pencil model footer keeps cancel surface and primary save colors in both t
           save: async () => {},
           delete: async () => {},
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -195,7 +193,6 @@ test("Pencil model numeric fields hide native steppers while retaining numeric k
           save: async () => {},
           delete: async () => {},
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -245,7 +242,7 @@ test("model services creates a provider and preserves input when encrypted save 
   };
   const screen = await render(
     <UiLocaleProvider locale="en">
-      <ModelServices services={service} onClose={() => {}} onChanged={async () => {}} />
+      <ModelServices services={service} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
   try {
@@ -402,7 +399,7 @@ test("Chinese narrow settings preserves compatibility, maps, credentials and mod
   };
   const screen = await render(
     <UiLocaleProvider locale="zh">
-      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+      <ModelServices services={services} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
   try {
@@ -481,7 +478,6 @@ test("Pencil advanced settings contains only reference fields and preserves hidd
           },
           delete: async () => {},
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -592,7 +588,7 @@ test("provider API changes persist immediately without frontend compatibility va
   };
   const screen = await render(
     <UiLocaleProvider locale="en">
-      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+      <ModelServices services={services} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
   try {
@@ -608,7 +604,7 @@ test("provider API changes persist immediately without frontend compatibility va
   }
   const incompatible = await render(
     <UiLocaleProvider locale="en">
-      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+      <ModelServices services={services} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
   try {
@@ -626,6 +622,41 @@ test("provider API changes persist immediately without frontend compatibility va
     await incompatible.unmount();
   }
 });
+
+test.each([1280, 420])(
+  "Pencil settings navigation starts with search at width %i",
+  async (width) => {
+    await page.viewport(width, 900);
+    const screen = await render(
+      <UiLocaleProvider locale="en">
+        <ModelServices services={modelServicesFixture} onChanged={async () => {}} />
+      </UiLocaleProvider>,
+    );
+    try {
+      const navigation = document.querySelector<HTMLElement>(".model-services-navigation-scroll")!;
+      const search = document.querySelector<HTMLInputElement>(
+        'input[aria-label="Search settings"]',
+      )!.parentElement!;
+      expect(screen.getByRole("button", { name: "Back to app", exact: true }).query()).toBeNull();
+      expect(navigation.getBoundingClientRect().width).toBe(width > 640 ? 268 : 52);
+      if (width > 640) {
+        expect(search.getBoundingClientRect().top).toBe(60);
+        expect(search.getBoundingClientRect().left - navigation.getBoundingClientRect().left).toBe(
+          8,
+        );
+        expect(search.getBoundingClientRect().height).toBe(32);
+      } else {
+        expect(search.getBoundingClientRect().height).toBe(0);
+        await expect
+          .element(screen.getByRole("region", { name: "Model services", exact: true }))
+          .toHaveFocus();
+      }
+    } finally {
+      await screen.unmount();
+      await page.viewport(1280, 900);
+    }
+  },
+);
 
 test("settings returns keyboard focus and preserves chat geometry and draft", async () => {
   const connection = await commands.startWire();
@@ -645,9 +676,13 @@ test("settings returns keyboard focus and preserves chat geometry and draft", as
     const baseline = main.getBoundingClientRect();
     await screen.getByRole("button", { name: "Model services", exact: true }).click();
     await expect
-      .element(screen.getByRole("button", { name: "Back to app", exact: true }))
+      .element(
+        screen
+          .getByRole("region", { name: "Model services", exact: true })
+          .getByRole("button", { name: "Model services", exact: true }),
+      )
       .toHaveFocus();
-    await screen.getByRole("button", { name: "Back to app", exact: true }).click();
+    await screen.getByRole("button", { name: "Back", exact: true }).click();
     await expect.element(prompt).toHaveValue("preserved draft");
     await expect
       .element(screen.getByRole("button", { name: "Model services", exact: true }))
@@ -680,7 +715,7 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
   };
   const screen = await render(
     <UiLocaleProvider locale="zh">
-      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+      <ModelServices services={services} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
   try {
@@ -809,7 +844,6 @@ test.each([
             save: async () => {},
             delete: async () => {},
           }}
-          onClose={() => {}}
           onChanged={async () => {}}
         />
       </UiLocaleProvider>,
@@ -877,7 +911,7 @@ test("saved overview stays compact; dirty credentials and hidden mapping remain 
   };
   const screen = await render(
     <UiLocaleProvider locale="en">
-      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+      <ModelServices services={services} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
   try {
@@ -928,7 +962,6 @@ test("keyboard Cancel preserves provider and credential while confirmation delet
             providers = [];
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -989,7 +1022,6 @@ test("Pencil overlay scrollbars appear only for overflow and map keyboard and wh
           save: async () => {},
           delete: async () => {},
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1057,7 +1089,6 @@ test("expanded model form uses custom scrollbars at narrow widths", async () => 
           save: async () => {},
           delete: async () => {},
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1114,7 +1145,6 @@ test("model default reasoning is selectable, saved and restricted to supported l
           },
           delete: async () => {},
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1222,7 +1252,7 @@ test("API Key reveals saved credentials only on request and toggles compact mask
   };
   const screen = await render(
     <UiLocaleProvider locale="en">
-      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+      <ModelServices services={services} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
   try {
@@ -1280,7 +1310,7 @@ test("API Key ignores cancelled and stale reveals and retries a safe failure", a
   };
   const screen = await render(
     <UiLocaleProvider locale="en">
-      <ModelServices services={services} onClose={() => {}} onChanged={async () => {}} />
+      <ModelServices services={services} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
   try {
@@ -1355,7 +1385,6 @@ test("model USD price autofill preserves manual drafts, saves prices and ignores
             return new Promise((resolve) => pending.push(resolve));
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1433,7 +1462,6 @@ test("renaming a new provider draft does not require a Base URL", async () => {
             saved.push(input);
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1478,7 +1506,6 @@ test("renaming a saved provider persists its name without URL validation", async
             providers = [{ ...input.provider, hasCredential: false }];
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1536,7 +1563,6 @@ test.each([1887, 420])("settings field geometry across themes at %i px", async (
           save: async () => {},
           delete: async () => {},
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1638,11 +1664,7 @@ test("Pencil C13 preset catalog uses spaced cards without moving the workspace",
   const originalClass = document.documentElement.className;
   const screen = await render(
     <UiLocaleProvider locale="en">
-      <ModelServices
-        services={modelServicesFixture}
-        onClose={() => {}}
-        onChanged={async () => {}}
-      />
+      <ModelServices services={modelServicesFixture} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
   onTestFinished(async () => {
@@ -1701,7 +1723,6 @@ test("preset catalog immediately creates independent services with incrementing 
             ];
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1787,7 +1808,6 @@ test("provider inputs autosave at 500ms and flush on switching and unmount", asy
             );
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1813,10 +1833,6 @@ test("provider inputs autosave at 500ms and flush on switching and unmount", asy
   await screen.getByRole("button", { name: "second", exact: true }).click();
   await vi.advanceTimersByTimeAsync(0);
   expect(saved.at(-1)?.provider).toMatchObject({ id: "first", baseUrl: "" });
-  await screen.getByRole("textbox", { name: "Base URL" }).fill("https://close.invalid");
-  await screen.getByRole("button", { name: "Back to app", exact: true }).click();
-  await vi.advanceTimersByTimeAsync(0);
-  expect(saved.at(-1)?.provider).toMatchObject({ id: "second", baseUrl: "https://close.invalid" });
   await screen.getByRole("textbox", { name: "Base URL" }).fill("https://second.invalid");
   await screen.unmount();
   await vi.advanceTimersByTimeAsync(0);
@@ -1852,7 +1868,6 @@ test("autosaves serialize later edits and preserve failed credentials for retry"
             if (shouldFail) throw Error("secret");
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1902,7 +1917,6 @@ test("new preset protocols replace variants only until leaving its form", async 
             ];
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -1958,7 +1972,6 @@ test("cancel and close model and rename dialogs never save edits", async () => {
             saves++;
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -2001,7 +2014,6 @@ test("selecting the current service flushes without replacing failed drafts or c
             if (fail) throw Error("secret");
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -2057,7 +2069,6 @@ test("saving clears revealed stored keys immediately and retains typed replaceme
             throw Error("secret");
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -2117,7 +2128,6 @@ test.each(["model", "rename"] as const)(
               });
             },
           }}
-          onClose={() => {}}
           onChanged={async () => {
             changes++;
           }}
@@ -2184,7 +2194,6 @@ test("model submissions remain single while saving and ignore obsolete failure",
             throw Error("secret");
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -2242,7 +2251,6 @@ test("selecting the current service preserves a pending URL through its next imm
               });
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,
@@ -2284,7 +2292,6 @@ test("retrying a failed new model save replaces its draft without duplicating th
             if (saved.length === 1) throw Error("secret");
           },
         }}
-        onClose={() => {}}
         onChanged={async () => {}}
       />
     </UiLocaleProvider>,

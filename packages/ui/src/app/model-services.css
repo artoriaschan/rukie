@@ -400,16 +400,8 @@
     padding: 8px 4px;
   }
   .model-services-navigation > div,
-  .model-services-navigation > button:not(:first-child) {
+  .model-services-navigation > button {
     display: none;
-  }
-  .model-services-navigation > button:first-child {
-    font-size: 0;
-    padding: 0;
-    justify-content: center;
-  }
-  .model-services-navigation > button:first-child svg {
-    width: 16px;
   }
   .model-services-content {
     padding: 24px 12px;
