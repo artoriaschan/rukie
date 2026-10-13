@@ -539,7 +539,8 @@ test("a narrow jobs list starts at the focused first job and follows keyboard se
       Array.from({ length: 10 }, (_, index) => ({
         name: "bash",
         args: {
-          command: "while :; do sleep 0.01; done",
+          // Viewport coverage needs live Jobs, without repeatedly spawning sleep children.
+          command: "exec tail -f /dev/null",
           description: `Watcher ${index + 1}`,
           run_in_background: true,
         },
