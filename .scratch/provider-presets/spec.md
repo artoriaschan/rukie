@@ -216,3 +216,9 @@ DeepSeek 预设：
 ### ADR Coverage 交付复核（2026-10-13）
 
 对照最终实现核对预设所有权、依赖方向、凭据持久化、执行过滤、自动保存生命周期、原生固定链接与外部协议；ADR-0038 覆盖手工预设、全局 peer 策略与 native Key 链接，ADR-0037 命令清单移除 templates，ADR-0035 的 vault 合同保留。局部开关、自动保存与授权几何调整无需新 ADR；无未解决的 ADR 冲突。四项评审发现和遗漏的 host 自动保存消费者已修复。功能范围交付证据见 [验证记录](verification.md)；完整 Bun 实际失败、混合 TUI 未分类及 CI 待验收均保留，真实 Key 与正式 Electron 清单仍待用户验证。
+
+### 25 项失败修复后复核（2026-10-13）
+
+用户要求在 `feat/provider-presets` 修复此前 25 项失败；发布 19、模型状态 2、TUI 模型选择 2、混合 TUI 1、UI lint 边界 1 的根因已处理，Standards 唯一 fixture lease 清理 P2 已修复，Spec 无发现。新的最终验证代理在干净 `99b76a46` 执行一次隔离 HOME 的完整 `env -u NO_COLOR bun run check`，退出 0：静态门禁全部通过，Bun 3532 通过、0 失败，desktop 31 文件 / 150 用例全部通过，总耗时 255.49s。前述 3507/25 与当时未分类混合 TUI 的历史保留；修复原因、定向证据和最终计数见[验证记录](verification.md#25-项失败修复与最终接受2026-10-13)。
+
+本次只修复测试 fixture、断言和既有 TUI Models 注入接线，ADR-0006、ADR-0024、ADR-0037 的现有合同保持一致，无新的架构决策或未解决 ADR 冲突。GUI 证据未因这次修复失效。真实 Key 和正式 Electron 验收清单仍待用户完成；修复交付沿用 `feat/provider-presets` 与 PR #19，最新修复状态的 CI 尚待推送后验收，未合并 main。

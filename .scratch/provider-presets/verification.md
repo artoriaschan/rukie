@@ -33,3 +33,30 @@ GUI 于 c69affe8 完成一次 `bun run dev:desktop:web --isolated` + agent-brows
 已核对 CONTEXT、ADR-0038、ADR-0037、DESIGN 与 tech-stack，修复 DESIGN 中残留 custom-only 目录描述。spec 补充仓库级 peer 安装策略与固定原生 Key 链接的 ADR-0038 归属；预设无执行关联、templates 删除与原有存储/信任合同一致。
 
 真实 DeepSeek 三协议 × automatic/high 的工具调用和两轮对话，以及正式 Electron 系统浏览器派发，仍待用户验收，具体清单见 [spec](spec.md#待用户用真实-key-验收)。功能范围内的定向验证、静态检查和 GUI 已完成，四个评审问题已修复；完整 Bun 仍失败且混合 TUI 原因未确定，最新 PR CI 待验收，不能宣称全量接受或可合并。
+
+## 25 项失败修复与最终接受（2026-10-13）
+
+本节记录用户要求在 `feat/provider-presets` 修复前述 25 项失败的结果；上文 3507 通过、25 失败及混合 TUI 当时未分类的事实保留。最终被测状态为该分支 `99b76a46c2315a04b76b5c3f19e568d61a485045`，工作区干净，所有修复由新的子代理执行，未复用执行代理。
+
+| 原失败范围        | 根因与修复                                                                                                                                                                              | 定向验证                                                                                                       |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 发布 19 项        | 宿主 npm 11.19.1 不满足生产版本合同；测试使用精确锁定的真实 npm 11.21.0 CLI，经既有入口注入。生产版本、OIDC、安全和注册表合同保留。                                                     | publication/recovery 20 项通过，72 断言，114.00s；包含 npm 12.1 拒绝与真实 loopback 上传、安装、Session 验收。 |
+| 模型状态 2 项     | 当前 Session 已初始化 v2，旧 fixture 未真正提供 v1；拒绝切换后初始镜像也不应为空。通过原生 Harness 先写入真实 v1，再验证公开 resume 和实际请求；拒绝场景精确保留初始模型与设置。        | 两项通过，16 断言，250ms；评审后的 lease 清理修正另验 v1 resume 一项通过，4 断言，200ms。                      |
+| TUI 模型选择 2 项 | 聊天目录没有使用已注入 Models，fixture 又混入内置注册表和宿主凭据发现。目录转发已有注入；fixture 使用显式模型和 SDK key auth，Loading 使用可控 auth barrier，选择后检查实际模型请求。   | 八个共享消费者文件共 53 项通过，227 断言，7.40s；新改模型选择用例均小于一秒。                                  |
+| 混合 TUI 1 项     | 已显示分支跳过终端 frame 等待，点击坐标来自尚未结算的绘制帧。推导坐标前统一等待有界可见谓词，使终端写入和点击命中几何一致；保留阅读、复制、resize、Jobs/Subagents 与 Interaction 断言。 | 原失败 4.39s；最终无探针用例通过，27 断言，2.70s，保留真实子进程和 durable Reporter 成本。                     |
+| UI lint 边界 1 项 | host→client 组合已被 ADR-0037 允许，旧负例过时。改为允许该组合，同时增加七个真实禁止的 host 依赖负例；lint 策略保持原样。                                                               | 一项通过，32 断言，421ms。                                                                                     |
+
+Standards 与 Spec 使用两个新的只读评审代理。Spec 无发现；Standards 唯一 P2 为 v1 fixture 在 Harness 初始化或关闭失败时未必释放 lease，已由新的修复代理通过外层 lease 与内层 Harness `try/finally` 修复，并完成定向验证和结构复核。没有删除断言、增加重试、固定等待、放宽超时或修改生产兼容策略；调试探针已删除，terminal renderer 没有变更。
+
+最终在原 `feat/provider-presets` 仓库根目录执行 `bun install --frozen-lockfile`，退出 0，安装精确锁定 npm 11.21.0 的一个包，111ms，tracked tree 未改变。Bun 1.4.2、Node 26.10.0，宿主 npm 11.19.1 未升级。共享模型/auth fixture、Frontend Models 注入及真实 npm CLI 影响多个测试消费者和安装入口，且四组修复尚未共同验证，因此执行一次 `env -u NO_COLOR bun run check`；使用新建临时 HOME，`PLAYWRIGHT_BROWSERS_PATH` 指向已有 Chromium 缓存，不接触真实凭据、Session 或 Electron。
+
+| 最终门禁                                                                                | 实际结果                                                                                           |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| docs:update、格式、lint、tsc、Knip、scratch、docs、ink 边界、test-policy、ui-typography | 全部通过；格式覆盖 1338 文件，docs 覆盖 147 Markdown 文件。                                        |
+| Bun 全量                                                                                | 3532 通过、0 失败，337 文件，21473 断言，215.82s。                                                 |
+| desktop 全包                                                                            | 31 文件、150 用例全部通过，25.52s；Node 执行 Vitest，Chromium browser mode 与 Electron mock 边界。 |
+| 完整 aggregate                                                                          | 退出 0，总耗时 255.49s；所属进程退出后删除临时 HOME。                                              |
+
+完整日志及精确环境由本次外部证据目录的 `final-check.log`、`final-check-result.json` 和修复 `verification.md` 保存。上述接受覆盖此前全部 25 项失败，不能抹去旧的失败结果；文档收尾、只读评审及提交不改变已验证源码，沿用本次证据，不再次执行全量检查。
+
+本次没有 React DOM、样式或 browser client wiring 变更，复用既有 Light/Dark、宽窄屏 GUI 验收；TUI 通过公开终端消费者、混合场景和本次全量验证接受。真实 DeepSeek Key 与正式 Electron 手动清单仍未验证。修复只在现有分支交付并沿用 PR #19；本地完整检查通过，修复提交的 CI 尚待推送后验收，未合并 main。
