@@ -19,6 +19,8 @@ bun run release:accept --artifact-dir dist/release
 
 构建平台通过 `--platform` 指定；当前唯一可选值为 `darwin-arm64`，对应的编译目标、平台包名称、CPU 和原生资源来自 [平台描述](../scripts/release/platforms.ts)，不按宿主架构猜测 ripgrep。增加目标须先增加描述和该架构的实际安装验收；launcher 根据主包的精确 optionalDependencies 选择目标，Frontend 与 Session 执行入口共用。
 
+发布与恢复的本地 registry 测试使用锁文件中的 npm CLI，并显式传入发布脚本；运行 `bun test scripts/release/tests/publication.test.ts scripts/release/tests/recovery.test.ts` 无需升级全局 npm。fixture 在 loopback 上绑定临时端口，以独立 HOME、npm 配置与缓存执行真实上传、安装和 Session 验收。正式发布仍遵循[发布指南](release-publication.md)的工具版本与 OIDC 门槛。
+
 本地构建和验收不写 registry，不表示 GitHub CI、Trusted Publisher、真实远程 OAuth 或 npm 发布已经成功。首个正式发布需要单独明确操作。
 
 ## 安装与运行
