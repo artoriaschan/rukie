@@ -34,7 +34,13 @@ test("oxlint rejects forbidden UI imports and permits downward/type imports", as
       ["client", "../app/screen"],
       ["client", "react"],
       ["client", "zustand"],
-      ["host", "../client/socket"],
+      ["host", "../app/screen"],
+      ["host", "../components/button"],
+      ["host", "../store/state"],
+      ["host", "@rukie/ui"],
+      ["host", "react"],
+      ["host", "react-dom"],
+      ["host", "zustand"],
     ];
     for (const [index, [layer, module]] of violations.entries()) {
       const file = resolve(root, `packages/ui/src/${layer}/bad-${index}.ts`);
@@ -59,6 +65,12 @@ test("oxlint rejects forbidden UI imports and permits downward/type imports", as
     await writeFile(
       file,
       'import type { Session } from "@rukie/agent"; import { client } from "../client/index"; export type { Session }; export { client };',
+    );
+    const hostFile = resolve(root, "packages/ui/src/host/good.ts");
+    await mkdir(resolve(hostFile, ".."), { recursive: true });
+    await writeFile(
+      hostFile,
+      'import type { Session } from "@rukie/agent"; import { client } from "../client/socket"; export type { Session }; export { client };',
     );
     const valid = Bun.spawn(
       [resolve(import.meta.dir, "../../node_modules/.bin/oxlint"), "packages/ui/src"],

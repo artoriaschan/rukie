@@ -145,3 +145,34 @@ test("desktop model defaults survive provider restart and reject unsupported lev
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each([
+  "",
+  "not a url",
+  "https://user:password@example.com/v1?key=value#fragment",
+  "ftp://example.com",
+])("provider storage preserves arbitrary Base URL %s while checking compat", async (baseUrl) => {
+  const root = await mkdtemp(join(tmpdir(), "rukie-url-"));
+  const app = await AppDatabase.open(root);
+  const provider = {
+    id: "local",
+    name: "Local",
+    api: "openai-completions" as const,
+    baseUrl,
+    models: [{ id: "m" }],
+  };
+  try {
+    await app.saveProvider(provider, { type: "keep" });
+    expect((await app.providers())[0]?.baseUrl).toBe(baseUrl);
+    await expect(
+      app.saveProvider(
+        { ...provider, models: [{ id: "m", compat: { supportsToolSearch: true } }] },
+        { type: "keep" },
+      ),
+    ).rejects.toThrow("Invalid model compatibility");
+    expect((await app.providers())[0]?.models).toEqual([{ id: "m" }]);
+  } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

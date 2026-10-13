@@ -4,6 +4,8 @@ export {
   parseModelPriceRequest,
   type ModelPriceRequest,
   type ModelPriceResult,
+  PROVIDER_ICONS,
+  type ProviderIconKey,
   ModelServiceSchema,
   ModelServiceSaveSchema,
   parseModelServiceSave,

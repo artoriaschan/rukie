@@ -38,6 +38,6 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 ### 浏览器模型服务通道
 
-`system-keychain` 和 `memory` 后端通过鉴权会话 WS 提供 `modelServices.list / save / delete / test / revealKey / templates / prices`，复用 Electron 私有模型服务处理器。`delete`、`test` 与 `revealKey` 用 `providerId` 指定供应商；`save` 接收共享 schema 的供应商与 `keep`、`delete` 或 `replace` 明文凭证，立即按 `provider:<id>` 加密后由数据库同事务提交供应商与密文。加密失败不写供应商。`electron` 后端返回 `model_services_unavailable`，继续走 main 的私有通道。
+`system-keychain` 和 `memory` 后端通过鉴权会话 WS 提供 `modelServices.list / save / delete / test / revealKey / prices`，复用 Electron 私有模型服务处理器。`delete`、`test` 与 `revealKey` 用 `providerId` 指定供应商；`save` 接收共享 schema 的供应商与 `keep`、`delete` 或 `replace` 明文凭证，立即按 `provider:<id>` 加密后由数据库同事务提交供应商与密文。加密失败不写供应商。Base URL 按字符串保存，包括空字符串与无法解析的内容；compat 和默认推理档位仍按协议合同校验。模型目录跳过整体停用或 Base URL 无法解析的服务，保留各模型的启用配置，并从服务携带展示图标键。`electron` 后端返回 `model_services_unavailable`，继续走 main 的私有通道。
 
 显式 `revealKey` 只返回指定供应商的 `{value: string | null}`；明文、显示结果和底层凭证错误不进入广播、snapshot、日志或模型上下文。WS 命令保留相同 Origin、token、字段校验和关闭时等待命令完成的规则；模型测试仅发送短连接探测，失败返回安全协议错误。凭证通道边界见 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md)。

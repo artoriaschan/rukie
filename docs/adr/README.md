@@ -66,5 +66,6 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0035 桌面端使用应用专属 SQLite 存储，与终端配置和 Session 隔离](0035-desktop-isolated-sqlite-storage.md) — `accepted`
 - [0036 开发版共用配置与凭证，Session 按工作区隔离](0036-shared-development-configuration.md) — `accepted`
 - [0037 浏览器形态由 sidecar 提供凭证加密、模型服务与原生能力](0037-browser-host-sidecar-capabilities.md) — `accepted`
+- [0038 Provider Preset 由 Rukie 手工维护，生成的 Model Service 与预设无执行关联](0038-hand-maintained-provider-presets.md) — `accepted`
 
 <!-- ADR_INDEX_END -->

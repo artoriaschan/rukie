@@ -119,15 +119,19 @@ test("invalid and busy model changes preserve the current model and settings fil
   );
   await expect(session.setModelSelection({ model: "" })).rejects.toThrow("Unknown model");
   expect(session.model).toBe("switch/first");
-  expect(session.toolState("model")).toBeUndefined();
+  expect(session.toolState("model")).toEqual({ model: "switch/first", thinkingLevel: "off" });
   delete process.env.RUKIE_SWITCH_TEST_KEY;
   await expect(session.setModelSelection({ model: "switch/second" })).rejects.toMatchObject({
     code: "no-api-key",
   });
+  expect(session.model).toBe("switch/first");
+  expect(session.toolState("model")).toEqual({ model: "switch/first", thinkingLevel: "off" });
   process.env.RUKIE_SWITCH_TEST_KEY = "test-key";
   const run = session.run("question");
   await expect(session.setModelSelection({ model: "switch/second" })).rejects.toThrow("idle");
   await run;
+  expect(session.model).toBe("switch/first");
+  expect(session.toolState("model")).toEqual({ model: "switch/first", thinkingLevel: "off" });
   await session.setModelSelection({ model: "switch/second" });
   expect(await Bun.file(settingsPath).text()).toBe(original);
   await session.close();

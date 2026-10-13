@@ -1,3 +1,7 @@
 [test]
 # ADR-0004: renderer and Electron tests run under Vitest.
 pathIgnorePatterns = ["packages/ui/**", "packages/desktop/**"]
+
+[install]
+# Only Mono/Color SVGs from @lobehub/icons are used; its root UI peers are unnecessary.
+peer = false

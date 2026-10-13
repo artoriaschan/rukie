@@ -169,7 +169,7 @@
   margin-bottom: 0;
 }
 .model-services-provider-form > div:has(> label[for]) {
-  height: 58px;
+  height: 63px;
 }
 .model-services-provider-form label {
   padding-left: 0;
@@ -243,10 +243,6 @@
 .model-services-model-row [role="switch"] > div {
   width: 14px;
   height: 14px;
-}
-.model-services-save {
-  justify-content: flex-end;
-  margin-top: 4px;
 }
 .model-services-catalog {
   display: flex;
@@ -607,10 +603,6 @@
   min-width: 16px;
   padding: 0;
 }
-.model-services-catalog > p {
-  line-height: 18px;
-  margin-bottom: 10px;
-}
 .model-services-catalog > .model-services-custom-tile {
   height: 44px;
   width: 298px;
@@ -845,20 +837,22 @@
   min-height: 28px;
 }
 .model-services-provider-form > div:has(> label[for]) {
-  height: 58px;
+  height: 63px;
 }
 .model-services-provider-form input {
-  height: 28px;
+  height: 30px;
 }
 .model-services-provider-form div[data-state]:has(> input),
 .model-services-provider-form [aria-haspopup="listbox"] {
-  min-height: 30px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: 8px;
 }
 .model-services-provider-form > .relative > p {
-  margin-bottom: 1px;
+  margin-bottom: 4px;
 }
 .model-services-provider-form > div:has(> label[for]) {
-  gap: 1px;
+  gap: 4px;
 }
 .model-services-model-heading {
   margin-top: 2px;
@@ -870,9 +864,6 @@
 }
 .model-services-catalog-heading {
   margin-bottom: 16px;
-}
-.model-services-catalog > p {
-  margin-bottom: 6px;
 }
 .model-services-model-modal > div {
   padding: 0;
@@ -916,7 +907,7 @@
   font-weight: 400;
 }
 .model-services-model-fields input {
-  height: 34px;
+  height: 30px;
 }
 .model-services-model-fields input[type="number"] {
   appearance: textfield;
@@ -926,9 +917,10 @@
   appearance: none;
   margin: 0;
 }
-.model-services-model-fields [data-state="idle"],
-.model-services-model-fields [data-state="focused"] {
-  min-height: 36px;
+.model-services-model-fields div[data-state]:has(> input) {
+  height: 32px;
+  min-height: 32px;
+  border-radius: 8px;
 }
 .model-services-model-fields label {
   font-size: var(--text-ui-sm);
@@ -948,7 +940,7 @@
 .model-services-reasoning-columns > div:first-child {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .model-services-reasoning [role="radiogroup"] {
   gap: 6px;
@@ -1078,7 +1070,7 @@
 .model-services-reasoning [role="radiogroup"] > label {
   height: 28px;
   padding: 0 8px;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 1px solid var(--border);
 }
 .model-services-reasoning [role="radiogroup"] > label:has([aria-checked="true"]) {
@@ -1116,7 +1108,7 @@
 }
 
 .model-services-model-fields div:has(> label[for]) {
-  gap: 6px;
+  gap: 4px;
 }
 .model-services-modal-footer {
   justify-content: flex-end;
@@ -1159,12 +1151,13 @@
 .model-services-default-reasoning {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 .model-services-default-reasoning button[aria-haspopup="listbox"] {
-  height: 36px;
-  min-height: 36px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: 8px;
 }
 .model-services-reasoning-menu button[role="option"] {
   min-height: 28px;
@@ -1272,4 +1265,8 @@
 
 .model-services-key-input[type="password"] {
   font-family: var(--font-mono);
+}
+
+.model-services-provider-key-field {
+  height: 63px;
 }

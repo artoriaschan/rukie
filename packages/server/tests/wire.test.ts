@@ -51,9 +51,31 @@ test("model service wire accepts bounded plaintext replacement and rejects priva
     expect(
       parseWireCommand({ id: "1", type: "modelServices.save", provider, credential }),
     ).toBeUndefined();
-  for (const type of ["list", "templates"])
-    expect(parseWireCommand({ id: "1", type: `modelServices.${type}` })).toBeDefined();
+  expect(parseWireCommand({ id: "1", type: "modelServices.list" })).toBeDefined();
+  expect(parseWireCommand({ id: "1", type: "modelServices.templates" })).toBeUndefined();
   expect(
     parseWireCommand({ id: "1", type: "modelServices.revealKey", providerId: "../../secret" }),
   ).toBeUndefined();
+});
+
+test("model service schema validates optional enablement and a closed provider icon", () => {
+  const provider = {
+    id: "deepseek",
+    name: "DeepSeek",
+    api: "anthropic-messages",
+    baseUrl: "",
+    models: [],
+    enabled: false,
+    icon: "deepseek",
+  };
+  const save = (provider: unknown) =>
+    parseWireCommand({
+      id: "1",
+      type: "modelServices.save",
+      provider,
+      credential: { type: "keep" },
+    });
+  expect(save(provider)).toBeDefined();
+  expect(save({ ...provider, enabled: "false" })).toBeUndefined();
+  expect(save({ ...provider, icon: "unknown" })).toBeUndefined();
 });

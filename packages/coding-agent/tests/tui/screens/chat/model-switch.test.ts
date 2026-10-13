@@ -153,16 +153,31 @@ test("provider tabs wrap and preserve each provider's focused model", async () =
       },
     ],
   };
+  const catalog = controlledModel();
+  const model = await catalog.configuredModel(tabSettings);
+  const authReady = Promise.withResolvers<void>();
+  let holdAuth = false;
+  const checkAuth = catalog.models.checkAuth.bind(catalog.models);
+  catalog.models.checkAuth = async (...args) => {
+    if (holdAuth) await authReady.promise;
+    return checkAuth(...args);
+  };
   const app = await start([], {
     env: { LANG: "en_US.UTF-8" },
-    session: { model: undefined },
+    session: {
+      model,
+      models: catalog.models,
+    },
     prepare: (root) =>
       Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(tabSettings)).then(() => {}),
   });
   try {
     await app.waitFor(() => screen(app).includes("test-model/first"));
+    holdAuth = true;
     app.stdin.write("/model\r");
-    await app.waitFor(() => screen(app).includes("Select model"));
+    await app.waitFor(() => screen(app).includes("Loading…"));
+    authReady.resolve();
+    await app.waitFor(() => screen(app).includes("[test-model]"));
     expect(screen(app)).toContain("Only providers with configured credentials are shown");
     const output = Bun.stripANSI(app.output());
     expect(output).toContain("Loading…");
@@ -177,7 +192,13 @@ test("provider tabs wrap and preserve each provider's focused model", async () =
     await app.waitFor(
       () => !screen(app).includes("Select model") && screen(app).includes("test-model/second"),
     );
+    app.stdin.write("verify chosen model\r");
+    await app.waitFor(() => catalog.calls.length === 1);
+    expect(catalog.calls[0]!.model).toMatchObject({ provider: "test-model", id: "second" });
+    catalog.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking());
   } finally {
+    authReady.resolve();
     await app.cleanup();
   }
 });

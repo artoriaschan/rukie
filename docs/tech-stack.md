@@ -61,7 +61,7 @@ Pi 的直接依赖和解析到的支撑包统一为 1.0.4，TypeBox 为 1.3.27�
 | 样式     | Tailwind CSS 4.3.3                                                                                                                              |
 | 组件原语 | beUI 优先 + shadcn 补位：beUI 提供组件、原语、默认风格、动效与 Agent 执行反馈，beUI 未覆盖的角色用 shadcn；均经 shadcn CLI 安装                 |
 | 类名工具 | class-variance-authority 0.7.1 处理变体；clsx 2.1.1 加 tailwind-merge 3.7.0 组成 `cn()`；用 `extendTailwindMerge` 让 `text-ui-*` 也参与冲突合并 |
-| 图标     | lucide-react 1.55.0                                                                                                                             |
+| 图标     | lucide-react 1.55.0、@lobehub/icons 5.23.0                                                                                                      |
 | Markdown | micromark 解析 + 自研的 mdast→React 渲染 + shiki/katex                                                                                          |
 | 图表     | mermaid                                                                                                                                         |
 | 状态管理 | Zustand 5.0.15（已安装）；Immer 10.2.0 为后续选型，当前未安装                                                                                   |
@@ -126,7 +126,7 @@ Headless CLI、TUI 与 renderer 的依赖统一归 `packages/coding-agent/packag
 
 ## npm CLI 分发工具链
 
-本地构建固定使用 Bun 1.4.2（[.bun-version](../.bun-version)），只生成 macOS arm64 安装包。主包 launcher 要求 Node.js >=24.15.0，并通过 POSIX execve 启动内置 Bun 的平台执行文件；npm 用于 pack／install，实际使用版本记录在构建 metadata。原生 sidecar 使用锁文件中的 @vscode/ripgrep-darwin-arm64 1.18.0、@img/sharp-darwin-arm64 0.35.4 与 @img/sharp-libvips-darwin-arm64 1.3.3；构建和本地安装验收见[分发教程](release-building.md)。发布工作流的 npm/OIDC 工具版本由其配置与发布教程维护。发布脚本直接使用 root devDependency semver 7.8.5 与 @types/semver 7.8.0，校验 npm OIDC 版本范围及通道递增。
+本地构建固定使用 Bun 1.4.2（[.bun-version](../.bun-version)），只生成 macOS arm64 安装包。主包 launcher 要求 Node.js >=24.15.0，并通过 POSIX execve 启动内置 Bun 的平台执行文件；npm 用于 pack／install，实际使用版本记录在构建 metadata。原生 sidecar 使用锁文件中的 @vscode/ripgrep-darwin-arm64 1.18.0、@img/sharp-darwin-arm64 0.35.4 与 @img/sharp-libvips-darwin-arm64 1.3.3；构建和本地安装验收见[分发教程](release-building.md)。发布工作流的 npm/OIDC 工具版本由其配置与发布教程维护。本地 registry 发布与恢复测试显式使用 root devDependency npm 11.21.0 的真实 CLI，避免宿主 npm 版本影响 OIDC 门槛；安装仍通过隔离 loopback registry 和独立 HOME/cache 执行。发布脚本直接使用 root devDependency semver 7.8.5 与 @types/semver 7.8.0，校验 npm OIDC 版本范围及通道递增。
 
 Release PR 使用精确锁定的 `release-please@17.3.0`，由 Bun 执行官方 Manifest/Strategy/Changelog API；GitHub Actions 的不可变 commit 和工具版本见[版本准备 workflow](../.github/workflows/release-prepare.yml)。当前 commit CI 门槛、GitHub App 配置和 beta/稳定切换见[版本准备](release-preparation.md)。
 
@@ -151,3 +151,5 @@ ui 状态使用 Zustand vanilla store，React 订阅由 app 层的 `useSyncExter
 桌面/Web 页面、设置与弹窗使用系统字体栈；代码、模型标识和数值使用系统等宽字体，不打包或请求额外字体文件。beUI Switch 为已复制并按设置组件规范适配的源码，复用现有运行依赖。
 
 模型服务设置的覆盖式滚动条使用经 shadcn CLI 安装并适配 Pencil A13 的 ScrollArea，复用已锁定的 radix-ui 1.7.0 Root/Viewport；beUI 目录没有对应的 ScrollArea 角色。Radix 的滚动条比例计算固定最小滑块为 18px，无法满足 A13 的 24px；因此轨道组合已有 TranscriptScrollbar 的比例、输入和最小长度实现，通过局部样式采用 8px 轨道与 4px 滑块，不改变聊天轨道几何。按钮、输入、开关、复选框、单选按钮、Select、Tooltip 和弹窗继续使用已有 beUI 源码。
+
+ProviderIcon 仅深导入 @lobehub/icons 5.23.0 的 Mono 与 Color SVG 组件。Bun 采用仓库级 `install.peer = false` 策略，避免安装图标库未使用的 antd 与 @lobehub/ui peer；锁文件仍保留这些包的解析元数据。Workspace 必须显式声明实际使用的运行依赖：ui 保留 React 与 React DOM 19.3.0 的 peer 合同，并在 devDependencies 中提供同版本供本地测试与 Vite 构建使用。

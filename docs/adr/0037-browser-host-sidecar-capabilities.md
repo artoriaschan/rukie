@@ -24,7 +24,7 @@ sidecar 的 `SecretEncryption` 后端由启动方通过私有启动通道显式�
 
 ### 模型服务通道
 
-浏览器形态的模型服务操作（列表、保存、删除、测试、显示 API Key、模板、价格）作为会话 WS 命令提供，遵循 ADR-0031 的鉴权与校验，不另开 HTTP API。本决定部分替代 ADR-0035 中“凭证不经会话 WebSocket 传递、renderer 录入的新密钥交给 main”的规则，仅适用于 `system-keychain` 与 `memory` 后端：
+浏览器形态的模型服务操作（列表、保存、删除、测试、显示 API Key、价格）作为会话 WS 命令提供，遵循 ADR-0031 的鉴权与校验，不另开 HTTP API。本决定部分替代 ADR-0035 中“凭证不经会话 WebSocket 传递、renderer 录入的新密钥交给 main”的规则，仅适用于 `system-keychain` 与 `memory` 后端：
 
 - 新 API Key 明文只在 loopback WS 的保存命令中出现一次，sidecar 收到后立即加密。
 - 显示 API Key 只响应用户对单个供应商的显式请求，返回值不进入 snapshot、日志或模型上下文，client 与 store 不缓存。

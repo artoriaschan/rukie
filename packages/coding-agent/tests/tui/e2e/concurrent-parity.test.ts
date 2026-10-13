@@ -217,12 +217,11 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
     const request = roots().find((call) => !completed.has(call))!;
     const childVisible = () =>
       app.screen().some((line) => line.includes("Subagent: Mixed child B") && line.includes("⤢"));
-    // The preserved viewport may already contain this header. Sending PageUp
-    // then accepting the old frame would click coordinates before the scroll.
-    if (!childVisible()) {
-      app.stdin.write("\x1b[5~");
-      await waitFor(childVisible);
-    }
+    // The next parent call can arrive before its changed footer is painted.
+    // Always drain that admitted frame before deriving mouse coordinates, even
+    // when the previous parsed screen already contains the child header.
+    if (!childVisible()) app.stdin.write("\x1b[5~");
+    await waitFor(childVisible);
     const childRow = app.screen().findIndex((line) => line.includes("Subagent: Mixed child B"));
     click(Bun.stringWidth(app.screen()[childRow]!.split("⤢")[0]!), childRow);
     await waitFor(() => screen().includes("Agent View") && screen().includes("B-63"));
