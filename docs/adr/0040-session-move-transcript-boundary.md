@@ -16,7 +16,7 @@ Session 只有一个当前 cwd，SQLite Session 可通过 Session Move 改绑。
 
 目标 prompt 的 entry 早于最近 Session Move 时，Agent Core 拒绝代码恢复，保留只回退对话的能力。TUI 从公开 Checkpoint 的禁止原因禁用代码恢复选项。移动不授予目录信任；目标 Project 的登记和信任由 Frontend 与 server 在调用前决定。
 
-本决定修订 [CONTEXT](../../CONTEXT.md) 的固定工作目录定义，并部分替代 [ADR-0017](0017-checkpoint-and-branch-rewind.md) 与 [ADR-0024](0024-adopt-pi-durable-harness.md) 的代码 Rewind 可用范围；原生 fork、恢复、任务所有权和备份规则继续有效。存储位置及单写者租约沿用 [ADR-0035](0035-desktop-isolated-sqlite-storage.md)。附加目录与 cwd 的区别由 ADR-0039 记录。
+本决定修订 [CONTEXT](../../CONTEXT.md) 的固定工作目录定义，并部分替代 [ADR-0017](0017-checkpoint-and-branch-rewind.md) 与 [ADR-0024](0024-adopt-pi-durable-harness.md) 的代码 Rewind 可用范围；原生 fork、恢复、任务所有权和备份规则继续有效。存储位置及单写者租约沿用 [ADR-0035](0035-desktop-isolated-sqlite-storage.md)。附加目录与 cwd 的区别由 [ADR-0039](0039-session-additional-directories.md) 记录。
 
 ## 备选方案
 

@@ -53,6 +53,7 @@ function latestReminderContents(messages: readonly TranscriptMessage[]): Map<str
 export async function collectReminders(options: {
   messages: TranscriptMessage[];
   cwd: string;
+  additionalDirectories?: readonly string[];
   homeDir: string;
   dataRoot?: string;
   now: Date;
@@ -76,7 +77,10 @@ export async function collectReminders(options: {
       currentContent: async () => {
         const branch = await git(cwd, ["branch", "--show-current"]);
         const status = await git(cwd, ["status", "--short"]);
-        return `cwd: ${cwd}\nplatform: ${process.platform}\ngit branch: ${branch || "detached HEAD"}\ngit status:\n${status || "clean"}`;
+        const additional = options.additionalDirectories?.length
+          ? `\nadditional directories:\n${options.additionalDirectories.join("\n")}`
+          : "";
+        return `cwd: ${cwd}${additional}\nplatform: ${process.platform}\ngit branch: ${branch || "detached HEAD"}\ngit status:\n${status || "clean"}`;
       },
     });
   }
@@ -106,6 +110,16 @@ export async function collectReminders(options: {
       return text === undefined ? undefined : `Project Instructions (${path}):\n${text}`;
     },
   });
+  for (const directory of options.additionalDirectories ?? []) {
+    const path = join(directory, "AGENTS.md");
+    sources.push({
+      source: `project-instructions:${directory}`,
+      currentContent: async () => {
+        const text = await optionalText(path);
+        return text === undefined ? undefined : `Project Instructions (${path}):\n${text}`;
+      },
+    });
+  }
   sources.push(...options.sources);
   return collectSourceReminders(messages, sources, now);
 }

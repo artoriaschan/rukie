@@ -64,8 +64,15 @@ test("Resume announces a move and refreshes environment once, and blocks code ac
   session = undefined;
   await moveSession({ ...options, id, newCwd: target });
   const fake = fakeModel([fauxAssistantMessage("new answer"), fauxAssistantMessage("another")]);
-  session = await createSession({ ...options, cwd: target, resumeId: id, ...fake });
+  session = await createSession({
+    ...options,
+    cwd: target,
+    resumeId: id,
+    additionalDirectories: [dirs.cwd],
+    ...fake,
+  });
   await session.run("new prompt");
+  expect(JSON.stringify(fake.contexts[0])).toContain(`additional directories:\\n${dirs.cwd}`);
   expect(JSON.stringify(fake.contexts[0])).toContain(
     `Working directory changed from ${dirs.cwd} to ${target}`,
   );

@@ -9,7 +9,7 @@ import { deferredToolsReminder } from "../tools/tool-search/index.ts";
 import { stopHookContinuation } from "../hooks/index.ts";
 import { validateSessionDocument, validateSessionDocuments } from "./documents.ts";
 import { writeHookTranscript } from "../hooks/transcript.ts";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import {
   BACKGROUND_CONTEXT,
   awaitWithContext,
@@ -157,6 +157,8 @@ export interface SessionOptions {
   webFetch?: WebFetchOptions;
   /** Project directory the session works in. */
   cwd: string;
+  /** Absolute directories supplying paths and AGENTS.md only; callers provide them again on Resume. */
+  additionalDirectories?: readonly string[];
   /** Real home used by tools and permission path expansion. Injectable for tests. */
   homeDir: string;
   /** Explicit isolated application data root; terminal callers omit it. */
@@ -409,6 +411,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const context = BACKGROUND_CONTEXT;
   const settings = options.settings ?? {};
   const cwd = resolve(options.cwd);
+  const additionalDirectories = [
+    ...new Set(
+      (options.additionalDirectories ?? []).map((directory) => {
+        if (!isAbsolute(directory))
+          throw new Error("Additional directories must be absolute paths.");
+        return resolve(directory);
+      }),
+    ),
+  ].filter((directory) => directory !== cwd);
   const warn = (warning: unknown) => (options.onWarning ?? console.warn)(String(warning));
   if (options.allowRules) parsePermissionRules({ allow: options.allowRules }, "--allow-tools");
   const permissionRules = parsePermissionRules({
@@ -1198,7 +1209,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             .messages()
             .flatMap((message) =>
               message.role === "system-reminder" &&
-              (message.source === "project-instructions" || message.source === "user-instructions")
+              (message.source === "project-instructions" ||
+                message.source.startsWith("project-instructions:") ||
+                message.source === "user-instructions")
                 ? [message.content]
                 : [],
             ),
@@ -1598,6 +1611,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         for (const reminder of await collectReminders({
           messages: transcriptMessages(beforeInput.entries),
           cwd,
+          additionalDirectories,
           homeDir: options.homeDir,
           dataRoot: options.dataRoot,
           now: options.now?.() ?? new Date(),
@@ -1689,6 +1703,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     ),
                   ),
                   cwd,
+                  additionalDirectories,
                   homeDir: options.homeDir,
                   dataRoot: options.dataRoot,
                   now: options.now?.() ?? new Date(),
@@ -2108,6 +2123,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             : [],
         includeEnvironment: afterCompactionId === undefined,
         cwd,
+        additionalDirectories,
         homeDir: options.homeDir,
         dataRoot: options.dataRoot,
         now: options.now?.() ?? new Date(),
