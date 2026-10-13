@@ -477,7 +477,7 @@ export function ContextMenuContent({
       <motion.div
         ref={context.contentRef}
         id={context.menuId}
-        role="menu"
+        role={context.open ? "menu" : undefined}
         aria-label={ariaLabel}
         data-morph-ready={morphReady ? "true" : "false"}
         tabIndex={-1}

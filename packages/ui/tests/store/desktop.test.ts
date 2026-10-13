@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { createDesktopStore, recentSessions } from "../../src/store";
 
-test("registry snapshots control pinned groups and created-time recent ordering", () => {
+test("registry snapshots preserve pin membership and selected Session sort ordering", () => {
   const store = createDesktopStore();
   store.receive({
     type: "sessions_changed",

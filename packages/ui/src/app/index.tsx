@@ -26,6 +26,7 @@ import type { PermissionMode, WirePreferences } from "@rukie/shared";
 import { createWireClient, WireError, type ClientCommand } from "../client";
 import { createDesktopStore, recentSessions, type SessionViewState } from "../store";
 import type { DesktopHost } from "../host";
+import { sessionActions, SessionDropdownItems } from "../components/session-actions";
 import { Sidebar } from "../components/sidebar";
 import { Composer, type PromptImages, type ModelSelection } from "../components/composer";
 import { Button } from "../components/motion/button/base";
@@ -661,12 +662,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 </Tooltip>
                 <Menu.DropdownMenuContent align="end">
                   <Menu.DropdownMenuGroup>
-                    <Menu.DropdownMenuItem
-                      onSelect={() => pin(current.id, !state.pinned.includes(current.id))}
-                    >
-                      {t(state.pinned.includes(current.id) ? "app.unpin" : "app.pin")}
-                      <Menu.DropdownMenuShortcut>⌥⌘P</Menu.DropdownMenuShortcut>
-                    </Menu.DropdownMenuItem>
+                    <SessionDropdownItems
+                      actions={sessionActions(current, state.pinned.includes(current.id), pin)}
+                      shortcuts
+                    />
                     <Menu.DropdownMenuSub>
                       <Menu.DropdownMenuSubTrigger>{t("app.copy")}</Menu.DropdownMenuSubTrigger>
                       <Menu.DropdownMenuSubContent>
@@ -768,7 +767,6 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               />
               <div className="absolute inset-y-0 left-0 z-20 md:relative md:z-auto">
                 <Sidebar
-                  sessions={state.sessions}
                   recent={recent}
                   projects={state.projects}
                   pinned={state.pinned}
@@ -863,7 +861,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         items={recent.map((session) => ({
           id: session.id,
           label: session.title,
-          group: t("app.recent"),
+          group: t("app.conversations"),
           keywords: [
             state.projects.find((project) => project.path === session.cwd)?.name ??
               t("app.conversations"),

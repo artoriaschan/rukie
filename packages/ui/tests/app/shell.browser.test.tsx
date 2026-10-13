@@ -358,7 +358,10 @@ test("sidebar preferences, native context facts and readonly-busy Retry remain u
   );
   try {
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
-    await screen.getByRole("button", { name: "Sidebar options" }).click();
+    await screen
+      .getByRole("region", { name: "Projects", exact: true })
+      .getByRole("button", { name: "Sidebar options" })
+      .click();
     await screen.getByRole("menuitem", { name: "Sort sessions", exact: true }).click();
     await screen.getByRole("menuitemradio", { name: "By created time", exact: true }).click();
     await userEvent.keyboard("{Control>}1{/Control}");
@@ -507,7 +510,8 @@ test("sidebar status follows fresh summaries across unselected permission waits 
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
     await send(summary(true, true));
     await expect.element(screen.getByLabelText("Waiting for confirmation").first()).toBeVisible();
-    expect(screen.getByLabelText("Running").elements()).toHaveLength(0);
+    // The category keeps its Run feedback while the Session row shows waiting confirmation.
+    expect(screen.getByLabelText("Running").elements()).toHaveLength(1);
     await screen
       .getByRole("button", { name: /Fix compiler/ })
       .first()
@@ -656,5 +660,219 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
     await expect.element(forward).toBeDisabled();
   } finally {
     await screen.unmount();
+  }
+});
+
+test("sidebar gives each Session one category and hides the empty pinned category", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  try {
+    const sidebar = screen.getByRole("complementary", { name: "Home", exact: true });
+    await expect
+      .element(sidebar.getByRole("button", { name: "Fix compiler", exact: true }))
+      .toBeVisible();
+    expect(sidebar.getByRole("button", { name: "Fix compiler", exact: true }).all()).toHaveLength(
+      1,
+    );
+    expect(
+      [...sidebar.element().querySelectorAll("section")].map((section) =>
+        section.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Pinned", "Projects", "Conversations"]);
+    await sidebar.getByRole("button", { name: "Unpin Fix compiler", exact: true }).click();
+    await expect
+      .element(sidebar.getByRole("region", { name: "Pinned", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(
+        sidebar
+          .getByRole("region", { name: "Projects", exact: true })
+          .getByRole("button", { name: "Fix compiler", exact: true }),
+      )
+      .toBeVisible();
+    expect(sidebar.getByRole("button", { name: "Fix compiler", exact: true }).all()).toHaveLength(
+      1,
+    );
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("sidebar limits Projects and their Sessions independently and keeps category actions with running feedback", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  try {
+    await expect
+      .element(screen.getByRole("button", { name: "Fix compiler", exact: true }))
+      .toBeVisible();
+    const registry = {
+      type: "sessions_changed",
+      pinned: [],
+      preferences: {},
+      projects: Array.from({ length: 6 }, (_, index) => ({
+        id: `p${index}`,
+        name: `Project ${index}`,
+        path: `/project${index}`,
+      })),
+      sessions: Array.from({ length: 7 }, (_, index) => ({
+        id: `s${index}`,
+        title: `Project Session ${index}`,
+        titleSource: "prompt",
+        cwd: "/project0",
+        model: "test/script",
+        createdAt: 7 - index,
+        updatedAt: 7 - index,
+        messageCount: 1,
+        running: index === 6,
+      })),
+    };
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      body: JSON.stringify(registry),
+    });
+    const projects = screen.getByRole("region", { name: "Projects", exact: true });
+    await expect
+      .element(projects.getByRole("button", { name: "Project 0", exact: true }))
+      .toBeVisible();
+    await expect
+      .element(projects.getByRole("button", { name: "Project 5", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(projects.getByRole("button", { name: "Project Session 5", exact: true }))
+      .not.toBeInTheDocument();
+    const loading = projects.element().querySelector('[aria-label="Running"]')!;
+    expect(loading).not.toBeNull();
+    await projects.getByRole("button", { name: "Projects", exact: true }).hover();
+    expect(getComputedStyle(loading).opacity).toBe("1");
+    await expect
+      .element(projects.getByRole("button", { name: "Add project", exact: true }))
+      .toBeVisible();
+    await projects.getByRole("button", { name: "Show more Projects", exact: true }).click();
+    await expect
+      .element(projects.getByRole("button", { name: "Project 5", exact: true }))
+      .toBeVisible();
+    await expect
+      .element(projects.getByRole("button", { name: "Project Session 5", exact: true }))
+      .not.toBeInTheDocument();
+    await projects.getByRole("button", { name: "Show more Project 0", exact: true }).click();
+    await expect
+      .element(projects.getByRole("button", { name: "Running Project Session 6", exact: true }))
+      .toBeVisible();
+    await projects.getByRole("button", { name: "Projects", exact: true }).click();
+    await expect
+      .element(projects.getByRole("button", { name: "Projects", exact: true }))
+      .toHaveAttribute("aria-expanded", "false");
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      body: JSON.stringify({ ...registry, preferences: { collapsedGroups: ["projects"] } }),
+    });
+    await expect.element(projects.getByLabelText("Running", { exact: true })).toBeVisible();
+    await expect
+      .element(projects.getByRole("button", { name: "Project 0", exact: true }))
+      .not.toBeInTheDocument();
+    expect(
+      getComputedStyle(
+        projects
+          .getByRole("button", { name: "Projects", exact: true })
+          .element()
+          .querySelector("svg")!,
+      ).opacity,
+    ).toBe("1");
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("Session row exposes pin and more on hover and focus and shares pin actions across menu entries", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  try {
+    const session = screen.getByRole("button", { name: "Fix compiler", exact: true });
+    await expect.element(session).toBeVisible();
+    const more = screen.getByRole("button", { name: "Session actions Fix compiler", exact: true });
+    await expect.element(more).toBeInTheDocument();
+    expect(getComputedStyle(more.element()).opacity).toBe("0");
+    await session.hover();
+    expect(getComputedStyle(more.element()).opacity).toBe("1");
+    await screen.getByRole("button", { name: "Search sessions", exact: true }).hover();
+    session.element().focus();
+    expect(getComputedStyle(more.element()).opacity).toBe("1");
+    await more.click();
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
+      .toBeVisible();
+    expect(screen.getByRole("menuitem").all()).toHaveLength(1);
+    expect(
+      screen
+        .getByRole("menuitem")
+        .element()
+        .querySelector("kbd,[data-slot=dropdown-menu-shortcut]"),
+    ).toBeNull();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(more).toHaveFocus();
+    session.element().focus();
+    await userEvent.keyboard("{Shift>}{F10}{/Shift}");
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
+      .toBeVisible();
+    await userEvent.keyboard("{ArrowDown}");
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
+      .toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    expect(session.element().parentElement!.contains(document.activeElement)).toBe(true);
+    await session.click({ button: "right", position: { x: 24, y: 16 } });
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
+      .toBeVisible();
+    expect(screen.getByRole("menuitem").all()).toHaveLength(1);
+    const menu = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
+    const point = session.element().getBoundingClientRect();
+    await expect
+      .poll(() => Math.abs(menu.getBoundingClientRect().left - (point.left + 24)))
+      .toBeLessThanOrEqual(1);
+    await screen.getByRole("menuitem", { name: "Unpin", exact: true }).click();
+    await expect
+      .element(screen.getByRole("region", { name: "Pinned", exact: true }))
+      .not.toBeInTheDocument();
+    await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
+    await screen.getByRole("button", { name: "Session actions", exact: true }).click();
+    await screen.getByRole("menuitem", { name: /^Pin/ }).click();
+    await expect
+      .element(
+        screen
+          .getByRole("region", { name: "Pinned", exact: true })
+          .getByRole("button", { name: "Fix compiler", exact: true }),
+      )
+      .toBeVisible();
+    await userEvent.keyboard("{Control>}");
+    await expect
+      .element(screen.getByRole("button", { name: /^Fix compiler/ }))
+      .toHaveTextContent("Fix compiler⌃1");
+    await userEvent.keyboard("{/Control}");
+  } finally {
+    await userEvent.keyboard("{/Control}");
+    await screen.unmount();
+    await commands.stopWire(connection.port);
   }
 });
