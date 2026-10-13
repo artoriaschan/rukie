@@ -1,0 +1,32 @@
+.scratch/project-directories/issues/02-session-move-core.md
+  s_6cf3decfcb23ad::t_3e409f607b9b8c 1-15
+.scratch/project-directories/issues/03-multi-directory-projects.md
+  s_6cf3decfcb23ad::t_188df34aa441dd 1-18
+.scratch/project-directories/issues/01-additional-directories.md
+  s_6cf3decfcb23ad::t_0a7db02d9758af 1-15
+.scratch/project-directories/issues/05-acceptance.md
+  s_6cf3decfcb23ad::t_b5c39838ea0f96 1-13
+.scratch/project-directories/issues/04-session-move-desktop.md
+  s_6cf3decfcb23ad::t_d2dba1c672c581 1-14
+.scratch/project-directories/spec.md
+  s_6cf3decfcb23ad::t_45b152bf7f7b72 45-100
+  s_6cf3decfcb23ad::t_9f4fa69d1a52bc 101-122,131-135
+  s_6cf3decfcb23ad::t_979d449427ab3e 1-44
+  s_6cf3decfcb23ad::t_8c08d6b25a2292 123-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "19fdad9c7b784157ef4b0583b49e00070bd5181e",
+  "prompts": {},
+  "sessions": {
+    "s_6cf3decfcb23ad": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_d3zlgdeuyg12",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
