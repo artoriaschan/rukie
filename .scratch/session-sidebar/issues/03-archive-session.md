@@ -31,3 +31,5 @@ ADR coverage 沿用 spec 已记录的 ADR-0035：归档是应用组织信息，�
 - 变更文件 oxfmt、oxlint、`tsc -b packages/shared packages/server packages/ui`、`bun run check:docs`（147 Markdown 文件）、`git diff --check` 通过。命令均使用 `rtk proxy`，Vitest 从 packages/ui 用 Node/Chromium 运行。
 
 详细日志与启动失败、TDD 红绿、增量有效性位于外部协调验证记录的 `03-verification.md`（`/tmp/rukie-session-sidebar-evidence/`）。ticket06 负责 aggregate static、desktop package 与最终 agent-browser 验收；CI 仍待最终集成提交验收，本工单 resolved 不表示 PR 已合并。
+
+增量接线准备：context-menu 用例先用 typeahead 聚焦 Unpin，再按 ArrowDown 观察 Archive，避免随后 Rename 插入到首项使已有焦点断言依赖初始位置。仅该菜单单例重新验证，1 通过、17 跳过、3.13s（`03-menu-typeahead.log`）；其他运行证据继续复用。

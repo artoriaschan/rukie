@@ -838,6 +838,10 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
+    await userEvent.keyboard("u");
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
+      .toHaveFocus();
     await userEvent.keyboard("{ArrowDown}");
     await expect
       .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
