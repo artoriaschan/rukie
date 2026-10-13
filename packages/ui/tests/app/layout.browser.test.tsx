@@ -291,3 +291,78 @@ test.each([
     }
   },
 );
+
+test.each([1280, 420])(
+  "sidebar keeps its top fixed and overlays its scrollbar at %i px",
+  async (width) => {
+    await page.viewport(width, 700);
+    const connection = await commands.startWire();
+    const screen = await render(
+      <App
+        host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+        locale="en"
+      />,
+    );
+    try {
+      if (width < 768)
+        await screen.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
+      await expect
+        .element(screen.getByRole("button", { name: "Fix compiler", exact: true }))
+        .toBeVisible();
+      await fetch(`http://127.0.0.1:${connection.port}/message`, {
+        method: "POST",
+        body: JSON.stringify({
+          type: "sessions_changed",
+          projects: [],
+          pinned: [],
+          archived: [],
+          preferences: {},
+          sessions: Array.from({ length: 30 }, (_, index) => ({
+            id: `scroll-${index}`,
+            title: `Scroll Session ${index}`,
+            titleSource: "prompt",
+            cwd: "/workspace",
+            model: "test/script",
+            createdAt: index,
+            updatedAt: index,
+            messageCount: 1,
+          })),
+        }),
+      });
+      const sidebar = screen.getByRole("complementary", { name: "Home", exact: true }).element();
+      const newChat = screen.getByRole("button", { name: "New chat", exact: true }).element();
+      const top = newChat.getBoundingClientRect();
+      const viewport = sidebar.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+      expect(viewport).not.toBeNull();
+      await expect.poll(() => viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight);
+      const before = viewport.getBoundingClientRect();
+      near(before.bottom, sidebar.getBoundingClientRect().bottom - 8);
+      expect(before.top).toBeGreaterThan(top.bottom);
+      const divider = sidebar.querySelector('[data-slot="separator"]')!;
+      const separatorBox = divider.getBoundingClientRect();
+      expect(separatorBox.height).toBe(1);
+      const scrollbar = screen.getByRole("scrollbar", { name: "Session navigation", exact: true });
+      await expect.element(scrollbar).toBeVisible();
+      near(scrollbar.element().getBoundingClientRect().width, 8);
+      const row = screen.getByRole("button", { name: "Scroll Session 29", exact: true }).element();
+      expect(row.parentElement!.getBoundingClientRect().right).toBeGreaterThan(before.right - 9);
+      scrollbar.element().focus();
+      await userEvent.keyboard("{End}");
+      await expect
+        .poll(() => viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop)
+        .toBeLessThanOrEqual(1);
+      near(newChat.getBoundingClientRect().top, top.top);
+      near(divider.getBoundingClientRect().top, separatorBox.top);
+      near(viewport.getBoundingClientRect().width, before.width);
+      near(sidebar.getBoundingClientRect().width, 268);
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+      expect(window.scrollY).toBe(0);
+      await screen.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
+      near(screen.getByRole("main").element().getBoundingClientRect().left, 52);
+    } finally {
+      await screen.unmount();
+      await commands.stopWire(connection.port);
+      await page.viewport(1280, 900);
+    }
+  },
+);

@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { createDesktopStore, recentSessions } from "../../src/store";
 
-test("registry snapshots control pinned groups and created-time recent ordering", () => {
+test("registry snapshots preserve pin membership and selected Session sort ordering", () => {
   const store = createDesktopStore();
   store.receive({
     type: "sessions_changed",
@@ -29,11 +29,13 @@ test("registry snapshots control pinned groups and created-time recent ordering"
     ],
     projects: [{ id: "p", name: "Project", path: "/project" }],
     pinned: ["b"],
+    archived: [],
     preferences: { sort: "created", showPinned: false, collapsedGroups: ["projects"] },
   });
   expect(recentSessions(store.getState()).map((session) => session.id)).toEqual(["b", "a"]);
   expect(store.getState()).toMatchObject({
     pinned: ["b"],
+    archived: [],
     preferences: { showPinned: false, collapsedGroups: ["projects"] },
   });
 });
@@ -290,4 +292,30 @@ test("model catalogs preserve known provider icons and reject unknown icon keys"
   expect(store.getState().models[0]?.providerIcon).toBe("deepseek");
   expect(() => store.setModels([{ ...model, providerIcon: "unknown" }])).toThrow("invalid_command");
   expect(store.getState().models[0]?.providerIcon).toBe("deepseek");
+});
+
+test("archive envelopes invalidate cached history and reject invalid archived ids", () => {
+  const store = createDesktopStore();
+  const registry = {
+    type: "sessions_changed",
+    sessions: [],
+    projects: [],
+    pinned: [],
+    archived: ["a"],
+    preferences: {},
+  };
+  store.receive({
+    type: "snapshot",
+    sessionId: "a",
+    messages: [],
+    compactions: [],
+    model: "test/script",
+  });
+  store.receive({ ...registry, closedSessionId: "a" });
+  expect(store.getState()).toMatchObject({ archived: ["a"] });
+  expect(store.getState().views.a).toBeUndefined();
+  for (const archived of [null, "a", [1], undefined]) {
+    store.receive({ ...registry, archived, pinned: ["changed"] });
+    expect(store.getState()).toMatchObject({ archived: ["a"], pinned: [] });
+  }
 });

@@ -19,6 +19,7 @@ import {
 } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
+import { ownSessionFixture } from "../helpers/owned-session.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 const sessions: Session[] = [];
@@ -52,8 +53,8 @@ const changes = (
       : [],
   );
 
-function failingFileTrackingStore() {
-  const base = createJsonlStore(dirs);
+function failingFileTrackingStore(fixture = dirs) {
+  const base = createJsonlStore(fixture);
   let failure: "snapshot" | "reminder" | undefined;
   let skip = 0;
   const store: SessionStore = {
@@ -577,14 +578,22 @@ test.each([
 test.each([{ during: "prompt" }, { during: "manual compaction" }])(
   "a reminder rejected during $during releases its near-full budget for the next Run",
   async ({ during }) => {
-    dirs = await tempDirs();
-    const names = Array.from({ length: 90 }, (_, index) => `file-${index}-${"x".repeat(160)}.txt`);
-    for (const name of names) await Bun.write(join(dirs.cwd, name), "before\n");
+    const owner = ownSessionFixture();
+    const fixture = await owner.initialize();
+    // Cross the same report budget with fewer real, durable ToolTasks. Each path
+    // segment and the absolute path remain within the host filesystem limits.
+    const directory = join(...Array.from({ length: 3 }, () => "d".repeat(180)));
+    await owner.step(() => mkdir(join(fixture.cwd, directory), { recursive: true }));
+    const names = Array.from({ length: 24 }, (_, index) =>
+      join(directory, `file-${index}-${"x".repeat(230)}.txt`),
+    );
+    for (const name of names)
+      await owner.step(() => Bun.write(join(fixture.cwd, name), "before\n"));
     if (during === "manual compaction")
-      await Bun.write(join(dirs.cwd, "padding.txt"), "p".repeat(40000));
-    const faulty = failingFileTrackingStore();
-    let session = await createSession({
-      ...dirs,
+      await owner.step(() => Bun.write(join(fixture.cwd, "padding.txt"), "p".repeat(40000)));
+    const faulty = failingFileTrackingStore(fixture);
+    let session = await owner.open({
+      ...fixture,
       store: faulty.store,
       ...fakeModel([
         fauxAssistantMessage(
@@ -610,21 +619,23 @@ test.each([{ during: "prompt" }, { during: "manual compaction" }])(
         fauxAssistantMessage("done"),
       ]),
     });
-    await session.run("read");
+    await owner.run(session, "read");
     if (during === "manual compaction") {
-      await session.run("second older turn");
-      await session.run("protected recent turn");
+      await owner.run(session, "second older turn");
+      await owner.run(session, "protected recent turn");
     }
     for (const name of names)
-      await changeFile(join(dirs.cwd, name), "large external change\n".repeat(250));
+      await owner.step(() =>
+        changeFile(join(fixture.cwd, name), "large external change\n".repeat(250)),
+      );
     faulty.failNext("reminder");
-    await expect(during === "prompt" ? session.run("notice") : session.compact()).rejects.toThrow(
-      "File change reminder storage failed",
-    );
+    await expect(
+      during === "prompt" ? owner.run(session, "notice") : owner.step(() => session.compact()),
+    ).rejects.toThrow("File change reminder storage failed");
     const id = session.id;
-    await session.close();
-    session = await createSession({
-      ...dirs,
+    await owner.step(() => session.close());
+    session = await owner.open({
+      ...fixture,
       resumeId: id,
       ...fakeModel([
         fauxAssistantMessage("noticed"),
@@ -632,9 +643,9 @@ test.each([{ during: "prompt" }, { during: "manual compaction" }])(
         fauxAssistantMessage("done"),
       ]),
     });
-    await session.waitForIdle();
+    await owner.step(() => session.waitForIdle());
     const events: SessionEvent[] = [];
-    await session.run("retry", {
+    await owner.run(session, "retry", {
       onEvent: (event) => {
         events.push(event);
       },
@@ -649,7 +660,7 @@ test.each([{ during: "prompt" }, { during: "manual compaction" }])(
     expect(firstBatch.length).toBeLessThan(names.length);
     expect(reminder.content.length).toBeGreaterThan(15000);
     expect(reminder.content.length).toBeLessThanOrEqual(16000);
-    await session.run("notice deferred files", {
+    await owner.run(session, "notice deferred files", {
       onEvent: (event) => {
         events.push(event);
       },
@@ -666,12 +677,13 @@ test.each([{ during: "prompt" }, { during: "manual compaction" }])(
       ).toHaveLength(1);
     }
     events.length = 0;
-    await session.run("continue", {
+    await owner.run(session, "continue", {
       onEvent: (event) => {
         events.push(event);
       },
     });
     expect(changes(events)).toHaveLength(0);
+    await owner.cleanup();
   },
 );
 

@@ -13,6 +13,7 @@ import {
   Home,
   ListTree,
   MessageSquare,
+  Plus,
   PanelLeft,
   Ellipsis,
   WifiOff,
@@ -22,10 +23,11 @@ import {
   ArrowRight,
 } from "lucide-react";
 import type { Locale } from "@rukie/i18n";
-import type { PermissionMode, WirePreferences } from "@rukie/shared";
+import type { PermissionMode, WirePreferences, WireSessionSummary } from "@rukie/shared";
 import { createWireClient, WireError, type ClientCommand } from "../client";
 import { createDesktopStore, recentSessions, type SessionViewState } from "../store";
 import type { DesktopHost } from "../host";
+import { sessionActions, SessionDropdownItems } from "../components/session-actions";
 import { Sidebar } from "../components/sidebar";
 import { Composer, type PromptImages, type ModelSelection } from "../components/composer";
 import { Button } from "../components/motion/button/base";
@@ -39,6 +41,8 @@ import { cn } from "../lib/utils";
 import type { PermissionDecision } from "../lib/transcript";
 import { ModelServices } from "./model-services";
 import { AppConversation } from "./conversation";
+import { DeleteSession } from "./delete-session";
+import { RenameSession } from "./rename-session";
 import { useErrorText } from "./error";
 
 export type AppHost = Pick<DesktopHost, "getConnection" | "modelServices"> &
@@ -102,6 +106,8 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [ctrl, setCtrl] = useState(false);
   const [search, setSearch] = useState(false);
   const [summary, setSummary] = useState(false);
+  const [deleting, setDeleting] = useState<WireSessionSummary | null>(null);
+  const [renaming, setRenaming] = useState<WireSessionSummary | null>(null);
   const [pathOpen, setPathOpen] = useState(false);
   const [path, setPath] = useState("");
   const [error, setError] = useState("");
@@ -175,9 +181,24 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       ? { provider: catalogDefault.providerId, modelId: catalogDefault.id }
       : undefined);
   const [sending, setSending] = useState(false);
-  const opener = useRef<HTMLElement | null>(null);
-  const recent = useMemo(() => recentSessions(state), [state.sessions, state.preferences]);
+  const pathOpener = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    // Modal cleanup runs before this effect. Restoring inside closePath would
+    // still be intercepted by the folder dialog's focus trap.
+    if (!pathOpen) pathOpener.current?.focus();
+  }, [pathOpen]);
+  const recent = useMemo(
+    () => recentSessions(state).filter((session) => !state.archived.includes(session.id)),
+    [state.sessions, state.preferences, state.archived],
+  );
   const current = state.sessions.find((session) => session.id === state.selected);
+  const searchSessions = useMemo(
+    () =>
+      state.sessions
+        .filter((session) => !state.archived.includes(session.id))
+        .toSorted((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)),
+    [state.sessions, state.archived],
+  );
   const view = state.selected ? (state.views[state.selected] ?? emptyView) : emptyView;
   const targetProject = state.projects.find((project) => project.id === state.target);
   const currentProject = state.projects.find((project) => project.path === current?.cwd);
@@ -215,7 +236,11 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     const index = navigation.index + offset;
     const entry = navigation.entries[index];
     if (!entry) return;
-    if (entry.session && !state.sessions.some((session) => session.id === entry.session)) {
+    if (
+      entry.session &&
+      (!state.sessions.some((session) => session.id === entry.session) ||
+        state.archived.includes(entry.session))
+    ) {
       setError(t("app.error", { message: errorText(new WireError("session_not_found")) }));
       return;
     }
@@ -233,21 +258,27 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   };
   const pin = (id: string, pinned: boolean) =>
     safe(() => client.request({ type: pinned ? "session.pin" : "session.unpin", sessionId: id }));
+  const archive = (sessionId: string) =>
+    safe(() => client.request({ type: "session.archive", sessionId }));
   const preferences = (preferences: WirePreferences) =>
     safe(() => client.request({ type: "preferences.set", preferences }));
   const openSearch = () => {
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSearch(true);
   };
   const changeSearch = (open: boolean) => {
-    if (open && !search)
-      opener.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSearch(open);
-    if (!open) opener.current?.focus();
   };
   useEffect(() => {
-    const offMessages = client.subscribeMessages(store.receive);
+    const offMessages = client.subscribeMessages((message) => {
+      store.receive(message);
+      const latest = store.getState();
+      if (
+        latest.selected &&
+        (latest.archived.includes(latest.selected) ||
+          !latest.sessions.some((session) => session.id === latest.selected))
+      )
+        newChat(null);
+    });
     const offSubscriptions = client.subscribeSubscriptions(store.setBusy);
     const offState = client.subscribeState(() => {
       store.setState({
@@ -449,12 +480,12 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         return;
       }
     }
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    pathOpener.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPathOpen(true);
   };
   const closePath = () => {
     setPathOpen(false);
-    opener.current?.focus();
   };
   const markdown = () =>
     view.transcript?.committed
@@ -661,12 +692,17 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 </Tooltip>
                 <Menu.DropdownMenuContent align="end">
                   <Menu.DropdownMenuGroup>
-                    <Menu.DropdownMenuItem
-                      onSelect={() => pin(current.id, !state.pinned.includes(current.id))}
-                    >
-                      {t(state.pinned.includes(current.id) ? "app.unpin" : "app.pin")}
-                      <Menu.DropdownMenuShortcut>⌥⌘P</Menu.DropdownMenuShortcut>
-                    </Menu.DropdownMenuItem>
+                    <SessionDropdownItems
+                      actions={sessionActions(
+                        current,
+                        state.pinned.includes(current.id),
+                        pin,
+                        setRenaming,
+                        archive,
+                        setDeleting,
+                      )}
+                      shortcuts
+                    />
                     <Menu.DropdownMenuSub>
                       <Menu.DropdownMenuSubTrigger>{t("app.copy")}</Menu.DropdownMenuSubTrigger>
                       <Menu.DropdownMenuSubContent>
@@ -768,10 +804,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               />
               <div className="absolute inset-y-0 left-0 z-20 md:relative md:z-auto">
                 <Sidebar
-                  sessions={state.sessions}
                   recent={recent}
                   projects={state.projects}
                   pinned={state.pinned}
+                  archived={state.archived}
                   preferences={state.preferences}
                   selected={state.selected}
                   ctrl={ctrl}
@@ -780,6 +816,9 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   onSearch={openSearch}
                   onAdd={() => safe(addProject)}
                   onPin={pin}
+                  onRename={setRenaming}
+                  onArchive={archive}
+                  onDelete={setDeleting}
                   onPreferences={preferences}
                 />
               </div>
@@ -855,31 +894,58 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           }}
         />
       ) : null}
+      {deleting ? (
+        <DeleteSession
+          session={state.sessions.find((session) => session.id === deleting.id) ?? deleting}
+          onClose={() => setDeleting(null)}
+          onDelete={() => client.request({ type: "session.delete", sessionId: deleting.id })}
+        />
+      ) : null}
+      {renaming ? (
+        <RenameSession
+          session={renaming}
+          onClose={() => setRenaming(null)}
+          onSave={(title) =>
+            client.request({ type: "session.rename", sessionId: renaming.id, title })
+          }
+        />
+      ) : null}
       <CommandPalette
         open={search}
         onOpenChange={changeSearch}
         placeholder={t("app.search")}
-        emptyLimit={8}
-        items={recent.map((session) => ({
-          id: session.id,
-          label: session.title,
-          group: t("app.recent"),
-          keywords: [
-            state.projects.find((project) => project.path === session.cwd)?.name ??
-              t("app.conversations"),
-          ],
-          icon: state.projects.some((project) => project.path === session.cwd)
-            ? Folder
-            : MessageSquare,
-          badge: (
-            <span className="text-ui-xs text-muted-foreground">
-              {state.projects.find((project) => project.path === session.cwd)?.name ??
-                t("app.conversations")}{" "}
-              · {new Date(session.updatedAt).toLocaleDateString()}
-            </span>
-          ),
-          onSelect: () => safe(() => select(session.id)),
-        }))}
+        items={[
+          ...searchSessions.map((session) => ({
+            id: session.id,
+            label: session.title,
+            group: t("app.chats"),
+            keywords: [state.projects.find((project) => project.path === session.cwd)?.name ?? ""],
+            status: session.running ? (
+              <LoaderCircle
+                aria-label={t("app.running")}
+                className="size-3 animate-spin motion-reduce:animate-none"
+              />
+            ) : undefined,
+            badge: state.projects.find((project) => project.path === session.cwd)?.name,
+            onSelect: () => safe(() => select(session.id)),
+          })),
+          {
+            id: "action-new-chat",
+            label: t("app.new-chat"),
+            group: t("app.quick-actions"),
+            section: "actions",
+            icon: Plus,
+            onSelect: () => newChat(null),
+          },
+          {
+            id: "action-open-folder",
+            label: t("app.open-folder"),
+            group: t("app.quick-actions"),
+            section: "actions",
+            icon: Folder,
+            onSelect: () => safe(addProject),
+          },
+        ]}
       />
       <MorphingModal
         label={t("app.add-project")}

@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, onTestFinished, spyOn, test } from "bun:test";
 import { useEffect, useState } from "react";
 import { setImmediate } from "node:timers/promises";
 import { setTimeout as ioTimeout, clearTimeout as clearIoTimeout } from "node:timers";
@@ -244,6 +244,21 @@ for (const mode of ["exit", "SIGINT", "SIGTERM", "uncaught"] as const) {
   // A parent virtual clock cannot deliver OS signals or advance a child process's lifecycle.
   test(`actual child ${mode} restores both injected roots and preserves frontend signal ownership`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "ink-process-lifecycle-"));
+    let releaseChild: (() => Promise<void>) | undefined;
+    let deadline: ReturnType<typeof ioTimeout> | undefined;
+    let cleaning = false;
+    let cleanupPromise: Promise<void> | undefined;
+    const cleanup = () =>
+      (cleanupPromise ??= (async () => {
+        cleaning = true;
+        if (deadline !== undefined) clearIoTimeout(deadline);
+        try {
+          await releaseChild?.();
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      })());
+    onTestFinished(cleanup);
     const trace = join(directory, "trace");
     const script = join(directory, "child.tsx");
     const react = Bun.resolveSync("react", import.meta.dir);
@@ -272,18 +287,14 @@ process.stdin.once("data",()=>{if(${JSON.stringify(mode)}==="uncaught")throw new
 process.stdin.resume();process.stdout.write("READY\\n");
 `,
     );
+    if (cleaning) return;
+    const spawnedAt = process.hrtime.bigint();
     const child = Bun.spawn([process.execPath, script], {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
     });
     const ready = Promise.withResolvers<void>();
-    // Only bounds the actual isolated process; parent virtual clocks cannot
-    // supply its signal/uncaught-exit or terminal restoration contract.
-    const deadline = ioTimeout(() => {
-      ready.reject(new Error(`child lifecycle ${mode} exceeded its completion bound`));
-      if (child.exitCode === null) child.kill("SIGKILL");
-    }, 2000);
     const readOutput = (async () => {
       const reader = child.stdout.getReader();
       let output = "";
@@ -296,6 +307,11 @@ process.stdin.resume();process.stdout.write("READY\\n");
       }
     })();
     const stderr = new Response(child.stderr).text();
+    releaseChild = async () => {
+      if (child.exitCode === null) child.kill("SIGKILL");
+      await child.exited;
+      await Promise.allSettled([readOutput, stderr]);
+    };
     try {
       await Promise.race([
         ready.promise,
@@ -303,14 +319,32 @@ process.stdin.resume();process.stdout.write("READY\\n");
           throw new Error(`child exited before readiness: ${code}`);
         }),
       ]);
+      if (cleaning) return;
+      const requestedAt = process.hrtime.bigint();
+      const completion = Promise.withResolvers<never>();
+      // The owner bounds startup. This unchanged real 2s bound starts at the exit
+      // request; a parent virtual clock cannot deliver the child's OS lifecycle.
+      deadline = ioTimeout(() => {
+        const startupMs = Number(requestedAt - spawnedAt) / 1e6;
+        const completionMs = Number(process.hrtime.bigint() - requestedAt) / 1e6;
+        completion.reject(
+          new Error(
+            `child lifecycle ${mode} exceeded its completion bound (READY after ${startupMs.toFixed(1)}ms, exit requested ${completionMs.toFixed(1)}ms ago)`,
+          ),
+        );
+        if (child.exitCode === null) child.kill("SIGKILL");
+      }, 2000);
       if (mode === "SIGINT" || mode === "SIGTERM") child.kill(mode);
       else {
         child.stdin.write("exit\n");
         child.stdin.end();
       }
-      const code = await child.exited;
+      const code = await Promise.race([child.exited, completion.promise]);
+      clearIoTimeout(deadline);
+      if (cleaning) return;
       await readOutput;
       const errors = await stderr;
+      if (cleaning) return;
       expect(code).toBe(
         mode === "SIGINT" ? 130 : mode === "SIGTERM" ? 143 : mode === "uncaught" ? 7 : 0,
       );
@@ -347,10 +381,7 @@ process.stdin.resume();process.stdout.write("READY\\n");
       if (mode === "SIGINT" || mode === "SIGTERM")
         expect(records).toContainEqual({ handled: mode });
     } finally {
-      clearIoTimeout(deadline);
-      if (child.exitCode === null) child.kill("SIGKILL");
-      await child.exited;
-      await rm(directory, { recursive: true, force: true });
+      await cleanup();
     }
   }, 5000);
 }

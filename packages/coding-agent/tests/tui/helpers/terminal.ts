@@ -1,13 +1,12 @@
 import { PassThrough, Writable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
-import { acquireTerminalColor, writeTerminal, flushTerminal } from "../../helpers/terminal-io";
-import xterm from "@xterm/headless";
+import { acquireTerminalColor, createIoTerminal, flushTerminal } from "../../helpers/terminal-io";
 import unicodeGraphemes from "@xterm/addon-unicode-graphemes";
 
 /** Interpret the frontend's ANSI output at its terminal IO seam. */
 export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: number) => void) {
   const releaseColor = acquireTerminalColor();
-  const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
+  const terminal = createIoTerminal({ cols: columns, rows, allowProposedApi: true });
   // Interpret complete Unicode graphemes, including ZWJ owners and their wide tail cells.
   terminal.loadAddon(new unicodeGraphemes.UnicodeGraphemesAddon());
   const stdin = Object.assign(new PassThrough(), {
@@ -29,9 +28,8 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
     new Writable({
       write(chunk, _encoding, callback) {
         output += chunk.toString();
-        // xterm parsing is an I/O completion queue, not a frontend deadline. Keep its zero-delay
-        // scheduler real so a timer created inside a virtual tick cannot strand callback flushes.
-        writeTerminal(terminal, chunk, callback);
+        // The parser's own scheduler continues independently of frontend deadlines.
+        terminal.write(chunk, callback);
       },
     }),
     { columns, rows, isTTY: true },
@@ -41,7 +39,6 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
       stdout,
       () =>
         `cursor=${terminal.buffer.active.cursorX},${terminal.buffer.active.cursorY}; screen=${screen().join("|")}`,
-      advanceTimers,
     );
   function screen() {
     const buffer = terminal.buffer.active;

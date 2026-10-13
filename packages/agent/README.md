@@ -2,7 +2,11 @@
 
 `createSession` 在终端默认使用原生 JSONL Storage；传入显式 `dataRoot` 时使用原生 SQLite Storage，同一目录保存父子 Conversation、entries、documents 和 tasks。`SessionStore` 提供 `open`、`list` 与身份 `key`；自定义后端返回 Storage 和可重复调用的 `release`，Session 关闭时释放资源。默认路径由 [`store/`](src/store/index.ts)按解析后的工作目录生成，位于 `homeDir/.rukie/durable-sessions/`；`rukie.session` document 保存 id、名称、模型与选中对话等索引事实。旧 `.rukie/sessions/` 文件不枚举、不读取、不改写，旧 id 打开返回 `session-not-found`。
 
-一个宿主持有一个目录的写者租约。默认实现通过独立 SQLite 文件的 `BEGIN IMMEDIATE` 事务持有内核锁；该文件不存 Session 记录，也不删除或替换。另一个进程或宿主打开同一 id 立即失败，错误携带 `session-busy` 和 `{ id }`，同进程重复打开也使用该错误；正常关闭和进程死亡释放锁。恢复无需 PID 检查或清理旧租约。列表可以观察活跃目录：JSONL 当前宿主借用已注册读者，SQLite 与独立查询只打开原生存储内核读取索引，不启动模型或 Harness scheduler，也不执行任务恢复。`listSessions` 跳过索引读取失败的单个 Session，并经 `onWarning` 上报包含 id 与失败原因的警告；未提供回调时使用 `console.warn`，项目目录本身的读取失败仍向调用方传播。需要截断或修复的存储拒绝只读观察。
+一个宿主持有一个目录的写者租约。默认实现通过数据根 `.session-leases/<canonical-directory-hash>.sqlite` 的 `BEGIN IMMEDIATE` 事务持有内核锁；身份按规范存储目录计算，数据根的路径别名共用同一把锁。该文件不存 Session 记录，也不删除或替换；它独立于可删除的 Session 目录。所有写入入口与 busy 探测使用同一租约协议，现有 Session 的存储存在性在取得租约后重新检查，删除后等待中的打开不会重建存储。另一个进程或宿主打开同一 id 立即失败，错误携带 `session-busy` 和 `{ id }`，同进程重复打开也使用该错误；正常关闭和进程死亡释放锁。恢复无需 PID 检查或清理旧租约。已关闭的既有 Session 缺少该协议的协调文件时，只读 busy 探测返回空闲且不创建文件；执行入口仍须取得租约。列表可以观察活跃目录：JSONL 当前宿主借用已注册读者，SQLite 与独立查询只打开原生存储内核读取索引，不启动模型或 Harness scheduler，也不执行任务恢复。`listSessions` 跳过索引读取失败的单个 Session，并经 `onWarning` 上报包含 id 与失败原因的警告；未提供回调时使用 `console.warn`，项目目录本身的读取失败仍向调用方传播。需要截断或修复的存储拒绝只读观察。
+
+`renameSessionTitle({ cwd, homeDir, dataRoot?, id, title })` 在写者租约内通过两种后端共用的只读入口校验 metadata 的 id 与解析后的 cwd，然后原子提交规范化标题和 user 来源。不匹配的身份返回 `session-not-found`，不改变持久化 Session 数据；占用与空标题分别返回 `session-busy`、`session-title-empty`。此入口不创建产品 Session、不启动 Harness 恢复、不读取模型或凭据；调用方等待提交和租约释放后采用成功结果。
+
+`deleteSession({ cwd, homeDir, dataRoot?, id })` 取得写者租约后永久移除根 Session 目录，包括共用存储的全部子代理 Conversation、tasks、Transcript 与输出；同时移除数据根下该 id 的 `attachments/` 与 `file-history/`。删除前校验所有目标的规范路径与 metadata 身份；写入与 busy 探测也拒绝存储目录、存储文件或协调目录/文件（含悬空链接）的符号链接重定向，缺失或 cwd 不匹配返回 `session-not-found`，租约占用返回 `session-busy`，符号链接目标拒绝；这些校验失败不移除任何文件。调用方先关闭本宿主已打开的空闲 Session；此接口不创建产品 Session、不执行恢复、不读取模型或凭据。永久协调文件保留以防删除与打开锁住不同 inode，它没有 Session 内容；已删除 id 的列表与恢复分别返回缺失与 `session-not-found`。升级到本租约协议前须关闭使用旧目录内 `host-lease.sqlite` 的宿主，旧协议与新协议不互锁。
 
 原生 JSONL 启用 sidecar fsync，[存储文件适配器](src/store/files.ts)在成功追加后 flush 文件，包括 main 提交标记；提交确认后才采用状态和发布对应成功事实。写入或 flush 失败会向调用方传播；原生 Storage 进入 poisoned 状态时须 `await session.close()` 后重开。flush 发生在追加之后，拒绝确认不等于磁盘字节回滚，重新打开时以原生已提交事实为准。进程强制退出测试验证租约释放和恢复，不代表断电测试。
 

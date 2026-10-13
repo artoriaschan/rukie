@@ -2,9 +2,18 @@ import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/blocks/command-palette
 
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Search, type LucideIcon } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { type LucideIcon } from "lucide-react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import { EASE_OUT } from "@/lib/ease";
 import { useOnOpen } from "@/lib/hooks/use-on-open";
@@ -14,6 +23,7 @@ import { PresenceGate } from "@/lib/presence-gate";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 import { cn } from "@/lib/utils";
 import { searchCommands } from "@/lib/command-search";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export type CommandItem = {
   id: string;
@@ -23,12 +33,13 @@ export type CommandItem = {
   keywords?: string[];
   icon?: LucideIcon;
   badge?: ReactNode;
+  status?: ReactNode;
+  section?: "actions";
   onSelect: () => void;
 };
 
 export interface CommandPaletteProps {
   items: CommandItem[];
-  emptyLimit?: number;
   /** Opens with Cmd/Ctrl + this key. Default: "k" */
   shortcut?: string;
   placeholder?: string;
@@ -39,14 +50,23 @@ export interface CommandPaletteProps {
 
 // Opened via a keyboard shortcut many times a day — entrance must read as
 // immediate. A short tween avoids overshoot.
-const PANEL_SPRING = {
+const PANEL_TRANSITION = {
   duration: 0.16,
   ease: EASE_OUT,
 } as const;
 
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+function subscribeReducedMotion(onChange: () => void) {
+  const media = window.matchMedia(REDUCED_MOTION_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+function readReducedMotion() {
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
 export function CommandPalette({
   items,
-  emptyLimit,
   shortcut = "k",
   placeholder: placeholderProp,
   emptyMessage: emptyMessageProp,
@@ -73,12 +93,27 @@ export function CommandPalette({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const uid = useId();
-  const reduce = useReducedMotion();
+  // Read the current preference at render and subscribe while the palette is
+  // mounted: Motion's hook snapshots it once and misses later OS changes.
+  const reduce = useSyncExternalStore(subscribeReducedMotion, readReducedMotion, () => false);
   const canTouch = useTouchCapable();
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   useModalFocus(open, panelRef);
   const listRef = useRef<HTMLDivElement>(null);
+  const pendingSelection = useRef<CommandItem | null>(null);
+  // A following dialog must start only after the modal focus cleanup restores
+  // the opener. Otherwise its own restoration target could be an exiting row.
+  useEffect(() => {
+    if (open || !pendingSelection.current) return;
+    const item = pendingSelection.current;
+    pendingSelection.current = null;
+    item.onSelect();
+  }, [open]);
+  const choose = (item: CommandItem) => {
+    pendingSelection.current = item;
+    setOpen(false);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -117,13 +152,16 @@ export function CommandPalette({
   }, [open]);
 
   const filtered = useMemo(() => {
-    const result = searchCommands(items, query);
-    return !query.trim() && emptyLimit ? result.slice(0, emptyLimit) : result;
-  }, [items, query, emptyLimit]);
-
-  // Reserve the icon column only when at least one item brings an icon, so
-  // icon-less lists don't render a dead gap before every label.
-  const hasIcons = useMemo(() => items.some((it) => it.icon), [items]);
+    // Search names and Project keywords, while retaining the caller's updated
+    // order. Presentation group names are not searchable Session metadata.
+    const matches = new Set(
+      searchCommands(
+        items.map((item) => ({ ...item, group: undefined })),
+        query,
+      ).map((item) => item.id),
+    );
+    return items.filter((item) => matches.has(item.id));
+  }, [items, query]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, CommandItem[]>();
@@ -134,7 +172,7 @@ export function CommandPalette({
       map.set(g, groupItems);
     });
     return Array.from(map.entries());
-  }, [filtered]);
+  }, [filtered, componentText]);
 
   // Grouping reorders the list, so the rendered order is not the filtered
   // order whenever two groups interleave. Everything that has to agree on
@@ -167,10 +205,7 @@ export function CommandPalette({
     } else if (e.key === "Enter") {
       e.preventDefault();
       const it = rows[active];
-      if (it) {
-        it.onSelect();
-        setOpen(false);
-      }
+      if (it) choose(it);
     }
   };
 
@@ -196,19 +231,19 @@ export function CommandPalette({
           {({ gate }) => (
             <motion.button
               type="button"
-              aria-label={componentText("component.close-command-palette")}
+              aria-label={componentText("component.close-search-chats")}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{
                 opacity: 0,
-                transition: { duration: 0.12, ease: EASE_OUT },
+                transition: { duration: reduce ? 0 : 0.16, ease: EASE_OUT },
               }}
-              transition={{ duration: 0.18, ease: EASE_OUT }}
+              transition={{ duration: reduce ? 0 : 0.16, ease: EASE_OUT }}
               {...gate}
               onClick={() => setOpen(false)}
               className={cn(
                 OVERLAY_LAYER.modal,
-                "pointer-events-auto fixed inset-0 bg-foreground/20",
+                "pointer-events-auto cursor-pointer fixed inset-0 bg-foreground/20",
               )}
             />
           )}
@@ -224,38 +259,36 @@ export function CommandPalette({
               inert={!isPresent}
               className={cn(
                 OVERLAY_LAYER.modal,
-                "pointer-events-none fixed inset-x-4 bottom-4 top-[18vh] flex items-start justify-center",
+                "pointer-events-none fixed inset-4 flex items-center justify-center",
               )}
             >
               <motion.div
                 ref={panelRef}
                 role="dialog"
                 aria-modal="true"
-                aria-label={componentText("component.command-palette")}
+                aria-label={placeholder}
                 initial={{
                   opacity: 0,
-                  y: reduce ? 0 : -4,
                   scale: reduce ? 1 : 0.98,
                 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
+                animate={{ opacity: 1, scale: 1 }}
                 exit={{
                   opacity: 0,
-                  y: reduce ? 0 : -4,
                   scale: reduce ? 1 : 0.98,
-                  transition: { duration: 0.12, ease: EASE_OUT },
+                  transition: { duration: reduce ? 0 : 0.16, ease: EASE_OUT },
                 }}
-                transition={reduce ? { duration: 0 } : PANEL_SPRING}
+                transition={reduce ? { duration: 0 } : PANEL_TRANSITION}
                 {...gate}
                 onKeyDown={onKeyDown}
-                className="pointer-events-auto w-full max-w-[640px] max-h-full overflow-hidden rounded-2xl border border-popover-border bg-menu shadow-md will-change-transform"
+                className="pointer-events-auto flex w-full max-w-[520px] max-h-full flex-col overflow-hidden rounded-[20px] border border-popover-border bg-popover shadow-md will-change-transform"
               >
-                <div className="flex items-center gap-3 border-b border-border px-4">
-                  <Search className="h-4 w-4 text-muted-foreground" />
+                <div className="flex shrink-0 items-center px-4 py-1">
                   <input
                     ref={inputRef}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder={placeholder}
+                    aria-label={placeholder}
                     role="combobox"
                     // The field only exists while the palette is open.
                     aria-expanded="true"
@@ -263,7 +296,7 @@ export function CommandPalette({
                     aria-activedescendant={rows.length > 0 ? `${uid}-opt-${active}` : undefined}
                     aria-autocomplete="list"
                     className={cn(
-                      "h-9 min-w-0 flex-1 bg-transparent text-ui-base text-foreground placeholder:text-muted-foreground outline-none",
+                      "h-9 min-w-0 flex-1 cursor-text bg-transparent text-ui-base text-foreground placeholder:text-muted-foreground outline-none",
                       // The palette focuses this field the moment it opens, and iOS
                       // zooms the page in on a focused field under 16px: the fixed
                       // overlay is magnified off-center — clipped leading edge, half
@@ -272,16 +305,13 @@ export function CommandPalette({
                       canTouch && "text-ui-lg",
                     )}
                   />
-                  <kbd className="hidden rounded-sm border border-border bg-background px-1 font-mono text-ui-xs text-muted-foreground sm:inline-block">
-                    ESC
-                  </kbd>
                 </div>
                 <div
                   ref={listRef}
                   id={`${uid}-list`}
                   role="listbox"
-                  aria-label={componentText("component.commands")}
-                  className="max-h-[min(60vh,calc(82dvh-72px))] overflow-y-auto overscroll-contain p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  aria-label={componentText("component.results")}
+                  className="min-h-0 flex flex-col pb-2"
                 >
                   {rows.length === 0 ? (
                     <div className="p-8 text-center text-ui-base text-muted-foreground">
@@ -289,69 +319,78 @@ export function CommandPalette({
                     </div>
                   ) : (
                     grouped.map(([group, list]) => (
-                      <div key={group} className="mb-1 last:mb-0">
+                      <div
+                        key={group}
+                        role="group"
+                        aria-label={group}
+                        className="min-h-0 flex flex-col"
+                      >
                         <div
                           aria-hidden
-                          className="px-2 py-1 text-ui-sm font-medium text-muted-foreground"
+                          className="shrink-0 px-[14px] py-1 text-ui-caption text-muted-foreground"
                         >
                           {group}
                         </div>
-                        {list.map((it) => {
-                          // `rows` holds these very objects, in render order.
-                          const idx = rows.indexOf(it);
-                          const isActive = idx === active;
-                          const Icon = it.icon;
-                          return (
-                            <button
-                              key={it.id}
-                              type="button"
-                              id={`${uid}-opt-${idx}`}
-                              role="option"
-                              aria-selected={isActive}
-                              data-index={idx}
-                              onMouseEnter={() => moveTo(it.id)}
-                              onClick={() => {
-                                it.onSelect();
-                                setOpen(false);
-                              }}
-                              className={cn(
-                                "relative isolate flex w-full items-center min-h-7 gap-2 rounded-md px-2 py-1 text-left text-ui-base transition-colors",
-                                isActive ? "text-foreground" : "text-muted-foreground",
-                              )}
-                            >
-                              {isActive ? (
-                                <motion.span
-                                  layoutId={`${uid}-active`}
-                                  className="absolute inset-0 z-0 rounded-md bg-menu-hover"
-                                  transition={
-                                    reduce
-                                      ? { duration: 0 }
-                                      : // Tracks rapid arrow-key navigation — keep it tighter
-                                        // than SPRING_LAYOUT so it never lags the active row.
-                                        {
-                                          duration: 0.16,
-                                          ease: EASE_OUT,
-                                        }
-                                  }
-                                />
-                              ) : null}
-                              {Icon ? (
-                                <Icon className="relative z-10 h-4 w-4" />
-                              ) : hasIcons ? (
-                                <span className="relative z-10 h-4 w-4" />
-                              ) : null}
-                              <span className="relative z-10 flex-1 truncate">{it.label}</span>
-                              {it.badge ? (
-                                <span className="relative z-10 shrink-0">{it.badge}</span>
-                              ) : null}
-                              {it.hint ? (
-                                <kbd className="relative z-10 rounded-sm border border-border bg-background px-1 font-mono text-ui-xs text-muted-foreground">
-                                  {it.hint}
-                                </kbd>
-                              ) : null}
-                            </button>
-                          );
-                        })}
+                        <PaletteGroup list={list} group={group}>
+                          {list.map((it) => {
+                            // `rows` holds these very objects, in render order.
+                            const idx = rows.indexOf(it);
+                            const isActive = idx === active;
+                            const Icon = it.icon;
+                            return (
+                              <button
+                                key={it.id}
+                                type="button"
+                                id={`${uid}-opt-${idx}`}
+                                role="option"
+                                aria-selected={isActive}
+                                data-index={idx}
+                                onMouseEnter={() => moveTo(it.id)}
+                                onFocus={() => moveTo(it.id)}
+                                onClick={() => choose(it)}
+                                className={cn(
+                                  "relative isolate flex w-full min-w-0 cursor-pointer items-center min-h-[31px] gap-2 rounded-xl px-[10px] py-1 text-left text-ui-base outline-none transition-colors hover:bg-menu-hover active:bg-menu-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
+                                  isActive ? "text-foreground" : "text-muted-foreground",
+                                )}
+                              >
+                                {isActive ? (
+                                  <motion.span
+                                    layoutId={`${uid}-active`}
+                                    className="absolute inset-0 z-0 rounded-xl bg-menu-hover"
+                                    transition={
+                                      reduce
+                                        ? { duration: 0 }
+                                        : // Tracks rapid arrow-key navigation — keep it tighter
+                                          // than SPRING_LAYOUT so it never lags the active row.
+                                          {
+                                            duration: 0.16,
+                                            ease: EASE_OUT,
+                                          }
+                                    }
+                                  />
+                                ) : null}
+                                {Icon ? (
+                                  <Icon className="relative z-10 h-4 w-4" />
+                                ) : (
+                                  <span className="relative z-10 size-3 shrink-0">{it.status}</span>
+                                )}
+                                <span className="relative z-10 min-w-0 flex-1 truncate">
+                                  {it.label}
+                                </span>
+                                {it.badge ? (
+                                  <span className="relative z-10 max-w-[108px] shrink-0 truncate text-right text-ui-caption text-muted-foreground">
+                                    {it.badge}
+                                  </span>
+                                ) : null}
+                                {it.hint ? (
+                                  <kbd className="relative z-10 rounded-sm border border-border bg-background px-1 font-mono text-ui-xs text-muted-foreground">
+                                    {it.hint}
+                                  </kbd>
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </PaletteGroup>
                       </div>
                     ))
                   )}
@@ -363,5 +402,26 @@ export function CommandPalette({
       ) : null}
     </AnimatePresence>,
     document.body,
+  );
+}
+
+function PaletteGroup({
+  list,
+  group,
+  children,
+}: {
+  list: CommandItem[];
+  group: string;
+  children: ReactNode;
+}) {
+  if (list[0]?.section === "actions") return <div className="shrink-0 px-1">{children}</div>;
+  return (
+    <ScrollArea
+      viewportLabel={group}
+      className="mx-2 h-[min(279px,calc(100dvh-206px))] shrink min-h-0"
+      viewportClassName="min-w-0 [contain:inline-size]"
+    >
+      {children}
+    </ScrollArea>
   );
 }

@@ -9,6 +9,8 @@ import {
   createSession,
   createApplicationModels,
   listSessions,
+  renameSessionTitle,
+  deleteSession,
   discoverSqliteSessions,
   isSqliteSessionBusy,
   readSessionSnapshot,
@@ -257,17 +259,24 @@ export async function startServer(options: ServerOptions) {
     const observations = new Map<string, () => void>();
     const children = new Map<string, boolean>();
     const admissions = new Map<string, number>();
+    const sessionCommands = new Map<string, number>();
+    const organizing = new Set<string>();
     const retirements = new Set<Promise<void>>();
     const commands = new Set<Promise<unknown>>();
     const changes = new Set<Promise<void>>();
     let shuttingDown = false;
-    const held = (session: Session) =>
+    // Execution blocks organization changes; a passive subscriber does not.
+    const executing = (session: Session) =>
       (admissions.get(session.id) ?? 0) > 0 ||
       session.running ||
       session.queuedInputs.length ||
       children.get(session.id) ||
       session.jobs().some((job) => job.status === "running" || job.status === "stopping") ||
-      [...pending.values()].some((item) => item.sessionId === session.id) ||
+      [...pending.values()].some((item) => item.sessionId === session.id);
+    const held = (session: Session) =>
+      executing(session) ||
+      organizing.has(session.id) ||
+      (sessionCommands.get(session.id) ?? 0) > 0 ||
       [...subscriptions.values()].some((map) => map.has(session.id));
     const refreshIdle = (session: Session) => {
       if (shuttingDown) return;
@@ -305,6 +314,8 @@ export async function startServer(options: ServerOptions) {
       initial?: Extract<WireCommand, { type: "session.create" }>,
       resumeModelSelection?: SessionOptions["resumeModelSelection"],
     ) => {
+      if (resumeId && organizing.has(resumeId))
+        return Promise.reject(new CommandError("session_busy"));
       const current = resumeId ? sessions.get(resumeId) : undefined;
       if (current) return Promise.resolve(current);
       const key = resumeId ?? crypto.randomUUID();
@@ -470,6 +481,7 @@ export async function startServer(options: ServerOptions) {
             sessions: committed,
             projects: registry.projects,
             pinned: registry.pinned,
+            archived: registry.archived,
             preferences: registry.preferences,
           });
       })();
@@ -560,7 +572,7 @@ export async function startServer(options: ServerOptions) {
         refreshIdle(session);
       }
     };
-    const dispatch = async (command: WireCommand, socket: WSContext): Promise<unknown> => {
+    const executeCommand = async (command: WireCommand, socket: WSContext): Promise<unknown> => {
       if (shuttingDown) throw new CommandError("internal");
       if (command.type.startsWith("modelServices.")) {
         if ((options.encryptionBackend ?? "electron") === "electron")
@@ -815,10 +827,90 @@ export async function startServer(options: ServerOptions) {
           await changed();
           return { mode: command.mode };
         }
+        case "session.delete": {
+          const summary = (await summaries()).find((session) => session.id === command.sessionId);
+          if (!summary) throw new CommandError("session_not_found");
+          const current = sessions.get(command.sessionId);
+          if (
+            openings.has(command.sessionId) ||
+            (current && executing(current)) ||
+            [...pending.values()].some((item) => item.sessionId === command.sessionId)
+          )
+            throw new CommandError("session_busy");
+          if (current) {
+            clearTimeout(idleTimers.get(current.id));
+            idleTimers.delete(current.id);
+            await current.close();
+            observations.get(current.id)?.();
+            observations.delete(current.id);
+            sessions.delete(current.id);
+            children.delete(current.id);
+            admissions.delete(current.id);
+            for (const subscribed of subscriptions.values()) {
+              subscribed.get(current.id)?.();
+              subscribed.delete(current.id);
+            }
+          }
+          await deleteSession({
+            cwd: summary.cwd,
+            homeDir: options.homeDir,
+            dataRoot: options.dataRoot,
+            id: summary.id,
+          });
+          registry.pinned = registry.pinned.filter((id) => id !== command.sessionId);
+          registry.archived = registry.archived.filter((id) => id !== command.sessionId);
+          await save();
+          await changed(command.sessionId);
+          return {};
+        }
+        case "session.archive": {
+          const summary = (await summaries()).find((session) => session.id === command.sessionId);
+          if (!summary) throw new CommandError("session_not_found");
+          const current = sessions.get(command.sessionId);
+          if (
+            (!current &&
+              isSqliteSessionBusy({
+                cwd: summary.cwd,
+                homeDir: options.homeDir,
+                dataRoot: options.dataRoot,
+                id: summary.id,
+              })) ||
+            openings.has(command.sessionId) ||
+            (current && executing(current)) ||
+            [...pending.values()].some((item) => item.sessionId === command.sessionId)
+          )
+            throw new CommandError("session_busy");
+          registry.pinned = registry.pinned.filter((id) => id !== command.sessionId);
+          if (!registry.archived.includes(command.sessionId))
+            registry.archived.push(command.sessionId);
+          await save();
+          await changed(command.sessionId);
+          return {};
+        }
+        case "session.rename": {
+          if (!command.title.trim()) throw new CommandError("invalid_command");
+          const current = sessions.get(command.sessionId);
+          if (current) await current.rename(command.title);
+          else {
+            const summary = (await summaries()).find((item) => item.id === command.sessionId);
+            if (!summary) throw new CommandError("session_not_found");
+            await renameSessionTitle({
+              cwd: summary.cwd,
+              homeDir: options.homeDir,
+              dataRoot: options.dataRoot,
+              id: summary.id,
+              title: command.title,
+            });
+          }
+          await changed();
+          return {};
+        }
         case "session.pin":
         case "session.unpin": {
           if (!(await summaries()).some((session) => session.id === command.sessionId))
             throw new CommandError("session_not_found");
+          if (command.type === "session.pin" && registry.archived.includes(command.sessionId))
+            throw new CommandError("session_archived");
           registry.pinned = registry.pinned.filter((id) => id !== command.sessionId);
           if (command.type === "session.pin") registry.pinned.push(command.sessionId);
           await save();
@@ -838,6 +930,34 @@ export async function startServer(options: ServerOptions) {
     };
     const token = randomBytes(32).toString("hex");
     let port = 0;
+    // Reserve each Session before the first await, including model/auth/open preparation.
+    // Archive/delete exclude other commands until storage/registry publication completes.
+    const dispatch = async (command: WireCommand, socket: WSContext): Promise<unknown> => {
+      if (!("sessionId" in command)) return executeCommand(command, socket);
+      const id = command.sessionId;
+      if (organizing.has(id)) throw new CommandError("session_busy");
+      if (command.type === "session.delete" || command.type === "session.archive") {
+        if ((sessionCommands.get(id) ?? 0) > 0) throw new CommandError("session_busy");
+        organizing.add(id);
+        try {
+          return await executeCommand(command, socket);
+        } finally {
+          organizing.delete(id);
+          const session = sessions.get(id);
+          if (session) refreshIdle(session);
+        }
+      }
+      sessionCommands.set(id, (sessionCommands.get(id) ?? 0) + 1);
+      try {
+        return await executeCommand(command, socket);
+      } finally {
+        const count = (sessionCommands.get(id) ?? 1) - 1;
+        if (count) sessionCommands.set(id, count);
+        else sessionCommands.delete(id);
+        const session = sessions.get(id);
+        if (session) refreshIdle(session);
+      }
+    };
     const app = new Hono();
     app.post("/private/model-services", async (c) => {
       const supplied = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
@@ -949,7 +1069,15 @@ export async function startServer(options: ServerOptions) {
                     ? error.code
                     : error instanceof Error && "code" in error && error.code === "session-busy"
                       ? "session_busy"
-                      : "internal";
+                      : error instanceof Error &&
+                          "code" in error &&
+                          error.code === "session-not-found"
+                        ? "session_not_found"
+                        : error instanceof Error &&
+                            "code" in error &&
+                            error.code === "session-title-empty"
+                          ? "invalid_command"
+                          : "internal";
                 if (code === "internal") warning(String(error));
                 send(socket, { type: "response", id: command.id, error: { code } });
               },

@@ -148,6 +148,19 @@ test("normal TUI exit preserves a background child and reopening renders its sna
         app.screen().join("\n").includes("background tasks: 1 subagents"),
     );
     child.delta("committed reader partial");
+    // Model stream pushes precede durable commits. Observe the actual child's
+    // committed output before closing; listing the parent does not join it.
+    app.stdin.write("\x01\r\x1b[C");
+    await app.waitFor(() => app.screen().join("\n").includes("committed reader partial"));
+    expect(child.signal!.aborted).toBe(false);
+    app.stdin.write("\x1b");
+    await app.waitFor(() => app.screen().join("\n").includes("─ Subagents "));
+    app.stdin.write("\x1b");
+    await app.waitFor(
+      () =>
+        app.screen().join("\n").includes("parent idle while reader works") &&
+        app.screen().join("\n").includes("background tasks: 1 subagents"),
+    );
     const [saved] = await listSessions({ cwd: app.root, homeDir: app.root });
     if (!saved) throw new Error("Missing actual Session identity");
     app.stdin.write("\x04");

@@ -1,6 +1,10 @@
 import { useEffect, type RefObject } from "react";
 /** A modal owns focus while mounted, then restores the element that opened it. */
-export function useModalFocus(open: boolean, ref: RefObject<HTMLElement | null>) {
+export function useModalFocus(
+  open: boolean,
+  ref: RefObject<HTMLElement | null>,
+  initialFocus?: RefObject<HTMLElement | null>,
+) {
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -30,8 +34,11 @@ export function useModalFocus(open: boolean, ref: RefObject<HTMLElement | null>)
       }
     };
     const focus = (event: FocusEvent) => {
-      if (event.target instanceof Node && !ref.current?.contains(event.target))
-        focusables()[0]?.focus();
+      if (event.target instanceof Node && !ref.current?.contains(event.target)) {
+        const elements = focusables();
+        const preferred = initialFocus?.current;
+        (preferred && elements.includes(preferred) ? preferred : elements[0])?.focus();
+      }
     };
     document.addEventListener("keydown", key);
     document.addEventListener("focusin", focus);
@@ -40,5 +47,5 @@ export function useModalFocus(open: boolean, ref: RefObject<HTMLElement | null>)
       document.removeEventListener("focusin", focus);
       previous?.focus();
     };
-  }, [open, ref]);
+  }, [open, ref, initialFocus]);
 }

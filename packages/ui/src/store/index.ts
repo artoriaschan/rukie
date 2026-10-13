@@ -44,6 +44,7 @@ export interface DesktopState {
   sessions: WireSessionSummary[];
   projects: WireProject[];
   pinned: string[];
+  archived: string[];
   preferences: WirePreferences;
   models: WireModelCatalogEntry[];
   views: Record<string, SessionViewState>;
@@ -56,6 +57,7 @@ export function createDesktopStore() {
     sessions: [],
     projects: [],
     pinned: [],
+    archived: [],
     preferences: {},
     models: [],
     views: {},
@@ -68,10 +70,14 @@ export function createDesktopStore() {
     // The guard checks this layer’s accessed fields; raw Agent payload contents remain opaque.
     const message = input as WireServerMessage<SessionEvent>;
     if (message.type === "sessions_changed") {
+      const views = { ...store.getState().views };
+      if (message.closedSessionId) delete views[message.closedSessionId];
       store.setState({
+        views,
         sessions: message.sessions,
         projects: message.projects,
         pinned: message.pinned,
+        archived: message.archived,
         preferences: message.preferences,
       });
       return;
@@ -307,6 +313,8 @@ function validEnvelope(input: unknown): boolean {
           [item.id, item.path, item.name].every((value) => typeof value === "string"),
       ) ||
       !strings(input.pinned) ||
+      !strings(input.archived) ||
+      (input.closedSessionId !== undefined && typeof input.closedSessionId !== "string") ||
       !record(input.preferences)
     )
       return false;

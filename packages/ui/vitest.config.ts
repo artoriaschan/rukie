@@ -29,6 +29,9 @@ export default defineConfig({
           browser: {
             enabled: true,
             commands: {
+              reducedMotion: async ({ page }, reduced: boolean) => {
+                await page.emulateMedia({ reducedMotion: reduced ? "reduce" : "no-preference" });
+              },
               startWire: async () => {
                 const fixture = await startWireFixture();
                 fixtures.set(fixture.connection.port, fixture);

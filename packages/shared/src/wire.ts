@@ -89,8 +89,11 @@ export const WireCommandSchema = Type.Union([
   command("steer_now", { ...session, requestId: id }),
   command("withdraw", { ...session, requestId: id }),
   command("abort", session),
+  command("session.rename", { ...session, title: Type.String({ minLength: 1 }) }),
   command("session.pin", session),
   command("session.unpin", session),
+  command("session.archive", session),
+  command("session.delete", session),
   command("models.list", {}),
   command("session.set_model", {
     ...session,
@@ -116,6 +119,7 @@ export type WireErrorCode =
   | "model_services_unavailable"
   | "model_unavailable"
   | "session_busy"
+  | "session_archived"
   | "session_not_found"
   | "project_not_found"
   | "invalid_command"
@@ -197,10 +201,11 @@ export type WireServerMessage<Event> =
   | { type: "interaction_settled"; sessionId: string; identity: WireInteractionIdentity }
   | {
       type: "sessions_changed";
-      /** In-process idle close completed and its writer lease has been released. */
+      /** Invalidate cached history; an archived selected Session also returns to new chat. */
       closedSessionId?: string;
       sessions: WireSessionSummary[];
       projects: WireProject[];
       pinned: string[];
+      archived: string[];
       preferences: WirePreferences;
     };

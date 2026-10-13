@@ -94,6 +94,14 @@ _Avoid_: undo, revert, rollback
 Transcript、documents、任务与父子 ownership 的持久化位置。Headless CLI 和 TUI 默认使用启用 fsync 的原生 JSONL 目录；桌面端本机 server 使用独立应用数据根下每个根 Session 的原生 SQLite Storage，同一根 Session 的子代理共用该存储。宿主保证单个写者，关闭或进程退出释放租约。桌面端与终端的 Session、配置及凭据隔离，不自动导入或回退到旧数据。列表与只读查询只观察已提交状态，不取得执行租约、不启动模型或调度恢复。桌面端的项目、Session 索引、置顶与偏好由独立应用数据库保存，不属于 Session 的执行事实；见 [ADR-0035](docs/adr/0035-desktop-isolated-sqlite-storage.md)。
 _Avoid_: database, history store
 
+**Project**:
+用户在桌面端登记的工作目录。工作目录等于某个 Project 路径的 Session 归属于该 Project；其余 Session 不属于任何 Project，桌面端将它们列在“对话”分类下，该分类只是导航呈现，不是领域概念。
+_Avoid_: workspace, folder
+
+**Archived Session**:
+从桌面端导航与搜索中隐藏、但 Transcript 与 Session Store 保持不变的 Session。归档属于桌面端的组织信息，不是 Session 的执行事实；Archived Session 不能同时被置顶。
+_Avoid_: deleted session, hidden session
+
 **Locale**:
 frontend 呈现文案所用的语言，由 frontend 自行解析。Agent Core 不感知 locale：它产出的内容和 transcript 与 locale 无关，同一个 session 可以在不同 locale 的 frontend 中恢复。
 _Avoid_: language（会和模型回复语言混淆）, i18n

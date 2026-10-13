@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openBunSqliteDatabase } from "@rukie/agent";
 import { AppDatabase } from "../../src/storage/app-database.ts";
 
 test("application state survives restart and failed provider replacement preserves its credential", async () => {
@@ -12,6 +13,7 @@ test("application state survives restart and failed provider replacement preserv
     await app.saveRegistry({
       projects: [{ id: "p", name: "project", path: root }],
       pinned: ["s"],
+      archived: ["archived"],
       preferences: { showPinned: true },
     });
     await app.saveProvider(
@@ -43,6 +45,7 @@ test("application state survives restart and failed provider replacement preserv
     expect(await app.registry()).toEqual({
       projects: [{ id: "p", name: "project", path: root }],
       pinned: ["s"],
+      archived: ["archived"],
       preferences: { showPinned: true },
     });
     expect((await app.providers())[0]).toMatchObject({
@@ -172,6 +175,38 @@ test.each([
     ).rejects.toThrow("Invalid model compatibility");
     expect((await app.providers())[0]?.models).toEqual([{ id: "m" }]);
   } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("registry adds archival to existing documents without discarding organization and rejects malformed ids", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rukie-archive-registry-"));
+  const app = await AppDatabase.open(root);
+  const fixture = await openBunSqliteDatabase(join(root, "app.sqlite"));
+  try {
+    // Persist an application document from before archival existed; assertions use registry().
+    const legacy = {
+      projects: [{ id: "p", name: "Project", path: root }],
+      pinned: ["s"],
+      preferences: { showProjects: false },
+    };
+    await fixture.run(
+      "INSERT OR REPLACE INTO documents VALUES (?, ?)",
+      "registry",
+      JSON.stringify(legacy),
+    );
+    expect(await app.registry()).toEqual({ ...legacy, archived: [] });
+    for (const archived of [null, "s", [1]]) {
+      await fixture.run(
+        "INSERT OR REPLACE INTO documents VALUES (?, ?)",
+        "registry",
+        JSON.stringify({ ...legacy, archived }),
+      );
+      await expect(app.registry()).rejects.toThrow("Invalid application registry");
+    }
+  } finally {
+    await fixture.close();
     await app.close();
     await rm(root, { recursive: true, force: true });
   }

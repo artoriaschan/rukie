@@ -192,6 +192,7 @@ function isErrorCode(code: string): code is WireErrorCode {
     code === "model_services_unavailable" ||
     code === "model_unavailable" ||
     code === "session_busy" ||
+    code === "session_archived" ||
     code === "session_not_found" ||
     code === "project_not_found" ||
     code === "invalid_command" ||

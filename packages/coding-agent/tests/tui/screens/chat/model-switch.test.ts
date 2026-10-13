@@ -1,7 +1,8 @@
 import { controlledModel } from "../../helpers/model";
 import { auxiliaryModels } from "../../helpers/auxiliary-model";
-import { afterEach, expect, test } from "bun:test";
-import { createSession } from "@rukie/agent";
+import { afterEach, expect, onTestFinished, test } from "bun:test";
+import { createJsonlStore, createSession, type SessionOptions } from "@rukie/agent";
+import type { DocumentId } from "@earendil-works/pi-durable";
 import { fauxProvider } from "@earendil-works/pi-ai";
 import { startWithClock as start } from "../../helpers/clock-app";
 
@@ -162,14 +163,53 @@ test("provider tabs wrap and preserve each provider's focused model", async () =
     if (holdAuth) await authReady.promise;
     return checkAuth(...args);
   };
+  const metadataBlocked = Promise.withResolvers<void>();
+  const releaseMetadata = Promise.withResolvers<void>();
+  onTestFinished(() => {
+    authReady.resolve();
+    releaseMetadata.resolve();
+  });
+  let holdMetadata = false;
+  const session: Partial<SessionOptions> = { model, models: catalog.models };
   const app = await start([], {
     env: { LANG: "en_US.UTF-8" },
-    session: {
-      model,
-      models: catalog.models,
+    session,
+    prepare: async (root) => {
+      await Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(tabSettings));
+      const store = createJsonlStore({ cwd: root, homeDir: root });
+      session.store = {
+        ...store,
+        async open(...args) {
+          const lease = await store.open(...args);
+          let metadataId: DocumentId | undefined;
+          return {
+            ...lease,
+            storage: new Proxy(lease.storage, {
+              get(target, key) {
+                if (key === "commit")
+                  return async (...commit: Parameters<typeof target.commit>) => {
+                    for (const write of commit[0])
+                      if (write.type === "document.create" && write.record.kind === "rukie.session")
+                        metadataId = write.record.id;
+                    if (
+                      holdMetadata &&
+                      commit[0].some(
+                        (write) => write.type === "document.change" && write.id === metadataId,
+                      )
+                    ) {
+                      metadataBlocked.resolve();
+                      await releaseMetadata.promise;
+                    }
+                    return target.commit(...commit);
+                  };
+                const value = Reflect.get(target, key);
+                return typeof value === "function" ? value.bind(target) : value;
+              },
+            }),
+          };
+        },
+      };
     },
-    prepare: (root) =>
-      Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(tabSettings)).then(() => {}),
   });
   try {
     await app.waitFor(() => screen(app).includes("test-model/first"));
@@ -188,10 +228,18 @@ test("provider tabs wrap and preserve each provider's focused model", async () =
     expect(screen(app)).toContain("first other/first");
     expect(screen(app)).toContain("Text input · No reasoning · context 128,000");
     expect(screen(app)).toContain("other/second");
+    holdMetadata = true;
     app.stdin.write("\x1b[Z\r");
     await app.waitFor(
       () => !screen(app).includes("Select model") && screen(app).includes("test-model/second"),
     );
+    await metadataBlocked.promise;
+    // The header publishes the chosen model before its metadata commit finishes.
+    // Only the completed switch notice makes the next prompt safe to submit.
+    expect(screen(app)).not.toContain("Model changed to second");
+    expect(catalog.calls).toHaveLength(0);
+    releaseMetadata.resolve();
+    await app.waitFor(() => screen(app).includes("Model changed to second (test-model/second)"));
     app.stdin.write("verify chosen model\r");
     await app.waitFor(() => catalog.calls.length === 1);
     expect(catalog.calls[0]!.model).toMatchObject({ provider: "test-model", id: "second" });
@@ -199,6 +247,7 @@ test("provider tabs wrap and preserve each provider's focused model", async () =
     await app.waitFor(() => !app.isWorking());
   } finally {
     authReady.resolve();
+    releaseMetadata.resolve();
     await app.cleanup();
   }
 });

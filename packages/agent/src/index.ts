@@ -4,9 +4,11 @@ export {
   createSqliteStore,
   createSessionStore,
   discoverSqliteSessions,
+  deleteSession,
   isSqliteSessionBusy,
   readSessionStorage,
   listSessions,
+  renameSessionTitle,
   type SessionStore,
   type SessionSummary,
 } from "./store/index.ts";

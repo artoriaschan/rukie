@@ -254,6 +254,12 @@ Default controls and content are opaque, neutral surfaces. Existing glass/neon c
 - Under `prefers-reduced-motion`, remove translation, scale, height animation, shimmer, marquee, and spin. Preserve state copy and static glyphs; an opacity transition may last at most 120ms.
 - Do not animate every streamed token or every row on scroll. Animation must not change layout geometry needed by virtualization or scrollbar mapping.
 
+### Search overlay
+
+The C25 search overlay is a centered `popover` surface with `popover-border`, `shadow-md`, a 520px maximum width and a 20px shell radius. It clamps to viewport width and height minus 32px. Its input stays at the top, chat results scroll in a bounded A13 ScrollArea, and the Quick actions group remains below that viewport. At the default text size, chat and action rows target 31px minimum height; group labels and right-aligned Project names use `text-ui-caption`. Chat rows reserve a 12px status column for a Running glyph and omit an idle icon; quick actions use 16px icons and 12px row radius. The shell and these rows form a dedicated role rather than changing ordinary dialog or menu geometry.
+
+Opening and closing use scale 0.98 to 1 plus opacity, with a 160ms ease-out transition and no translation. Under `prefers-reduced-motion`, the panel, backdrop and active-row highlight switch directly with zero transition duration; the Running glyph remains static. Exit releases focus and pointer interaction immediately through PresenceGate. Closing restores the search trigger; a quick action that opens another dialog transfers focus after the search overlay releases it.
+
 ## Components and states
 
 Component sourcing (existing → beUI → shadcn/ui → dedicated libraries → custom) remains defined in [AGENTS.md](AGENTS.md#ui-components). Every source follows the same compact geometry, semantic palette, typography, radius, and localization rules.
@@ -295,14 +301,14 @@ Use semantic controls and accessible names for actions; a cursor or an `onClick`
 
 Use the installed shared Button variants and sizes first; visual roles below do not imply additional APIs already exist. Keep a clear action hierarchy, usually one primary action per region, and square icon-only controls with an accessible name.
 
-| Variant role | Resting appearance                                        | Interaction                                                                   |
-| ------------ | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Primary      | `primary` with `primary-foreground`                       | Modest theme-derived emphasis, no extra resting focus border                  |
-| Outline      | Neutral or transparent surface and `border`               | Subtle neutral hover and stronger border                                      |
-| Secondary    | `secondary` with matching foreground                      | Neutral surface emphasis below primary                                        |
-| Ghost        | Transparent, readable foreground                          | Neutral background only on hover or press                                     |
-| Destructive  | Semantic destructive fill with matching contrasting text  | Only genuinely destructive operations, not routine denial                     |
-| Link         | Text-only action or semantic link, no filled button shell | Underline on hover and visible keyboard focus; navigation uses a link element |
+| Variant role | Resting appearance                                        | Interaction                                                                                                                                       |
+| ------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Primary      | `primary` with `primary-foreground`                       | Modest theme-derived emphasis, no extra resting focus border                                                                                      |
+| Outline      | Neutral or transparent surface and `border`               | Subtle neutral hover and stronger border                                                                                                          |
+| Secondary    | `secondary` with matching foreground                      | Neutral surface emphasis below primary                                                                                                            |
+| Ghost        | Transparent, readable foreground                          | Neutral background only on hover or press                                                                                                         |
+| Destructive  | Semantic destructive fill with `foreground-inverse` text  | Default and pressed use opaque fill; hover may use 90% fill while preserving 4.5:1 text contrast. Only destructive operations, not routine denial |
+| Link         | Text-only action or semantic link, no filled button shell | Underline on hover and visible keyboard focus; navigation uses a link element                                                                     |
 
 Tool Approval retains its registry's deliberate `foreground` / inverse primary approval action; it uses the same compact sizing and radius rules. The approval button's initial appearance has no blue decorative outline or ring. Programmatic focus when the card appears must not be interpreted as keyboard navigation or force the keyboard focus treatment to appear. Preserve the card's keyboard entry point, shortcuts, focus containment where required, and restoration; when the user navigates with the keyboard, show a visible, unclipped focus indicator. Do not solve a resting-style defect by removing focus feedback for keyboard users.
 
@@ -342,6 +348,10 @@ Ordinary cards use `card`, matching foreground, and `card-border` separation. Lo
 Session navigation, the conversation header, Transcript viewport, and composer or approval dock have independent content responsibilities. Their wrappers do not add radius levels. Keep structural surfaces quiet, preserve the Transcript's reading position, and allocate scroll ownership to the content region instead of making every nested wrapper independently scrollable.
 
 C01 in `rukie.pen` is the single maintenance source for the application shell. Compose C02 Session navigation or C03 settings navigation, then compare H01/L-H01, H08/L-H08, H09/L-H09 and P01/L-P01. The shared title bar is 44px high; the rail is 52px wide and both middle navigations are 268px wide. The workspace begins at (52, 44), has 12px corners and a 4px right/bottom inset; the outer shell has 16px corners. There is no border between the rail and middle navigation, and a 1px divider separates middle navigation from main content. Sidebar scrolling must not enlarge the shell or displace conversation controls.
+
+C02 Session navigation contains Pinned, Projects and Conversations in that order. A Session occurs once: pinning moves it into Pinned; unpinning returns it to its Project or Conversations. Hide empty Pinned. Project lists and each Project's Session list initially show five entries with a local Show more action; Pinned and Conversations are not truncated. Category names have a persistent right chevron when collapsed and a down chevron on hover or focus when expanded. Category actions appear on hover or focus; running feedback remains visible beside those actions, including when collapsed.
+
+The new-chat/search row and its divider stay above the sidebar's constrained ScrollArea. Categories scroll with their Sessions, without sticky headers. Use the existing A13 overlay scrollbar: transparent 8px track, centered 4px rounded thumb with 24px minimum and foreground at 30%; native scrollbars stay hidden and the track consumes no content width. Session titles fade at their trailing edge. Hover or focus reveals the trailing pin/unpin and more actions and reserves their width. Session right-click, row-more and titlebar menus derive actions from one definition; row menus show icons and labels without shortcuts, while titlebar shortcuts retain their existing treatment. Keep the 268px sidebar and all shell, conversation, composer and approval geometry unchanged.
 
 Shell surface roles are independent of cards: rail Dark `#2b2827` / Light `#e9e8e8`, title bar `#282928` / `#e8e9e9`, middle navigation `#1f1e1e` / `#f8f7f7`, and content `#181818` / `#ffffff`. Shell dividers use Dark `#ffffff1a` / Light `#0d0d0d1a` independently of content-card borders. Home/Session title bars use back, forward and sidebar toggle buttons, with icon centers x104, x138 and x172 at y22; the Session title region has its middle/main divider. Settings uses the same complete title bar with back/forward only, no Session title or title divider. Keep native traffic lights and controls vertically centered in the 44px row; browser evidence verifies the renderer reference, while native geometry needs separate platform acceptance. Existing conditional Side Pane/tab features retain their Session linkage.
 

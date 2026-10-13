@@ -526,3 +526,8 @@
     width: 320px;
   }
 }
+
+/* C02 keeps long Session names readable until their trailing fade. */
+.session-row-title {
+  mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
+}
