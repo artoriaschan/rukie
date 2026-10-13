@@ -177,7 +177,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       : undefined);
   const [sending, setSending] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
-  const recent = useMemo(() => recentSessions(state), [state.sessions, state.preferences]);
+  const recent = useMemo(
+    () => recentSessions(state).filter((session) => !state.archived.includes(session.id)),
+    [state.sessions, state.preferences, state.archived],
+  );
   const current = state.sessions.find((session) => session.id === state.selected);
   const view = state.selected ? (state.views[state.selected] ?? emptyView) : emptyView;
   const targetProject = state.projects.find((project) => project.id === state.target);
@@ -216,7 +219,11 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     const index = navigation.index + offset;
     const entry = navigation.entries[index];
     if (!entry) return;
-    if (entry.session && !state.sessions.some((session) => session.id === entry.session)) {
+    if (
+      entry.session &&
+      (!state.sessions.some((session) => session.id === entry.session) ||
+        state.archived.includes(entry.session))
+    ) {
       setError(t("app.error", { message: errorText(new WireError("session_not_found")) }));
       return;
     }
@@ -234,6 +241,8 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   };
   const pin = (id: string, pinned: boolean) =>
     safe(() => client.request({ type: pinned ? "session.pin" : "session.unpin", sessionId: id }));
+  const archive = (sessionId: string) =>
+    safe(() => client.request({ type: "session.archive", sessionId }));
   const preferences = (preferences: WirePreferences) =>
     safe(() => client.request({ type: "preferences.set", preferences }));
   const openSearch = () => {
@@ -248,7 +257,11 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     if (!open) opener.current?.focus();
   };
   useEffect(() => {
-    const offMessages = client.subscribeMessages(store.receive);
+    const offMessages = client.subscribeMessages((message) => {
+      store.receive(message);
+      const latest = store.getState();
+      if (latest.selected && latest.archived.includes(latest.selected)) newChat(null);
+    });
     const offSubscriptions = client.subscribeSubscriptions(store.setBusy);
     const offState = client.subscribeState(() => {
       store.setState({
@@ -663,7 +676,12 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 <Menu.DropdownMenuContent align="end">
                   <Menu.DropdownMenuGroup>
                     <SessionDropdownItems
-                      actions={sessionActions(current, state.pinned.includes(current.id), pin)}
+                      actions={sessionActions(
+                        current,
+                        state.pinned.includes(current.id),
+                        pin,
+                        archive,
+                      )}
                       shortcuts
                     />
                     <Menu.DropdownMenuSub>
@@ -770,6 +788,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   recent={recent}
                   projects={state.projects}
                   pinned={state.pinned}
+                  archived={state.archived}
                   preferences={state.preferences}
                   selected={state.selected}
                   ctrl={ctrl}
@@ -778,6 +797,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   onSearch={openSearch}
                   onAdd={() => safe(addProject)}
                   onPin={pin}
+                  onArchive={archive}
                   onPreferences={preferences}
                 />
               </div>

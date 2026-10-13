@@ -315,6 +315,7 @@ test.each([1280, 420])(
           type: "sessions_changed",
           projects: [],
           pinned: [],
+          archived: [],
           preferences: {},
           sessions: Array.from({ length: 30 }, (_, index) => ({
             id: `scroll-${index}`,

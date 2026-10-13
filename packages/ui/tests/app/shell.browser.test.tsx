@@ -504,6 +504,7 @@ test("sidebar status follows fresh summaries across unselected permission waits 
       { id: "long", path: "/project", name: "Project with a long folder name ".repeat(8) },
     ],
     pinned: [],
+    archived: [],
     preferences: {},
   });
   try {
@@ -721,6 +722,7 @@ test("sidebar limits Projects and their Sessions independently and keeps categor
     const registry = {
       type: "sessions_changed",
       pinned: [],
+      archived: [],
       preferences: {},
       projects: Array.from({ length: 6 }, (_, index) => ({
         id: `p${index}`,
@@ -821,10 +823,11 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(1);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(2);
     expect(
       screen
         .getByRole("menuitem")
+        .first()
         .element()
         .querySelector("kbd,[data-slot=dropdown-menu-shortcut]"),
     ).toBeNull();
@@ -837,7 +840,7 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
       .toBeVisible();
     await userEvent.keyboard("{ArrowDown}");
     await expect
-      .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
+      .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
       .toHaveFocus();
     await userEvent.keyboard("{Escape}");
     expect(session.element().parentElement!.contains(document.activeElement)).toBe(true);
@@ -845,7 +848,7 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(1);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(2);
     const menu = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
     const point = session.element().getBoundingClientRect();
     await expect
@@ -872,6 +875,159 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await userEvent.keyboard("{/Control}");
   } finally {
     await userEvent.keyboard("{/Control}");
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("archive menu hides a current Session from sidebar and search and returns to new chat", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+      Conversation={({ sessionId }) => <div>Open {sessionId}</div>}
+    />,
+  );
+  try {
+    await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
+    await expect.element(screen.getByText("Open one", { exact: true })).toBeVisible();
+    await screen.getByRole("button", { name: "Session actions", exact: true }).click();
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
+      .toBeVisible();
+    await screen.getByRole("menuitem", { name: "Archive", exact: true }).click();
+    await expect.element(screen.getByText("Open one", { exact: true })).not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: "Fix compiler", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("region", { name: "Pinned", exact: true }))
+      .not.toBeInTheDocument();
+    await screen.getByRole("button", { name: "Search sessions", exact: true }).click();
+    await expect.element(screen.getByRole("option", { name: /Explore ideas/ })).toBeVisible();
+    await expect
+      .element(screen.getByRole("option", { name: /Fix compiler/ }))
+      .not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    const sent = await fetch(`http://127.0.0.1:${connection.port}/commands`).then((response) =>
+      response.json(),
+    );
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "session.archive", sessionId: "one" }),
+        expect.objectContaining({ type: "session.unsubscribe", sessionId: "one" }),
+      ]),
+    );
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("archive is disabled for running and waiting Sessions in all three menu entries", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      Conversation={({ sessionId }) => <div>Open {sessionId}</div>}
+    />,
+  );
+  try {
+    await expect
+      .element(screen.getByRole("button", { name: "Fix compiler", exact: true }))
+      .toBeVisible();
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "sessions_changed",
+        sessions: [
+          {
+            id: "one",
+            title: "Fix compiler",
+            titleSource: "prompt",
+            updatedAt: 20,
+            createdAt: 10,
+            messageCount: 1,
+            model: "test/script",
+            cwd: "/project",
+            running: true,
+          },
+          {
+            id: "two",
+            title: "Explore ideas",
+            titleSource: "prompt",
+            updatedAt: 10,
+            createdAt: 20,
+            messageCount: 1,
+            model: "test/script",
+            cwd: "/workspace",
+            waitingPermission: true,
+          },
+        ],
+        projects: [{ id: "project", name: "Project", path: "/project" }],
+        pinned: ["one"],
+        archived: [],
+        preferences: {},
+      }),
+    });
+    const more = screen.getByRole("button", { name: "Session actions Fix compiler", exact: true });
+    await more.click();
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
+      .toHaveAttribute("aria-disabled", "true");
+    await userEvent.keyboard("{Escape}");
+    await expect.element(more).toHaveFocus();
+    const waiting = screen.getByRole("button", {
+      name: "Waiting for confirmation Explore ideas",
+      exact: true,
+    });
+    await waiting.click({ button: "right" });
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
+      .toBeDisabled();
+    await userEvent.keyboard("{Escape}");
+    await screen.getByRole("button", { name: "Running Fix compiler", exact: true }).click();
+    await screen.getByRole("button", { name: "Session actions", exact: true }).click();
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
+      .toHaveAttribute("aria-disabled", "true");
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    const sent = await fetch(`http://127.0.0.1:${connection.port}/commands`).then((response) =>
+      response.json(),
+    );
+    expect(sent.some((command: { type: string }) => command.type === "session.archive")).toBe(
+      false,
+    );
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("archiving another Session keeps the selected conversation open", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      Conversation={({ sessionId }) => <div>Open {sessionId}</div>}
+    />,
+  );
+  try {
+    await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
+    await expect.element(screen.getByText("Open one", { exact: true })).toBeVisible();
+    await screen
+      .getByRole("button", { name: "Session actions Explore ideas", exact: true })
+      .click();
+    await screen.getByRole("menuitem", { name: "Archive", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: "Explore ideas", exact: true }))
+      .not.toBeInTheDocument();
+    await expect.element(screen.getByText("Open one", { exact: true })).toBeVisible();
+  } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
   }

@@ -1,6 +1,6 @@
 # @rukie/server
 
-Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使用应用数据根中各自独立的 SQLite store，应用索引、项目、置顶、偏好与模型配置由本包的 `app.sqlite` 维护；与终端的用户配置和 Session 隔离。
+Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使用应用数据根中各自独立的 SQLite store，应用索引、项目、置顶、归档、偏好与模型配置由本包的 `app.sqlite` 维护；与终端的用户配置和 Session 隔离。
 
 ## 使用
 
@@ -20,7 +20,7 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 权限请求发送 `interaction_requested`（`sessionId`、原生 `identity`、去掉 signal 的 `request`）。回复核对完整 identity 和 epoch；旧回复返回 `interaction_stale`。回复、取消或会话规则覆盖都会发送 `interaction_settled`。订阅先收到 snapshot，再补发挂起请求；接管新连接后同样可以订阅并补发。
 
-`models.list` 读取 `app.sqlite` 中已启用的模型及凭证存在状态，不解密密钥、刷新模型或启动 OAuth。实际模型请求通过选定加密后端按供应商身份取得凭证；认证不采用终端环境 API Key。配置变更在后续发送前刷新，已开始的请求保留其供应商配置；删除选中模型或供应商后发送返回 `model_unavailable`，不会改用另一个供应商。未在当前进程打开的 Session，订阅直接读取已提交历史并返回 `{ readonly: true, modelUnavailable }`；目录与历史阅读不解密执行配置或凭证。历史 snapshot 的 `agent.thinkingLevel` 是已提交的 Thinking Level；其 `permissionMode` 是当前非敏感配置的默认值，并非历史权限事实。只有明确发送或切换模型等执行命令才打开 Session，订阅随后转为实时事件；没有可用模型或凭证时 `modelUnavailable` 为 true。已打开 Session 的订阅和状态更新还提供 `session_state`（permissionMode、thinkingLevel、contextReport），不修改原始 SessionEvent。模型切换要求 Session 空闲，权限模式对下一次工具调用生效。置顶与侧栏偏好写入注册表；首次连接、Run 开始/结束、权限创建/结算和这些修改发送 `sessions_changed`，携带 `sessions`、`projects`、`pinned` 与 `preferences`。Session summary 的 running 和 waitingPermission 是侧栏状态的权威事实，覆盖未订阅的后台 Session；子代理权限回调归父 Session，等待状态同样归父会话。
+`models.list` 读取 `app.sqlite` 中已启用的模型及凭证存在状态，不解密密钥、刷新模型或启动 OAuth。实际模型请求通过选定加密后端按供应商身份取得凭证；认证不采用终端环境 API Key。配置变更在后续发送前刷新，已开始的请求保留其供应商配置；删除选中模型或供应商后发送返回 `model_unavailable`，不会改用另一个供应商。未在当前进程打开的 Session，订阅直接读取已提交历史并返回 `{ readonly: true, modelUnavailable }`；目录与历史阅读不解密执行配置或凭证。历史 snapshot 的 `agent.thinkingLevel` 是已提交的 Thinking Level；其 `permissionMode` 是当前非敏感配置的默认值，并非历史权限事实。只有明确发送或切换模型等执行命令才打开 Session，订阅随后转为实时事件；没有可用模型或凭证时 `modelUnavailable` 为 true。已打开 Session 的订阅和状态更新还提供 `session_state`（permissionMode、thinkingLevel、contextReport），不修改原始 SessionEvent。模型切换要求 Session 空闲，权限模式对下一次工具调用生效。置顶、归档与侧栏偏好写入注册表；首次连接、Run 开始/结束、权限创建/结算和这些修改发送 `sessions_changed`，携带 `sessions`、`projects`、`pinned`、`archived` 与 `preferences`。Session summary 的 running 和 waitingPermission 是侧栏状态的权威事实，覆盖未订阅的后台 Session；子代理权限回调归父 Session，等待状态同样归父会话。
 
 历史订阅通过 Agent Core 的只读快照显示已提交 Transcript，包括跨进程持有 lease 的 Session。展示快照后，通过独立 host mutex 的立即事务探测当前占用，随即回滚并关闭，不写数据或取得 Session 执行权；忙时仍返回 `session_busy`，客户端保留只读与 busy 提示。探测仅反映当时状态，明确执行命令仍重新取得执行 lease。只读访问不恢复任务、调用 Hooks 或解密 MCP 配置，不提供实时事件或别的进程的权限回复。快照保留消息、原生工具状态、排队输入、Run Summaries 与 Todo/Plan/Goal/子代理目录；不重建别的进程的 Background Job 或子代理活动。
 
@@ -29,6 +29,8 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 应用库位于 `dataRoot/app.sqlite`，默认工作区位于同级 `workspace/`。应用写入使用事务及 WAL/FULL；失败不报告保存成功。Session 索引从数据根内各 Session 库的已提交元数据核对，不依赖项目注册表，发现不取得执行 lease、不恢复任务。损坏元数据记录 warning，不读取旧目录。添加项目需要绝对目录。
 
 [AppDatabase](src/storage/app-database.ts) 提供配置和凭证的原子替换、删除，以及应用索引与能力缓存操作。敏感 MCP 配置（包括 headers、client_secret）及完整 OAuth state（包括 codeVerifier）通过[加密配置 adapter](src/storage/configuration.ts) 整体加密；终端文件来源保持原行为。模型服务写入通过独立鉴权的 `/private/model-services` 接口，仅供 main 调用；会话 WS 不接受凭证写入，也不返回密文或明文。私有通道能力从进程环境捕获后删除，不向工具子进程传递。
+
+`session.archive { sessionId }` 只修改应用 registry：从 `pinned` 移除并加入 `archived`，Session 摘要、Transcript 与 Session Store 保留；未打开的 Session 不启动 Session Resume。执行中的 Run、Queued Input、Background Job、子代理或挂起 Interaction 返回 `session_busy`，空闲 Session 的只读或实时订阅不阻止归档。成功的 `sessions_changed` 携带 `closedSessionId`，客户端只对当前选择的该 Session 返回新聊天；此字段也用于空闲关闭后的视图失效，不表示归档释放执行租约。`session.pin` 对 Archived Session 返回 `session_archived`；不存在的 id 返回 `session_not_found`。本次没有取消归档命令。
 
 ## 实现导航
 

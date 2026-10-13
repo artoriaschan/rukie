@@ -22,6 +22,7 @@ const RegistrySchema = Type.Object({
     Type.Object({ id: Type.String(), path: Type.String(), name: Type.String() }),
   ),
   pinned: Type.Array(Type.String()),
+  archived: Type.Array(Type.String()),
   preferences: WirePreferencesSchema,
 });
 const SessionIndexSchema = Type.Object({
@@ -74,11 +75,17 @@ export class AppDatabase {
     return tx.run("INSERT OR REPLACE INTO documents VALUES (?, ?)", key, JSON.stringify(value));
   }
   async registry(): Promise<ApplicationRegistry> {
-    const value = (await this.document("registry")) ?? {
+    const stored = (await this.document("registry")) ?? {
       projects: [],
       pinned: [],
+      archived: [],
       preferences: {},
     };
+    // Existing registry documents predate archival; only an absent field defaults empty.
+    const value =
+      typeof stored === "object" && stored !== null && !("archived" in stored)
+        ? { ...stored, archived: [] }
+        : stored;
     if (!Value.Check(RegistrySchema, value)) throw new Error("Invalid application registry");
     return value;
   }

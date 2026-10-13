@@ -261,14 +261,16 @@ export async function startServer(options: ServerOptions) {
     const commands = new Set<Promise<unknown>>();
     const changes = new Set<Promise<void>>();
     let shuttingDown = false;
-    const held = (session: Session) =>
+    // Execution blocks organization changes; a passive subscriber does not.
+    const executing = (session: Session) =>
       (admissions.get(session.id) ?? 0) > 0 ||
       session.running ||
       session.queuedInputs.length ||
       children.get(session.id) ||
       session.jobs().some((job) => job.status === "running" || job.status === "stopping") ||
-      [...pending.values()].some((item) => item.sessionId === session.id) ||
-      [...subscriptions.values()].some((map) => map.has(session.id));
+      [...pending.values()].some((item) => item.sessionId === session.id);
+    const held = (session: Session) =>
+      executing(session) || [...subscriptions.values()].some((map) => map.has(session.id));
     const refreshIdle = (session: Session) => {
       if (shuttingDown) return;
       clearTimeout(idleTimers.get(session.id));
@@ -470,6 +472,7 @@ export async function startServer(options: ServerOptions) {
             sessions: committed,
             projects: registry.projects,
             pinned: registry.pinned,
+            archived: registry.archived,
             preferences: registry.preferences,
           });
       })();
@@ -815,10 +818,29 @@ export async function startServer(options: ServerOptions) {
           await changed();
           return { mode: command.mode };
         }
+        case "session.archive": {
+          if (!(await summaries()).some((session) => session.id === command.sessionId))
+            throw new CommandError("session_not_found");
+          const current = sessions.get(command.sessionId);
+          if (
+            openings.has(command.sessionId) ||
+            (current && executing(current)) ||
+            [...pending.values()].some((item) => item.sessionId === command.sessionId)
+          )
+            throw new CommandError("session_busy");
+          registry.pinned = registry.pinned.filter((id) => id !== command.sessionId);
+          if (!registry.archived.includes(command.sessionId))
+            registry.archived.push(command.sessionId);
+          await save();
+          await changed(command.sessionId);
+          return {};
+        }
         case "session.pin":
         case "session.unpin": {
           if (!(await summaries()).some((session) => session.id === command.sessionId))
             throw new CommandError("session_not_found");
+          if (command.type === "session.pin" && registry.archived.includes(command.sessionId))
+            throw new CommandError("session_archived");
           registry.pinned = registry.pinned.filter((id) => id !== command.sessionId);
           if (command.type === "session.pin") registry.pinned.push(command.sessionId);
           await save();

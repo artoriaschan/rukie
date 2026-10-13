@@ -26,6 +26,7 @@ export interface SidebarProps {
   recent: WireSessionSummary[];
   projects: WireProject[];
   pinned: string[];
+  archived: string[];
   preferences: WirePreferences;
   selected: string | null;
   ctrl: boolean;
@@ -34,6 +35,7 @@ export interface SidebarProps {
   onSearch: () => void;
   onAdd: () => void;
   onPin: (id: string, pinned: boolean) => void;
+  onArchive: (id: string) => void;
   onPreferences: (preferences: WirePreferences) => void;
 }
 export function Sidebar(props: SidebarProps) {
@@ -53,7 +55,7 @@ export function Sidebar(props: SidebarProps) {
   const row = (session: WireSessionSummary) => {
     const pinned = props.pinned.includes(session.id);
     const shortcut = props.recent.findIndex((value) => value.id === session.id) + 1;
-    const actions = sessionActions(session, pinned, props.onPin);
+    const actions = sessionActions(session, pinned, props.onPin, props.onArchive);
     return (
       <ContextMenu key={session.id}>
         <ContextMenuTrigger>
@@ -239,7 +241,7 @@ export function Sidebar(props: SidebarProps) {
       {!groups.includes(id) ? children : null}
     </section>
   );
-  const navigation = sessionGroups(props.recent, props.projects, props.pinned);
+  const navigation = sessionGroups(props.recent, props.projects, props.pinned, props.archived);
   return (
     <aside
       aria-label={t("app.home")}
