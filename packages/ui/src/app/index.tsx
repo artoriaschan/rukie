@@ -103,7 +103,6 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     if (!settingsOpen) settingsOpener.current?.focus();
   }, [settingsOpen]);
   const [sidebar, setSidebar] = useState(() => matchMedia("(min-width: 768px)").matches);
-  const [ctrl, setCtrl] = useState(false);
   const [search, setSearch] = useState(false);
   const [summary, setSummary] = useState(false);
   const [deleting, setDeleting] = useState<WireSessionSummary | null>(null);
@@ -321,7 +320,6 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   }, [client, store]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      setCtrl(event.ctrlKey);
       if (settingsOpen) return;
       if (
         Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).some(
@@ -346,15 +344,9 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       }
       if (event.key === "Escape" && summary) setSummary(false);
     };
-    const keyup = (event: KeyboardEvent) => setCtrl(event.ctrlKey);
-    const blur = () => setCtrl(false);
     window.addEventListener("keydown", keydown);
-    window.addEventListener("keyup", keyup);
-    window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("keydown", keydown);
-      window.removeEventListener("keyup", keyup);
-      window.removeEventListener("blur", blur);
     };
   }, [recent, state.selected, state.pinned, summary, settingsOpen]);
   const send = async () => {
@@ -701,7 +693,6 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                         archive,
                         setDeleting,
                       )}
-                      shortcuts
                     />
                     <Menu.DropdownMenuSub>
                       <Menu.DropdownMenuSubTrigger>{t("app.copy")}</Menu.DropdownMenuSubTrigger>
@@ -810,7 +801,6 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   archived={state.archived}
                   preferences={state.preferences}
                   selected={state.selected}
-                  ctrl={ctrl}
                   onSelect={(id) => safe(() => select(id))}
                   onNew={newChat}
                   onSearch={openSearch}

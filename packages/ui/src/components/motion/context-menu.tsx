@@ -582,13 +582,11 @@ function ContextMenuItemBase({
       )}
     >
       {active && !disabled ? (
-        <motion.span
-          layoutId={`${context.menuId}-active`}
+        <span
           className={cn(
             "absolute inset-0 -z-10 rounded-md",
             tone === "destructive" ? "bg-destructive/10" : "bg-menu-hover",
           )}
-          transition={context.reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
         />
       ) : null}
       {children}
@@ -723,23 +721,4 @@ export interface ContextMenuSeparatorProps {
 
 export function ContextMenuSeparator({ className }: ContextMenuSeparatorProps) {
   return <hr className={cn("-mx-1 my-1 h-px border-0 bg-border", className)} />;
-}
-
-export interface ContextMenuShortcutProps {
-  children: ReactNode;
-  className?: string;
-}
-
-export function ContextMenuShortcut({ children, className }: ContextMenuShortcutProps) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "ml-auto pl-4 font-mono text-ui-xs font-medium tracking-wide text-muted-foreground",
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
 }

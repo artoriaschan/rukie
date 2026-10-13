@@ -29,7 +29,6 @@ export interface SidebarProps {
   archived: string[];
   preferences: WirePreferences;
   selected: string | null;
-  ctrl: boolean;
   onSelect: (id: string) => void;
   onNew: (project: string | null) => void;
   onSearch: () => void;
@@ -75,7 +74,6 @@ export function Sidebar(props: SidebarProps) {
     });
   const row = (session: WireSessionSummary) => {
     const pinned = props.pinned.includes(session.id);
-    const shortcut = props.recent.findIndex((value) => value.id === session.id) + 1;
     const actions = sessionActions(
       session,
       pinned,
@@ -89,10 +87,7 @@ export function Sidebar(props: SidebarProps) {
         <ContextMenuTrigger>
           <div
             tabIndex={-1}
-            className={cn(
-              "group/row relative flex min-w-0 items-center rounded-lg px-1 outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-card",
-              props.selected === session.id && "bg-card",
-            )}
+            className="group/row relative flex min-w-0 items-center rounded-lg px-1 outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-hover"
           >
             <button
               onClick={() => props.onSelect(session.id)}
@@ -113,9 +108,6 @@ export function Sidebar(props: SidebarProps) {
               <span className="session-row-title min-w-0 flex-1 overflow-hidden whitespace-nowrap">
                 {session.title}
               </span>
-              {props.ctrl && shortcut > 0 && shortcut <= 9 ? (
-                <kbd className="font-mono text-ui-xs">⌃{shortcut}</kbd>
-              ) : null}
             </button>
             <div className="absolute right-1 flex items-center">
               <Tooltip content={t(pinned ? "app.unpin" : "app.pin")}>
@@ -165,7 +157,7 @@ export function Sidebar(props: SidebarProps) {
         <button
           onClick={() => toggle(id)}
           aria-expanded={!groups.includes(id)}
-          className="flex cursor-pointer active:bg-muted min-w-0 flex-1 items-center gap-1 py-1 min-h-7 text-left text-ui-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex cursor-pointer active:bg-muted min-w-0 flex-1 items-center gap-1 py-1 min-h-7 text-left text-ui-base text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {t(`app.${id}`)}
           <ChevronDown

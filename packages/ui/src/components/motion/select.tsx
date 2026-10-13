@@ -351,7 +351,7 @@ export function SelectItem({ value, disabled = false, className, children }: Sel
         disabled={disabled}
         onClick={() => ctx.select(value)}
         className={cn(
-          "flex w-full items-center justify-between min-h-7 gap-2 rounded-md px-2 py-1 text-left text-ui-base outline-none transition-colors",
+          "flex w-full items-center justify-between min-h-7 gap-2 rounded-md px-2 py-1 text-left text-ui-base outline-none",
           selected
             ? "bg-selected text-foreground"
             : "text-muted-foreground hover:bg-menu-hover hover:text-foreground focus-visible:bg-menu-hover",

@@ -1417,7 +1417,6 @@ export function ModelServices({
                 disabled={pending}
               >
                 {t("services.cancel")}
-                <kbd aria-hidden="true">esc</kbd>
               </Button>
               <Button
                 aria-label={t("services.confirm")}

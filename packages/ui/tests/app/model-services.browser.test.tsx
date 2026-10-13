@@ -790,11 +790,7 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
       .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().height))
       .toBe(180);
     expect(screen.getByRole("dialog").element().getBoundingClientRect().width).toBe(448);
-    expect(
-      getComputedStyle(
-        screen.getByRole("dialog").element().querySelector("kbd")!,
-      ).fontFamily.startsWith("ui-monospace"),
-    ).toBe(true);
+    expect(screen.getByRole("dialog").element().querySelector("kbd")).toBeNull();
     await expect
       .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().top))
       .toBe(520);

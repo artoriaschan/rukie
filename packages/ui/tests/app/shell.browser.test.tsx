@@ -87,6 +87,12 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
       expect(region(control)).toBe("no-drag");
     await screen.getByRole("button", { name: "Session actions" }).click();
     await expect.element(screen.getByRole("menuitem", { name: "Copy", exact: true })).toBeVisible();
+    expect(
+      document.querySelector('[role="menu"] kbd,[data-slot="dropdown-menu-shortcut"]'),
+    ).toBeNull();
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
+      .toBeVisible();
     await userEvent.keyboard("{Escape}");
     await screen.getByRole("button", { name: "Session summary", exact: true }).click();
     await expect
@@ -888,6 +894,7 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
       .toBeVisible();
     expect(screen.getByRole("menuitem").all()).toHaveLength(4);
     const menu = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
+    expect(menu.querySelector('span[style*="transform"]')).toBeNull();
     for (const item of screen.getByRole("menuitem").all())
       expect(getComputedStyle(item.element()).cursor).toBe("pointer");
     const point = session.element().getBoundingClientRect();
@@ -911,7 +918,7 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await userEvent.keyboard("{Control>}");
     await expect
       .element(screen.getByRole("button", { name: /^Fix compiler/ }))
-      .toHaveTextContent("Fix compiler⌃1");
+      .toHaveTextContent("Fix compiler");
     await userEvent.keyboard("{/Control}");
   } finally {
     await userEvent.keyboard("{/Control}");
