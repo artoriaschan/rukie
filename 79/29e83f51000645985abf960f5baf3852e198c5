@@ -1,0 +1,27 @@
+packages/agent/tests/helpers/session-store-worker.ts
+  s_aa5016c0b422e7::t_83cbfc82b708ca 2,12,16-31,43-47
+packages/ui/tests/app/shell.browser.test.tsx
+  s_aa5016c0b422e7::t_83cbfc82b708ca 826,858,988-990,1001-1003,1010-1012,1051-1138
+packages/agent/src/store/index.ts
+  s_aa5016c0b422e7::t_3375a573b8e994 4,6,8,171-176,209,214,263-290,294-326,334,340-363,365-399,419,423-424
+  s_aa5016c0b422e7::t_931074176fddc5 291-293,364
+packages/agent/tests/e2e/desktop-sqlite.test.ts
+  s_aa5016c0b422e7::t_e432a8505c714d 3
+  s_aa5016c0b422e7::t_83cbfc82b708ca 14-16,241-324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "7929e83f51000645985abf960f5baf3852e198c5",
+  "prompts": {},
+  "sessions": {
+    "s_aa5016c0b422e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13344-369d-7633-a1db-f9b9b5115c54",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
