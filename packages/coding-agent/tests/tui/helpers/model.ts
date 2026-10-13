@@ -1,8 +1,9 @@
 import { transformMessages } from "@earendil-works/pi-ai/api/transform-messages";
-import { listModelCatalog, type SessionOptions } from "@rukie/agent";
+import type { SessionOptions } from "@rukie/agent";
 import {
   createAssistantMessageEventStream,
   createModels,
+  envApiKeyAuth,
   fauxProvider,
   fauxAssistantMessage,
   fauxToolCall,
@@ -168,42 +169,42 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
     if (options?.signal?.aborted) abort();
     return stream;
   };
-  const models = createModels();
+  const fixtureKeyEnvs = new Set<string>();
+  const models = createModels({
+    authContext: {
+      env: async (name) => (fixtureKeyEnvs.has(name) ? process.env[name] : undefined),
+      fileExists: async () => false,
+    },
+  });
   const provider = { ...faux.provider, streamSimple: stream };
   models.setProvider(provider);
-  async function configuredModel(settings: NonNullable<SessionOptions["settings"]>) {
-    const catalog = await listModelCatalog(settings);
-    const providers = new Map<string, Model<string>[]>();
-    for (const item of catalog) {
-      const slash = item.spec.indexOf("/");
-      const providerId = item.spec.slice(0, slash);
-      const id = item.spec.slice(slash + 1);
-      const configured = settings.providers?.find((candidate) => candidate.id === providerId);
-      const limits = configured?.models.find((candidate) => candidate.id === id);
-      const entry = {
+  function configuredModel(settings: NonNullable<SessionOptions["settings"]>) {
+    models.deleteProvider(provider.id);
+    for (const configured of settings.providers ?? []) {
+      fixtureKeyEnvs.add(configured.apiKeyEnv);
+      const entries = configured.models.map((limits) => ({
         ...model,
-        id,
-        provider: providerId,
-        name: item.name,
-        input: item.input,
-        ...(configured ? { api: configured.api, baseUrl: configured.baseUrl } : {}),
-        reasoning: limits?.reasoning ?? false,
-        contextWindow: limits?.contextWindow ?? 128_000,
-        maxTokens: limits?.maxTokens ?? 16_384,
-      };
-      const entries = providers.get(providerId) ?? [];
-      entries.push(entry);
-      providers.set(providerId, entries);
-    }
-    for (const [id, entries] of providers)
+        id: limits.id,
+        provider: configured.id,
+        name: limits.id,
+        input: limits.input ?? ["text" as const],
+        api: configured.api,
+        baseUrl: configured.baseUrl,
+        reasoning: limits.reasoning ?? false,
+        contextWindow: limits.contextWindow ?? 128_000,
+        maxTokens: limits.maxTokens ?? 16_384,
+      }));
       models.setProvider({
         ...provider,
-        id,
+        id: configured.id,
+        name: configured.id,
+        auth: { apiKey: envApiKeyAuth(`${configured.id} API key`, [configured.apiKeyEnv]) },
         getModels: () => entries,
         getAllModels: () => entries,
         stream: (model, context, options) => stream(model, context, { signal: options?.signal }),
         streamSimple: stream,
       });
+    }
     if (!settings.model) return undefined;
     const slash = settings.model.indexOf("/");
     return models.getModel(settings.model.slice(0, slash), settings.model.slice(slash + 1));

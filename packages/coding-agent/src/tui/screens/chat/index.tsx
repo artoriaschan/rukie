@@ -162,7 +162,7 @@ export async function createChat(
   let session = await createSession(sessionOptions);
   const checkpointCwd = await realpath(options.cwd);
   const skills = await listSkills(options);
-  const loadModelCatalog = () => listModelCatalog(options.settings);
+  const loadModelCatalog = () => listModelCatalog(options.settings, options.models);
   const models = await loadModelCatalog().catch(() => []);
   let conversation = createConversation(session, model, conversationFacts, locale);
   let binding = { session, conversation };
