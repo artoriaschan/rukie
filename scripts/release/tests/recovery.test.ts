@@ -54,6 +54,7 @@ async function publish(
 ) {
   return publishRelease({
     artifactDirectory: artifacts,
+    npm: ctx.npm,
     registry: ctx.registry.url,
     env: ctx.env,
     accept: acceptState,

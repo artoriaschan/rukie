@@ -1,5 +1,6 @@
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { createServer } from "node:http";
 import { once } from "node:events";
@@ -223,6 +224,8 @@ export async function registryFixture() {
   );
   return {
     registry,
+    // Use the locked real CLI even when the host npm predates the OIDC version gate.
+    npm: join(dirname(fileURLToPath(import.meta.resolve("npm/package.json"))), "bin/npm-cli.js"),
     env: {
       ...process.env,
       HOME: home,

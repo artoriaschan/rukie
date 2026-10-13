@@ -31,6 +31,7 @@ test("real npm publication installs the registry's exact dependencies and valida
   try {
     const receipt = await publishRelease({
       artifactDirectory: artifacts,
+      npm: ctx.npm,
       registry: ctx.registry.url,
       env: ctx.env,
     });
@@ -62,7 +63,12 @@ test("failed main upload leaves the platform and does not expose latest", async 
   ctx.registry.failUpload("@rukie/coding-agent");
   try {
     await expect(
-      publishRelease({ artifactDirectory: artifacts, registry: ctx.registry.url, env: ctx.env }),
+      publishRelease({
+        artifactDirectory: artifacts,
+        npm: ctx.npm,
+        registry: ctx.registry.url,
+        env: ctx.env,
+      }),
     ).rejects.toThrow();
     expect(ctx.registry.tags("@rukie/coding-agent-darwin-arm64")[uploadTag]).toBeDefined();
     expect(ctx.registry.tags("@rukie/coding-agent").latest).toBeUndefined();
@@ -82,6 +88,7 @@ test("a real registry Session rejection leaves the uploaded package and latest u
     await expect(
       publishRelease({
         artifactDirectory: artifacts,
+        npm: ctx.npm,
         registry: ctx.registry.url,
         env: ctx.env,
         accept: (options) => acceptRegistryRelease(options, true),
@@ -105,6 +112,7 @@ test("fabricated inherited npm auth and registry configuration cannot override t
     };
     const receipt = await publishRelease({
       artifactDirectory: artifacts,
+      npm: ctx.npm,
       registry: ctx.registry.url,
       env,
     });
@@ -144,6 +152,7 @@ test("matching partial publication resumes only the missing main package", async
     await expect(
       publishRelease({
         artifactDirectory: artifacts,
+        npm: ctx.npm,
         registry: ctx.registry.url,
         env: ctx.env,
         accept: async () => {},
@@ -151,6 +160,7 @@ test("matching partial publication resumes only the missing main package", async
     ).rejects.toThrow();
     const receipt = await publishRelease({
       artifactDirectory: artifacts,
+      npm: ctx.npm,
       registry: ctx.registry.url,
       env: ctx.env,
     });
