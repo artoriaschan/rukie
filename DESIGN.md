@@ -315,7 +315,9 @@ Use the installed shared Button variants and sizes first; visual roles below do 
 
 Tool Approval retains its registry's deliberate `foreground` / inverse primary approval action; it uses the same compact sizing and radius rules. The approval button's initial appearance has no blue decorative outline or ring. Programmatic focus when the card appears must not be interpreted as keyboard navigation or force the keyboard focus treatment to appear. Preserve the card's keyboard entry point, shortcuts, focus containment where required, and restoration; when the user navigates with the keyboard, show a visible, unclipped focus indicator. Do not solve a resting-style defect by removing focus feedback for keyboard users.
 
-Inputs use `input-surface`, `foreground`, and `input-border`. Hover uses `input-border-hover`; focus uses `input-focused` and `input-border-focused`, without glow. Select triggers follow fields while their option panels follow menus. Normal fields are not cards. Multiline content grows or scrolls in an explicit field viewport.
+Inputs use `input-surface`, `foreground`, and `input-border`. Hover uses `input-border-hover`; focus uses `input-focused` and `input-border-focused`, without glow. The field wrapper owns the rounded border and an inset focus/error ring, so a scrolling parent cannot clip the indicator into square corners. Keep focus geometry unchanged. Select triggers follow fields while their option panels follow menus. Normal fields are not cards. Multiline content grows or scrolls in an explicit field viewport.
+
+The Rename chat dialog Save action uses a scoped neutral primary: black with white text in Light, white with black text in Dark. Keep these fills on hover and press, preserving disabled and keyboard focus feedback. This role does not change the global GitHub primary or the dialog layout.
 
 - Error styling represents an actual validation error, paired with explanatory copy; it does not decorate an untouched field.
 - Ordinary Input and Textarea follow the basic-control radius table. A composite field shell follows content-container nesting; only the actual main composer has the approved `2xl` exception.
