@@ -1,0 +1,31 @@
+DESIGN.md
+  s_aa5016c0b422e7::t_aa107da00f9556 318-320
+.scratch/session-sidebar/issues/06-acceptance.md
+  s_aa5016c0b422e7::t_aa3e3c83ddb2dd 64-65
+packages/ui/tests/components/input-focus.browser.test.tsx
+  s_aa5016c0b422e7::t_37832eb6e6e26d 6-30
+  s_aa5016c0b422e7::t_c1bbe13c9376e3 1-5
+packages/ui/src/components/motion/input.tsx
+  s_aa5016c0b422e7::t_aa107da00f9556 92
+packages/ui/tests/app/session-rename.browser.test.tsx
+  s_aa5016c0b422e7::t_9cc94bba875e88 1,8-21,25-60
+  s_aa5016c0b422e7::t_37832eb6e6e26d 22-24
+packages/ui/src/app/rename-session.tsx
+  s_aa5016c0b422e7::t_8cd4bda99db610 97-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "2f91ea1e8e01f1fd2c2cf0dec6ab59b8a9a761f2",
+  "prompts": {},
+  "sessions": {
+    "s_aa5016c0b422e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13344-369d-7633-a1db-f9b9b5115c54",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
