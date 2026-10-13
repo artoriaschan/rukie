@@ -170,10 +170,11 @@ export function isSqliteSessionBusy(
     throw new Error("Desktop busy observation requires an application data root.");
   const directory = createSqliteStore(options).key(options.id);
   assertStorageFilePath(join(directory, "session.sqlite"));
-  const database = new Database(writerLeasePath(options, directory), {
-    readwrite: true,
-    create: false,
-  });
+  const leasePath = writerLeasePath(options, directory);
+  // Closed persisted history may predate this coordinator protocol. Observation
+  // reports idle without creating a lock; execution still acquires its own lease.
+  if (!lstatSync(leasePath, { throwIfNoEntry: false })) return false;
+  const database = new Database(leasePath, { readwrite: true, create: false });
   try {
     database.exec("PRAGMA busy_timeout = 0; BEGIN IMMEDIATE;");
     database.exec("ROLLBACK;");

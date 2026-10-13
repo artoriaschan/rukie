@@ -1,7 +1,7 @@
 import { ownResources } from "./helpers/owned-resources.ts";
 import FakeTimers from "@sinonjs/fake-timers";
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, realpath, mkdir, writeFile, symlink } from "node:fs/promises";
+import { mkdtemp, rm, realpath, mkdir, writeFile, symlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
 import { join } from "node:path";
@@ -32,10 +32,19 @@ test("startup catalog and history never unlock encrypted execution configuration
     );
     await history.run("history");
     await history.close();
-    const mutex = Bun.file(
-      join(homeDir, "desktop-data", "sessions", history.id, "host-lease.sqlite"),
+    // Hold execution ownership through Core's public API while history is viewed.
+    const writer = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: join(homeDir, "desktop-data", "workspace"),
+          resumeId: history.id,
+          ...fakeModel([], { model: { reasoning: true } }),
+          settings: { thinking: "high" },
+        }),
+      (resource) => resource.close(),
     );
-    const mutexBytes = await mutex.bytes();
     const database = await owner.acquire(
       () => AppDatabase.open(join(homeDir, "desktop-data")),
       (resource) => resource.close(),
@@ -77,9 +86,9 @@ test("startup catalog and history never unlock encrypted execution configuration
     expect((await client.command("sessions.list")).result).toEqual([
       expect.objectContaining({ id: history.id }),
     ]);
-    expect(
-      (await client.command("session.subscribe", { sessionId: history.id })).result,
-    ).toMatchObject({ readonly: true });
+    expect((await client.command("session.subscribe", { sessionId: history.id })).error).toEqual({
+      code: "session_busy",
+    });
     const snapshot = await client.next((message) => message.type === "snapshot");
     expect(JSON.stringify(snapshot)).toContain("stored history");
     expect(snapshot).toMatchObject({
@@ -87,18 +96,15 @@ test("startup catalog and history never unlock encrypted execution configuration
       agent: { thinkingLevel: "high" },
     });
     expect(decryptions).toBe(0);
-    expect(await mutex.bytes()).toEqual(mutexBytes);
-    const writer = await owner.acquire(
-      () =>
-        createSession({
-          homeDir,
-          dataRoot: join(homeDir, "desktop-data"),
-          cwd: join(homeDir, "desktop-data", "workspace"),
-          resumeId: history.id,
-          ...fakeModel([]),
-        }),
-      (resource) => resource.close(),
-    );
+    await expect(
+      createSession({
+        homeDir,
+        dataRoot: join(homeDir, "desktop-data"),
+        cwd: join(homeDir, "desktop-data", "workspace"),
+        resumeId: history.id,
+        ...fakeModel([]),
+      }),
+    ).rejects.toMatchObject({ code: "session-busy" });
     await writer.close();
     // Starting execution still requires the encrypted configuration and fails closed on denial.
     expect((await client.command("session.create", { project: null, text: "run" })).error).toEqual({
@@ -114,6 +120,74 @@ test("startup catalog and history never unlock encrypted execution configuration
     expect(JSON.stringify(client.messages)).toContain("continued history");
     expect(client.messages.some((message) => message.type === "session_state")).toBe(true);
     expect(decryptions).toBeGreaterThan(1);
+  } finally {
+    await owner.close();
+  }
+});
+test("closed persisted history without a current writer coordinator remains read-only", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-closed-history-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const dataRoot = join(homeDir, "desktop-data");
+    const history = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot,
+          cwd: join(dataRoot, "workspace"),
+          ...fakeModel([fauxAssistantMessage("closed persisted history")]),
+        }),
+      (session) => session.close(),
+    );
+    await history.run("history");
+    await history.close();
+    // A closed pre-protocol fixture has Session storage but no external coordinator.
+    // Active old hosts must be closed before upgrading, as required by ADR-0035.
+    const coordinators = join(dataRoot, ".session-leases");
+    await rm(coordinators, { recursive: true, force: true });
+    const storage = Bun.file(join(dataRoot, "sessions", history.id, "session.sqlite"));
+    const originalBytes = await storage.bytes();
+    const execution = fakeModel([fauxAssistantMessage("unexpected execution")]);
+    let decryptions = 0;
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: execution,
+          encryption: {
+            async encrypt() {
+              throw new Error("unexpected encryption");
+            },
+            async decrypt() {
+              decryptions++;
+              throw new Error("unexpected decryption");
+            },
+          },
+          onHandshake: () => {},
+        }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect((await client.command("sessions.list")).result).toEqual([
+      expect.objectContaining({ id: history.id }),
+    ]);
+    expect(await client.command("session.subscribe", { sessionId: history.id })).toMatchObject({
+      result: { sessionId: history.id, readonly: true },
+    });
+    const snapshot = await client.next((message) => message.type === "snapshot");
+    expect(JSON.stringify(snapshot)).toContain("closed persisted history");
+    expect(execution.contexts).toEqual([]);
+    expect(decryptions).toBe(0);
+    expect(await storage.bytes()).toEqual(originalBytes);
+    expect(
+      await stat(coordinators).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
   } finally {
     await owner.close();
   }

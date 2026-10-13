@@ -20,6 +20,10 @@ test("rename dialog selects the current title, disables invalid saves and Enter 
     await screen.getByRole("menuitem", { name: "Rename", exact: true }).click();
     const dialog = screen.getByRole("dialog", { name: "Rename chat", exact: true });
     await expect.element(dialog).toBeVisible();
+    expect(
+      getComputedStyle(screen.getByRole("button", { name: "Close modal", exact: true }).element())
+        .cursor,
+    ).toBe("pointer");
     await expect.element(dialog.getByText("Keep it short and recognizable")).toBeVisible();
     const input = dialog.getByRole("textbox", { name: "Chat title", exact: true });
     const save = dialog.getByRole("button", { name: "Save", exact: true });
@@ -27,6 +31,15 @@ test("rename dialog selects the current title, disables invalid saves and Enter 
     expect((input.element() as HTMLInputElement).selectionStart).toBe(0);
     expect((input.element() as HTMLInputElement).selectionEnd).toBe(13);
     await expect.element(save).toBeDisabled();
+    expect(getComputedStyle(save.element()).cursor).toBe("not-allowed");
+    const saveBounds = save.element().getBoundingClientRect();
+    expect(
+      document
+        .elementFromPoint(saveBounds.x + saveBounds.width / 2, saveBounds.y + saveBounds.height / 2)
+        ?.closest("button"),
+    ).toBe(save.element());
+    await save.click({ force: true });
+    await expect.element(dialog).toBeVisible();
     await input.fill("   ");
     await expect.element(save).toBeDisabled();
     await input.fill("  Explore ideas  ");

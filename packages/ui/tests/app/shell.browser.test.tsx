@@ -813,6 +813,33 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect.element(session).toBeVisible();
     const more = screen.getByRole("button", { name: "Session actions Fix compiler", exact: true });
     await expect.element(more).toBeInTheDocument();
+    const pin = screen.getByRole("button", { name: "Unpin Fix compiler", exact: true });
+    for (const target of [session, more, pin]) {
+      const element = target.element();
+      expect(getComputedStyle(element).cursor).toBe("pointer");
+      for (const nested of element.querySelectorAll("svg,span"))
+        expect(getComputedStyle(nested).cursor).toBe("pointer");
+    }
+    const back = screen.getByRole("button", { name: "Back", exact: true });
+    await expect.element(back).toBeDisabled();
+    expect(getComputedStyle(back.element()).cursor).toBe("not-allowed");
+    expect(getComputedStyle(back.element().querySelector("svg")!).cursor).toBe("not-allowed");
+    const disabledBackground = getComputedStyle(back.element()).backgroundColor;
+    await back.hover();
+    expect(getComputedStyle(back.element()).backgroundColor).toBe(disabledBackground);
+    const backBounds = back.element().getBoundingClientRect();
+    expect(
+      document
+        .elementFromPoint(backBounds.x + backBounds.width / 2, backBounds.y + backBounds.height / 2)
+        ?.closest("button"),
+    ).toBe(back.element());
+    await back.click({ force: true });
+    back.element().focus();
+    expect(document.activeElement).not.toBe(back.element());
+    const send = screen.getByRole("button", { name: "Send prompt", exact: true });
+    await expect.element(send).toBeDisabled();
+    expect(getComputedStyle(send.element()).cursor).toBe("not-allowed");
+    await send.click({ force: true });
     expect(getComputedStyle(more.element()).opacity).toBe("0");
     await session.hover();
     expect(getComputedStyle(more.element()).opacity).toBe("1");
@@ -824,6 +851,10 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
     expect(screen.getByRole("menuitem").all()).toHaveLength(4);
+    for (const item of screen.getByRole("menuitem").all()) {
+      expect(getComputedStyle(item.element()).cursor).toBe("pointer");
+      expect(getComputedStyle(item.element().querySelector("svg")!).cursor).toBe("pointer");
+    }
     expect(
       screen
         .getByRole("menuitem")
@@ -857,6 +888,8 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
       .toBeVisible();
     expect(screen.getByRole("menuitem").all()).toHaveLength(4);
     const menu = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
+    for (const item of screen.getByRole("menuitem").all())
+      expect(getComputedStyle(item.element()).cursor).toBe("pointer");
     const point = session.element().getBoundingClientRect();
     await expect
       .poll(() => Math.abs(menu.getBoundingClientRect().left - (point.left + 24)))
@@ -988,6 +1021,19 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
     await expect
       .element(screen.getByRole("menuitem", { name: "Permanently delete", exact: true }))
       .toHaveAttribute("aria-disabled", "true");
+    const disabledArchive = screen.getByRole("menuitem", { name: "Archive", exact: true });
+    expect(getComputedStyle(disabledArchive.element()).cursor).toBe("not-allowed");
+    expect(getComputedStyle(disabledArchive.element().querySelector("svg")!).cursor).toBe(
+      "not-allowed",
+    );
+    await disabledArchive.click({ force: true });
+    await screen
+      .getByRole("menuitem", { name: "Permanently delete", exact: true })
+      .click({ force: true });
+    await expect.element(disabledArchive).toBeVisible();
+    await expect
+      .element(screen.getByRole("dialog", { name: "Permanently delete chat?", exact: true }))
+      .not.toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await expect.element(more).toHaveFocus();
     const waiting = screen.getByRole("button", {
@@ -1001,6 +1047,19 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
     await expect
       .element(screen.getByRole("menuitem", { name: "Permanently delete", exact: true }))
       .toBeDisabled();
+    const disabledContextArchive = screen.getByRole("menuitem", { name: "Archive", exact: true });
+    expect(getComputedStyle(disabledContextArchive.element()).cursor).toBe("not-allowed");
+    const contextBounds = disabledContextArchive.element().getBoundingClientRect();
+    expect(
+      document
+        .elementFromPoint(
+          contextBounds.x + contextBounds.width / 2,
+          contextBounds.y + contextBounds.height / 2,
+        )
+        ?.closest("button"),
+    ).toBe(disabledContextArchive.element());
+    await disabledContextArchive.click({ force: true });
+    await expect.element(disabledContextArchive).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await screen.getByRole("button", { name: "Running Fix compiler", exact: true }).click();
     await screen.getByRole("button", { name: "Session actions", exact: true }).click();
@@ -1017,6 +1076,7 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
     expect(sent.some((command: { type: string }) => command.type === "session.archive")).toBe(
       false,
     );
+    expect(sent.some((command: { type: string }) => command.type === "session.delete")).toBe(false);
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);

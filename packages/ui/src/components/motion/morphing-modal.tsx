@@ -69,7 +69,7 @@ export function MorphingModal({
               onClick={onClose}
               className={cn(
                 OVERLAY_LAYER.modal,
-                "pointer-events-auto fixed inset-0 bg-foreground/20",
+                "pointer-events-auto cursor-pointer fixed inset-0 bg-foreground/20",
               )}
             />
           )}

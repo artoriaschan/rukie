@@ -575,13 +575,13 @@ function ContextMenuItemBase({
       className={cn(
         "relative isolate flex w-full select-none items-center min-h-7 gap-2 rounded-md px-2 py-1 text-left text-ui-base outline-none",
         "focus-visible:ring-2 focus-visible:ring-foreground/15",
-        "disabled:pointer-events-none disabled:opacity-40",
+        "cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 [&_svg]:cursor-inherit [&_span]:cursor-inherit",
         inset && "pl-8",
         tone === "destructive" ? "text-destructive" : "text-foreground",
         className,
       )}
     >
-      {active ? (
+      {active && !disabled ? (
         <motion.span
           layoutId={`${context.menuId}-active`}
           className={cn(

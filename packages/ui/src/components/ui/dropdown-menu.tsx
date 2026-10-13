@@ -4,6 +4,21 @@ import { cn } from "@/lib/utils";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
 
+/** Radix blocks disabled selection; capture also blocks a caller's click callback. */
+function menuItemClickCapture(
+  disabled: boolean | undefined,
+  onClickCapture: React.MouseEventHandler<HTMLDivElement> | undefined,
+): React.MouseEventHandler<HTMLDivElement> {
+  return (event) => {
+    if (disabled) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    onClickCapture?.(event);
+  };
+}
+
 function DropdownMenu({ ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
   return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
 }
@@ -58,6 +73,8 @@ function DropdownMenuGroup({
 
 function DropdownMenuItem({
   className,
+  disabled,
+  onClickCapture,
   inset,
   variant = "default",
   ...props
@@ -67,11 +84,13 @@ function DropdownMenuItem({
 }) {
   return (
     <DropdownMenuPrimitive.Item
+      disabled={disabled}
+      onClickCapture={menuItemClickCapture(disabled, onClickCapture)}
       data-slot="dropdown-menu-item"
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex cursor-default items-center gap-2 rounded-md min-h-7 px-2 py-1 text-ui-base outline-hidden select-none focus:bg-menu-hover focus:text-foreground not-data-[variant=destructive]:focus:**:text-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item relative flex cursor-pointer items-center gap-2 rounded-md min-h-7 px-2 py-1 text-ui-base outline-hidden select-none focus:bg-menu-hover focus:text-foreground not-data-[variant=destructive]:focus:**:text-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:cursor-not-allowed data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:cursor-inherit [&_span]:cursor-inherit [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         className,
       )}
       {...props}
@@ -81,6 +100,8 @@ function DropdownMenuItem({
 
 function DropdownMenuCheckboxItem({
   className,
+  disabled,
+  onClickCapture,
   children,
   checked,
   inset,
@@ -90,10 +111,12 @@ function DropdownMenuCheckboxItem({
 }) {
   return (
     <DropdownMenuPrimitive.CheckboxItem
+      disabled={disabled}
+      onClickCapture={menuItemClickCapture(disabled, onClickCapture)}
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-md min-h-7 py-1 pr-8 pl-2 text-ui-base outline-hidden select-none focus:bg-menu-hover focus:text-foreground focus:**:text-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-pointer items-center gap-2 rounded-md min-h-7 py-1 pr-8 pl-2 text-ui-base outline-hidden select-none focus:bg-menu-hover focus:text-foreground focus:**:text-foreground data-inset:pl-7 data-disabled:cursor-not-allowed data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:cursor-inherit [&_span]:cursor-inherit [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       checked={checked}
@@ -127,6 +150,8 @@ function DropdownMenuRadioGroup({
 
 function DropdownMenuRadioItem({
   className,
+  disabled,
+  onClickCapture,
   children,
   inset,
   ...props
@@ -135,10 +160,12 @@ function DropdownMenuRadioItem({
 }) {
   return (
     <DropdownMenuPrimitive.RadioItem
+      disabled={disabled}
+      onClickCapture={menuItemClickCapture(disabled, onClickCapture)}
       data-slot="dropdown-menu-radio-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-md min-h-7 py-1 pr-8 pl-2 text-ui-base outline-hidden select-none focus:bg-menu-hover focus:text-foreground focus:**:text-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-pointer items-center gap-2 rounded-md min-h-7 py-1 pr-8 pl-2 text-ui-base outline-hidden select-none focus:bg-menu-hover focus:text-foreground focus:**:text-foreground data-inset:pl-7 data-disabled:cursor-not-allowed data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:cursor-inherit [&_span]:cursor-inherit [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}
@@ -208,6 +235,8 @@ function DropdownMenuSub({ ...props }: React.ComponentProps<typeof DropdownMenuP
 
 function DropdownMenuSubTrigger({
   className,
+  disabled,
+  onClickCapture,
   inset,
   children,
   ...props
@@ -216,10 +245,12 @@ function DropdownMenuSubTrigger({
 }) {
   return (
     <DropdownMenuPrimitive.SubTrigger
+      disabled={disabled}
+      onClickCapture={menuItemClickCapture(disabled, onClickCapture)}
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex cursor-default items-center gap-2 rounded-md min-h-7 px-2 py-1 text-ui-base outline-hidden select-none focus:bg-menu-hover focus:text-foreground not-data-[variant=destructive]:focus:**:text-foreground data-inset:pl-7 data-open:bg-menu-hover data-open:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "flex cursor-pointer data-disabled:cursor-not-allowed data-disabled:opacity-50 items-center gap-2 rounded-md min-h-7 px-2 py-1 text-ui-base outline-hidden select-none focus:bg-menu-hover focus:text-foreground not-data-[variant=destructive]:focus:**:text-foreground data-inset:pl-7 data-open:bg-menu-hover data-open:text-foreground [&_svg]:pointer-events-none [&_svg]:cursor-inherit [&_span]:cursor-inherit [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

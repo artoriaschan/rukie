@@ -210,7 +210,7 @@ test("search is centered, clamps narrow viewports and keeps shortcuts outside it
 });
 
 test("reduced motion switches search panel and backdrop directly on open and close", async () => {
-  await commands.reducedMotion(true);
+  await commands.reducedMotion(false);
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
   const screen = await render(
@@ -233,12 +233,18 @@ test("reduced motion switches search panel and backdrop directly on open and clo
   };
   try {
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
+    // The OS preference can change while the app is already mounted.
+    await commands.reducedMotion(true);
     expect(matchMedia("(prefers-reduced-motion: reduce)").matches).toBe(true);
     frame = requestAnimationFrame(observe);
     const trigger = screen.getByRole("button", { name: "搜索聊天", exact: true });
     await trigger.click();
     const dialog = screen.getByRole("dialog", { name: "搜索聊天" });
     await expect.element(dialog.getByRole("combobox", { name: "搜索聊天" })).toHaveFocus();
+    expect(
+      getComputedStyle(screen.getByRole("button", { name: "关闭搜索聊天", exact: true }).element())
+        .cursor,
+    ).toBe("pointer");
     await expect.element(dialog.getByText("聊天", { exact: true })).toBeVisible();
     await expect.element(dialog.getByText("快捷操作", { exact: true })).toBeVisible();
     await userEvent.keyboard("{ArrowDown}{ArrowDown}");
@@ -255,6 +261,7 @@ test("reduced motion switches search panel and backdrop directly on open and clo
           (opacity === "0" || opacity === "1") &&
           (transform === "none" || transform === "matrix(1, 0, 0, 1, 0, 0)"),
       ),
+      JSON.stringify(samples),
     ).toBe(true);
   } finally {
     observing = false;

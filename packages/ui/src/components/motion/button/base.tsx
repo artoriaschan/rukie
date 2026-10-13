@@ -32,11 +32,14 @@ export interface ButtonLinkProps extends Omit<HTMLMotionProps<"a">, "children"> 
 type Ripple = { id: number; x: number; y: number; size: number };
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-  secondary: "border border-border bg-card text-foreground hover:border-border-hover",
-  ghost: "text-muted-foreground hover:text-foreground hover:bg-hover",
+  primary:
+    "bg-primary text-primary-foreground not-disabled:hover:bg-primary/90 not-disabled:active:bg-primary/80",
+  secondary:
+    "border border-border bg-card text-foreground not-disabled:hover:border-border-hover not-disabled:active:bg-muted",
+  ghost:
+    "text-muted-foreground not-disabled:hover:text-foreground not-disabled:hover:bg-hover not-disabled:active:bg-muted",
   outline:
-    "border border-border bg-transparent text-foreground hover:bg-hover hover:border-border-hover",
+    "border border-border bg-transparent text-foreground not-disabled:hover:bg-hover not-disabled:hover:border-border-hover not-disabled:active:bg-muted",
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {
@@ -65,6 +68,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLButtonElement>) => {
+      if (event.currentTarget.disabled) return;
       if (ripple && !reduce) {
         const rect = event.currentTarget.getBoundingClientRect();
         const size = Math.max(rect.width, rect.height) * 2;
@@ -88,13 +92,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <motion.button
       ref={ref}
       type="button"
-      whileTap={reduce || pressScale === 1 ? undefined : { scale: pressScale }}
+      whileTap={rest.disabled || reduce || pressScale === 1 ? undefined : { scale: pressScale }}
       transition={{ duration: reduce ? 0 : 0.12, ease: EASE_OUT }}
       onPointerDown={handlePointerDown}
       className={cn(
-        "inline-flex items-center justify-center font-normal select-none",
+        "inline-flex cursor-pointer items-center justify-center font-normal select-none [&_svg]:cursor-inherit [&_span]:cursor-inherit",
         "transition-colors duration-120",
-        "disabled:pointer-events-none disabled:bg-muted disabled:text-muted-foreground",
+        "disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground",
         ripple && "relative overflow-hidden",
         VARIANT_CLASS[variant],
         SIZE_CLASS[size],
@@ -144,7 +148,7 @@ export const ButtonLink = forwardRef<HTMLAnchorElement, ButtonLinkProps>(functio
       whileTap={reduce || pressScale === 1 ? undefined : { scale: pressScale }}
       transition={{ duration: reduce ? 0 : 0.12, ease: EASE_OUT }}
       className={cn(
-        "inline-flex items-center justify-center font-normal select-none",
+        "inline-flex cursor-pointer items-center justify-center font-normal select-none [&_svg]:cursor-inherit [&_span]:cursor-inherit",
         "transition-colors duration-120",
         VARIANT_CLASS[variant],
         SIZE_CLASS[size],

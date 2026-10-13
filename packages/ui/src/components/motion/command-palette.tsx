@@ -2,9 +2,18 @@ import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/blocks/command-palette
 
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { type LucideIcon } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import { EASE_OUT } from "@/lib/ease";
 import { useOnOpen } from "@/lib/hooks/use-on-open";
@@ -46,6 +55,16 @@ const PANEL_TRANSITION = {
   ease: EASE_OUT,
 } as const;
 
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+function subscribeReducedMotion(onChange: () => void) {
+  const media = window.matchMedia(REDUCED_MOTION_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+function readReducedMotion() {
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
 export function CommandPalette({
   items,
   shortcut = "k",
@@ -74,7 +93,9 @@ export function CommandPalette({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const uid = useId();
-  const reduce = useReducedMotion();
+  // Read the current preference at render and subscribe while the palette is
+  // mounted: Motion's hook snapshots it once and misses later OS changes.
+  const reduce = useSyncExternalStore(subscribeReducedMotion, readReducedMotion, () => false);
   const canTouch = useTouchCapable();
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -222,7 +243,7 @@ export function CommandPalette({
               onClick={() => setOpen(false)}
               className={cn(
                 OVERLAY_LAYER.modal,
-                "pointer-events-auto fixed inset-0 bg-foreground/20",
+                "pointer-events-auto cursor-pointer fixed inset-0 bg-foreground/20",
               )}
             />
           )}
