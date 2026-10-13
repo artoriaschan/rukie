@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: claimed
 
 # Spec: 首页会话侧栏重构、会话菜单与搜索浮层
 
