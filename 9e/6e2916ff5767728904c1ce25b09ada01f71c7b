@@ -1,0 +1,44 @@
+packages/ui/tests/app/session-search.browser.test.tsx
+  s_aa5016c0b422e7::t_ff76dfe2de5328 8-11,118-119,301-302,315-316
+  s_aa5016c0b422e7::t_b2baedb015d522 16-19,24-38,40-42,52-71,76-85,88-91,98-105,113-115,117,121-127,134-137,142-161,169-170,185-187,204-209,217-220,226-228,242-243,245-247,252-265,272-275,280-282,287-289,291-298,300,308-310,314,317-320
+  s_aa5016c0b422e7::t_a669fc76b6a2a5 1-7,12-15,20-23,39,43-51,72-75,86-87,92
+  s_aa5016c0b422e7::t_f2b71ff0ea8b59 94-97,106-112,116,120,128-129
+  s_aa5016c0b422e7::t_953544481a607a 130-133,138-141,162-168,171-173,175-184,188-202,210-216,221-225,229-241,244,248-251,266-267
+  s_aa5016c0b422e7::t_4191f6e6023d78 174,203
+  s_aa5016c0b422e7::t_ccb98e899d1892 93,268-271,276-279,283-286,290,299,303-307,311-313,321
+packages/ui/tests/helpers/browser.d.ts
+  s_aa5016c0b422e7::t_f08615cb141161 3
+packages/ui/vitest.config.ts
+  s_aa5016c0b422e7::t_f08615cb141161 32-34
+packages/ui/src/components/motion/command-palette.tsx
+  s_aa5016c0b422e7::t_128c394903222d 44,259
+  s_aa5016c0b422e7::t_b2baedb015d522 136-142,213,292,301-306,314-371,387-395,397-405
+  s_aa5016c0b422e7::t_c659a908628dfd 6,17,27-28,83-95,134-135,143,154,187,218,220,241,248,253,257,262,264,270,278,293,309,313,372,386,396
+packages/ui/README.md
+  s_aa5016c0b422e7::t_0a8f3a31cf82e9 23-24
+packages/ui/src/lib/component-copy.ts
+  s_aa5016c0b422e7::t_b2baedb015d522 12,130
+packages/ui/src/app/index.tsx
+  s_aa5016c0b422e7::t_1aef9369535bdc 16,182,193-195,197-199,476-477,901-905,908-911,913-921,923-929,932
+  s_aa5016c0b422e7::t_0a8f3a31cf82e9 183-187
+DESIGN.md
+  s_aa5016c0b422e7::t_a669fc76b6a2a5 257-262
+packages/ui/src/lib/app-copy.ts
+  s_aa5016c0b422e7::t_1aef9369535bdc 97-100,287-290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "9e6e2916ff5767728904c1ce25b09ada01f71c7b",
+  "prompts": {},
+  "sessions": {
+    "s_aa5016c0b422e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13344-369d-7633-a1db-f9b9b5115c54",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
