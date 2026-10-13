@@ -37,3 +37,11 @@ Blocked by: 01, 02, 03, 04
 - Closure: implementation, affected consumers, documentation, two-axis review corrections, feature-local verification and GUI acceptance are complete. All implementation tickets and spec resolved together for PR review; this status does not claim aggregate success, CI success or merge. Manual Chromium/picker-mock boundaries and unresolved full-run limitation above remain explicit.
 
 - 2026-10-13 follow-up: user explicitly requests repair of both remaining TUI failures and successful local full acceptance plus latest-commit CI. Acceptance reopened; previous run/diagnosis facts remain. Every new diagnosis, implementation, review and integration uses a fresh subagent. Root coordinates verification in `/tmp/rukie-project-directories-evidence/tui-repair/verification.md`; do not rerun the aggregate until causal fixes and focused checks are complete.
+
+### Reopened TUI acceptance requirements
+
+- [ ] Repair shared painted-press ownership with deterministic public renderSync/terminal input regressions, covering same-batch and separate press/release and safe cancellation when the owner changes or disappears.
+- [ ] Preserve the original Mixed reading/copy/Interaction and Folding group/separate-Job assertions; establish actual Reporter/frame completion where the scenario requires it. No sleeps, repeat clicks or weaker assertions.
+- [ ] Complete focused impacted renderer/TUI checks and fresh two-axis review, documenting vendored local differences.
+- [ ] Obtain one successful local full check after the causal corrections and confirm all applicable latest-commit CI checks pass; preserve the original failed runs.
+- [ ] Close the reopened acceptance/spec and clean up only this follow-up's owned worktrees/fixtures.
