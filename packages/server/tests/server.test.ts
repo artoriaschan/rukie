@@ -2294,3 +2294,132 @@ test("session.delete refuses another host's lease and preserves its organization
     await owner.close();
   }
 });
+
+test("archive rejects an external Core Run without changing registry membership", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-archive-external-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const entered = Promise.withResolvers<void>();
+    const proceed = Promise.withResolvers<void>();
+    const occupied = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: homeDir,
+          ...fakeModel([
+            async () => {
+              entered.resolve();
+              await proceed.promise;
+              return fauxAssistantMessage("finished");
+            },
+          ]),
+        }),
+      (session) => session.close(),
+    );
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect((await client.command("session.pin", { sessionId: occupied.id })).error).toBeUndefined();
+    const run = occupied.run("working outside server");
+    owner.add(async () => {
+      proceed.resolve();
+      await run;
+    });
+    await entered.promise;
+    expect((await client.command("session.archive", { sessionId: occupied.id })).error).toEqual({
+      code: "session_busy",
+    });
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (resource) => resource.close(),
+    );
+    expect(await database.registry()).toMatchObject({ pinned: [occupied.id], archived: [] });
+  } finally {
+    await owner.close();
+  }
+});
+
+test("archive rejects a prompt accepted while model preparation is pending", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-archive-admission-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const proceed = Promise.withResolvers<void>();
+    const fake = fakeModel([
+      fauxAssistantMessage("initialized"),
+      async () => {
+        await proceed.promise;
+        return fauxAssistantMessage("finished");
+      },
+    ]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    owner.add(() => proceed.resolve());
+    const client = await connect(server, "app://rukie", owner);
+    const created = await client.command("session.create", { project: null, text: "initialize" });
+    const sessionId = (created.result as { sessionId: string }).sessionId;
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    expect((await client.command("session.pin", { sessionId })).error).toBeUndefined();
+    // One socket preserves request arrival order. Prompt dispatch yields for model catalog reads.
+    const prompt = client.command("prompt", { sessionId, text: "already accepted" });
+    const archive = client.command("session.archive", { sessionId });
+    expect((await archive).error).toEqual({ code: "session_busy" });
+    expect((await prompt).error).toBeUndefined();
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (resource) => resource.close(),
+    );
+    expect(await database.registry()).toMatchObject({ pinned: [sessionId], archived: [] });
+    proceed.resolve();
+  } finally {
+    await owner.close();
+  }
+});
+
+test("archive reserves command admission before committing and refuses a concurrent prompt", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-archive-reserved-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const fake = fakeModel([fauxAssistantMessage("must not run")]);
+    const history = await owner.acquire(
+      () =>
+        createSession({ homeDir, dataRoot: join(homeDir, "desktop-data"), cwd: homeDir, ...fake }),
+      (session) => session.close(),
+    );
+    const sessionId = history.id;
+    await history.close();
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect((await client.command("session.subscribe", { sessionId })).error).toBeUndefined();
+    // Same-socket arrival order makes archive own admission before any awaited discovery/save.
+    const archive = client.command("session.archive", { sessionId });
+    const prompt = client.command("prompt", { sessionId, text: "must not run hidden" });
+    expect((await archive).error).toBeUndefined();
+    expect((await prompt).error).toEqual({ code: "session_busy" });
+    expect(fake.contexts).toHaveLength(0);
+    expect(client.messages.some((message) => message.type === "run_start")).toBe(false);
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (resource) => resource.close(),
+    );
+    expect(await database.registry()).toMatchObject({ archived: [sessionId] });
+  } finally {
+    await owner.close();
+  }
+});

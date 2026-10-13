@@ -213,9 +213,9 @@ export async function renameSessionTitle(
   let kernel: ReturnType<typeof createNativeSession> | undefined;
   try {
     await requireStorage(path, id);
-    if (sqlite) {
-      // Validate the existing schema and identity before opening a mutable adapter.
-      const reader = createNativeSession(await openReadonlySqliteStorage(path));
+    // Validate both backends through the read-only boundary before opening a mutable adapter.
+    await readSessionStorage(options, async (storage) => {
+      const reader = createNativeSession(storage);
       try {
         const metadata = parseSessionMetadata(await reader.snapshot(SessionMetadataDoc, context));
         if (metadata.id !== id || metadata.cwd !== cwd)
@@ -226,8 +226,8 @@ export async function renameSessionTitle(
       } finally {
         await reader.close(BACKGROUND_CONTEXT);
       }
-      database = await openBunSqliteDatabase(path);
-    }
+    });
+    if (sqlite) database = await openBunSqliteDatabase(path);
     const storage = database
       ? await SqliteStorage.open(database)
       : await JsonlStorage.open(directory, files, context, { fsync: true });

@@ -301,14 +301,14 @@ Use semantic controls and accessible names for actions; a cursor or an `onClick`
 
 Use the installed shared Button variants and sizes first; visual roles below do not imply additional APIs already exist. Keep a clear action hierarchy, usually one primary action per region, and square icon-only controls with an accessible name.
 
-| Variant role | Resting appearance                                        | Interaction                                                                   |
-| ------------ | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Primary      | `primary` with `primary-foreground`                       | Modest theme-derived emphasis, no extra resting focus border                  |
-| Outline      | Neutral or transparent surface and `border`               | Subtle neutral hover and stronger border                                      |
-| Secondary    | `secondary` with matching foreground                      | Neutral surface emphasis below primary                                        |
-| Ghost        | Transparent, readable foreground                          | Neutral background only on hover or press                                     |
-| Destructive  | Semantic destructive fill with matching contrasting text  | Only genuinely destructive operations, not routine denial                     |
-| Link         | Text-only action or semantic link, no filled button shell | Underline on hover and visible keyboard focus; navigation uses a link element |
+| Variant role | Resting appearance                                        | Interaction                                                                                                                                       |
+| ------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Primary      | `primary` with `primary-foreground`                       | Modest theme-derived emphasis, no extra resting focus border                                                                                      |
+| Outline      | Neutral or transparent surface and `border`               | Subtle neutral hover and stronger border                                                                                                          |
+| Secondary    | `secondary` with matching foreground                      | Neutral surface emphasis below primary                                                                                                            |
+| Ghost        | Transparent, readable foreground                          | Neutral background only on hover or press                                                                                                         |
+| Destructive  | Semantic destructive fill with `foreground-inverse` text  | Default and pressed use opaque fill; hover may use 90% fill while preserving 4.5:1 text contrast. Only destructive operations, not routine denial |
+| Link         | Text-only action or semantic link, no filled button shell | Underline on hover and visible keyboard focus; navigation uses a link element                                                                     |
 
 Tool Approval retains its registry's deliberate `foreground` / inverse primary approval action; it uses the same compact sizing and radius rules. The approval button's initial appearance has no blue decorative outline or ring. Programmatic focus when the card appears must not be interpreted as keyboard navigation or force the keyboard focus treatment to appear. Preserve the card's keyboard entry point, shortcuts, focus containment where required, and restoration; when the user navigates with the keyboard, show a visible, unclipped focus indicator. Do not solve a resting-style defect by removing focus feedback for keyboard users.
 

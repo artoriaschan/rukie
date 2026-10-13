@@ -1,8 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { cp, mkdir, readdir, readFile } from "node:fs/promises";
 import {
   createSession,
+  createSessionStore,
   listSessions,
   readSessionStorage,
   renameSessionTitle,
@@ -82,3 +84,44 @@ test("title-only store rename leaves persisted pending work unscheduled", async 
     { title: "Keep my pending work", titleSource: "user" },
   ]);
 });
+
+for (const sqlite of [false, true]) {
+  test(`title-only ${sqlite ? "SQLite" : "JSONL"} rejects copied storage with mismatched identity without writing`, async () => {
+    dirs = await tempDirs();
+    const options = {
+      ...dirs,
+      ...(sqlite ? { dataRoot: join(dirs.homeDir, "desktop-data") } : {}),
+    };
+    session = await createSession({ ...options, ...fakeModel([]) });
+    const id = session.id;
+    await session.rename("Original");
+    await session.close();
+    session = undefined;
+    const original = createSessionStore(options).key(id);
+    for (const target of [
+      { ...options, id: "copied-id" },
+      { ...options, cwd: join(dirs.cwd, "other"), id },
+    ]) {
+      const directory = createSessionStore(target).key(target.id);
+      await mkdir(dirname(directory), { recursive: true });
+      if (directory !== original) await cp(original, directory, { recursive: true });
+      // SQLite SHM is volatile reader coordination, not persisted Session data.
+      const bytes = async () =>
+        Promise.all(
+          (await readdir(directory, { recursive: true }))
+            .filter((file) => !file.endsWith("-shm"))
+            .sort()
+            .map(async (file) => [file, await readFile(join(directory, file))]),
+        );
+      const before = await bytes();
+      await expect(renameSessionTitle({ ...target, title: "Rejected" })).rejects.toMatchObject({
+        code: "session-not-found",
+      });
+      expect(await bytes()).toEqual(before);
+    }
+    await renameSessionTitle({ ...options, id, title: "Allowed" });
+    expect(await listSessions(options)).toMatchObject([
+      { id, title: "Allowed", titleSource: "user" },
+    ]);
+  });
+}

@@ -260,7 +260,7 @@ export async function startServer(options: ServerOptions) {
     const children = new Map<string, boolean>();
     const admissions = new Map<string, number>();
     const sessionCommands = new Map<string, number>();
-    const deleting = new Set<string>();
+    const organizing = new Set<string>();
     const retirements = new Set<Promise<void>>();
     const commands = new Set<Promise<unknown>>();
     const changes = new Set<Promise<void>>();
@@ -275,7 +275,7 @@ export async function startServer(options: ServerOptions) {
       [...pending.values()].some((item) => item.sessionId === session.id);
     const held = (session: Session) =>
       executing(session) ||
-      deleting.has(session.id) ||
+      organizing.has(session.id) ||
       (sessionCommands.get(session.id) ?? 0) > 0 ||
       [...subscriptions.values()].some((map) => map.has(session.id));
     const refreshIdle = (session: Session) => {
@@ -314,7 +314,7 @@ export async function startServer(options: ServerOptions) {
       initial?: Extract<WireCommand, { type: "session.create" }>,
       resumeModelSelection?: SessionOptions["resumeModelSelection"],
     ) => {
-      if (resumeId && deleting.has(resumeId))
+      if (resumeId && organizing.has(resumeId))
         return Promise.reject(new CommandError("session_busy"));
       const current = resumeId ? sessions.get(resumeId) : undefined;
       if (current) return Promise.resolve(current);
@@ -864,10 +864,17 @@ export async function startServer(options: ServerOptions) {
           return {};
         }
         case "session.archive": {
-          if (!(await summaries()).some((session) => session.id === command.sessionId))
-            throw new CommandError("session_not_found");
+          const summary = (await summaries()).find((session) => session.id === command.sessionId);
+          if (!summary) throw new CommandError("session_not_found");
           const current = sessions.get(command.sessionId);
           if (
+            (!current &&
+              isSqliteSessionBusy({
+                cwd: summary.cwd,
+                homeDir: options.homeDir,
+                dataRoot: options.dataRoot,
+                id: summary.id,
+              })) ||
             openings.has(command.sessionId) ||
             (current && executing(current)) ||
             [...pending.values()].some((item) => item.sessionId === command.sessionId)
@@ -923,19 +930,19 @@ export async function startServer(options: ServerOptions) {
     };
     const token = randomBytes(32).toString("hex");
     let port = 0;
-    // Reserve each Session for the entire command, including awaited model/auth/open work.
-    // Deletion owns admission until storage and registry commit; no prompt can reuse a closing owner.
+    // Reserve each Session before the first await, including model/auth/open preparation.
+    // Archive/delete exclude other commands until storage/registry publication completes.
     const dispatch = async (command: WireCommand, socket: WSContext): Promise<unknown> => {
       if (!("sessionId" in command)) return executeCommand(command, socket);
       const id = command.sessionId;
-      if (deleting.has(id)) throw new CommandError("session_busy");
-      if (command.type === "session.delete") {
+      if (organizing.has(id)) throw new CommandError("session_busy");
+      if (command.type === "session.delete" || command.type === "session.archive") {
         if ((sessionCommands.get(id) ?? 0) > 0) throw new CommandError("session_busy");
-        deleting.add(id);
+        organizing.add(id);
         try {
           return await executeCommand(command, socket);
         } finally {
-          deleting.delete(id);
+          organizing.delete(id);
         }
       }
       sessionCommands.set(id, (sessionCommands.get(id) ?? 0) + 1);

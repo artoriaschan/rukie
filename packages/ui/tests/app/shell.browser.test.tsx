@@ -1225,3 +1225,180 @@ test("permanent delete keeps failures visible and submitting once preserves anot
     await commands.stopWire(connection.port);
   }
 });
+
+test("delete confirmation keeps readable destructive colors in both themes and pointer states", async () => {
+  await page.viewport(1280, 900);
+  await commands.reducedMotion(true);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  const previousClass = document.documentElement.className;
+  const luminance = (color: string) => {
+    const components = color
+      .match(/[\d.]+/g)!
+      .slice(0, 3)
+      .map(Number)
+      .map((value) => {
+        const c = value / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+    return 0.2126 * components[0]! + 0.7152 * components[1]! + 0.0722 * components[2]!;
+  };
+  try {
+    await screen.getByRole("button", { name: "Session actions Fix compiler", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    const confirm = screen.getByRole("button", { name: "Permanently delete", exact: true });
+    await expect.element(confirm).toBeVisible();
+    for (const theme of ["light", "dark"]) {
+      document.documentElement.classList.remove("light", "dark");
+      document.documentElement.classList.add(theme);
+      for (const state of ["default", "hover", "pressed"]) {
+        if (state === "default")
+          await screen
+            .getByRole("heading", { name: "Permanently delete chat?", exact: true })
+            .hover();
+        else await confirm.hover();
+        if (state === "pressed") {
+          confirm.element().focus();
+          await userEvent.keyboard("{Space>}");
+          expect(confirm.element().matches(":active")).toBe(true);
+        }
+        const style = getComputedStyle(confirm.element());
+        // Effective background composites the translucent destructive hover/pressed fill onto the dialog.
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d")!;
+        context.fillStyle = getComputedStyle(screen.getByRole("dialog").element()).backgroundColor;
+        context.fillRect(0, 0, 1, 1);
+        context.fillStyle = style.backgroundColor;
+        context.fillRect(0, 0, 1, 1);
+        const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+        const bg = luminance(`rgb(${r}, ${g}, ${b})`);
+        const fg = luminance(style.color);
+        expect(
+          (Math.max(bg, fg) + 0.05) / (Math.min(bg, fg) + 0.05),
+          `${theme} ${state}`,
+        ).toBeGreaterThanOrEqual(4.5);
+        if (state === "pressed") {
+          confirm.element().blur();
+          await userEvent.keyboard("{/Space}");
+        }
+      }
+    }
+  } finally {
+    document.documentElement.className = previousClass;
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+    await commands.reducedMotion(false);
+  }
+});
+
+test("delete confirmation scrolls long titles while keeping title and actions visible at narrow height and larger font", async () => {
+  await page.viewport(1280, 900);
+  await commands.reducedMotion(true);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  const previousFont = document.documentElement.style.getPropertyValue("--ui-font-size");
+  try {
+    await screen.getByRole("button", { name: "Session actions Fix compiler", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await expect.element(screen.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
+    const normal = screen.getByRole("dialog").element().getBoundingClientRect();
+    expect(normal.height).toBe(190);
+    expect(normal.width).toBe(480);
+    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    const title = "Long user title ".repeat(1000);
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "sessions_changed",
+        sessions: [
+          {
+            id: "long",
+            title,
+            titleSource: "user",
+            cwd: "/workspace",
+            updatedAt: 20,
+            createdAt: 10,
+            messageCount: 0,
+            model: "test/script",
+          },
+        ],
+        projects: [],
+        pinned: [],
+        archived: [],
+        preferences: {},
+      }),
+    });
+    await screen.getByRole("button", { name: `Session actions ${title}`, exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await expect.element(screen.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
+    for (const font of [14, 18]) {
+      document.documentElement.style.setProperty("--ui-font-size", `${font}px`);
+      await page.viewport(420, 320);
+      const dialog = screen.getByRole("dialog").element();
+      const bounds = dialog.getBoundingClientRect();
+      const cancel = screen.getByRole("button", { name: "Cancel", exact: true }).element();
+      const confirm = screen
+        .getByRole("button", { name: "Permanently delete", exact: true })
+        .element();
+      for (const action of [cancel, confirm]) {
+        const rect = action.getBoundingClientRect();
+        expect(rect.top).toBeGreaterThanOrEqual(bounds.top);
+        expect(rect.bottom).toBeLessThanOrEqual(304);
+        expect(
+          document
+            .elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+            ?.closest("button"),
+        ).toBe(action);
+      }
+      expect(bounds.top).toBeGreaterThanOrEqual(16);
+      expect(bounds.bottom).toBeLessThanOrEqual(304);
+      expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+      const body = dialog.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+      expect(body.scrollHeight).toBeGreaterThan(body.clientHeight);
+      expect(body.clientHeight).toBeGreaterThan(0);
+      body.focus();
+      await userEvent.keyboard("{End}");
+      await expect.poll(() => body.scrollTop).toBeGreaterThan(0);
+      expect(
+        screen
+          .getByRole("heading", { name: "Permanently delete chat?", exact: true })
+          .element()
+          .getBoundingClientRect().top,
+      ).toBeGreaterThanOrEqual(bounds.top);
+      expect(confirm.getBoundingClientRect().bottom).toBeLessThanOrEqual(304);
+      await userEvent.keyboard("{Tab}");
+      await expect
+        .element(screen.getByRole("scrollbar", { name: "Permanently delete chat?", exact: true }))
+        .toHaveFocus();
+      await userEvent.keyboard("{Tab}");
+      await expect
+        .element(screen.getByRole("button", { name: "Cancel", exact: true }))
+        .toHaveFocus();
+    }
+    await userEvent.keyboard("{Enter}");
+    await expect
+      .element(screen.getByRole("dialog", { name: "Permanently delete chat?", exact: true }))
+      .not.toBeInTheDocument();
+    const sent = await fetch(`http://127.0.0.1:${connection.port}/commands`).then((response) =>
+      response.json(),
+    );
+    expect(sent.some((command: { type: string }) => command.type === "session.delete")).toBe(false);
+  } finally {
+    document.documentElement.style.setProperty("--ui-font-size", previousFont);
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+    await commands.reducedMotion(false);
+  }
+});

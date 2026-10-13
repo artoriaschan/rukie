@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import type { WireSessionSummary } from "@rukie/shared";
 import { WireError } from "../client";
 import { MorphingModal } from "../components/motion/morphing-modal";
+import { ScrollArea } from "../components/ui/scroll-area";
 import { Button } from "../components/motion/button/base";
 import { useAppText } from "../lib/i18n";
 import { useErrorText } from "./error";
@@ -17,6 +18,7 @@ export function DeleteSession({
   onDelete: () => Promise<unknown>;
   onClose: () => void;
 }) {
+  const cancel = useRef<HTMLButtonElement>(null);
   const t = useAppText();
   const errorText = useErrorText();
   const [error, setError] = useState("");
@@ -58,24 +60,31 @@ export function DeleteSession({
       label={t("app.delete-title")}
       onClose={close}
       placement="center"
+      initialFocus={cancel}
     >
       <div className="relative flex min-h-0 flex-col gap-3 p-2" aria-busy={pending}>
         <div className="shrink-0 pr-8">
           <h2 className="text-ui-lg font-medium">{t("app.delete-title")}</h2>
           <p className="text-ui-base text-muted-foreground">{t("app.delete-description")}</p>
         </div>
-        <p className="break-words text-ui-base">{session.title}</p>
-        {error ? (
-          <p role="alert" className="text-ui-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
+        <ScrollArea
+          className="flex min-h-0 flex-1 flex-col [&>[data-slot=scroll-area-viewport]]:min-h-0"
+          viewportLabel={t("app.delete-title")}
+          viewportClassName="space-y-3 [contain:inline-size]"
+        >
+          <p className="break-words text-ui-base">{session.title}</p>
+          {error ? (
+            <p role="alert" className="text-ui-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </ScrollArea>
         <div className="flex shrink-0 justify-end gap-2">
-          <Button autoFocus variant="secondary" disabled={pending} onClick={close}>
+          <Button ref={cancel} autoFocus variant="secondary" disabled={pending} onClick={close}>
             {t("app.cancel")}
           </Button>
           <Button
-            className="bg-destructive text-primary-foreground not-disabled:hover:bg-destructive/90"
+            className="bg-destructive text-foreground-inverse not-disabled:hover:bg-destructive/90 not-disabled:active:bg-destructive"
             disabled={pending || session.running || session.waitingPermission}
             onClick={() => {
               void remove();

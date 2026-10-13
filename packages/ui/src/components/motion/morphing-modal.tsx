@@ -3,7 +3,7 @@ import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/motion/morphing-modal
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { EASE_OUT } from "@/lib/ease";
 import { PresenceGate } from "@/lib/presence-gate";
 import { useModalFocus } from "@/lib/hooks/use-modal-focus";
@@ -18,6 +18,8 @@ export interface MorphingModalProps {
   placement?: "bottom" | "center";
   className?: string;
   label?: string;
+  /** Preferred focus when an outside owner (for example a menu) restores focus while open. */
+  initialFocus?: RefObject<HTMLElement | null>;
 }
 
 export function MorphingModal({
@@ -27,12 +29,13 @@ export function MorphingModal({
   placement = "bottom",
   className,
   label,
+  initialFocus,
 }: MorphingModalProps) {
   const componentText = useComponentText();
 
   const open = viewId !== null;
   const panel = useRef<HTMLDivElement>(null);
-  useModalFocus(open, panel);
+  useModalFocus(open, panel, initialFocus);
   const reduce = useReducedMotion();
   const enterY = reduce ? 0 : placement === "bottom" ? 4 : 4;
   const enterScale = reduce ? 1 : 0.98;
