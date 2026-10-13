@@ -1,3 +1,4 @@
+import type { ProviderIconKey } from "./model-services.ts";
 import { Type, type Static, type TSchema } from "typebox";
 import type { ContextReport } from "./context-report.ts";
 import type { ToolCallView } from "./tool-view.ts";
@@ -54,7 +55,6 @@ export const WireCommandSchema = Type.Union([
     providerId: Type.String({ pattern: "^[A-Za-z0-9_-]{1,128}$" }),
     modelId: Type.String({ minLength: 1, maxLength: 256 }),
   }),
-  command("modelServices.templates", {}),
   command("modelServices.prices", ModelPriceRequestSchema.properties),
   command("host.pickFolder", {}),
   command("host.revealPath", { path: id }),
@@ -169,6 +169,7 @@ export interface WireModelCatalogEntry {
   name: string;
   providerId: string;
   providerName: string;
+  providerIcon?: ProviderIconKey;
   input: ("text" | "image")[];
   reasoning: boolean;
   thinkingLevels: ThinkingLevel[];

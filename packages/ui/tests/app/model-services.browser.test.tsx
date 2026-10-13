@@ -1,5 +1,5 @@
 import { modelServicesFixture } from "../helpers/model-services";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { App } from "../../src/app";
@@ -212,7 +212,7 @@ test("Pencil model numeric fields hide native steppers while retaining numeric k
       expect(getComputedStyle(input).appearance).toBe("textfield");
       expect(input.type).toBe("number");
       expect(input.min).toBe("1");
-      await expect.poll(() => input.parentElement!.getBoundingClientRect().height).toBe(36);
+      await expect.poll(() => input.parentElement!.getBoundingClientRect().height).toBe(32);
       await field.click();
       await userEvent.keyboard("{ArrowUp}");
       await expect.element(field).toHaveValue(Number(original) + 1);
@@ -254,7 +254,7 @@ test("model services creates a provider and preserves input when encrypted save 
     await screen.getByRole("textbox", { name: "Base URL" }).fill("https://api.example.com/v1");
     await screen.getByLabelText("API Key", { exact: true }).fill("scripted-nonproduction");
     fail = true;
-    await screen.getByRole("button", { name: "Save provider" }).click();
+    await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
     await expect
       .element(screen.getByRole("alert"))
       .toHaveTextContent(
@@ -265,7 +265,7 @@ test("model services creates a provider and preserves input when encrypted save 
       .toHaveValue("scripted-nonproduction");
     expect(screen.getByRole("alert").element().textContent).not.toContain("unsafe-secret");
     fail = false;
-    await screen.getByRole("button", { name: "Save provider" }).click();
+    await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
     await expect.poll(() => providers.length).toBe(1);
     await screen.getByRole("button", { name: "Add model", exact: true }).click();
     await expect.element(screen.getByRole("checkbox", { name: "Video" })).toBeDisabled();
@@ -399,7 +399,6 @@ test("Chinese narrow settings preserves compatibility, maps, credentials and mod
     test: async (_id: string, model: string) => {
       tested.push(model);
     },
-    templates: async () => [{ ...initial, id: "template", name: "目录模板" }],
   };
   const screen = await render(
     <UiLocaleProvider locale="zh">
@@ -570,7 +569,7 @@ test("Pencil advanced settings contains only reference fields and preserves hidd
   }
 });
 
-test("provider API changes accept compatible models and preserve incompatible drafts", async () => {
+test("provider API changes persist immediately without frontend compatibility validation", async () => {
   let providers: ModelServiceSummary[] = [
     {
       id: "local",
@@ -599,7 +598,6 @@ test("provider API changes accept compatible models and preserve incompatible dr
   try {
     await screen.getByRole("button", { name: "API format", exact: true }).click();
     await screen.getByRole("option", { name: "Responses (/responses)", exact: true }).click();
-    await screen.getByRole("button", { name: "Save provider", exact: true }).click();
     await expect.poll(() => providers[0]?.api).toBe("openai-responses");
     expect(providers[0]!.models[0]!.compat).toEqual({ supportsMidConvoSystemMessages: true });
     providers = [
@@ -618,14 +616,9 @@ test("provider API changes accept compatible models and preserve incompatible dr
     await incompatible
       .getByRole("option", { name: "Anthropic Messages (/v1/messages)", exact: true })
       .click();
-    await incompatible.getByRole("button", { name: "Save provider", exact: true }).click();
-    await expect
-      .element(incompatible.getByRole("alert"))
-      .toHaveTextContent(
-        "Some model compatibility settings do not match this API. Edit or remove the incompatible models before saving.",
-      );
-    expect(saved).toBe(1);
-    expect(providers[0]!.api).toBe("openai-responses");
+    await expect.poll(() => saved).toBe(2);
+    expect(incompatible.getByRole("alert").query()).toBeNull();
+    expect(providers[0]!.api).toBe("anthropic-messages");
     await expect
       .element(incompatible.getByRole("button", { name: "API format", exact: true }))
       .toHaveTextContent("Anthropic Messages (/v1/messages)");
@@ -704,9 +697,9 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
       .element()
       .parentElement!.getBoundingClientRect();
     expect(url.left).toBe(900);
-    expect(url.top).toBe(258);
+    expect(url.top).toBe(261);
     expect(url.width).toBe(624);
-    expect(url.height).toBe(30);
+    expect(url.height).toBe(32);
     const nav = document
       .querySelector<HTMLElement>(".model-services-navigation-scroll")!
       .getBoundingClientRect();
@@ -730,7 +723,7 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     expect(apiMenu.getBoundingClientRect().bottom - lastOption.getBoundingClientRect().bottom).toBe(
       4,
     );
-    expect(apiMenu.getBoundingClientRect().top).toBe(322);
+    expect(apiMenu.getBoundingClientRect().top).toBe(330);
     expect(apiMenu.getBoundingClientRect().width).toBe(624);
     await screen
       .getByRole("option", { name: "Anthropic Messages (/v1/messages)", exact: true })
@@ -893,7 +886,7 @@ test("saved overview stays compact; dirty credentials and hidden mapping remain 
       .element(screen.getByRole("button", { name: "Save provider", exact: true }))
       .not.toBeInTheDocument();
     await screen.getByRole("textbox", { name: "Base URL" }).fill("https://replacement.example/v1");
-    await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+    await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
     await expect.poll(() => saved.length).toBe(1);
     expect(saved[0]!.credential.type).toBe("keep");
     for (const control of screen.getByRole("switch").elements()) {
@@ -902,7 +895,8 @@ test("saved overview stays compact; dirty credentials and hidden mapping remain 
       expect(control.firstElementChild!.getBoundingClientRect().height).toBe(14);
     }
     await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
-    await expect.poll(() => providers[0]!.models[0]!.enabled).toBe(false);
+    await expect.poll(() => providers[0]!.enabled).toBe(true);
+    expect(providers[0]!.models[0]!.enabled).toBeUndefined();
     await screen.getByRole("button", { name: "Edit", exact: true }).click();
     await screen.getByRole("button", { name: /Advanced settings/ }).click();
     await screen.getByRole("button", { name: "Save model", exact: true }).click();
@@ -971,60 +965,6 @@ test("keyboard Cancel preserves provider and credential while confirmation delet
       .focus();
     await userEvent.keyboard("{Enter}");
     await expect.poll(() => providers.length).toBe(0);
-  } finally {
-    await screen.unmount();
-  }
-});
-
-test("provider directory offers only the custom path even when templates exist", async () => {
-  const templates = ["Anthropic", "OpenAI"].map((name) => ({
-    id: name.toLowerCase(),
-    name,
-    api: "openai-completions" as const,
-    baseUrl: "https://api.example.com/v1",
-    models: [],
-  }));
-  const screen = await render(
-    <UiLocaleProvider locale="en">
-      <ModelServices
-        services={{
-          ...modelServicesFixture,
-          list: async () => [],
-          templates: async () => templates,
-          save: async () => {},
-          delete: async () => {},
-        }}
-        onClose={() => {}}
-        onChanged={async () => {}}
-      />
-    </UiLocaleProvider>,
-  );
-  try {
-    await screen.getByRole("button", { name: "Add provider", exact: true }).first().click();
-    await expect
-      .element(screen.getByRole("button", { name: "Create custom provider" }))
-      .toBeVisible();
-    await expect
-      .element(screen.getByRole("button", { name: "Anthropic", exact: true }))
-      .not.toBeInTheDocument();
-    await expect
-      .element(screen.getByRole("button", { name: "OpenAI", exact: true }))
-      .not.toBeInTheDocument();
-    await expect
-      .element(screen.getByRole("button", { name: "BigModel", exact: true }))
-      .not.toBeInTheDocument();
-    await expect
-      .element(screen.getByRole("button", { name: "Z.ai Coding Plan", exact: true }))
-      .not.toBeInTheDocument();
-    expect(
-      screen
-        .getByRole("button", { name: "Create custom provider" })
-        .element()
-        .getBoundingClientRect().height,
-    ).toBe(44);
-    await screen.getByRole("button", { name: "Create custom provider" }).click();
-    await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("");
-    await expect.element(screen.getByRole("heading", { name: "New provider" })).toBeVisible();
   } finally {
     await screen.unmount();
   }
@@ -1209,7 +1149,7 @@ test("model default reasoning is selectable, saved and restricted to supported l
     ]);
     const field = document.querySelector<HTMLElement>(".model-services-default-reasoning")!;
     await expect.poll(() => field.getBoundingClientRect().width).toBe(188);
-    await expect.poll(() => field.getBoundingClientRect().height).toBe(60);
+    await expect.poll(() => field.getBoundingClientRect().height).toBe(54);
     await screen.getByRole("button", { name: "Default reasoning level", exact: true }).click();
     await expect.element(screen.getByRole("option", { name: "Low", exact: true })).toBeVisible();
     expect(screen.getByRole("option", { name: "XHigh", exact: true }).query()).toBeNull();
@@ -1307,7 +1247,7 @@ test("API Key reveals saved credentials only on request and toggles compact mask
     await input.fill("");
     await screen.getByRole("textbox", { name: "Base URL" }).fill("https://changed.example.com");
     await screen.getByRole("button", { name: "Show API Key", exact: true }).click();
-    await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+    await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
     await expect.poll(() => saved.length).toBe(1);
     expect(saved[0]!.credential).toEqual({ type: "keep" });
   } finally {
@@ -1506,16 +1446,16 @@ test("renaming a new provider draft does not require a Base URL", async () => {
   await screen.getByRole("menuitem", { name: "Rename provider" }).click();
   await screen.getByRole("textbox", { name: "Provider name" }).fill("Draft supplier");
   await screen.getByRole("button", { name: "Save provider", exact: true }).last().click();
-  expect(saved).toEqual([]);
+  await expect.poll(() => saved.length).toBe(2);
   expect(screen.getByRole("alert").query()?.textContent ?? "").toBe("");
   await expect.element(screen.getByRole("heading", { name: "Draft supplier" })).toBeVisible();
   await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
   await screen.getByRole("textbox", { name: "Base URL" }).fill("https://example.com/v1");
-  await screen.getByRole("button", { name: "Save provider", exact: true }).click();
-  await expect.poll(() => saved[0]?.provider.name).toBe("Draft supplier");
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  await expect.poll(() => saved.at(-1)?.provider.name).toBe("Draft supplier");
 });
 
-test("renaming a saved provider persists its name and rejects blank names", async () => {
+test("renaming a saved provider persists its name without URL validation", async () => {
   let providers: ModelServiceSummary[] = [
     {
       id: "rename-existing",
@@ -1546,10 +1486,6 @@ test("renaming a saved provider persists its name and rejects blank names", asyn
   onTestFinished(() => screen.unmount());
   await screen.getByRole("button", { name: "Provider actions" }).click();
   await screen.getByRole("menuitem", { name: "Rename provider" }).click();
-  await screen.getByRole("textbox", { name: "Provider name" }).fill("   ");
-  await screen.getByRole("button", { name: "Save provider", exact: true }).click();
-  await expect.element(screen.getByRole("alert")).toBeVisible();
-  expect(saved).toEqual([]);
   await screen.getByRole("textbox", { name: "Provider name" }).fill("Renamed supplier");
   await screen.getByRole("button", { name: "Save provider", exact: true }).click();
   await expect.element(screen.getByRole("heading", { name: "Renamed supplier" })).toBeVisible();
@@ -1574,9 +1510,744 @@ test("renaming a saved provider persists its name and rejects blank names", asyn
   await screen.getByRole("button", { name: "Save provider", exact: true }).last().click();
   await expect.element(screen.getByRole("heading", { name: "Edited supplier" })).toBeVisible();
   expect(screen.getByRole("alert").query()).toBeNull();
-  expect(saved).toHaveLength(1);
+  await expect.poll(() => saved.at(-1)?.provider.name).toBe("Edited supplier");
   await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("");
+  await expect.element(screen.getByLabelText("API Key", { exact: true })).toHaveValue("");
+});
+
+test.each([1887, 420])("settings field geometry across themes at %i px", async (width) => {
+  const originalClass = document.documentElement.className;
+  await page.viewport(width, 1210);
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "geometry",
+              name: "Geometry",
+              api: "anthropic-messages",
+              baseUrl: "https://example.com",
+              hasCredential: false,
+              models: [{ id: "model", reasoning: true, contextWindow: 128000 }],
+            },
+          ],
+          save: async () => {},
+          delete: async () => {},
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  const measureFields = (region: Element) =>
+    [...region.querySelectorAll("label[for]")]
+      .filter(
+        (label) => document.getElementById(label.getAttribute("for")!) instanceof HTMLInputElement,
+      )
+      .map((label) => {
+        const control = document.getElementById(label.getAttribute("for")!)!;
+        const field = control.parentElement!;
+        const labelBox = label.getBoundingClientRect();
+        const box = field.getBoundingClientRect();
+        return {
+          label: label.textContent,
+          top: labelBox.top,
+          labelHeight: labelBox.height,
+          height: box.height,
+          gap: box.top - labelBox.bottom,
+          radius: getComputedStyle(field).borderRadius,
+          group: label.parentElement!.getBoundingClientRect().height,
+        };
+      });
+  try {
+    await expect
+      .element(screen.getByRole("heading", { name: "Geometry", exact: true }))
+      .toBeVisible();
+    const details = document.querySelector(".model-services-details")!;
+    const panel = document.querySelector(".model-services-panel")!;
+    for (const dark of [false, true]) {
+      document.documentElement.classList.toggle("dark", dark);
+      const api = screen.getByRole("button", { name: "API format", exact: true }).element();
+      const label = api.parentElement!.previousElementSibling!;
+      for (const field of measureFields(details)) {
+        expect(field.gap).toBe(4);
+        expect(field.height).toBe(32);
+        expect(field.radius).toBe("8px");
+      }
+      expect(label.getBoundingClientRect().top - measureFields(details)[0]!.top).toBe(69);
+      expect(api.getBoundingClientRect().height).toBe(32);
+      expect(api.getBoundingClientRect().top - label.getBoundingClientRect().bottom).toBe(4);
+      expect(getComputedStyle(api).borderRadius).toBe("8px");
+      expect(
+        document.querySelector(".model-services-model-row")!.getBoundingClientRect().top -
+          details.getBoundingClientRect().top,
+      ).toBe(291);
+      expect(panel.getBoundingClientRect().height).toBe(width === 1887 ? 560 : 580);
+      expect(panel.getBoundingClientRect().top).toBe(width === 1887 ? 188 : 204);
+      expect(panel.getBoundingClientRect().left).toBe(width === 1887 ? 660 : 64);
+      expect(panel.getBoundingClientRect().width).toBe(width === 1887 ? 880 : 344);
+    }
+    await screen.getByRole("button", { name: "Edit", exact: true }).click();
+    await screen.getByRole("button", { name: /Advanced settings/ }).click();
+    const fields = document.querySelector(".model-services-model-fields")!;
+    for (const dark of [false, true]) {
+      document.documentElement.classList.toggle("dark", dark);
+      const select = screen
+        .getByRole("button", { name: "Default reasoning level", exact: true })
+        .element();
+      for (const field of measureFields(fields)) {
+        expect(field.gap, field.label ?? "field").toBe(4);
+        expect(field.height, field.label ?? "field").toBe(32);
+        expect(field.radius).toBe("8px");
+        // The wide runtime pair shares a row whose output-token label wraps to two lines.
+        // Other groups grow only when their own label wraps.
+        const sharedRuntimeRow =
+          width === 1887 && ["Temperature", "Maximum output tokens"].includes(field.label ?? "");
+        expect(field.group, field.label ?? "field").toBe(
+          sharedRuntimeRow ? 72 : field.labelHeight + 36,
+        );
+      }
+      expect(select.getBoundingClientRect().height).toBe(32);
+      expect(
+        select.getBoundingClientRect().top -
+          select.parentElement!.previousElementSibling!.getBoundingClientRect().bottom,
+      ).toBe(4);
+      expect(
+        select.closest(".model-services-default-reasoning")!.getBoundingClientRect().height,
+      ).toBe(54);
+      expect(getComputedStyle(select).borderRadius).toBe("8px");
+      for (const option of fields.querySelectorAll(
+        ".model-services-chips > label, [role=radiogroup] > label",
+      )) {
+        expect(option.getBoundingClientRect().height).toBe(28);
+        expect(getComputedStyle(option).borderRadius).toBe("8px");
+      }
+      for (const action of document.querySelectorAll(".model-services-modal-footer > button"))
+        expect(getComputedStyle(action).borderRadius).toBe("12px");
+    }
+  } finally {
+    await screen.unmount();
+    document.documentElement.className = originalClass;
+    await page.viewport(1280, 900);
+  }
+});
+
+test("preset catalog immediately creates independent services with incrementing names", async () => {
+  let providers: ModelServiceSummary[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => providers,
+          save: async ({ provider }) => {
+            providers = [
+              ...providers.filter((p) => p.id !== provider.id),
+              { ...provider, hasCredential: false },
+            ];
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  for (const [id, name] of [
+    ["deepseek", "DeepSeek"],
+    ["deepseek-2", "DeepSeek 2"],
+  ]) {
+    await screen.getByRole("button", { name: "Add provider", exact: true }).click();
+    const tile = screen.getByRole("button", { name: "DeepSeek", exact: true }).last();
+    tile.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("heading", { name, exact: true })).toBeVisible();
+    expect(providers.at(-1)).toMatchObject({
+      id,
+      name,
+      icon: "deepseek",
+      enabled: true,
+      api: "anthropic-messages",
+      baseUrl: "https://api.deepseek.com/anthropic",
+    });
+    expect(providers.at(-1)!.models.map((m) => m.id)).toEqual([
+      "deepseek-flash",
+      "deepseek-v4-pro",
+    ]);
+    const link = screen.getByRole("link", { name: "Get API Key", exact: true });
+    expect(link.element().getAttribute("href")).toBe("https://platform.deepseek.com/api_keys");
+    const label = screen.getByLabelText("API Key", { exact: true }).element()
+      .parentElement!.previousElementSibling!;
+    expect(link.element().getBoundingClientRect().top).toBe(label.getBoundingClientRect().top);
+    expect(
+      document.querySelector(".model-services-model-row")!.getBoundingClientRect().top -
+        document.querySelector(".model-services-details")!.getBoundingClientRect().top,
+    ).toBe(291);
+    let activated = "";
+    const capture = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest("a") === link.element()) {
+        event.preventDefault();
+        activated = (link.element() as HTMLAnchorElement).href;
+      }
+    };
+    document.addEventListener("click", capture);
+    try {
+      link.element().focus();
+      await userEvent.keyboard("{Enter}");
+      expect(activated).toBe("https://platform.deepseek.com/api_keys");
+    } finally {
+      document.removeEventListener("click", capture);
+    }
+  }
+  await screen.getByRole("button", { name: "Add provider", exact: true }).click();
+  await screen.getByRole("button", { name: "Create custom provider" }).click();
+  await expect
+    .element(screen.getByRole("heading", { name: "New provider", exact: true }))
+    .toBeVisible();
+  expect(providers.at(-1)).toMatchObject({ enabled: true, baseUrl: "", models: [] });
+  expect(providers.at(-1)!.id).toMatch(/^provider-/);
+});
+
+test("provider inputs autosave at 500ms and flush on switching and unmount", async () => {
+  let providers: ModelServiceSummary[] = ["first", "second"].map((id) => ({
+    id,
+    name: id,
+    api: "openai-completions",
+    baseUrl: "https://example.com",
+    models: [],
+    hasCredential: false,
+  }));
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => providers,
+          save: async (input) => {
+            saved.push(input);
+            providers = providers.map((p) =>
+              p.id === input.provider.id
+                ? { ...input.provider, hasCredential: input.credential.type === "replace" }
+                : p,
+            );
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(async () => {
+    vi.useRealTimers();
+    await screen.unmount();
+  });
+  await expect.element(screen.getByRole("heading", { name: "first", exact: true })).toBeVisible();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("invalid URL");
+  await screen.getByLabelText("API Key", { exact: true }).fill("fixture-new-key");
+  await vi.advanceTimersByTimeAsync(499);
+  expect(saved).toEqual([]);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(saved[0]).toMatchObject({
+    provider: { id: "first", baseUrl: "invalid URL" },
+    credential: { type: "replace", value: "fixture-new-key" },
+  });
+  expect(screen.getByRole("button", { name: "Save provider", exact: true }).query()).toBeNull();
+  expect(screen.getByRole("alert").query()).toBeNull();
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("");
+  await screen.getByRole("button", { name: "second", exact: true }).click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(saved.at(-1)?.provider).toMatchObject({ id: "first", baseUrl: "" });
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("https://close.invalid");
+  await screen.getByRole("button", { name: "Back to app", exact: true }).click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(saved.at(-1)?.provider).toMatchObject({ id: "second", baseUrl: "https://close.invalid" });
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("https://second.invalid");
+  await screen.unmount();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(saved.at(-1)?.provider).toMatchObject({ id: "second", baseUrl: "https://second.invalid" });
+  vi.useRealTimers();
+});
+
+test("autosaves serialize later edits and preserve failed credentials for retry", async () => {
+  const initial: ModelServiceSummary = {
+    id: "local",
+    name: "Local",
+    api: "openai-completions",
+    baseUrl: "https://example.com",
+    models: [],
+    hasCredential: false,
+  };
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  let finish: () => void = () => {};
+  let fail = false;
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [initial],
+          save: async (input) => {
+            saved.push(input);
+            const shouldFail = fail;
+            if (saved.length === 1)
+              await new Promise<void>((resolve) => {
+                finish = resolve;
+              });
+            if (shouldFail) throw Error("secret");
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("later value");
+  await screen.getByLabelText("API Key", { exact: true }).fill("later-key");
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  expect(saved).toHaveLength(1);
+  fail = true;
+  finish();
+  await expect
+    .element(screen.getByRole("alert"))
+    .toHaveTextContent(
+      "Could not save. Your input is preserved. Retry or reconfigure credentials.",
+    );
+  await expect.poll(() => saved.length).toBe(2);
+  expect(saved[1]).toMatchObject({
+    provider: { baseUrl: "later value", enabled: true },
+    credential: { type: "replace", value: "later-key" },
+  });
+  await expect
+    .element(screen.getByRole("textbox", { name: "Base URL" }))
+    .toHaveValue("later value");
+  await expect.element(screen.getByLabelText("API Key", { exact: true })).toHaveValue("later-key");
+  fail = false;
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(3);
+  expect(saved[2]?.credential).toEqual({ type: "replace", value: "later-key" });
+  await expect.element(screen.getByLabelText("API Key", { exact: true })).toHaveValue("");
+});
+
+test("new preset protocols replace variants only until leaving its form", async () => {
+  let providers: ModelServiceSummary[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => providers,
+          save: async ({ provider }) => {
+            providers = [
+              ...providers.filter((p) => p.id !== provider.id),
+              { ...provider, hasCredential: false },
+            ];
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  await screen.getByRole("button", { name: "Add provider", exact: true }).click();
+  await screen.getByRole("button", { name: "DeepSeek", exact: true }).click();
+  await screen.getByRole("button", { name: "API format", exact: true }).click();
+  await screen
+    .getByRole("option", { name: "Chat Completions (/chat/completions)", exact: true })
+    .click();
+  await expect.poll(() => providers[0]?.api).toBe("openai-completions");
+  expect(providers[0]?.baseUrl).toBe("https://api.deepseek.com");
+  expect(providers[0]?.models.map((m) => m.id)).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
+  await screen.getByRole("button", { name: "Add provider", exact: true }).click();
+  await screen.getByRole("button", { name: "Create custom provider" }).click();
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  await expect.poll(() => providers.find((p) => p.id.startsWith("provider-"))?.enabled).toBe(false);
+  await screen.getByRole("button", { name: "DeepSeek", exact: true }).click();
+  expect(screen.getByRole("link", { name: "Get API Key", exact: true }).query()).toBeNull();
+  await screen.getByRole("button", { name: "API format", exact: true }).click();
+  await screen
+    .getByRole("option", { name: "Anthropic Messages (/v1/messages)", exact: true })
+    .click();
+  await expect
+    .poll(() => providers.find((p) => p.id === "deepseek")?.api)
+    .toBe("anthropic-messages");
+  expect(providers.find((p) => p.id === "deepseek")?.baseUrl).toBe("https://api.deepseek.com");
+  expect(providers.find((p) => p.id === "deepseek")?.models.map((m) => m.id)).toEqual([
+    "deepseek-flash",
+    "deepseek-v4-pro",
+  ]);
+});
+
+test("cancel and close model and rename dialogs never save edits", async () => {
+  let saves = 0;
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "",
+              models: [],
+              hasCredential: false,
+            },
+          ],
+          save: async () => {
+            saves++;
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  for (const close of ["Cancel", "Close"]) {
+    await screen.getByRole("button", { name: "Add model", exact: true }).click();
+    await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("unsaved-model");
+    await screen.getByRole("button", { name: close, exact: true }).click();
+    await screen.getByRole("button", { name: "Provider actions" }).click();
+    await screen.getByRole("menuitem", { name: "Rename provider" }).click();
+    await screen.getByRole("textbox", { name: "Provider name" }).fill("unsaved-name");
+    if (close === "Close") await userEvent.keyboard("{Escape}");
+    else await screen.getByRole("button", { name: close, exact: true }).click();
+    await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
+    expect(saves).toBe(0);
+  }
+});
+
+test("selecting the current service flushes without replacing failed drafts or credentials", async () => {
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  let fail = true;
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "original",
+              models: [],
+              hasCredential: true,
+            },
+          ],
+          save: async (input) => {
+            saved.push(input);
+            if (fail) throw Error("secret");
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("edited");
+  await screen.getByLabelText("API Key", { exact: true }).fill("replacement-key");
+  await screen.getByRole("button", { name: "Local", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  await expect
+    .element(screen.getByRole("alert"))
+    .toHaveTextContent(
+      "Could not save. Your input is preserved. Retry or reconfigure credentials.",
+    );
+  await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("edited");
   await expect
     .element(screen.getByLabelText("API Key", { exact: true }))
-    .toHaveValue("fake-draft-key");
+    .toHaveValue("replacement-key");
+  fail = false;
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(2);
+  expect(saved[1]).toMatchObject({
+    provider: { baseUrl: "edited", enabled: false },
+    credential: { type: "replace", value: "replacement-key" },
+  });
+});
+
+test("saving clears revealed stored keys immediately and retains typed replacement after failure", async () => {
+  let finish: () => void = () => {};
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "original",
+              models: [],
+              hasCredential: true,
+            },
+          ],
+          revealKey: async () => "stored-fixture-key",
+          save: async (input) => {
+            saved.push(input);
+            if (saved.length === 1)
+              await new Promise<void>((resolve) => {
+                finish = resolve;
+              });
+            throw Error("secret");
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(async () => {
+    finish();
+    await screen.unmount();
+  });
+  await screen.getByRole("button", { name: "Show API Key", exact: true }).click();
+  await expect
+    .element(screen.getByLabelText("API Key", { exact: true }))
+    .toHaveValue("stored-fixture-key");
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  await expect.element(screen.getByLabelText("API Key", { exact: true })).toHaveValue("");
+  await expect
+    .element(screen.getByLabelText("API Key", { exact: true }))
+    .toHaveAttribute("type", "password");
+  // A new replacement entered while the older write waits must survive its failure.
+  await screen.getByLabelText("API Key", { exact: true }).fill("replacement-key");
+  finish();
+  await expect
+    .element(screen.getByRole("alert"))
+    .toHaveTextContent(
+      "Could not save. Your input is preserved. Retry or reconfigure credentials.",
+    );
+  await expect
+    .element(screen.getByLabelText("API Key", { exact: true }))
+    .toHaveValue("replacement-key");
+});
+
+test.each(["model", "rename"] as const)(
+  "older %s save cannot close or report errors in a reopened editor",
+  async (kind) => {
+    let finish: () => void = () => {};
+    let saves = 0;
+    let changes = 0;
+    const screen = await render(
+      <UiLocaleProvider locale="en">
+        <ModelServices
+          services={{
+            ...modelServicesFixture,
+            list: async () => [
+              {
+                id: "local",
+                name: "Local",
+                api: "openai-completions",
+                baseUrl: "",
+                models: [],
+                hasCredential: false,
+              },
+            ],
+            save: async () => {
+              saves++;
+              await new Promise<void>((resolve) => {
+                finish = resolve;
+              });
+            },
+          }}
+          onClose={() => {}}
+          onChanged={async () => {
+            changes++;
+          }}
+        />
+      </UiLocaleProvider>,
+    );
+    onTestFinished(async () => {
+      finish();
+      await screen.unmount();
+    });
+    if (kind === "model") {
+      await screen.getByRole("button", { name: "Add model", exact: true }).click();
+      await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("first-model");
+      await screen.getByRole("button", { name: "Save model", exact: true }).click();
+    } else {
+      await screen.getByRole("button", { name: "Provider actions" }).click();
+      await screen.getByRole("menuitem", { name: "Rename provider" }).click();
+      await screen.getByRole("textbox", { name: "Provider name" }).fill("renamed");
+      await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+    }
+    await expect.poll(() => saves).toBe(1);
+    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+    await screen.getByRole("button", { name: "Add model", exact: true }).click();
+    await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("later-draft");
+    finish();
+    await expect.poll(() => changes).toBe(1);
+    // Another browser input turn lets the completed save's React updates commit.
+    await userEvent.keyboard("{Tab}");
+    await screen
+      .getByRole("textbox", { name: "Model ID", exact: true })
+      .fill("later-draft-updated");
+    await expect
+      .element(screen.getByRole("textbox", { name: "Model ID", exact: true }))
+      .toHaveValue("later-draft-updated");
+    expect(screen.getByRole("alert").query()).toBeNull();
+  },
+);
+
+test("model submissions remain single while saving and ignore obsolete failure", async () => {
+  let finish: () => void = () => {};
+  let completed = false;
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "",
+              models: [],
+              hasCredential: false,
+            },
+          ],
+          save: async (input) => {
+            saved.push(input);
+            await new Promise<void>((resolve) => {
+              finish = resolve;
+            });
+            completed = true;
+            throw Error("secret");
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(async () => {
+    finish();
+    await screen.unmount();
+  });
+  await screen.getByRole("button", { name: "Add model", exact: true }).click();
+  await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("first-model");
+  await screen.getByRole("button", { name: "Save model", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  await expect
+    .element(screen.getByRole("button", { name: "Save model", exact: true }))
+    .toBeDisabled();
+  // Native form submission is also guarded, even if a second event precedes React's disabled render.
+  document.querySelector<HTMLFormElement>(".model-services-model-form")!.requestSubmit();
+  await screen.getByRole("button", { name: "Cancel", exact: true }).click();
+  await screen.getByRole("button", { name: "Add model", exact: true }).click();
+  await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("later-draft");
+  finish();
+  await expect.poll(() => completed).toBe(true);
+  await userEvent.keyboard("{Tab}");
+  expect(saved).toHaveLength(1);
+  expect(saved[0]!.provider.models).toHaveLength(1);
+  expect(screen.getByRole("alert").query()).toBeNull();
+  await expect
+    .element(screen.getByRole("textbox", { name: "Model ID", exact: true }))
+    .toHaveValue("later-draft");
+});
+
+test("selecting the current service preserves a pending URL through its next immediate write", async () => {
+  let finish: () => void = () => {};
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "original",
+              models: [],
+              hasCredential: false,
+            },
+          ],
+          save: async (input) => {
+            saved.push(input);
+            if (saved.length === 1)
+              await new Promise<void>((resolve) => {
+                finish = resolve;
+              });
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(async () => {
+    finish();
+    await screen.unmount();
+  });
+  await screen.getByRole("textbox", { name: "Base URL" }).fill("edited");
+  await screen.getByRole("button", { name: "Local", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  await expect.element(screen.getByRole("textbox", { name: "Base URL" })).toHaveValue("edited");
+  await screen.getByRole("switch", { name: "Enable provider models", exact: true }).click();
+  finish();
+  await expect.poll(() => saved.length).toBe(2);
+  expect(saved.map((input) => input.provider.baseUrl)).toEqual(["edited", "edited"]);
+  expect(saved[1]!.provider.enabled).toBe(false);
+});
+
+test("retrying a failed new model save replaces its draft without duplicating the model", async () => {
+  const saved: import("@rukie/shared").ModelServiceSave[] = [];
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ModelServices
+        services={{
+          ...modelServicesFixture,
+          list: async () => [
+            {
+              id: "local",
+              name: "Local",
+              api: "openai-completions",
+              baseUrl: "",
+              models: [],
+              hasCredential: false,
+            },
+          ],
+          save: async (input) => {
+            saved.push(input);
+            if (saved.length === 1) throw Error("secret");
+          },
+        }}
+        onClose={() => {}}
+        onChanged={async () => {}}
+      />
+    </UiLocaleProvider>,
+  );
+  onTestFinished(() => screen.unmount());
+  await screen.getByRole("button", { name: "Add model", exact: true }).click();
+  await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("new-model");
+  await screen.getByRole("button", { name: "Save model", exact: true }).click();
+  await expect
+    .element(screen.getByRole("dialog", { name: "Add model", exact: true }).getByRole("alert"))
+    .toHaveTextContent(
+      "Could not save. Your input is preserved. Retry or reconfigure credentials.",
+    );
+  await screen.getByRole("button", { name: "Save model", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(2);
+  expect(saved[1]!.provider.models.map((model) => model.id)).toEqual(["new-model"]);
+  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
 });

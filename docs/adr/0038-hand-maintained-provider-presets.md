@@ -19,6 +19,7 @@ status: accepted
   - 预设更新不改变已创建的服务。
   - 服务不保存预设引用，只在创建时写入展示用的 `icon` 键。
   - 新建服务的表单停留期间，界面在内存中记住来源预设，切换协议时整体替换为对应变体的 Base URL 和模型。离开表单后不再联动。
+- 来源预设仍在当前表单内存中时，API Key 标签旁展示获取链接。浏览器以标准外部链接打开；Electron main 只允许受信任 app 窗口和 app 来源打开固定的 `https://platform.deepseek.com/api_keys`，交给系统浏览器并始终拒绝应用内弹窗，其他地址仍拒绝，不新增任意 URL 的 host 或 IPC 能力。
 - 图标键是 `@rukie/shared` 中的封闭枚举。`@rukie/ui` 的 `ProviderIcon` 是唯一的图标渲染入口，使用 `@lobehub/icons` 的纯 SVG 组件，不引入它的 antd 与 `@lobehub/ui` peer。
 - 删除未被界面使用的 `applicationModelTemplates` 及其 wire、IPC 与 host 通道。预设只有界面一个消费者，不再经 sidecar 提供。
 - 桌面存储 spec 中“添加供应商不展示预设”的决定由本记录替代。
@@ -35,5 +36,5 @@ status: accepted
 
 - 扩充一个供应商需要四样东西：一个预设文件、一个图标键、一条图标映射、zh 和 en 文案。测试校验每个变体都满足 `ModelServiceSchema` 与对应协议的 compat schema，图标映射由类型检查保证穷尽。
 - 代价是预设数值要人工跟进供应商的变化。pi-ai 未覆盖的协议变体只有文档和 payload 测试依据，需要用真实凭据手动验收。
-- `@lobehub/icons` 的深路径属于包内部结构，升级版本时要核对导入路径。
+- `@lobehub/icons` 的深路径属于包内部结构，升级版本时要核对导入路径。Bun 通过仓库级 `install.peer = false` 关闭自动安装 peer，锁文件仍记录解析元数据；ui 在保留 React 与 React DOM peer 合同的同时显式声明测试和构建的 devDependencies。此策略影响整个仓库，其他 workspace 也必须显式声明实际需要的运行依赖；精确版本与安装策略见 [技术栈](../tech-stack.md)。
 - 实施与验收见 [供应商预设 spec](../../.scratch/provider-presets/spec.md)。

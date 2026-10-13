@@ -5,6 +5,7 @@ import {
   ipcMain,
   protocol,
   safeStorage,
+  shell,
   type IpcMainInvokeEvent,
 } from "electron";
 import { userInfo } from "node:os";
@@ -72,7 +73,19 @@ export async function startDesktop(options: DesktopOptions) {
     await window.webContents.session.protocol.handle("app", (request) =>
       serveAppFile(request.url, options.rendererDirectory),
     );
-    window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    window.webContents.setWindowOpenHandler(({ url, referrer }) => {
+      // The acquisition anchor uses noreferrer; an omitted referrer still requires the trusted app frame.
+      if (
+        url === "https://platform.deepseek.com/api_keys" &&
+        !window.isDestroyed() &&
+        trustedAddress(window.webContents.mainFrame.url) &&
+        (referrer.url === "" || trustedAddress(referrer.url))
+      ) {
+        // The OS browser owns this fixed acquisition page; failed opens cannot create an app popup.
+        void shell.openExternal(url).catch(() => {});
+      }
+      return { action: "deny" };
+    });
     window.webContents.on("will-navigate", (event, address) => {
       if (!trustedAddress(address)) event.preventDefault();
     });
@@ -127,10 +140,6 @@ export async function startDesktop(options: DesktopOptions) {
       const request = parseModelPriceRequest(input);
       if (!request) throw new Error("Invalid model price identity");
       return manage({ type: "prices", ...request });
-    });
-    ipcMain.handle("rukie:modelServices:templates", async (event) => {
-      authorize(event);
-      return manage({ type: "templates" });
     });
     ipcMain.handle("rukie:modelServices:test", async (event, id: unknown, modelId: unknown) => {
       authorize(event);

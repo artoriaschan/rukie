@@ -1,4 +1,3 @@
-import { Value } from "typebox/value";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -39,13 +38,12 @@ import {
 import {
   MODEL_SERVICE_THINKING_LEVELS,
   modelServiceThinkingLevels,
-  parseModelServiceSave,
-  ModelCompatSchemas,
-  ModelServiceSchema,
   type ModelService,
   type ModelServiceSummary,
+  type ModelServiceSave,
 } from "@rukie/shared";
 import type { DesktopHost } from "../host";
+import { ProviderIcon } from "../components/provider-icon";
 import { Button } from "../components/motion/button/base";
 import { Input } from "../components/motion/input";
 import { Checkbox } from "../components/motion/checkbox";
@@ -58,6 +56,7 @@ import { RadioGroup, RadioGroupItem } from "../components/motion/radio";
 import "./model-services.css";
 import * as Menu from "../components/ui/dropdown-menu";
 import { useAppText } from "../lib/i18n";
+import { PROVIDER_PRESETS, type ProviderPreset } from "../lib/provider-presets";
 import { reasoningLabels } from "../lib/reasoning-labels";
 
 type Services = DesktopHost["modelServices"];
@@ -118,7 +117,18 @@ export function ModelServices({
   const [status, setStatus] = useState("");
   const [pending, setPending] = useState(false);
   const [dialog, setDialog] = useState<"model" | "rename" | "delete" | null>(null);
+  const dialogIdentity = useRef(0);
+  const dialogSubmission = useRef<number | undefined>(undefined);
+  const [dialogPending, setDialogPending] = useState(false);
+  const changeDialog = (next: "model" | "rename" | "delete" | null) => {
+    dialogIdentity.current++;
+    dialogSubmission.current = undefined;
+    setDialogPending(false);
+    setError("");
+    setDialog(next);
+  };
   const [editing, setEditing] = useState<number>();
+  const newModelIndex = useRef<number | undefined>(undefined);
   const [model, setModel] = useState<ServiceModel>(defaultModel);
   const [modelError, setModelError] = useState("");
   const [advancedDraft, setAdvancedDraft] = useState<Partial<Record<AdvancedNumericField, string>>>(
@@ -211,27 +221,54 @@ export function ModelServices({
   const supportedLevels = modelServiceThinkingLevels(model);
   const selected = providers.find((provider) => provider.id === draft?.id);
   const empty = providers.length === 0 && !draft && !catalog;
-  const dirty = Boolean(
-    draft &&
-    (!selected ||
-      key ||
-      removeKey ||
-      draft.name !== selected.name ||
-      draft.api !== selected.api ||
-      draft.baseUrl !== selected.baseUrl ||
-      JSON.stringify(draft.models) !== JSON.stringify(selected.models)),
-  );
+  const createdPreset = useRef<ProviderPreset | undefined>(undefined);
+  const draftRef = useRef<ModelService | undefined>(undefined);
+  const keyRef = useRef("");
+  const removeKeyRef = useRef(false);
+  const revision = useRef(0);
+  const queued = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const writes = useRef<Promise<unknown>>(Promise.resolve());
+  const mounted = useRef(true);
+  const generation = useRef(0);
+  const flush = () => {
+    if (timer.current !== undefined) clearTimeout(timer.current);
+    timer.current = undefined;
+    if (!queued.current || !draftRef.current) return writes.current;
+    queued.current = false;
+    return persist(draftRef.current);
+  };
+  const updateDraft = (provider: ModelService, debounce = false) => {
+    draftRef.current = provider;
+    setDraft(provider);
+    revision.current++;
+    queued.current = true;
+    if (timer.current !== undefined) clearTimeout(timer.current);
+    if (debounce) timer.current = setTimeout(() => void flush(), 500);
+    else void flush();
+  };
   const choose = (provider: ModelService) => {
+    void flush();
+    if (draftRef.current?.id === provider.id) {
+      setCatalog(false);
+      return;
+    }
+    createdPreset.current = undefined;
     clearRevealedKey();
-    setDraft(
-      structuredClone({
-        id: provider.id,
-        name: provider.name,
-        api: provider.api,
-        baseUrl: provider.baseUrl,
-        models: provider.models,
-      }),
-    );
+    const next = structuredClone({
+      id: provider.id,
+      name: provider.name,
+      icon: provider.icon,
+      enabled: provider.enabled,
+      api: provider.api,
+      baseUrl: provider.baseUrl,
+      models: provider.models,
+    });
+    draftRef.current = next;
+    setDraft(next);
+    revision.current++;
+    keyRef.current = "";
+    removeKeyRef.current = false;
     setKey("");
     setRemoveKey(false);
     setError("");
@@ -268,98 +305,128 @@ export function ModelServices({
   };
   const load = async () => {
     try {
+      const currentGeneration = generation.current;
+      await flush();
       const result = await services.list();
+      if (!mounted.current || currentGeneration !== generation.current) return;
       setProviders(result);
-      if (!draft && result[0]) choose(result[0]);
+      if (!draftRef.current && result[0]) choose(result[0]);
       setError("");
     } catch {
       setError(t("services.loadFailure"));
     }
   };
   useEffect(() => {
+    mounted.current = true;
     void load();
+    return () => {
+      void flush();
+      mounted.current = false;
+      generation.current++;
+      dialogIdentity.current++;
+      createdPreset.current = undefined;
+    };
   }, [services]);
-  const persist = async (provider: ModelService) => {
-    if (pending) return false;
+  const persist = (
+    provider: ModelService,
+    creationCredential?: ModelServiceSave["credential"],
+    submittedDialog?: number,
+  ): Promise<boolean> => {
+    const currentDialog = () =>
+      submittedDialog === undefined || submittedDialog === dialogIdentity.current;
+    if (timer.current !== undefined) clearTimeout(timer.current);
+    timer.current = undefined;
+    queued.current = false;
     clearRevealedKey();
-    const credential = removeKey
-      ? { type: "delete" as const }
-      : key.trim()
-        ? { type: "replace" as const, value: key }
-        : { type: "keep" as const };
-    const parsed = parseModelServiceSave({ provider, credential });
-    let validUrl = false;
-    try {
-      const url = new URL(provider.baseUrl);
-      validUrl = ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
-    } catch {
-      /* invalid user input */
-    }
-    if (
-      provider.models.some(
-        (item) =>
-          item.compat !== undefined && !Value.Check(ModelCompatSchemas[provider.api], item.compat),
-      )
-    ) {
-      setError(t("services.apiIncompatible"));
-      return false;
-    }
-    if (
-      !parsed ||
-      !provider.name.trim() ||
-      !validUrl ||
-      new Set(provider.models.map((m) => m.id)).size !== provider.models.length
-    ) {
-      setError(t("services.invalid"));
-      return false;
-    }
-    setPending(true);
-    setError("");
-    setStatus("");
-    try {
-      await services.save(parsed);
-      const hasCredential =
-        credential.type === "replace" ||
-        (credential.type === "keep" && Boolean(selected?.hasCredential));
-      setProviders((previous) => [
-        ...previous.filter((item) => item.id !== provider.id),
-        { ...provider, hasCredential },
-      ]);
-      setDraft(
-        structuredClone({
-          id: provider.id,
-          name: provider.name,
-          api: provider.api,
-          baseUrl: provider.baseUrl,
-          models: provider.models,
-        }),
-      );
-      clearRevealedKey();
-      setKey("");
-      setRemoveKey(false);
+    const current = structuredClone(provider);
+    const savedRevision = revision.current;
+    const currentGeneration = generation.current;
+    const credential =
+      creationCredential ??
+      (removeKeyRef.current
+        ? { type: "delete" as const }
+        : keyRef.current.trim()
+          ? { type: "replace" as const, value: keyRef.current }
+          : { type: "keep" as const });
+    if (!creationCredential)
+      setProviders((previous) => {
+        const existing = previous.find((p) => p.id === current.id);
+        return [
+          ...previous.filter((p) => p.id !== current.id),
+          { ...current, hasCredential: Boolean(existing?.hasCredential) },
+        ];
+      });
+    // Queue immutable snapshots at the host boundary; responses never replace a newer draft.
+    const operation = writes.current.then(async () => {
       try {
-        setProviders(await services.list());
-        await onChanged();
+        await services.save({ provider: current, credential });
+        if (mounted.current && generation.current === currentGeneration) {
+          setProviders((previous) => {
+            const existing = previous.find((p) => p.id === current.id);
+            const hasCredential =
+              credential.type === "replace" ||
+              (credential.type === "keep" && Boolean(existing?.hasCredential));
+            const latest = existing ?? current;
+            return [...previous.filter((p) => p.id !== current.id), { ...latest, hasCredential }];
+          });
+          if (draftRef.current?.id === current.id && savedRevision === revision.current) {
+            keyRef.current = "";
+            removeKeyRef.current = false;
+            setKey("");
+            setRemoveKey(false);
+            if (currentDialog()) setError("");
+          }
+        }
+        try {
+          await onChanged();
+        } catch {
+          if (mounted.current && generation.current === currentGeneration && currentDialog())
+            setError(t("services.refreshFailure"));
+        }
+        return true;
       } catch {
-        setError(t("services.refreshFailure"));
+        if (mounted.current && generation.current === currentGeneration && currentDialog())
+          setError(t("services.saveFailure"));
+        return false;
       }
-      setStatus(t("services.saved"));
-      return true;
-    } catch {
-      setError(t("services.saveFailure"));
-      return false;
+    });
+    writes.current = operation;
+    return operation;
+  };
+  const create = async (preset?: ProviderPreset) => {
+    let number = 1;
+    while (
+      preset &&
+      providers.some((p) => p.id === (number === 1 ? preset.id : `${preset.id}-${number}`))
+    )
+      number++;
+    const provider: ModelService = preset
+      ? {
+          id: number === 1 ? preset.id : `${preset.id}-${number}`,
+          name: number === 1 ? preset.name : `${preset.name} ${number}`,
+          api: preset.defaultApi,
+          ...structuredClone(preset.variants[preset.defaultApi]!),
+          icon: preset.icon,
+          enabled: true,
+        }
+      : {
+          id: `provider-${crypto.randomUUID()}`,
+          name: t("services.new"),
+          api: "anthropic-messages",
+          baseUrl: "",
+          models: [],
+          enabled: true,
+        };
+    void flush();
+    setPending(true);
+    try {
+      if (await persist(provider, { type: "keep" })) {
+        choose(provider);
+        createdPreset.current = preset;
+      }
     } finally {
       setPending(false);
     }
-  };
-  const create = () => {
-    choose({
-      id: `provider-${crypto.randomUUID()}`,
-      name: t("services.new"),
-      api: "anthropic-messages",
-      baseUrl: "",
-      models: [],
-    });
   };
   const openModel = (index?: number) => {
     priceRequest.current++;
@@ -370,11 +437,12 @@ export function ModelServices({
     autoPrices.current.clear();
     setPriceStatus("");
     setEditing(index);
+    newModelIndex.current = undefined;
     setModel(structuredClone(index === undefined ? defaultModel : draft!.models[index]!));
     setModelError("");
     setAdvancedDraft({});
     setAdvanced(false);
-    setDialog("model");
+    changeDialog("model");
     if (
       index !== undefined &&
       priceFields.some((field) => draft!.models[index]![field] === undefined)
@@ -382,7 +450,7 @@ export function ModelServices({
       void fillPrices(draft!.models[index]!);
   };
   const saveModel = async () => {
-    if (activePriceIdentity.current) return;
+    if (activePriceIdentity.current || dialogSubmission.current === dialogIdentity.current) return;
     if (
       draft &&
       model.id.trim() &&
@@ -392,23 +460,29 @@ export function ModelServices({
       void fillPrices(model);
       return;
     }
-    if (!draft || !model.id.trim() || !model.contextWindow || !model.maxTokens) {
-      setModelError(t("services.invalid"));
-      return;
-    }
-    if (!Value.Check(ModelCompatSchemas[draft.api], model.compat ?? {})) {
-      setModelError(t("services.apiIncompatible"));
-      return;
-    }
+    if (!draft) return;
+    const identity = dialogIdentity.current;
+    dialogSubmission.current = identity;
+    setDialogPending(true);
     const savedModel = { ...model };
     for (const field of advancedNumericFields) {
       const value = advancedDraft[field];
       if (value !== undefined) savedModel[field] = value === "" ? undefined : Number(value);
     }
     const models = [...draft.models];
-    if (editing === undefined) models.push(savedModel);
-    else models[editing] = savedModel;
-    if (await persist({ ...draft, models })) setDialog(null);
+    const index = editing ?? newModelIndex.current ?? models.length;
+    models[index] = savedModel;
+    // A failed creation remains the same draft slot when this dialog retries.
+    if (editing === undefined) newModelIndex.current = index;
+    const next = { ...draft, models };
+    draftRef.current = next;
+    setDraft(next);
+    revision.current++;
+    const saved = await persist(next, undefined, identity);
+    if (dialogIdentity.current !== identity) return;
+    dialogSubmission.current = undefined;
+    setDialogPending(false);
+    if (saved) changeDialog(null);
     else setModelError(t("services.saveFailure"));
   };
   const testConnection = async (modelId: string) => {
@@ -440,7 +514,14 @@ export function ModelServices({
         viewportClassName="model-services-navigation"
         aria-label={t("services.navigation")}
       >
-        <Button variant="ghost" size="sm" onClick={onClose}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            void flush();
+            onClose();
+          }}
+        >
           <ArrowLeft className="size-4" />
           {t("services.back")}
         </Button>
@@ -596,7 +677,11 @@ export function ModelServices({
                       disabled={pending}
                       onClick={() => choose(provider)}
                     >
-                      <Box className="size-4 shrink-0 text-muted-foreground" />
+                      <ProviderIcon
+                        icon={provider.icon}
+                        variant="color"
+                        className="text-muted-foreground"
+                      />
                       <span className="truncate">{provider.name}</span>
                       <Circle
                         aria-label={t(
@@ -646,35 +731,47 @@ export function ModelServices({
                         </Button>
                         <h2 className="text-ui-lg">{t("services.addProvider")}</h2>
                       </div>
-                      <p className="text-ui-sm text-muted-foreground">{t("services.catalog")}</p>
                       <Button
                         variant="secondary"
                         className="model-services-custom-tile"
-                        onClick={() => create()}
+                        onClick={() => void create()}
+                        disabled={pending}
                       >
                         <Plus className="size-6" />
                         {t("services.create")}
                         <ChevronRight className="ml-auto size-3.5" />
                       </Button>
+                      {PROVIDER_PRESETS.map((preset) => (
+                        <Button
+                          key={preset.id}
+                          variant="secondary"
+                          className="model-services-custom-tile"
+                          onClick={() => void create(preset)}
+                          disabled={pending}
+                        >
+                          <ProviderIcon icon={preset.icon} variant="color" className="size-6" />
+                          {t(`services.presets.${preset.id}`)}
+                          <ChevronRight className="ml-auto size-3.5" />
+                        </Button>
+                      ))}
                     </div>
                   ) : draft ? (
                     <div className="model-services-provider-form">
                       <div className="model-services-provider-heading flex items-center justify-between gap-2">
                         <h2 className="flex items-center gap-2 truncate text-ui-lg font-medium">
-                          <Box className="size-5 text-muted-foreground" />
+                          <ProviderIcon
+                            icon={draft.icon}
+                            variant="color"
+                            className="size-5 text-muted-foreground"
+                          />
                           {draft.name}
                         </h2>
                         <div className="flex items-center gap-2">
                           <Switch
                             ariaLabel={t("services.providerEnabled")}
-                            disabled={pending || !draft.models.length}
-                            checked={draft.models.some((item) => item.enabled !== false)}
-                            onCheckedChange={(enabled) =>
-                              void persist({
-                                ...draft,
-                                models: draft.models.map((item) => ({ ...item, enabled })),
-                              })
-                            }
+                            disabled={pending}
+                            checked={draft.enabled !== false}
+                            onCheckedChange={(enabled) => updateDraft({ ...draft, enabled })}
                           />
                           <Menu.DropdownMenu>
                             <Menu.DropdownMenuTrigger asChild>
@@ -694,7 +791,7 @@ export function ModelServices({
                               <Menu.DropdownMenuItem
                                 onSelect={() => {
                                   setRename(draft.name);
-                                  setDialog("rename");
+                                  changeDialog("rename");
                                 }}
                               >
                                 <Pencil className="size-4" />
@@ -705,7 +802,9 @@ export function ModelServices({
                                   checked={removeKey}
                                   onCheckedChange={(checked) => {
                                     clearRevealedKey();
+                                    removeKeyRef.current = checked;
                                     setRemoveKey(checked);
+                                    updateDraft(draft);
                                   }}
                                 >
                                   {t("services.keyDelete")}
@@ -714,7 +813,7 @@ export function ModelServices({
                               <Menu.DropdownMenuItem
                                 aria-label={t("services.deleteProvider")}
                                 className="text-danger"
-                                onSelect={() => setDialog("delete")}
+                                onSelect={() => changeDialog("delete")}
                               >
                                 <Trash2 className="size-4" />
                                 {t("services.delete")}
@@ -728,7 +827,7 @@ export function ModelServices({
                         label={t("services.url")}
                         value={draft.baseUrl}
                         placeholder="https://api.example.com/v1"
-                        onChange={(baseUrl) => setDraft({ ...draft, baseUrl })}
+                        onChange={(baseUrl) => updateDraft({ ...draft, baseUrl }, true)}
                       />
                       <div className="relative">
                         <p className="mb-1 font-medium">{t("services.api")}</p>
@@ -741,7 +840,11 @@ export function ModelServices({
                               api === "openai-completions" ||
                               api === "openai-responses"
                             )
-                              setDraft({ ...draft, api });
+                              updateDraft({
+                                ...draft,
+                                api,
+                                ...structuredClone(createdPreset.current?.variants[api] ?? {}),
+                              });
                           }}
                         >
                           <SelectTrigger
@@ -761,38 +864,54 @@ export function ModelServices({
                         {t("services.route")}: {draft.baseUrl.replace(/\/$/, "")}
                         {routes[draft.api]}
                       </p>
-                      <Input
-                        disabled={pending}
-                        label={t("services.key")}
-                        classNames={{ input: "model-services-key-input" }}
-                        type={showKey ? "text" : "password"}
-                        autoComplete="off"
-                        value={showKey && revealedKey ? revealedKey : key}
-                        placeholder={
-                          selected?.hasCredential ? "••••••••" : t("services.keyPlaceholder")
-                        }
-                        rightIcon={
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="model-services-key-toggle"
-                            disabled={pending}
-                            aria-label={t(
-                              showKey || revealing ? "services.hideKey" : "services.showKey",
-                            )}
-                            aria-pressed={showKey}
-                            onClick={() => void toggleKey()}
+                      <div className="model-services-provider-key-field relative">
+                        {createdPreset.current ? (
+                          <a
+                            href={createdPreset.current.apiKeyUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="absolute right-0 top-0 cursor-pointer text-ui-base text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
                           >
-                            {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                          </Button>
-                        }
-                        onChange={(value) => {
-                          revealRequest.current++;
-                          setRevealedKey("");
-                          setRevealing(false);
-                          setKey(value);
-                        }}
-                      />
+                            {t("services.getApiKey")}
+                          </a>
+                        ) : null}
+                        <Input
+                          disabled={pending}
+                          label={t("services.key")}
+                          classNames={{ input: "model-services-key-input" }}
+                          type={showKey ? "text" : "password"}
+                          autoComplete="off"
+                          value={showKey && revealedKey ? revealedKey : key}
+                          placeholder={
+                            selected?.hasCredential ? "••••••••" : t("services.keyPlaceholder")
+                          }
+                          rightIcon={
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="model-services-key-toggle"
+                              disabled={pending}
+                              aria-label={t(
+                                showKey || revealing ? "services.hideKey" : "services.showKey",
+                              )}
+                              aria-pressed={showKey}
+                              onClick={() => void toggleKey()}
+                            >
+                              {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                            </Button>
+                          }
+                          onChange={(value) => {
+                            revealRequest.current++;
+                            setRevealedKey("");
+                            setRevealing(false);
+                            keyRef.current = value;
+                            removeKeyRef.current = false;
+                            setRemoveKey(false);
+                            setKey(value);
+                            updateDraft(draft, true);
+                          }}
+                        />
+                      </div>
                       {selected?.hasCredential ? (
                         <>
                           <p className="sr-only">{t("services.keyKeep")}</p>
@@ -833,7 +952,7 @@ export function ModelServices({
                               checked={item.enabled !== false}
                               disabled={pending}
                               onCheckedChange={(enabled) =>
-                                void persist({
+                                updateDraft({
                                   ...draft,
                                   models: draft.models.map((m, i) =>
                                     i === index ? { ...m, enabled } : m,
@@ -864,7 +983,7 @@ export function ModelServices({
                               variant="ghost"
                               disabled={pending}
                               onClick={() =>
-                                void persist({
+                                updateDraft({
                                   ...draft,
                                   models: draft.models.filter((_, i) => i !== index),
                                 })
@@ -875,21 +994,6 @@ export function ModelServices({
                           </div>
                         ))
                       )}
-                      {dirty ? (
-                        <div className="model-services-save flex gap-2">
-                          <Button size="sm" disabled={pending} onClick={() => void persist(draft)}>
-                            {t("services.saveProvider")}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={pending}
-                            onClick={() => (selected ? choose(selected) : setDraft(undefined))}
-                          >
-                            {t("services.cancel")}
-                          </Button>
-                        </div>
-                      ) : null}
                     </div>
                   ) : (
                     <Button variant="secondary" onClick={() => setCatalog(true)}>
@@ -912,7 +1016,7 @@ export function ModelServices({
         }
         viewId={dialog}
         onClose={() => {
-          if (!pending) setDialog(null);
+          if (!pending) changeDialog(null);
         }}
         placement="center"
         className={
@@ -939,7 +1043,7 @@ export function ModelServices({
                 variant="ghost"
                 size="icon"
                 aria-label={t("services.close")}
-                onClick={() => setDialog(null)}
+                onClick={() => changeDialog(null)}
               >
                 <X className="size-4" />
               </Button>
@@ -1244,7 +1348,7 @@ export function ModelServices({
                 className="model-services-model-cancel"
                 variant="ghost"
                 size="sm"
-                onClick={() => setDialog(null)}
+                onClick={() => changeDialog(null)}
                 disabled={pending}
               >
                 {t("services.cancel")}
@@ -1253,8 +1357,8 @@ export function ModelServices({
                 className="model-services-model-save cursor-pointer disabled:pointer-events-auto disabled:cursor-not-allowed"
                 type="submit"
                 size="sm"
-                disabled={pending || priceLoading}
-                aria-busy={priceLoading}
+                disabled={pending || dialogPending || priceLoading}
+                aria-busy={dialogPending || priceLoading}
                 aria-label={t("services.saveModel")}
               >
                 {t("services.saveModel")}
@@ -1266,29 +1370,29 @@ export function ModelServices({
             className="flex flex-col gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              if (!draft) return;
-              if (!rename.trim() || !Value.Check(ModelServiceSchema.properties.name, rename)) {
-                setError(t("services.invalid"));
-                return;
-              }
-              if (dirty) {
-                setDraft({ ...draft, name: rename });
-                setError("");
-                setDialog(null);
-                return;
-              }
-              void persist({ ...draft, name: rename }).then((saved) => {
-                if (saved) setDialog(null);
+              if (!draft || dialogSubmission.current === dialogIdentity.current) return;
+              const identity = dialogIdentity.current;
+              dialogSubmission.current = identity;
+              setDialogPending(true);
+              const next = { ...draft, name: rename };
+              draftRef.current = next;
+              setDraft(next);
+              revision.current++;
+              void persist(next, undefined, identity).then((saved) => {
+                if (dialogIdentity.current !== identity) return;
+                dialogSubmission.current = undefined;
+                setDialogPending(false);
+                if (saved) changeDialog(null);
               });
             }}
           >
             <h2 className="font-medium">{t("services.rename")}</h2>
             <Input autoFocus label={t("services.name")} value={rename} onChange={setRename} />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setDialog(null)}>
+              <Button variant="ghost" onClick={() => changeDialog(null)}>
                 {t("services.cancel")}
               </Button>
-              <Button type="submit" disabled={pending}>
+              <Button type="submit" disabled={pending || dialogPending}>
                 {t("services.saveProvider")}
               </Button>
             </div>
@@ -1303,7 +1407,7 @@ export function ModelServices({
               <Button
                 variant="secondary"
                 aria-label={t("services.cancel")}
-                onClick={() => setDialog(null)}
+                onClick={() => changeDialog(null)}
                 disabled={pending}
               >
                 {t("services.cancel")}
@@ -1316,10 +1420,13 @@ export function ModelServices({
                 onClick={() => {
                   if (!draft) return;
                   setPending(true);
-                  void services
-                    .delete(draft.id)
+                  const providerId = draft.id;
+                  void flush();
+                  void writes.current
+                    .then(() => services.delete(providerId))
                     .then(async () => {
-                      setDialog(null);
+                      changeDialog(null);
+                      draftRef.current = undefined;
                       setDraft(undefined);
                       setProviders(await services.list());
                       try {

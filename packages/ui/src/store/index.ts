@@ -12,7 +12,12 @@ import type {
 } from "@rukie/shared";
 import { WireError, type ConnectionState } from "../client";
 import { Value } from "typebox/value";
-import { ToolCallViewSchema, THINKING_LEVELS, PERMISSION_MODES } from "@rukie/shared";
+import {
+  ToolCallViewSchema,
+  THINKING_LEVELS,
+  PERMISSION_MODES,
+  PROVIDER_ICONS,
+} from "@rukie/shared";
 
 import { reduceTranscript } from "./transcript";
 import type {
@@ -236,6 +241,9 @@ function isModel(value: unknown): value is WireModelCatalogEntry {
     typeof value.providerId === "string" &&
     "providerName" in value &&
     typeof value.providerName === "string" &&
+    (!("providerIcon" in value) ||
+      value.providerIcon === undefined ||
+      PROVIDER_ICONS.some((icon) => icon === value.providerIcon)) &&
     "input" in value &&
     Array.isArray(value.input) &&
     value.input.every((input) => input === "text" || input === "image") &&

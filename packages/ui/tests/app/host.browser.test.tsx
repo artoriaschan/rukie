@@ -145,7 +145,7 @@ for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
   });
 }
 
-test("browser model service settings save, reveal and delete through the single app connection", async () => {
+test("browser model service settings autosave, reveal and delete through the single app connection", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
   const original = location.href;
@@ -159,10 +159,11 @@ test("browser model service settings save, reveal and delete through the single 
     await screen.getByRole("button", { name: "Create custom provider" }).click();
     await screen.getByRole("textbox", { name: "Base URL" }).fill("http://127.0.0.1:1");
     await screen.getByLabelText("API Key", { exact: true }).fill("browser-wire-fixture");
-    await screen.getByRole("button", { name: "Save provider", exact: true }).click();
+    await expect
+      .poll(async () => (await host.modelServices.list())[0])
+      .toMatchObject({ baseUrl: "http://127.0.0.1:1", hasCredential: true });
     await expect.element(screen.getByLabelText("API Key", { exact: true })).toHaveValue("");
     const providerId = (await host.modelServices.list())[0]!.id;
-    expect(await host.modelServices.templates()).toEqual([]);
     expect(
       await host.modelServices.prices({ baseUrl: "http://127.0.0.1:1", modelId: "fixture" }),
     ).toEqual({ status: "unavailable" });

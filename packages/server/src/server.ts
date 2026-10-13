@@ -8,7 +8,6 @@ import { Context, Effect, FiberMap, Layer, ManagedRuntime } from "effect";
 import {
   createSession,
   createApplicationModels,
-  applicationModelTemplates,
   listSessions,
   discoverSqliteSessions,
   isSqliteSessionBusy,
@@ -169,10 +168,6 @@ export async function startServer(options: ServerOptions) {
       },
       { additionalProperties: false },
     );
-    const Templates = Type.Object(
-      { type: Type.Literal("templates") },
-      { additionalProperties: false },
-    );
     const Test = Type.Object(
       {
         type: Type.Literal("test"),
@@ -185,13 +180,12 @@ export async function startServer(options: ServerOptions) {
       { type: Type.Literal("prices"), ...ModelPriceRequestSchema.properties },
       { additionalProperties: false },
     );
-    const ModelOperation = Type.Union([List, Delete, RevealKey, Save, Templates, Test, Prices]);
+    const ModelOperation = Type.Union([List, Delete, RevealKey, Save, Test, Prices]);
     const modelOperation = async (
       input: import("typebox").Static<typeof ModelOperation>,
       signal: AbortSignal,
     ) => {
       if (Value.Check(Prices, input)) return await lookupModelPrices(input);
-      if (Value.Check(Templates, input)) return applicationModelTemplates();
       if (Value.Check(Test, input)) {
         const providers = await database.providers();
         const provider = providers.find((p) => p.id === input.id);
@@ -601,8 +595,6 @@ export async function startServer(options: ServerOptions) {
             }
             case "modelServices.list":
               return await modelOperation({ type: "list" }, AbortSignal.timeout(8000));
-            case "modelServices.templates":
-              return await modelOperation({ type: "templates" }, AbortSignal.timeout(8000));
             case "modelServices.prices":
               return await modelOperation(
                 { type: "prices", baseUrl: command.baseUrl, modelId: command.modelId },
@@ -790,6 +782,7 @@ export async function startServer(options: ServerOptions) {
           await refreshModels();
           return listModelCatalog(settings, options.sessionOptions?.models ?? applicationModels, {
             dataRoot: options.dataRoot,
+            providers: await database.providers(),
           });
         }
         case "session.set_model": {

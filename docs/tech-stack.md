@@ -61,7 +61,7 @@ Pi 的直接依赖和解析到的支撑包统一为 1.0.4，TypeBox 为 1.3.27�
 | 样式     | Tailwind CSS 4.3.3                                                                                                                              |
 | 组件原语 | beUI 优先 + shadcn 补位：beUI 提供组件、原语、默认风格、动效与 Agent 执行反馈，beUI 未覆盖的角色用 shadcn；均经 shadcn CLI 安装                 |
 | 类名工具 | class-variance-authority 0.7.1 处理变体；clsx 2.1.1 加 tailwind-merge 3.7.0 组成 `cn()`；用 `extendTailwindMerge` 让 `text-ui-*` 也参与冲突合并 |
-| 图标     | lucide-react 1.55.0                                                                                                                             |
+| 图标     | lucide-react 1.55.0、@lobehub/icons 5.23.0                                                                                                      |
 | Markdown | micromark 解析 + 自研的 mdast→React 渲染 + shiki/katex                                                                                          |
 | 图表     | mermaid                                                                                                                                         |
 | 状态管理 | Zustand 5.0.15（已安装）；Immer 10.2.0 为后续选型，当前未安装                                                                                   |
@@ -151,3 +151,5 @@ ui 状态使用 Zustand vanilla store，React 订阅由 app 层的 `useSyncExter
 桌面/Web 页面、设置与弹窗使用系统字体栈；代码、模型标识和数值使用系统等宽字体，不打包或请求额外字体文件。beUI Switch 为已复制并按设置组件规范适配的源码，复用现有运行依赖。
 
 模型服务设置的覆盖式滚动条使用经 shadcn CLI 安装并适配 Pencil A13 的 ScrollArea，复用已锁定的 radix-ui 1.7.0 Root/Viewport；beUI 目录没有对应的 ScrollArea 角色。Radix 的滚动条比例计算固定最小滑块为 18px，无法满足 A13 的 24px；因此轨道组合已有 TranscriptScrollbar 的比例、输入和最小长度实现，通过局部样式采用 8px 轨道与 4px 滑块，不改变聊天轨道几何。按钮、输入、开关、复选框、单选按钮、Select、Tooltip 和弹窗继续使用已有 beUI 源码。
+
+ProviderIcon 仅深导入 @lobehub/icons 5.23.0 的 Mono 与 Color SVG 组件。Bun 采用仓库级 `install.peer = false` 策略，避免安装图标库未使用的 antd 与 @lobehub/ui peer；锁文件仍保留这些包的解析元数据。Workspace 必须显式声明实际使用的运行依赖：ui 保留 React 与 React DOM 19.3.0 的 peer 合同，并在 devDependencies 中提供同版本供本地测试与 Vite 构建使用。

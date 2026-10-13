@@ -104,7 +104,7 @@ test("Pencil model panels preserve the composer layout and show catalog facts", 
     expect(panel.top).toBeLessThanOrEqual(list.getBoundingClientRect().top);
     expect(panel.bottom).toBeLessThanOrEqual(innerHeight - 16);
     expect(first.element().getAttribute("data-selected")).toBe("true");
-    expect(first.element().querySelector('[data-provider-brand="openai"]')).not.toBeNull();
+    expect(first.element().querySelector(".lucide-box")).not.toBeNull();
     expect(first.element().querySelector("[data-model-check]")).not.toBeNull();
     expect(detail.element().textContent).toContain("Text / Image");
     expect(detail.element().textContent).toContain("1M");
