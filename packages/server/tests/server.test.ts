@@ -5,7 +5,8 @@ import { mkdtemp, rm, realpath, mkdir, writeFile, symlink } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
 import { join } from "node:path";
-import { createSession, createSessionStore } from "@rukie/agent";
+import { createSession, createSessionStore, listSessions, readSessionSnapshot } from "@rukie/agent";
+import { crashUnsafeEffect } from "../../agent/tests/helpers/native-recovery.ts";
 import { startServer as startServerImpl, AppDatabase, type ServerOptions } from "../src/index.ts";
 
 const startServer = (options: Omit<ServerOptions, "dataRoot">) =>
@@ -1968,3 +1969,137 @@ test("archive refuses running and waiting Sessions but accepts a subscribed idle
     await owner.close();
   }
 }, 5000);
+
+test("session.rename commits unopened titles without unlocking credentials or recovering pending work", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-rename-wire-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const dataRoot = join(homeDir, "desktop-data");
+    const crashed = await crashUnsafeEffect(homeDir, true, { dataRoot });
+    const options = { homeDir, dataRoot, cwd: homeDir, id: crashed.sessionId };
+    const pending = await readSessionSnapshot(options);
+    expect(JSON.stringify(pending)).toContain("Unknown child");
+    const fake = fakeModel([fauxAssistantMessage("must not recover")]);
+    let decryptions = 0;
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fake,
+          encryption: {
+            async encrypt() {
+              throw new Error("unexpected");
+            },
+            async decrypt() {
+              decryptions++;
+              throw new Error("unexpected");
+            },
+          },
+          onHandshake: () => {},
+        }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect(
+      (
+        await client.command("session.rename", {
+          sessionId: crashed.sessionId,
+          title: "  Saved name  ",
+        })
+      ).error,
+    ).toBeUndefined();
+    expect(
+      await client.next(
+        (message) =>
+          message.type === "sessions_changed" &&
+          Array.isArray(message.sessions) &&
+          message.sessions.some(
+            (session) =>
+              typeof session === "object" &&
+              session !== null &&
+              "title" in session &&
+              session.title === "Saved name",
+          ),
+      ),
+    ).toMatchObject({
+      sessions: [
+        expect.objectContaining({
+          id: crashed.sessionId,
+          title: "Saved name",
+          titleSource: "user",
+        }),
+      ],
+    });
+    expect((await readSessionSnapshot(options)).messages).toEqual(pending.messages);
+    expect(fake.contexts).toHaveLength(0);
+    expect(decryptions).toBe(0);
+    expect(
+      client.messages.some(
+        (message) =>
+          message.type === "run_start" ||
+          message.type === "result" ||
+          message.type === "session_state",
+      ),
+    ).toBe(false);
+    expect(
+      (await client.command("session.rename", { sessionId: crashed.sessionId, title: " " })).error,
+    ).toEqual({ code: "invalid_command" });
+    expect(
+      (await client.command("session.rename", { sessionId: "missing", title: "Name" })).error,
+    ).toEqual({ code: "session_not_found" });
+    await server.close();
+    expect(fake.contexts).toHaveLength(0);
+  } finally {
+    await owner.close();
+  }
+});
+
+test("session.rename uses an open owner and reports another host's occupied lease without writing", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-live-rename-wire-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const created = await client.command("session.create", { project: null, text: "hello" });
+    const sessionId = (created.result as { sessionId: string }).sessionId;
+    await client.next((message) => message.type === "result");
+    expect(
+      (await client.command("session.rename", { sessionId, title: "Live name" })).error,
+    ).toBeUndefined();
+    expect(
+      await client.next(
+        (message) => message.type === "session_title_changed" && message.title === "Live name",
+      ),
+    ).toBeDefined();
+    const options = { homeDir, dataRoot: join(homeDir, "desktop-data"), cwd: homeDir };
+    const occupied = await owner.acquire(
+      () => createSession({ ...options, ...fakeModel([]) }),
+      (resource) => resource.close(),
+    );
+    await occupied.rename("External owner");
+    expect(
+      (await client.command("session.rename", { sessionId: occupied.id, title: "Rejected" })).error,
+    ).toEqual({ code: "session_busy" });
+    expect(await listSessions(options)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: occupied.id, title: "External owner" }),
+      ]),
+    );
+  } finally {
+    await owner.close();
+  }
+});

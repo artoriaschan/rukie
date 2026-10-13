@@ -823,7 +823,7 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(2);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(3);
     expect(
       screen
         .getByRole("menuitem")
@@ -838,6 +838,9 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Rename", exact: true }))
+      .toHaveFocus();
     await userEvent.keyboard("u");
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
@@ -852,7 +855,7 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(2);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(3);
     const menu = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
     const point = session.element().getBoundingClientRect();
     await expect

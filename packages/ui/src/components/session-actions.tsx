@@ -1,4 +1,4 @@
-import { Archive, Pin, PinOff, type LucideIcon } from "lucide-react";
+import { Archive, Pencil, Pin, PinOff, type LucideIcon } from "lucide-react";
 import type { WireSessionSummary } from "@rukie/shared";
 import { useAppText } from "../lib/i18n";
 import * as Menu from "./ui/dropdown-menu";
@@ -6,7 +6,7 @@ import { ContextMenuItem } from "./motion/context-menu";
 
 interface SessionAction {
   id: string;
-  label: "app.pin" | "app.unpin" | "app.archive";
+  label: "app.rename" | "app.pin" | "app.unpin" | "app.archive";
   icon: LucideIcon;
   disabled: boolean;
   destructive: boolean;
@@ -19,9 +19,18 @@ export function sessionActions(
   session: WireSessionSummary,
   pinned: boolean,
   onPin: (id: string, pinned: boolean) => void,
+  onRename: (session: WireSessionSummary) => void,
   onArchive: (id: string) => void,
 ): SessionAction[] {
   return [
+    {
+      id: "rename",
+      label: "app.rename",
+      icon: Pencil,
+      disabled: false,
+      destructive: false,
+      onSelect: () => onRename(session),
+    },
     {
       id: "pin",
       label: pinned ? "app.unpin" : "app.pin",

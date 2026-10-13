@@ -46,6 +46,17 @@ function clean(text: string) {
   );
 }
 
+/** User titles share display normalization and reject an empty result; no model-title truncation. */
+export function normalizeUserTitle(title: string): string {
+  const normalized = clean(title);
+  if (!normalized)
+    throw createUserVisibleError("Session Title cannot be empty.", {
+      code: "session-title-empty",
+      params: {},
+    });
+  return normalized;
+}
+
 function framePrompt(prompt: string) {
   const points = Array.from(truncate(prompt, 4096));
   const frame = (length: number) =>
@@ -168,12 +179,7 @@ export function createSessionTitle(options: {
       generation = generate(prompt, controller, revision);
     },
     rename(next: string) {
-      const normalized = clean(next);
-      if (!normalized)
-        throw createUserVisibleError("Session Title cannot be empty.", {
-          code: "session-title-empty",
-          params: {},
-        });
+      const normalized = normalizeUserTitle(next);
       revision++;
       request?.abort();
       attempted = true;

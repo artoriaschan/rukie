@@ -33,3 +33,5 @@ ADR coverage 沿用 spec 已记录的 ADR-0035：归档是应用组织信息，�
 详细日志与启动失败、TDD 红绿、增量有效性位于外部协调验证记录的 `03-verification.md`（`/tmp/rukie-session-sidebar-evidence/`）。ticket06 负责 aggregate static、desktop package 与最终 agent-browser 验收；CI 仍待最终集成提交验收，本工单 resolved 不表示 PR 已合并。
 
 增量接线准备：context-menu 用例先用 typeahead 聚焦 Unpin，再按 ArrowDown 观察 Archive，避免随后 Rename 插入到首项使已有焦点断言依赖初始位置。仅该菜单单例重新验证，1 通过、17 跳过、3.13s（`03-menu-typeahead.log`）；其他运行证据继续复用。
+
+工单02集成增量：合并 `feat/session-sidebar` 的 `5691f7ff`，保留 Rename/Pin/Archive 三项定义、两个动作回调及 required archived wire 字段。仅冲突影响范围复验：server 的 archive/rename 四例通过（2.29s）；Chromium 两文件七例通过（5.55s，包括三个重命名、三个归档与菜单焦点）；server/ui 类型通过。Agent Core 与工单02集成源码相同，沿用其标题写入与租约证据；registry/store 和 queue/job/child 证据仍有效。详见 `03-merge-{server,ui,types}.log`。
