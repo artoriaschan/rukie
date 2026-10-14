@@ -1,15 +1,15 @@
 # 05：插入消息、中断恢复与 Todo 提醒
 
-Status: claimed
+Status: resolved
 
 Blocked by: 01
 
 **What to build:** 按 [spec](../spec.md#插入消息中断恢复与-todo工单-05)，为运行中插入的消息、存在 Unknown Tool Outcome 的续跑和久未更新的 Todo 提供提醒。
 
-- [ ] steer 与 Queued Input 放入时的说明，区分是否打断当前输出
-- [ ] Resume 续跑且存在 Unknown Tool Outcome 时的恢复提醒
-- [ ] Todo 8 Turn 未更新提醒、间隔 8 Turn，上下文看不到清单时立即重新提供
-- [ ] 测试：插入消息两种情形、续跑提醒、Todo 阈值与间隔、Compaction 后重新提供
+- [x] steer 与 Queued Input 放入时的说明，区分是否打断当前输出
+- [x] Resume 续跑且存在 Unknown Tool Outcome 时的恢复提醒
+- [x] Todo 8 Turn 未更新提醒、间隔 8 Turn，上下文看不到清单时立即重新提供
+- [x] 测试：插入消息两种情形、续跑提醒、Todo 阈值与间隔、Compaction 后重新提供
 
 ## Comments
 
@@ -27,3 +27,9 @@ Blocked by: 01
 - Final acceptance repair: queued-human Goal test now verifies exact human admission followed by the arrival notice, one input-arrival Transcript fact, no second Goal round before the human context, and subsequent round/checkpoint ordering. Original old last-message assertion failed before correction; related Goal and queued-input coverage passes. Minimum reproduction: 8 fail / 0 pass, 704ms; corrected minimum: 8 pass / 0 fail, 659ms. Expanded affected files plus direct context/admission consumers: 62 pass / 0 fail, 359 assertions, 3.83s; no case over 1s. Agent types and affected lint pass. Original aggregate remains failed (8 failures), later stages unrun; root coordinates remaining acceptance. Full commands/logs: `/tmp/rukie-reminders-evidence/acceptance-fixes.md`. Status remains claimed.
 
 - Frontend acceptance repair: Image steering asserts exact human image/text then following arrival reminder, preserving ordinary-submit disable and token-position image order; current-output not-interrupted declaration is exact. Related6files117pass/0fail7.92s; additional clock consumers6pass/0fail807ms; strengthened2assertions2pass/0fail844ms. Original1539pass/5fail213.05s remains recorded, not relabelled. All modified cases under1s; targeted types/lint passed. Full commands/failures/evidence: `/tmp/rukie-reminders-evidence/frontend-fixes.md`. Status remains claimed pending root delivery.
+
+### Final delivery verification (2026-10-15)
+
+实现、受影响消费者、文档、评审修复及适用本地验证已完成。工单由独立新 implementer 在独立工作树实施，当前实现代码为 `3652bd51`；本工单的 focused 与增量证据见上方记录，原始失败事实保留。
+
+统一验收结果、ADR Coverage 审阅和证据复用范围由 [spec 交付记录](../spec.md#delivery-and-adr-coverage-review-2026-10-15) 唯一维护。PR [#27](https://github.com/artoriaschan/rukie/pull/27) 在 `feat/system-prompt-reminders` 交付，最新 CI 待验收，尚未合并；`resolved` 不表示 CI 或合并完成。

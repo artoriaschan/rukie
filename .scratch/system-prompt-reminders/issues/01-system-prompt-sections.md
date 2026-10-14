@@ -1,6 +1,6 @@
 # 01：System Prompt 分节生成
 
-Status: claimed
+Status: resolved
 
 **What to build:** 按 [spec](../spec.md#system-prompt工单-01) 与 [ADR-0046](../../../docs/adr/0046-system-prompt-sections-and-reminder-roles.md)，根 Session 用 `section()` 生成 System Prompt，子代理通用规则并入 `SUBAGENT_PROMPT`。
 
@@ -23,3 +23,9 @@ Status: claimed
 - ADR coverage：沿用 ADR-0046 的 section/cache boundary 与消费者约定、ADR-0016 的 Git-only environment 快照；无新增架构取舍。文档更新 architecture 模型上下文与 CONTEXT Session Move。维持 claimed，等待全规格评审；CI 未运行，不声明通过。完整外部证据：`/tmp/rukie-reminders-evidence/01.md` 及统一 verification.md。
 
 - Final acceptance repair: current User Instructions header is attributed by the context-report owner alongside Project Instructions; no compatibility path added. Existing public memory-file attribution and superseded-snapshot reproducer both failed before repair, then passed. Related context-report/context-usage consumer coverage included in 62-pass focused run. Minimum reproduction: 8 fail / 0 pass, 704ms; corrected minimum: 8 pass / 0 fail, 659ms. Expanded affected files plus direct context/admission consumers: 62 pass / 0 fail, 359 assertions, 3.83s; no case over 1s. Agent types and affected lint pass. Original aggregate remains failed (8 failures), later stages unrun; root coordinates remaining acceptance. Full commands/logs: `/tmp/rukie-reminders-evidence/acceptance-fixes.md`. Status remains claimed.
+
+### Final delivery verification (2026-10-15)
+
+实现、受影响消费者、文档、评审修复及适用本地验证已完成。工单由独立新 implementer 在独立工作树实施，当前实现代码为 `3652bd51`；本工单的 focused 与增量证据见上方记录，原始失败事实保留。
+
+统一验收结果、ADR Coverage 审阅和证据复用范围由 [spec 交付记录](../spec.md#delivery-and-adr-coverage-review-2026-10-15) 唯一维护。PR [#27](https://github.com/artoriaschan/rukie/pull/27) 在 `feat/system-prompt-reminders` 交付，最新 CI 待验收，尚未合并；`resolved` 不表示 CI 或合并完成。

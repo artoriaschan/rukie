@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: System Prompt 分节生成、System Reminder 角色与时间提醒
 
@@ -90,15 +90,16 @@ System Prompt 只有身份和几条概括规则，缺少指令优先级、提醒
 
 ## ADR Coverage
 
-| 决定或修改                                         | 归属                                                                                                                                                | 理由                                                   |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| System Prompt 由会话内稳定输入经 `section()` 生成  | 新增 [ADR-0046](../../docs/adr/0046-system-prompt-sections-and-reminder-roles.md)；沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md) | 改变 System Prompt 的组成与缓存边界，复用 harness 原语 |
-| System Reminder 分快照与事件、可信度与自动事件声明 | 新增 ADR-0046；沿用 [ADR-0016](../../docs/adr/0016-tool-state-and-context-projection.md)                                                            | 改变模型上下文的长期契约，状态投影规则不变             |
-| 时间提醒格式与刷新条件                             | 新增 ADR-0046                                                                                                                                       | 改变来源名称与刷新语义                                 |
-| 运行纠偏提醒只提醒不拦截                           | 新增 ADR-0046                                                                                                                                       | 新的 Session 运行层义务                                |
-| Plan Mode 提醒按效果描述约束                       | 沿用 [ADR-0015](../../docs/adr/0015-frontend-interactions-and-plan-mode.md)                                                                         | 仍为提示约束，不限制工具                               |
-| 模型可见文本为英文、无默认语言                     | 沿用 [ADR-0008](../../docs/adr/0008-locale-agnostic-agent-core.md)                                                                                  | 回复语言跟随用户，不读取 locale                        |
-| 各提醒的具体措辞                                   | 无需 ADR                                                                                                                                            | 文案调整，不改变持久化、授权或执行合同                 |
+| 决定或修改                                         | 归属                                                                                                                                                | 理由                                                                              |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| System Prompt 由会话内稳定输入经 `section()` 生成  | 新增 [ADR-0046](../../docs/adr/0046-system-prompt-sections-and-reminder-roles.md)；沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md) | 改变 System Prompt 的组成与缓存边界，复用 harness 原语                            |
+| System Reminder 分快照与事件、可信度与自动事件声明 | 新增 ADR-0046；沿用 [ADR-0016](../../docs/adr/0016-tool-state-and-context-projection.md)                                                            | 改变模型上下文的长期契约，状态投影规则不变                                        |
+| 时间提醒格式与刷新条件                             | 新增 ADR-0046                                                                                                                                       | 改变来源名称与刷新语义                                                            |
+| 运行纠偏提醒只提醒不拦截                           | 新增 ADR-0046                                                                                                                                       | 新的 Session 运行层义务                                                           |
+| Plan Mode 提醒按效果描述约束                       | 沿用 [ADR-0015](../../docs/adr/0015-frontend-interactions-and-plan-mode.md)                                                                         | 仍为提示约束，不限制工具                                                          |
+| 模型可见文本为英文、无默认语言                     | 沿用 [ADR-0008](../../docs/adr/0008-locale-agnostic-agent-core.md)                                                                                  | 回复语言跟随用户，不读取 locale                                                   |
+| Todo 更新、插入消息及 Compaction 快照的持久化标记  | 沿用 [ADR-0016](../../docs/adr/0016-tool-state-and-context-projection.md) 与 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)            | 使用原生事务、提交身份与消息事实重建年龄、来源和去重，不替换原生 inbox 或重放规则 |
+| 各提醒的具体措辞                                   | 无需 ADR                                                                                                                                            | 文案调整，不改变持久化、授权或执行合同                                            |
 
 ## Deferred Guidance
 
@@ -129,3 +130,21 @@ System Prompt 只有身份和几条概括规则，缺少指令优先级、提醒
 - 决策来源：2026-10-14 设计访谈。
 - 依赖顺序：01 → {02, 03, 04, 05}；02 至 05 相互独立。
 - 交付：同一分支 `feat/system-prompt-reminders`，一个 PR，按工单分提交。
+
+## Comments
+
+### Delivery and ADR coverage review (2026-10-15)
+
+工单 01–05 与规格在本次收尾变更中一起关闭。每个工单均使用新的子代理、独立分支和工作树实施，随后由新的 merger 集成到 `feat/system-prompt-reminders`；仅本规格在一个 PR [#27](https://github.com/artoriaschan/rukie/pull/27) 交付。`resolved` 表示实现、文档、评审修复及适用本地验证完成，不代表 CI 或合并完成。
+
+Standards 首轮两项 P2（超时清理与 TZ 恢复）已修复并通过增量复审。Spec 首轮两项 P2（子 Session Compaction 时间快照、父消息插入提醒）已通过公开红绿回归修复；增量复审发现的预提交重放重复提醒也有持久化原生存储回归并已修复。验收发现的上下文标题归属、通知显示形态、模型包裹消费者、length 续写与时钟边界均已分组复现并修复；主代理核对最新生产 delta，无遗留可行动评审问题。
+
+逐项对照最终 diff、工单与规格完成 ADR Coverage：ADR-0046 覆盖稳定 section、快照/事件可信度、时间与纠偏；ADR-0024/0016 覆盖原生任务、提交与 Transcript 投影，Todo/插入/时间标记均经原生事务与身份重建；ADR-0015 保持 Plan Mode 确认和权限合同；ADR-0008 保持英文模型指引与 locale 无关；子代理沿用既有拼接和 Run Outcome，未新增兼容、迁移或替代模型循环，未发现与已接受 ADR 的冲突。具体文案和测试 fixture 不引入新架构决定。
+
+本地最终代码 `3652bd51` 的静态证据、原失败及增量修复证据见各工单 Final delivery verification：首轮完整检查失败 8 项，前端续跑失败 5 项，均保留原始事实且经最小复现和相关消费者检查修复，未无理由重跑已通过阶段。发布构建与 113 项发布测试通过，Node/Chromium desktop 275 项通过。行为证据按实际源码差异复用；本收尾提交仅修改 tracker/验证记录，运行文档、格式、工单与 diff 检查。CI 的最终全量验收仍待最新 PR 提交检查；尚未合并。
+
+主代理统一验收的实际命令与状态：`env -u NO_COLOR bun run check` 在 `86ad6fca` 静态检查通过，第一阶段 527 pass / 0 fail，Agent e2e 1483 pass / 8 fail（136.67s），退出 1；八个失败在最小集合复现后批量修复，相关 62 测试通过（3.83s）。`env -u NO_COLOR bun test --parallel=1 packages/coding-agent` 在 `dcae2fe1` 为 1539 pass / 5 fail（213.05s），退出 1；五个失败、原生通知形态与注入时钟修复后，相关 117 项（7.92s）、身份/因果消费者 6 项（807ms）、强化断言 2 项（844ms）及活跃 Job 时钟定点 1 项通过。原失败 aggregate/前端结果未改称通过，未失效的证据沿用；所有修改的 focused 用例低于 1 秒。
+
+在最终代码 `3652bd51` 上，新发布产物通过 `bun --no-orphans scripts/release/build.ts --out <隔离目录>`；`env -u NO_COLOR RUKIE_RELEASE_ARTIFACTS=<隔离目录> bun test --parallel=1 scripts/release/tests` 为 113 pass / 0 fail、2160 断言（162.86s）；`env -u NO_COLOR bun run test:desktop` 为 46 文件 / 275 测试通过（21.35s）。相关 Agent/coding-agent 类型、定向 lint/格式、文档与 diff 检查通过；局部类型合同的全部调用方已更新并检查，后续未新增导出、依赖或跨层导入使已通过的 Knip/边界证据失效。验收使用隔离 HOME 和已安装 Chromium，不访问真实用户设置或 Session；临时 HOME/发布产物在完成后删除。
+
+验证协调与完整原始日志保存在 `/tmp/rukie-reminders-evidence/verification.md` 及其记录文件。主代理已审计本任务 9 个临时工作树均干净、提交均为集成分支祖先；清理只覆盖这些工作树和临时分支，保留集成分支、PR 及其他未合并工作。

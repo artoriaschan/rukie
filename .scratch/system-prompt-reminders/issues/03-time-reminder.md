@@ -1,6 +1,6 @@
 # 03：时间提醒
 
-Status: claimed
+Status: resolved
 
 Blocked by: 01
 
@@ -25,3 +25,9 @@ Blocked by: 01
 - Frontend acceptance repair: Frontend timestamp collisions inject same Session clock into preparation and resumed app. Confirmed production controller start Date.now versus driver end Harness.now mismatch; required controller clock shares Session clock and all direct consumers updated. Exact future/past collisions, startedAt/endedAt and history boundaries pass; identity/observation/usage/causal consumers pass. Related6files117pass/0fail7.92s; additional clock consumers6pass/0fail807ms; strengthened2assertions2pass/0fail844ms. Original1539pass/5fail213.05s remains recorded, not relabelled. All modified cases under1s; targeted types/lint passed. Full commands/failures/evidence: `/tmp/rukie-reminders-evidence/frontend-fixes.md`. Status remains claimed pending root delivery.
 
 - Exact clock follow-up: active Background Job native user notification bypassed Session now. Public active-completion case with fixed Session clock reproduced timestamp mismatch (1fail222ms), then passed after changing that one timestamp (1pass223ms); exact model wrapper, display/source=job and request count retained. Log/details: `/tmp/rukie-reminders-evidence/frontend-fixes.md`. Other passed evidence reused.
+
+### Final delivery verification (2026-10-15)
+
+实现、受影响消费者、文档、评审修复及适用本地验证已完成。工单由独立新 implementer 在独立工作树实施，当前实现代码为 `3652bd51`；本工单的 focused 与增量证据见上方记录，原始失败事实保留。
+
+统一验收结果、ADR Coverage 审阅和证据复用范围由 [spec 交付记录](../spec.md#delivery-and-adr-coverage-review-2026-10-15) 唯一维护。PR [#27](https://github.com/artoriaschan/rukie/pull/27) 在 `feat/system-prompt-reminders` 交付，最新 CI 待验收，尚未合并；`resolved` 不表示 CI 或合并完成。
