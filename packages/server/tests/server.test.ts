@@ -2,6 +2,7 @@ import { ownResources } from "./helpers/owned-resources.ts";
 import FakeTimers from "@sinonjs/fake-timers";
 import { expect, test, spyOn } from "bun:test";
 import * as filesystem from "node:fs/promises";
+import type { MakeDirectoryOptions, Mode, PathLike } from "node:fs";
 import { mkdtemp, rm, realpath, mkdir, writeFile, symlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
@@ -4737,14 +4738,30 @@ test("worktree settings list, force deletion retains branches and refresh repair
     }[];
     const originalMkdir = filesystem.mkdir;
     let injectFailure = false;
-    const lostPersistence = spyOn(filesystem, "mkdir").mockImplementation(async (path, options) => {
+    function mkdirWithFailure(
+      path: PathLike,
+      options: MakeDirectoryOptions & { recursive: true },
+    ): Promise<string | undefined>;
+    function mkdirWithFailure(
+      path: PathLike,
+      options?: Mode | (MakeDirectoryOptions & { recursive?: false }) | null,
+    ): Promise<void>;
+    function mkdirWithFailure(
+      path: PathLike,
+      options?: Mode | MakeDirectoryOptions | null,
+    ): Promise<string | undefined>;
+    async function mkdirWithFailure(
+      path: PathLike,
+      options?: Mode | MakeDirectoryOptions | null,
+    ): Promise<string | void> {
       if (
         injectFailure &&
         String(path) === join(homeDir, "desktop-data", "sessions", interruptedId)
       )
         throw new Error("Session storage temporarily unavailable after Git removal");
       return originalMkdir(path, options);
-    });
+    }
+    const lostPersistence = spyOn(filesystem, "mkdir").mockImplementation(mkdirWithFailure);
     const realRm = filesystem.rm;
     const afterGit = spyOn(filesystem, "rm").mockImplementation(async (path, options) => {
       const result = await realRm(path, options);

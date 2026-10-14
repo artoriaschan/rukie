@@ -114,7 +114,7 @@ export async function startServer(options: ServerOptions) {
   await mkdir(workspace, { recursive: true });
   // Resolve initial OS aliases once, then pin every owned ancestor's filesystem identity.
   const ownedWorkspace = await realpath(workspace);
-  const ownedAncestry = [];
+  const ownedAncestry: { path: string; dev: number; ino: number }[] = [];
   for (let path = ownedWorkspace; ; path = dirname(path)) {
     const info = await lstat(path);
     ownedAncestry.push({ path, dev: info.dev, ino: info.ino });
