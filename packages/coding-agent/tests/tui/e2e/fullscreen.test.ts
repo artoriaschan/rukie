@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { main } from "../../../src/index.ts";
 import { start } from "../helpers/app";
+import type { SessionOptions } from "@rukie/agent";
 
 test.each(["ask", "auto-review"])(
   "%s approval uses content height and arrow selection leaves every option on its row",
@@ -269,13 +270,22 @@ test("Home and End use the available input columns rather than the longest draft
 });
 
 test("approval details scroll independently with pinned choices and preserve the draft", async () => {
-  const app = await start(["write"], { columns: 40, rows: 12 });
+  const session: Partial<SessionOptions> = {};
+  const app = await start(["write"], {
+    columns: 40,
+    rows: 12,
+    session,
+    prepare: async (root) => {
+      session.cwd = join(root, "project");
+      await Bun.write(join(session.cwd, ".keep"), "");
+    },
+  });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.stdin.write("next draft");
     await app.waitFor(() => app.screen().includes("❯ next draft"));
     app.calls[0]!.tool("write", {
-      path: "file.txt",
+      path: "../file.txt",
       content: "start-marker " + "abcdefghij ".repeat(40) + "tail-marker",
     });
     await app.waitFor(() => app.screen().some((line) => line.includes("等待审批")));
