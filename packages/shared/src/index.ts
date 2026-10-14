@@ -65,6 +65,8 @@ export {
   type WireResponse,
   type WireProject,
   type WireSessionSummary,
+  type WireProjectGit,
+  type WireWorktree,
   type WireInteractionIdentity,
   type WirePermissionRequest,
   type WirePreferences,

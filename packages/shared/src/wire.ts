@@ -74,6 +74,7 @@ export const WireCommandSchema = Type.Union([
   }),
   command("project.remove", { projectId: id }),
   command("project.trust", { projectId: id }),
+  command("project.git", { projectId: id }),
   command("sessions.list", {}),
   command("session.create", {
     project: Type.Union([id, Type.Null()]),
@@ -89,6 +90,7 @@ export const WireCommandSchema = Type.Union([
       ),
     ),
     permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
+    worktree: Type.Optional(Type.Boolean()),
   }),
   command("session.subscribe", session),
   command("session.unsubscribe", session),
@@ -130,6 +132,8 @@ export const WireCommandSchema = Type.Union([
 export type WireCommand = Static<typeof WireCommandSchema>;
 
 export type WireErrorCode =
+  | "worktree_failed"
+  | "worktree_session"
   | "model_services_unavailable"
   | "model_unavailable"
   | "session_busy"
@@ -155,6 +159,19 @@ export interface WireProject {
   primary: string;
   trusted: boolean;
 }
+export interface WireProjectGit {
+  repository: boolean;
+  branch: string | null;
+  head: string;
+}
+export interface WireWorktree {
+  id: string;
+  projectId: string;
+  repository: string;
+  branch: string;
+  path: string;
+  createdAt: number;
+}
 export interface WireSessionSummary {
   id: string;
   title: string;
@@ -164,8 +181,9 @@ export interface WireSessionSummary {
   messageCount: number;
   model: string;
   cwd: string;
-  /** Presentation ownership by filesystem identity; cwd keeps its persisted spelling. */
+  /** Persistent Project ownership; cwd keeps its persisted spelling. */
   projectId: string | null;
+  worktree: { id: string; branch: string } | null;
   running?: boolean;
   waitingPermission?: boolean;
 }

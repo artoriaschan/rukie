@@ -15,6 +15,7 @@ import {
   type ModelService,
   type ModelServiceSummary,
   type WireSessionSummary,
+  type WireWorktree,
 } from "@rukie/shared";
 
 const RegistrySchema = Type.Object({
@@ -31,6 +32,17 @@ const RegistrySchema = Type.Object({
   archived: Type.Array(Type.String()),
   preferences: WirePreferencesSchema,
 });
+const WorktreeSchema = Type.Object(
+  {
+    id: Type.String(),
+    projectId: Type.String(),
+    repository: Type.String(),
+    branch: Type.String(),
+    path: Type.String(),
+    createdAt: Type.Number(),
+  },
+  { additionalProperties: false },
+);
 const SessionIndexSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
@@ -41,6 +53,7 @@ const SessionIndexSchema = Type.Object({
   model: Type.String(),
   cwd: Type.String(),
   projectId: Type.Union([Type.String(), Type.Null()]),
+  worktree: Type.Union([Type.Object({ id: Type.String(), branch: Type.String() }), Type.Null()]),
   running: Type.Optional(Type.Boolean()),
   waitingPermission: Type.Optional(Type.Boolean()),
 });
@@ -65,7 +78,8 @@ export class AppDatabase {
         CREATE TABLE IF NOT EXISTS models (provider TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE, id TEXT NOT NULL, PRIMARY KEY(provider,id));
         CREATE TABLE IF NOT EXISTS credentials (id TEXT PRIMARY KEY, ciphertext TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS session_index (id TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS session_bindings (sessionId TEXT PRIMARY KEY, projectId TEXT NOT NULL, worktreeId TEXT);`);
+        CREATE TABLE IF NOT EXISTS session_bindings (sessionId TEXT PRIMARY KEY, projectId TEXT NOT NULL, worktreeId TEXT);
+        CREATE TABLE IF NOT EXISTS worktrees (id TEXT PRIMARY KEY, value TEXT NOT NULL);`);
       return new AppDatabase(db);
     } catch (error) {
       await db.close();
@@ -258,6 +272,21 @@ export class AppDatabase {
   }
   async saveCapability(key: string, value: unknown): Promise<void> {
     await this.db.transaction((tx) => this.putDocument(tx, `capability:${key}`, value));
+  }
+  async worktrees(): Promise<WireWorktree[]> {
+    const rows = await this.db.all<{ value: string }>("SELECT value FROM worktrees ORDER BY id");
+    return rows.map((row) => {
+      const value: unknown = JSON.parse(row.value);
+      if (!Value.Check(WorktreeSchema, value)) throw new Error("Invalid stored worktree");
+      return value;
+    });
+  }
+  async saveWorktree(value: WireWorktree): Promise<void> {
+    if (!Value.Check(WorktreeSchema, value)) throw new Error("Invalid worktree");
+    await this.db.run("INSERT INTO worktrees VALUES (?, ?)", value.id, JSON.stringify(value));
+  }
+  async removeWorktree(id: string): Promise<void> {
+    await this.db.run("DELETE FROM worktrees WHERE id = ?", id);
   }
   async sessionBinding(
     sessionId: string,

@@ -58,7 +58,7 @@ export function sessionActions(
       id: "move",
       label: "app.move-project",
       icon: FolderInput,
-      disabled: Boolean(session.running || session.waitingPermission),
+      disabled: Boolean(session.worktree || session.running || session.waitingPermission),
       destructive: false,
       targets: [
         ...targets.map((project) => ({

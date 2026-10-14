@@ -232,3 +232,7 @@ _Avoid_: classifier, auto approval, safety check
 
 **Session 访问范围（Session Access Scope）**:
 Agent Core 用于文件工具 Permission Mode 默认值的真实路径范围。cwd 与附加目录可读写，已发现技能根目录与本 Session 的 Background Job 输出目录只读；子 Session 共享父范围。范围内默认放行，范围外或只读范围内写入按 Permission Mode 询问、评审或放行。显式权限规则与 hooks 保持优先，范围不限制 bash 或 MCP，也不是操作系统 sandbox。见 [ADR-0044](docs/adr/0044-session-access-scope.md) 与[权限参考](docs/permission-rules.md#session-访问范围)。
+
+## 独立工作树
+
+独立工作树是 Git Project 新建 Session 时从当前分支（detached HEAD 时为当前提交）派生的隔离 Git 工作目录。每棵工作树绑定一个 Session，应用数据库保存源仓库、派生分支、目录与创建时间，Session 绑定保存 `worktreeId`。其 cwd 为工作树目录，附加目录排除 Project 主目录，信任从所属 Project 派生。工作树 Session 不随主目录变更同步且不能 Session Move；删除 Session 或移除 Project 保留工作树与分支。创建、信任与生命周期见 [ADR-0045](docs/adr/0045-git-worktree-sessions.md)。

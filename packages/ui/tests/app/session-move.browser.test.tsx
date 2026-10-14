@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
+import type { WireSessionSummary } from "@rukie/shared";
 import { App } from "../../src/app";
 import { modelServicesFixture } from "../helpers/model-services";
 import "../../src/theme.css";
@@ -129,12 +130,13 @@ const moveProjects = [
     trusted: false,
   },
 ];
-const moveSession = {
+const moveSession: WireSessionSummary = {
   id: "one",
   title: "Fix compiler",
   titleSource: "prompt",
   cwd: "/project/docs",
   projectId: "project",
+  worktree: null,
   updatedAt: 20,
   createdAt: 10,
   messageCount: 1,
@@ -232,7 +234,7 @@ test("moving to an untrusted Project confirms first; cancel sends nothing and fa
   }
 });
 
-test.each(["running", "waitingPermission"] as const)(
+test.each(["running", "waitingPermission", "worktree"] as const)(
   "%s Sessions disable moving from all three menus",
   async (status) => {
     await page.viewport(1280, 900);
@@ -244,7 +246,13 @@ test.each(["running", "waitingPermission"] as const)(
       />,
     );
     try {
-      await publish(connection.port, changed({ ...moveSession, [status]: true }));
+      await publish(
+        connection.port,
+        changed({
+          ...moveSession,
+          [status]: status === "worktree" ? { id: "w", branch: "rukie/worktree-test" } : true,
+        }),
+      );
       const row = screen.getByRole("button", {
         name: /^(?:Running |Waiting for confirmation )?Fix compiler$/,
       });
@@ -272,7 +280,13 @@ test.each(["running", "waitingPermission"] as const)(
         .getByRole("button", { name: "Fix compiler", exact: true })
         .click({ button: "right" });
       await screen.getByRole("menuitem", { name: "Move to Project", exact: true }).click();
-      await publish(connection.port, changed({ ...moveSession, [status]: true }));
+      await publish(
+        connection.port,
+        changed({
+          ...moveSession,
+          [status]: status === "worktree" ? { id: "w", branch: "rukie/worktree-test" } : true,
+        }),
+      );
       await expect
         .element(screen.getByRole("menuitem", { name: "Target", exact: true }))
         .toBeDisabled();

@@ -28,7 +28,7 @@ Session 摘要的必填 `projectId: string | null` 读取应用数据根 `app.sq
 
 `project.update { projectId, name, directories, primary, trusted? }` 提交完整编辑状态，复用创建的名称、目录、保留路径和冲突校验，并排除自身；目录非空，主目录必须属于目录列表。已信任 Project 新增目录要求 `trusted: true`，否则返回 `project_trust_required`；未信任 Project 编辑后保持未信任。只改名、移除目录或切换主目录无需确认。`project.remove { projectId }` 先检查全部绑定 Session 的忙碌状态，任一执行中、等待 Interaction、正在打开或被其他进程占用时返回 `session_busy`；然后逐个经 `session.delete` 相同路径删除（清除置顶、归档与绑定），全部成功后移除登记并返回 `{}`。Project 文件保留；中途失败保留 Project，已删除 Session 不恢复。所有 Project 变更在同一队列中校验与持久化，成功后发布 `sessions_changed`。
 
-`project.trust { projectId }` 在补确认后授予信任。打开 Session 时 server 按绑定 Project 派生 `additionalDirectories`（除 cwd 外的项目目录）与精确信任，不写回用户 settings；用户 settings 自身登记的信任仍有效。主目录切换后，下一次空闲打开执行前先经 Session Move 同步 cwd；只读订阅不移动，活跃 Run 不中断。配置、目录与信任变化在后续空闲执行边界重新加载，见 [ADR-0043](../../docs/adr/0043-session-project-binding.md)。
+`project.trust { projectId }` 在补确认后授予信任。打开 Session 时 server 按绑定 Project 派生 `additionalDirectories`（普通 Session 除 cwd 外的项目目录；工作树 Session 除 Project 主目录外的目录）与精确信任，不写回用户 settings；用户 settings 自身登记的信任仍有效。主目录切换后，下一次空闲打开执行前先经 Session Move 同步 cwd；只读订阅不移动，活跃 Run 不中断。配置、目录与信任变化在后续空闲执行边界重新加载，见 [ADR-0043](../../docs/adr/0043-session-project-binding.md)。
 
 `session.move { sessionId, projectId }` 的 `projectId` 为 `string | null`：字符串移到另一个已登记 Project 的当前主目录；`null` 将项目 Session 移出到新建的空 `workspace/<id>/` 并删除 Project 绑定，已在“对话”时拒绝重复移出（`invalid_command`）。移动失败清理刚创建的空目录；移出后删除 Session 会按对话目录合同清理新目录，项目文件保留。调用方先对未信任目标完成信任确认。已绑定目标 Project 时返回 `invalid_command`；执行中、有挂起 Interaction、正在打开或被其他进程占用时返回 `session_busy`。已打开且空闲的 Session 先关闭再移动，未打开的 Session 仅取得存储租约修改 cwd 和 Transcript，不恢复任务、创建 Run、解析模型或解密凭据。成功返回 `{}`，保留 id、标题、置顶与归档状态，通过 `sessions_changed` 发布新 cwd；不复制或删除目录文件。下一次 Run 的移动 reminder、环境快照与跨移动回退由 [Agent Core](../agent/README.md) 拥有，见 [ADR-0040](../../docs/adr/0040-session-move-transcript-boundary.md)。
 
@@ -57,3 +57,9 @@ Session 摘要的必填 `projectId: string | null` 读取应用数据根 `app.sq
 `system-keychain` 和 `memory` 后端通过鉴权会话 WS 提供 `modelServices.list / save / delete / test / revealKey / prices`，复用 Electron 私有模型服务处理器。`delete`、`test` 与 `revealKey` 用 `providerId` 指定供应商；`save` 接收共享 schema 的供应商与 `keep`、`delete` 或 `replace` 明文凭证，立即按 `provider:<id>` 加密后由数据库同事务提交供应商与密文。加密失败不写供应商。Base URL 按字符串保存，包括空字符串与无法解析的内容；compat 和默认推理档位仍按协议合同校验。模型目录跳过整体停用或 Base URL 无法解析的服务，保留各模型的启用配置，并从服务携带展示图标键。`electron` 后端返回 `model_services_unavailable`，继续走 main 的私有通道。
 
 显式 `revealKey` 只返回指定供应商的 `{value: string | null}`；明文、显示结果和底层凭证错误不进入广播、snapshot、日志或模型上下文。WS 命令保留相同 Origin、token、字段校验和关闭时等待命令完成的规则；模型测试仅发送短连接探测，失败返回安全协议错误。凭证通道边界见 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md)。
+
+## Git Project 独立工作树
+
+`project.git { projectId }` 返回 `{ repository, branch, head }`；主目录不是 Git 仓库顶层、没有提交或 Git 不可用时返回 `{ repository: false, branch: null, head: "" }`。detached HEAD 返回 `branch: null` 与当前提交。`session.create` 可传 `worktree: true`，只接受已登记 Project。server 创建 `dataRoot/worktrees/<短id>/<仓库目录名>` 和独立生成 id 的 `rukie/worktree-<短id>` 分支，已有分支重试，不 fetch、不带入主目录未提交改动。Git 创建失败返回带输出摘要的 `worktree_failed`，不创建 Session；后续打开失败回滚新工作树及记录并返回打开错误。
+
+本机应用数据库保存工作树记录，Session 绑定保存 `worktreeId`；摘要必填 `worktree: { id, branch } | null`。工作树 Session 从所属 Project 派生信任，附加目录排除主目录，重启和后续执行保留工作树 cwd、跳过主目录懒同步；`session.move` 返回 `worktree_session`。删除 Session 或移除 Project 仅清除 Session 与绑定，保留工作树、记录及分支。`host.revealPath` 与 `host.openInTerminal` 允许已记录的工作树目录及真实子路径，仍拒绝符号链接逃逸；应用数据根的工作树不能登记为 Project。完整决定见 [ADR-0045](../../docs/adr/0045-git-worktree-sessions.md)。

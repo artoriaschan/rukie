@@ -88,6 +88,7 @@ test.each([
       titleSource: "prompt",
       cwd: "/custom/home/repo",
       projectId: "project",
+      worktree: null,
       model: "test/script",
       createdAt: 1,
       updatedAt: 2,

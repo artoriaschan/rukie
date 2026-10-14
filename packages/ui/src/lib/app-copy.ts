@@ -1,6 +1,12 @@
 import { modelServiceCopy } from "./model-service-copy";
 export const appCopy = {
   en: {
+    "app.current-branch": "Current branch: {{branch}}",
+    "app.use-worktree": "Use an independent worktree",
+    "app.worktree-hint":
+      "The next new Session will create an independent worktree from {{branch}} without changing the primary folder.",
+    "app.error-worktree_failed": "Could not create an independent worktree: {{message}}",
+    "app.error-worktree_session": "Worktree Sessions cannot move to another Project.",
     "app.edit-project": "Edit project",
     "app.remove-local-project": "Remove local project",
     "app.remove-project": "Remove project",
@@ -234,6 +240,11 @@ export const appCopy = {
     "app.max": "Maximum",
   },
   zh: {
+    "app.current-branch": "当前分支：{{branch}}",
+    "app.use-worktree": "使用独立工作树",
+    "app.worktree-hint": "下一个新会话将从 {{branch}} 创建独立工作树，不影响主目录。",
+    "app.error-worktree_failed": "无法创建独立工作树：{{message}}",
+    "app.error-worktree_session": "独立工作树会话不能移动到其他项目。",
     "app.edit-project": "编辑项目",
     "app.remove-local-project": "移除本地项目",
     "app.remove-project": "移除项目",

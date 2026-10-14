@@ -117,6 +117,7 @@ const session: WireSessionSummary = {
   titleSource: "prompt",
   cwd: "/project",
   projectId: "project",
+  worktree: null,
   model: "test/script",
   createdAt: 1,
   updatedAt: 2,
@@ -765,7 +766,7 @@ test("canonical Project edits retain alias Session membership, title, count and 
     />,
   );
   try {
-    const aliasSession = { ...session, cwd: "/alias", projectId: "project" };
+    const aliasSession = { ...session, cwd: "/alias", projectId: "project", worktree: null };
     await changeProjects(
       connection.port,
       [{ ...project, directories: ["/canonical"], primary: "/canonical", name: "Renamed" }],

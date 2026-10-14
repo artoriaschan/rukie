@@ -14,7 +14,7 @@ macOS 启动时通过用户的登录交互 shell 读取环境变量，使 Finder
 
 每个新对话独占应用数据根的 `workspace/<id>/`。永久删除对话会一并删除该目录中的文件，确认框说明此行为；删除项目中的 Session 保留项目文件。旧 cwd 为 `workspace/` 根的 Session 不迁移，删除时保留根目录。目录生命周期由 [server](../server/README.md) 持有。
 
-[DesktopHost](../ui/src/host/index.ts) 提供 `getConnection`、`pickProjectFolder` 和 `modelServices.list/save/delete/revealKey`。`pickProjectFolder(multiple?)` 默认支持多选文件夹，`false` 限定单目录选择，返回 `Promise<string[] | null>`，取消返回 `null`；Project 创建与信任确认由 [UI](../ui/README.md#连接与交互) 负责。模型服务列表仅包含凭证存在状态，保存可保留、替换或删除凭证；`revealKey(id)` 仅供主动显示指定供应商的 API Key，不开放任意解密；普通启动和列表不解密，展示值仅存在当前详情内存，失败保留密文。preload 暴露为 `window.rukieHost`；main 只接受本窗口的主 frame 且 URL 为 `app://rukie` 的 IPC。显示路径与打开终端由 app 经 `host.revealPath` / `host.openInTerminal` wire 命令交给 sidecar；main 与 preload 不再提供这两个 IPC。sidecar 只接受已存在的绝对路径，限制在已登记项目根或对话目录根 workspace 及其子路径，拒绝符号链接逃逸。外部进程使用参数向量，不拼 shell 或 AppleScript。
+[DesktopHost](../ui/src/host/index.ts) 提供 `getConnection`、`pickProjectFolder` 和 `modelServices.list/save/delete/revealKey`。`pickProjectFolder(multiple?)` 默认支持多选文件夹，`false` 限定单目录选择，返回 `Promise<string[] | null>`，取消返回 `null`；Project 创建与信任确认由 [UI](../ui/README.md#连接与交互) 负责。模型服务列表仅包含凭证存在状态，保存可保留、替换或删除凭证；`revealKey(id)` 仅供主动显示指定供应商的 API Key，不开放任意解密；普通启动和列表不解密，展示值仅存在当前详情内存，失败保留密文。preload 暴露为 `window.rukieHost`；main 只接受本窗口的主 frame 且 URL 为 `app://rukie` 的 IPC。显示路径与打开终端由 app 经 `host.revealPath` / `host.openInTerminal` wire 命令交给 sidecar；main 与 preload 不再提供这两个 IPC。sidecar 只接受已存在的绝对路径，限制在已登记项目根、对话目录根 workspace 或已记录工作树目录及其子路径，拒绝符号链接逃逸。外部进程使用参数向量，不拼 shell 或 AppleScript。
 
 [safeStorage 服务](src/main/secrets.ts) 由 main 持有，按供应商、OAuth 或配置身份绑定密文，sidecar 经独立随机 token 的私有 loopback 通道调用；renderer Origin 一律拒绝。加密不可用、系统授权取消、解密失败均返回可重试错误，保留旧密文，禁止明文及 basic_text fallback。服务仅在显式凭证操作或执行用途调用系统加解密，普通启动不初始化 Cookie 加密。真实系统加密验收与 mock 测试分开，见[存储票据 06](../../.scratch/desktop-storage/issues/06-integration-and-packaged-acceptance.md)。
 
@@ -69,3 +69,5 @@ macOS 应用图标直接使用 [brand/rukie-app-icon.icns](../../brand/rukie-app
 Electron 在初始化窗口和 sidecar 前取得单实例锁；第二实例退出并让现有窗口恢复、聚焦。宿主关闭拒绝新 IPC，幂等 shutdown 等待 sidecar 实际退出后关闭私有加密服务；sidecar 排空输出、Session 与 SQLite，释放执行 lease。系统凭证只通过明确录入/替换/删除操作接触 safeStorage；取消、系统加密不可用或解密失败不能报告保存成功。
 
 模型高级设置的压缩阈值填写上下文占用百分比（1–100），工具迭代填写每次 Run 的整批工具轮数上限；达到上限后模型可在无工具请求中总结。留空保留默认行为。Temperature 与 USD/百万 Token 价格按选定模型生效，价格来源仅为元数据。当前锁定 Harness 的子代理压缩沿用根 Session 策略，子代理不同模型的阈值不单独生效。
+
+Git Project 的新聊天显示当前分支，可选“使用独立工作树”；开启后菜单说明下一会话的来源，创建失败保留选择和输入并显示原因。非 Git 主目录隐藏入口；detached HEAD 显示提交。工作树 Session 的“移到项目”在右键、行内更多与标题栏菜单均禁用。删除 Session 或移除 Project 保留工作树及分支；目录归属和信任由 [server](../server/README.md#git-project-独立工作树) 管理。

@@ -30,6 +30,7 @@ import {
   type WireResponse,
   type WireProject,
   type WireSessionSummary,
+  type WireWorktree,
   WIRE_SUBPROTOCOL,
   ModelServiceSchema,
   ModelPriceRequestSchema,
@@ -41,6 +42,8 @@ import { parseWireCommand } from "./command.ts";
 import { AppDatabase, type ApplicationRegistry } from "./storage/app-database.ts";
 import { secretVault, type SecretEncryption, type EncryptionBackend } from "./storage/secrets.ts";
 import { applicationMcpPersistence, applicationConfiguration } from "./storage/configuration.ts";
+
+import { projectGit, createWorktree, discardUnopenedWorktree } from "./worktrees.ts";
 
 type Registry = ApplicationRegistry;
 export interface ServerOptions {
@@ -486,7 +489,9 @@ export async function startServer(options: ServerOptions) {
           permissionMode: initial?.permissionMode,
           cwd,
           additionalDirectories: owningProject?.project.directories.filter(
-            (_, index) => owningProject.directories[index] !== cwdIdentity,
+            (_, index) =>
+              owningProject.directories[index] !==
+              (binding?.worktreeId || initial?.worktree ? owningProject.primary : cwdIdentity),
           ),
           homeDir: options.homeDir,
           dataRoot: options.dataRoot,
@@ -562,11 +567,14 @@ export async function startServer(options: ServerOptions) {
         homeDir: options.homeDir,
         onWarning: warning,
       });
+      const worktrees = await localDatabase.worktrees();
       const projected = await Promise.all(
         committed.map(async (summary) => {
           const binding = await localDatabase.sessionBinding(summary.id);
+          const worktree = worktrees.find((item) => item.id === binding?.worktreeId);
           return {
             ...summary,
+            worktree: worktree ? { id: worktree.id, branch: worktree.branch } : null,
             projectId: binding?.projectId ?? null,
             running: sessions.get(summary.id)?.running ?? false,
             waitingPermission: [...pending.values()].some((item) => item.sessionId === summary.id),
@@ -787,8 +795,17 @@ export async function startServer(options: ServerOptions) {
           return hostOperation(command, {
             platform: options.hostPlatform ?? process.platform,
             execute: options.executeHost ?? executeHost,
-            roots: [...registry.projects.flatMap((project) => project.directories), workspace],
+            roots: [
+              ...registry.projects.flatMap((project) => project.directories),
+              workspace,
+              ...(await localDatabase.worktrees()).map((item) => item.path),
+            ],
           });
+        case "project.git": {
+          const project = registry.projects.find((item) => item.id === command.projectId);
+          if (!project) throw new CommandError("project_not_found");
+          return projectGit(project.primary);
+        }
         case "projects.list":
           return runtime.runPromise(
             Effect.gen(function* () {
@@ -910,11 +927,30 @@ export async function startServer(options: ServerOptions) {
           return summaries();
         case "session.create": {
           return mutateProjects(async () => {
-            const cwd =
+            const primary =
               command.project === null
                 ? join(workspace, crypto.randomUUID())
                 : registry.projects.find((p) => p.id === command.project)?.primary;
-            if (!cwd) throw new CommandError("project_not_found");
+            if (!primary) throw new CommandError("project_not_found");
+            let cwd: string = primary;
+            if (command.worktree && command.project === null)
+              throw new CommandError("invalid_command");
+            let worktree: WireWorktree | undefined;
+            if (command.worktree && command.project) {
+              try {
+                worktree = await createWorktree(directory, command.project, cwd);
+                await localDatabase.saveWorktree(worktree);
+                cwd = worktree.path;
+              } catch (error) {
+                if (worktree)
+                  await discardUnopenedWorktree(worktree).catch((cleanup) =>
+                    warning(String(cleanup)),
+                  );
+                throw new CommandError("worktree_failed", {
+                  message: String(error instanceof Error ? error.message : error),
+                });
+              }
+            }
             if (command.project === null) await mkdir(cwd);
             let session: Session;
             try {
@@ -925,6 +961,12 @@ export async function startServer(options: ServerOptions) {
                 }),
               );
             } catch (error) {
+              if (worktree) {
+                await discardUnopenedWorktree(worktree).catch((cleanup) =>
+                  warning(String(cleanup)),
+                );
+                await localDatabase.removeWorktree(worktree.id);
+              }
               if (command.project === null)
                 await rmdir(cwd).catch((cleanupError: unknown) =>
                   warning(
@@ -934,7 +976,7 @@ export async function startServer(options: ServerOptions) {
               throw error;
             }
             if (command.project !== null)
-              await localDatabase.bindSession(session.id, command.project);
+              await localDatabase.bindSession(session.id, command.project, worktree?.id);
             subscribe(socket, session);
             const requestId = await startRun(session, command.text, command.images);
             await changed();
@@ -1091,6 +1133,7 @@ export async function startServer(options: ServerOptions) {
           if (project && removingProjects.has(project.id)) throw new CommandError("session_busy");
           const summary = (await summaries()).find((item) => item.id === command.sessionId);
           if (!summary) throw new CommandError("session_not_found");
+          if (summary.worktree) throw new CommandError("worktree_session");
           if (summary.projectId === command.projectId) throw new CommandError("invalid_command");
           const current = sessions.get(command.sessionId);
           if (
