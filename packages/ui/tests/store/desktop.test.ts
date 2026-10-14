@@ -351,3 +351,48 @@ test("multi-directory Projects parse complete state and reject missing membershi
     store.receive({ ...message, projects: [invalid] });
   expect(store.getState().projects).toEqual([project]);
 });
+
+test("Project edit and removal snapshots preserve Session membership facts, pin and archive state", () => {
+  const store = createDesktopStore();
+  const session = {
+    id: "s",
+    title: "Kept",
+    titleSource: "prompt",
+    messageCount: 1,
+    model: "test/script",
+    cwd: "/first",
+    createdAt: 1,
+    updatedAt: 2,
+  };
+  const project = {
+    id: "p",
+    name: "Edited Project",
+    directories: ["/first", "/second"],
+    primary: "/second",
+    trusted: true,
+  };
+  const message = {
+    type: "sessions_changed",
+    projects: [project],
+    sessions: [session],
+    pinned: ["s"],
+    archived: ["archived"],
+    preferences: {},
+  };
+  store.receive(message);
+  expect(store.getState()).toMatchObject({
+    projects: [project],
+    sessions: [session],
+    pinned: ["s"],
+    archived: ["archived"],
+  });
+  store.receive({ ...message, projects: [{ ...project, name: 42 }] });
+  expect(store.getState().projects).toEqual([project]);
+  store.receive({ ...message, projects: [] });
+  expect(store.getState()).toMatchObject({
+    projects: [],
+    sessions: [session],
+    pinned: ["s"],
+    archived: ["archived"],
+  });
+});

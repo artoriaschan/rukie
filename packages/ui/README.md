@@ -20,7 +20,7 @@ wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `
 
 ⌘N 新建对话，⌘K / Ctrl+K 打开搜索，⌃1–⌃9 按当前未归档 Session 的排序选择 Session，⌥⌘P 置顶或取消置顶。分组折叠、显示与排序通过 `preferences.set` 保存。输入框 Enter 发送、Shift+Enter 换行；输入法组合中的 Enter 不发送。纯图标控件带 tooltip 和可访问名称。
 
-Project 按 Session cwd 匹配任一目录分组；新 Session 使用主目录，切换主目录后已有 Session 仍保留原 cwd。添加项目与搜索的“打开文件夹”共用多目录选择、主目录设置和信任确认；取消创建确认不发送命令，确认后发送 `project.create`。所选主目录已登记时直接在原 Project 中新建草稿；未信任 Project 在新建或打开 Session 前补确认，拒绝仍可使用 Session，但不加载项目级配置。目录所有权、真实路径与信任边界见 [server README](../server/README.md#行为与限制)。
+Project 按 Session cwd 匹配任一目录分组；新 Session 使用主目录，切换主目录后已有 Session 仍保留原 cwd。添加项目与搜索的“打开文件夹”共用多目录选择、主目录设置和信任确认；取消创建确认不发送命令，确认后发送带必填名称的 `project.create { name, directories, trusted: true }`。所选主目录已登记时直接在原 Project 中新建草稿；未信任 Project 在新建或打开 Session 前补确认，拒绝仍可使用 Session，但不加载项目级配置。wire client 支持 `project.update { projectId, name, directories, primary, trusted? }` 与 `project.remove { projectId }`，并保留 `project_trust_required` 错误供新增目录确认流程使用；store 接收编辑与移除后的完整 Project 快照，同时保留 Session、置顶和归档状态。目录所有权、真实路径与信任边界见 [server README](../server/README.md#行为与限制)。
 
 会话行右键、行内更多与标题栏菜单共用“移动到项目”，目标排除当前所属 Project，执行中或等待确认时禁用。未信任目标先确认并完成 `project.trust`，再发送 `session.move`；取消不移动。成功后按新 cwd 分组，当前 Session 重新订阅，失败显示本地化错误并保留当前对话。Session Move 的持久化和执行边界见 [server README](../server/README.md#行为与限制)。
 

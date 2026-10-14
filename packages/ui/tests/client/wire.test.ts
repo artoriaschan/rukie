@@ -138,3 +138,27 @@ test("wire errors retain validated presentation parameters", async () => {
     await server.close();
   }
 });
+
+test("Project trust failures retain their code for the edit confirmation flow", async () => {
+  const server = await startWireFixture();
+  const client = createWireClient({ getConnection: async () => server.connection });
+  try {
+    await client.connect();
+    await fetch(`http://127.0.0.1:${server.connection.port}/error`, {
+      method: "POST",
+      body: JSON.stringify({ type: "project.update", code: "project_trust_required" }),
+    });
+    await expect(
+      client.request({
+        type: "project.update",
+        projectId: "project",
+        name: "Edited",
+        directories: ["/project", "/added"],
+        primary: "/project",
+      }),
+    ).rejects.toMatchObject({ code: "project_trust_required" });
+  } finally {
+    client.close();
+    await server.close();
+  }
+});

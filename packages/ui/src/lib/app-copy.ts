@@ -14,6 +14,7 @@ export const appCopy = {
     "app.trust": "Trust",
     "app.error-project_conflict": "This folder already belongs to {{project}}.",
     "app.error-project_reserved": "Application data folders cannot be added as a Project.",
+    "app.error-project_trust_required": "Confirm trust for the newly added folders before saving.",
 
     ...modelServiceCopy.en,
     "app.error-model_services_unavailable":
@@ -226,6 +227,7 @@ export const appCopy = {
     "app.trust": "信任",
     "app.error-project_conflict": "此文件夹已属于项目 {{project}}。",
     "app.error-project_reserved": "应用数据目录不能添加为项目。",
+    "app.error-project_trust_required": "保存前请确认信任新添加的文件夹。",
 
     ...modelServiceCopy.zh,
     "app.error-model_services_unavailable": "模型服务管理需要浏览器 sidecar 加密后端。",

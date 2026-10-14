@@ -67,6 +67,7 @@ test("multiple folders choose first primary, focus reveals primary action and ca
       .toContainEqual(
         expect.objectContaining({
           type: "project.create",
+          name: "first",
           directories: ["/first", "/second"],
           trusted: true,
         }),

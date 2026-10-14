@@ -133,6 +133,7 @@ test("Tab focused Open folder executes the host picker with Enter", async () => 
       .toContainEqual(
         expect.objectContaining({
           type: "project.create",
+          name: "chosen-folder",
           directories: ["/chosen-folder"],
           trusted: true,
         }),
@@ -344,6 +345,7 @@ test("search keyboard crosses both groups and hands folder dialog focus back to 
       .toContainEqual(
         expect.objectContaining({
           type: "project.create",
+          name: "new-project",
           directories: ["/new-project"],
           trusted: true,
         }),

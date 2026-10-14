@@ -590,6 +590,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       confirm: async () => {
         const result = await client.request({
           type: "project.create",
+          name: selectedPrimary.split(/[\\/]/).filter(Boolean).at(-1) ?? selectedPrimary,
           directories: ordered,
           trusted: true,
         });

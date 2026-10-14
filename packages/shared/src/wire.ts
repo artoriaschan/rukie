@@ -61,9 +61,18 @@ export const WireCommandSchema = Type.Union([
   command("host.openInTerminal", { path: id }),
   command("projects.list", {}),
   command("project.create", {
+    name: Type.String(),
     directories: Type.Array(id, { minItems: 1, uniqueItems: true }),
     trusted: Type.Literal(true),
   }),
+  command("project.update", {
+    projectId: id,
+    name: Type.String(),
+    directories: Type.Array(id, { minItems: 1, uniqueItems: true }),
+    primary: id,
+    trusted: Type.Optional(Type.Boolean()),
+  }),
+  command("project.remove", { projectId: id }),
   command("project.trust", { projectId: id }),
   command("project.setPrimary", { projectId: id, directory: id }),
   command("sessions.list", {}),
@@ -130,6 +139,7 @@ export type WireErrorCode =
   | "project_not_found"
   | "project_conflict"
   | "project_reserved"
+  | "project_trust_required"
   | "invalid_command"
   | "not_queued"
   | "interaction_stale"
