@@ -1096,13 +1096,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       const history = await fullHistory(owner.id);
       for (const entry of history) {
         const facts = entry.kind === "rukie.message-facts" ? entryData(entry) : undefined;
-        if (
-          Number(entry.conversationId) !== Number(owner.id) ||
-          facts?.arrivedDuringRun !== true ||
-          typeof facts.entryId !== "number"
-        )
+        if (Number(entry.conversationId) !== Number(owner.id) || facts?.arrivedDuringRun !== true)
           continue;
-        const inputEntry = facts.entryId;
+        const submission =
+          typeof facts.requestId === "string"
+            ? await lease.storage.submissionByRequest(owner.id, facts.requestId, ctx)
+            : undefined;
+        const inputEntry = typeof facts.entryId === "number" ? facts.entryId : submission?.entry;
+        if (inputEntry === undefined) continue;
         if (
           history.some(
             (item) =>
@@ -1110,7 +1111,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           )
         )
           continue;
-        const content = inputArrivalContent(history, inputEntry);
+        const content = inputArrivalContent(
+          history,
+          Number(inputEntry),
+          facts.arrivalOrigin === "parent" ? "parent" : "user",
+        );
         const timestamp = (options.now?.() ?? new Date()).getTime();
         await owner.commit(
           (tx) =>
@@ -1924,13 +1929,32 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 await prepareAcceptedInputReminders(child, ctx);
                 await correctionLimit(child, ctx);
                 const view = await child.context(ctx);
+                const childHistory = await fullHistory(child.id);
+                const compacted = childHistory.findLast(
+                  (entry) =>
+                    entry.kind === "pi.compaction" &&
+                    Number(entry.conversationId) === Number(child.id),
+                );
+                const freshTime =
+                  compacted &&
+                  !childHistory.some(
+                    (entry) =>
+                      entry.kind === "rukie.reminder" &&
+                      entryData(entry)?.source === "time" &&
+                      entryData(entry)?.afterCompactionId === Number(compacted.id),
+                  );
                 const reminders = await collectReminders({
                   messages: transcriptMessages(
                     view.entries.filter(
                       (entry) =>
-                        entry.kind !== "rukie.reminder" ||
-                        entryData(entry)?.source !== "deferred-tools" ||
-                        Number(entry.conversationId) === Number(child.id),
+                        !(
+                          freshTime &&
+                          entry.kind === "rukie.reminder" &&
+                          entryData(entry)?.source === "time"
+                        ) &&
+                        (entry.kind !== "rukie.reminder" ||
+                          entryData(entry)?.source !== "deferred-tools" ||
+                          Number(entry.conversationId) === Number(child.id)),
                     ),
                   ),
                   cwd,
@@ -1970,10 +1994,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   if (reminder.source === "file-changes")
                     await childTracking.persistReminder(reminder);
                   else
-                    await child.commit(
-                      (tx) => tx.appendEntry(child.id, reminderEntry(reminder)),
-                      ctx,
-                    );
+                    await child.commit((tx) => {
+                      const entry = reminderEntry(reminder);
+                      return tx.appendEntry(child.id, {
+                        ...entry,
+                        data: {
+                          source: reminder.source,
+                          content: reminder.content,
+                          timestamp: reminder.timestamp,
+                          ...(freshTime && reminder.source === "time"
+                            ? { afterCompactionId: Number(compacted.id) }
+                            : {}),
+                        },
+                      });
+                    }, ctx);
                 return { messages: modelContextMessages(await child.context(ctx)) };
               },
               afterResponse: async (message, _api, ctx) => {

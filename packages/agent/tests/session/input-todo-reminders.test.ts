@@ -11,9 +11,14 @@ import { inputArrivalContent } from "../../src/session/input-todo-reminders.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 
 // The formatter consumes committed native records; Session placement wiring is covered in queued-input.
-test.each([false, true])(
-  "interrupted output reports discarded calls only without a receipt (%s)",
-  async (receipt) => {
+test.each([
+  [false, "user"],
+  [true, "user"],
+  [false, "parent"],
+  [true, "parent"],
+] as const)(
+  "interrupted output reports discarded calls only without a receipt (%s, %s)",
+  async (receipt, origin) => {
     const fake = fakeModel([]);
     const harness = await Harness.open(
       new MemoryStorage(),
@@ -60,7 +65,7 @@ test.each([false, true])(
         );
       }, BACKGROUND_CONTEXT);
       const history = (await conversation.entries({}, 100, undefined, BACKGROUND_CONTEXT)).items;
-      const content = inputArrivalContent(history, inputEntry);
+      const content = inputArrivalContent(history, inputEntry, origin);
       expect(content).toContain("preceding output was interrupted");
       expect(content).toContain("partial text is not a completed answer");
       expect(content.includes("Unfinished tool calls in that aborted output were discarded")).toBe(

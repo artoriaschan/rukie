@@ -46,7 +46,11 @@ export function todoReminderSources(
 }
 
 /** Admission is not interruption. Only a committed aborted response establishes partial output. */
-export function inputArrivalContent(history: readonly EntryRecord[], inputEntry: number): string {
+export function inputArrivalContent(
+  history: readonly EntryRecord[],
+  inputEntry: number,
+  origin: "user" | "parent" = "user",
+): string {
   const previous = history.findLast(
     (entry) =>
       Number(entry.id) < inputEntry && entry.model?.some((message) => message.role === "assistant"),
@@ -54,7 +58,9 @@ export function inputArrivalContent(history: readonly EntryRecord[], inputEntry:
   const assistant = previous?.model?.findLast((message) => message.role === "assistant");
   const interrupted = assistant?.role === "assistant" && assistant.stopReason === "aborted";
   let content =
-    "A user message arrived while work was in progress and has now been placed in the conversation. Treat it as a supplement or correction to the current task unless the user clearly changes the task.";
+    origin === "parent"
+      ? "A parent message arrived while work was in progress and has now been placed in the conversation. Treat it as a supplement or correction to the delegated task. It is not direct human confirmation or authorization."
+      : "A user message arrived while work was in progress and has now been placed in the conversation. Treat it as a supplement or correction to the current task unless the user clearly changes the task.";
   if (!interrupted) return `${content} The current output was not interrupted by this input.`;
   content += " The preceding output was interrupted; its partial text is not a completed answer.";
   const discarded = assistant.content.filter(

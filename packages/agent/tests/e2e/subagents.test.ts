@@ -1,6 +1,6 @@
 import { runRequest } from "../helpers/crashed-subagents.ts";
 import { withAuxiliaryRequests, modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, onTestFinished, test } from "bun:test";
 import {
   createAssistantMessageEventStream,
   fauxAssistantMessage,
@@ -860,7 +860,17 @@ test("a human quote queued before reporter admission stays human through placeme
     fauxAssistantMessage("report handled"),
   ]);
   parent = await createSession({ ...dirs, ...fake });
-  const off = parent.subscribe((event) => {
+  let off = () => {};
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup = () =>
+    (cleanupPromise ??= (async () => {
+      childRelease.resolve();
+      rootRelease.resolve();
+      off();
+      await parent.close();
+    })());
+  onTestFinished(cleanup);
+  off = parent.subscribe((event) => {
     const entries =
       event.type === "entry_appended"
         ? [event.entry]
@@ -908,9 +918,6 @@ test("a human quote queued before reporter admission stays human through placeme
       await resumed.close();
     }
   } finally {
-    childRelease.resolve();
-    rootRelease.resolve();
-    off();
-    await parent.close();
+    await cleanup();
   }
 });

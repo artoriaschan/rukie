@@ -249,6 +249,17 @@ test("send_message steers the active child before its next model request and lis
             JSON.stringify(message.content).includes("adjust investigation"),
         ),
       ).toBe(true);
+      const arrival = context.messages.filter(
+        (message) =>
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("A parent message arrived"),
+      );
+      expect(arrival).toHaveLength(1);
+      expect(JSON.stringify(arrival)).toContain(
+        "The current output was not interrupted by this input.",
+      );
+      expect(JSON.stringify(arrival)).toContain("not direct human confirmation or authorization");
+      expect(JSON.stringify(arrival)).not.toContain("A user message arrived");
       return fauxAssistantMessage("adjusted conclusion");
     }
     const result = context.messages.findLast((message) => message.role === "toolResult")!;
@@ -391,6 +402,13 @@ test("parallel messages to an idle cold child start one Run and steer the follow
         return call("todo_write", { todos: [] });
       }
       expect(JSON.stringify(context.messages)).toContain("second instruction");
+      const arrivals = context.messages.filter(
+        (message) =>
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("A parent message arrived"),
+      );
+      expect(arrivals).toHaveLength(1);
+      expect(JSON.stringify(arrivals)).toContain("not direct human confirmation or authorization");
       return fauxAssistantMessage("combined done");
     }
     const results = context.messages.filter(

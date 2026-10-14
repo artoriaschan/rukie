@@ -170,17 +170,17 @@ test("context visualization paints full, partial, free and reserved cells with t
     session: {
       model: {
         ...fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 }).getModel(),
-        // A non-round window keeps estimated schema usage between grid cells.
-        contextWindow: 12100,
+        // Leave free cells beyond the larger rendered prompt and keep usage off a grid boundary.
+        contextWindow: 20123,
       },
     },
   });
   try {
     await app.waitFor(() => screen(app).includes("╭"));
     app.stdin.write("/context\r");
-    await app.waitFor(() => screen(app).includes("/12.1k tokens"));
+    await app.waitFor(() => screen(app).includes("/20.1k tokens"));
     for (const symbol of ["⛁", "⛀", "⛶", "⛝"]) expect(screen(app)).toContain(symbol);
-    expect(screen(app)).toContain("Compaction reserve: 2.4k tokens (20.0%)");
+    expect(screen(app)).toContain("Compaction reserve: 4k tokens (20.0%)");
     expect(screen(app)).not.toContain("Messages: 0 tokens (0.0%)");
     expect(app.calls).toHaveLength(0);
   } finally {
