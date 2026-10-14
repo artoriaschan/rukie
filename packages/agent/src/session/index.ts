@@ -1094,6 +1094,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const resumedRunAnchors = new Map<number, number>();
     async function prepareAcceptedInputReminders(owner: Conversation, ctx: Context) {
       const history = await fullHistory(owner.id);
+      const remindedInputs = new Set<number>();
+      for (const entry of history) {
+        const inputEntry =
+          entry.kind === "rukie.reminder" ? entryData(entry)?.arrivalEntryId : undefined;
+        if (typeof inputEntry === "number") remindedInputs.add(inputEntry);
+      }
       for (const entry of history) {
         const facts = entry.kind === "rukie.message-facts" ? entryData(entry) : undefined;
         if (Number(entry.conversationId) !== Number(owner.id) || facts?.arrivedDuringRun !== true)
@@ -1104,13 +1110,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             : undefined;
         const inputEntry = typeof facts.entryId === "number" ? facts.entryId : submission?.entry;
         if (inputEntry === undefined) continue;
-        if (
-          history.some(
-            (item) =>
-              item.kind === "rukie.reminder" && entryData(item)?.arrivalEntryId === inputEntry,
-          )
-        )
-          continue;
+        if (remindedInputs.has(Number(inputEntry))) continue;
         const content = inputArrivalContent(
           history,
           Number(inputEntry),
@@ -1135,6 +1135,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }),
           ctx,
         );
+        // Replayed pre-admission facts can resolve to the same native placement.
+        remindedInputs.add(Number(inputEntry));
       }
       const anchor = resumedRunAnchors.get(Number(owner.id));
       if (anchor === undefined) return;
