@@ -1,0 +1,19 @@
+packages/ui/src/components/motion/animated-badge.tsx
+  s_0ed9cd8eba432e::t_edc355f987e7e9 1-12,14-15,17-70,72-86,88-128,130-156,158-190,192-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "f3934f47693053db948fa74c63f4e2abd4b6630b",
+  "prompts": {},
+  "sessions": {
+    "s_0ed9cd8eba432e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a138a9-fed3-7e92-bc38-1b2e53ed718c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
