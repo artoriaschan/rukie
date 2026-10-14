@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: claimed
 
 # Spec: 三栏外壳底色与项目管理界面
 
@@ -198,3 +198,7 @@ Project 创建后无法再管理：不能改名、不能增删目录、不能从
   - 移除确认按参考截图使用柔和 destructive。
 - 本 spec 在 `docs/shell-surface-palette` 分支生成，该分支已有 DESIGN.md 的三栏底色、阴影与详情卡锚定修改（未提交）。交付拆分（单个 PR 或按工单 01 与 02–05 拆成两个 PR）在实施开始时决定。
 - 上一份 spec [project-directories](../project-directories/spec.md) 中“创建后增删目录、移除 Project、重命名 Project”的 Out of Scope 由本 spec 接续。
+
+## Comments
+
+- 2026-10-14：按 implement-spec 在 `feat/shell-palette-project-management` 单一集成分支交付，基于最新 `origin/main`（`b0f50385`）。每张票据使用新的实现子代理和独立工作树，每次集成使用新的合并子代理；测试接缝采用本 spec 的 Testing Decisions。适用验证与 GUI 验收由主代理统一协调，完成后记录各工单证据并交付一个 PR，合并仍等待用户授权。
