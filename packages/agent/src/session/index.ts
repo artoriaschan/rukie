@@ -1,5 +1,6 @@
 import { planModeExitReminder } from "../tools/plan-mode/index.ts";
 import { automaticEventContent, automaticEventMessage } from "../reminders/index.ts";
+import { createRunCorrections } from "./run-corrections.ts";
 import { readTranscript, readRunSummaries } from "./history.ts";
 import { PendingInputFactsDoc, queuedInputProjection, type QueuedInput } from "./queued-inputs.ts";
 export type { QueuedInput } from "./queued-inputs.ts";
@@ -42,6 +43,7 @@ import {
   InboxDoc,
   type TaskId,
   type EntryDraft,
+  type EntryId,
   type Storage,
   type EntryRecord,
   ROOT_CONVERSATION_ID,
@@ -199,7 +201,7 @@ export interface SessionOptions {
   onMcpAuth?: OnMcpAuth;
   /** Load this project's .mcp.json even when it is not in the user trust list. */
   trustProjectMcp?: boolean;
-  /** Clock used for reminder dates and backup retention; defaults to the local current date. */
+  /** Clock used for message timestamps, time reminders and backup retention; defaults to local time. */
   now?: () => Date;
   /** Additional content sources, compared with the latest persisted reminder per source. */
   reminderSources?: ReminderSource[];
@@ -577,6 +579,132 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       } while (cursor !== undefined && count <= configured);
       return { count, limit: configured };
     };
+    const corrections = new Map<number, ReturnType<typeof createRunCorrections>>();
+    const runCorrections = async (target: typeof conversation, ctx: Context) => {
+      const live = await harness.snapshot(LiveDoc, target.id, ctx);
+      const view = await target.context(ctx);
+      const epoch = Math.max(
+        0,
+        ...view.entries
+          .filter((entry) => entry.kind === "pi.compaction")
+          .map((entry) => Number(entry.id)),
+      );
+      const controller = corrections.get(Number(target.id)) ?? createRunCorrections();
+      corrections.set(Number(target.id), controller);
+      const todos = await harness.snapshot(todoState.document, target.id, ctx);
+      const completed = Array.isArray(todos?.value)
+        ? todos.value.filter(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              !Array.isArray(item) &&
+              item.status === "completed",
+          ).length
+        : 0;
+      controller.enter(`${live?.run?.inputs[0]}:${epoch}`, completed);
+      return controller;
+    };
+    const correctionTools = async (
+      target: typeof conversation,
+      assistant: EntryId,
+      results: readonly EntryId[],
+      ctx: Context,
+    ) => {
+      const controller = await runCorrections(target, ctx);
+      const committed = await lease.storage.entry(assistant, ctx);
+      const outputs = await Promise.all(results.map((id) => lease.storage.entry(id, ctx)));
+      for (const message of committed?.entry.model ?? []) {
+        if (message.role !== "assistant") continue;
+        for (const part of message.content) {
+          if (part.type !== "toolCall") continue;
+          const result = outputs
+            .flatMap((output) => output?.entry.model ?? [])
+            .find((output) => output.role === "toolResult" && output.toolCallId === part.id);
+          // A completed review or admitted delegation is progress even when its
+          // reply requests revision or the delegated child later reports failure.
+          const details = result?.role === "toolResult" ? result.details : undefined;
+          const actionCompleted =
+            result?.role === "toolResult" &&
+            (!result.isError ||
+              (details &&
+                typeof details === "object" &&
+                !Array.isArray(details) &&
+                ((part.name === "exit_plan_mode" &&
+                  "kind" in details &&
+                  ["approve", "revise", "takeover"].includes(String(details.kind))) ||
+                  (["subagent", "subagent_fork"].includes(part.name) &&
+                    "childSessionId" in details &&
+                    typeof details.childSessionId === "string"))));
+          for (const content of controller.tool(
+            part.name,
+            part.arguments,
+            Boolean(actionCompleted),
+          ))
+            await target.commit(
+              (tx) =>
+                tx.appendEntry(
+                  target.id,
+                  reminderEntry({
+                    role: "system-reminder",
+                    source: "run-correction",
+                    content,
+                    timestamp: options.now?.().getTime() ?? Date.now(),
+                  }),
+                ),
+              ctx,
+            );
+        }
+      }
+    };
+    const correctionLimit = async (target: typeof conversation, ctx: Context) => {
+      const rounds = await toolRounds(target.id, ctx);
+      const content = (await runCorrections(target, ctx)).limit(
+        Boolean(rounds && rounds.count >= rounds.limit),
+      );
+      if (content)
+        await target.commit(
+          (tx) =>
+            tx.appendEntry(
+              target.id,
+              reminderEntry({
+                role: "system-reminder",
+                source: "tool-limit",
+                content,
+                timestamp: options.now?.().getTime() ?? Date.now(),
+              }),
+            ),
+          ctx,
+        );
+    };
+    const lengthContinuation = async (
+      target: typeof conversation,
+      answer: Message,
+      taskId: TaskId,
+      ctx: Context,
+    ) => {
+      if (answer.role !== "assistant" || answer.stopReason !== "length") return undefined;
+      const content = (await runCorrections(target, ctx)).length(
+        answer.content.some((part) => part.type === "text" && part.text.trim().length > 0),
+      );
+      if (!content) return undefined;
+      await target.commit(
+        (tx) =>
+          tx.appendEntry(target.id, {
+            kind: "rukie.message-facts",
+            data: {
+              taskId: Number(taskId),
+              content,
+              reminderContent: content.slice(
+                "<system-reminder>\n".length,
+                -"\n</system-reminder>".length,
+              ),
+              source: "output-length",
+            },
+          }),
+        ctx,
+      );
+      return { continue: content };
+    };
     const providerConversation = async (sessionId: string) => {
       const known = providerConversations.get(sessionId);
       if (known !== undefined) return known;
@@ -632,6 +760,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               : undefined,
         ),
         registry,
+        now: () => (options.now?.() ?? new Date()).getTime(),
         env: () => env,
         settings: {
           retry: { enabled: false },
@@ -1713,6 +1842,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     );
                   pending.pending = [];
                 }, ctx);
+                await correctionLimit(child, ctx);
                 const view = await child.context(ctx);
                 const reminders = await collectReminders({
                   messages: transcriptMessages(
@@ -1760,6 +1890,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return { messages: modelContextMessages(await child.context(ctx)) };
               },
               afterResponse: async (message, _api, ctx) => {
+                message.timestamp = (options.now?.() ?? new Date()).getTime();
                 childTracking.finishRequest();
                 if (await guardToolResponse(message, child.id, ctx)) {
                   warn("Model exceeded the configured tool iteration limit");
@@ -1768,6 +1899,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }
               },
               onYield: async (answer, api, ctx) => {
+                const length = await lengthContinuation(child, answer, api.taskId, ctx);
+                if (length) return length;
                 if (answer.stopReason !== "stop") return undefined;
                 const live = await harness.snapshot(LiveDoc, child.id, ctx);
                 const anchor = Number(live?.run?.inputs[0]);
@@ -1863,6 +1996,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return { continue: result.reason };
               },
               afterTools: async (_assistant, results, _api, ctx) => {
+                await correctionTools(child, _assistant, results, ctx);
                 const committed = await Promise.all(
                   results.map((id) => lease.storage.entry(id, ctx)),
                 );
@@ -2516,6 +2650,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     await checkpoints.start(String(record.entry));
                   }
                 }
+                await correctionLimit(conversation, ctx);
                 await goalRuntime.prepareWrapup(ctx);
                 await prepareReminders(ctx);
                 await toolLoadout.publish(ctx);
@@ -2525,6 +2660,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return { messages: contextMessages };
               },
               afterResponse: async (message, api, ctx) => {
+                message.timestamp = (options.now?.() ?? new Date()).getTime();
                 tracking.finishRequest();
                 if (await guardToolResponse(message, conversation.id, ctx)) {
                   warn("Model exceeded the configured tool iteration limit");
@@ -2578,6 +2714,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   );
               },
               afterTools: async (_assistant, results, _api, ctx) => {
+                await correctionTools(conversation, _assistant, results, ctx);
                 const committed = await Promise.all(
                   results.map((id) => lease.storage.entry(id, ctx)),
                 );
@@ -2628,6 +2765,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 // A caller may start steering before releasing an in-flight model.
                 // Complete host admission before the native final boundary selects its inbox.
                 await Promise.allSettled(steeringAdmissions);
+                const length = await lengthContinuation(conversation, _answer, api.taskId, ctx);
+                if (length) return length;
                 if (_answer.stopReason !== "stop") {
                   await goalRuntime.clearActivation(ctx);
                   return undefined;

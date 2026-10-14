@@ -51,10 +51,12 @@ test.each(["error", "aborted", "length"] as const)(
     dirs = await tempDirs();
     const fake = fakeModel([
       call("subagent", { description: "Stopped", prompt: "child", run_in_background: false }),
-      fauxAssistantMessage("partial", {
-        stopReason,
-        ...(stopReason === "error" && { errorMessage: "provider failure" }),
-      }),
+      ...Array.from({ length: stopReason === "length" ? 4 : 1 }, () =>
+        fauxAssistantMessage("partial", {
+          stopReason,
+          ...(stopReason === "error" && { errorMessage: "provider failure" }),
+        }),
+      ),
       fauxAssistantMessage("parent done"),
     ]);
     const parent = await createSession({ ...dirs, ...fake });

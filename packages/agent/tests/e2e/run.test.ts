@@ -308,12 +308,12 @@ test("an aborted Run preserves admitted input without treating live partial outp
   expect(next.contexts[0]!.messages.filter((message) => message.role !== "system")).toMatchObject([
     {
       role: "user",
-      content: [{ type: "text", text: expect.stringContaining("<system-reminder>\ncwd:") }],
+      content: [{ type: "text", text: expect.stringContaining("<system-reminder>\ngit branch:") }],
     },
     {
       role: "user",
       content: [
-        { type: "text", text: expect.stringContaining("<system-reminder>\nCurrent date:") },
+        { type: "text", text: expect.stringContaining("<system-reminder>\nCurrent time:") },
       ],
     },
     { role: "user", content: [{ type: "text", text: "interrupted prompt" }] },

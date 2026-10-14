@@ -64,6 +64,7 @@ test("model advanced defaults reach requests, prices and Run tool iteration boun
     expect(bodies[0]!.temperature).toBe(0.7);
     expect(bodies[0]!.tools).toBeDefined();
     expect(bodies[1]!.tools).toBeUndefined();
+    expect(JSON.stringify(bodies[1])).toContain("Stop calling tools and summarize");
     const id = session.id;
     await session.close();
     session = await createSession({
