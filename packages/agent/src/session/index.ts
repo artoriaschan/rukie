@@ -199,7 +199,7 @@ export interface SessionOptions {
   onMcpAuth?: OnMcpAuth;
   /** Load this project's .mcp.json even when it is not in the user trust list. */
   trustProjectMcp?: boolean;
-  /** Clock used for reminder dates and backup retention; defaults to the local current date. */
+  /** Clock used for message timestamps, time reminders and backup retention; defaults to local time. */
   now?: () => Date;
   /** Additional content sources, compared with the latest persisted reminder per source. */
   reminderSources?: ReminderSource[];
@@ -758,6 +758,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               : undefined,
         ),
         registry,
+        now: () => (options.now?.() ?? new Date()).getTime(),
         env: () => env,
         settings: {
           retry: { enabled: false },
@@ -1885,6 +1886,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return { messages: modelContextMessages(await child.context(ctx)) };
               },
               afterResponse: async (message, _api, ctx) => {
+                message.timestamp = (options.now?.() ?? new Date()).getTime();
                 childTracking.finishRequest();
                 if (await guardToolResponse(message, child.id, ctx)) {
                   warn("Model exceeded the configured tool iteration limit");
@@ -2633,6 +2635,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return { messages: contextMessages };
               },
               afterResponse: async (message, api, ctx) => {
+                message.timestamp = (options.now?.() ?? new Date()).getTime();
                 tracking.finishRequest();
                 if (await guardToolResponse(message, conversation.id, ctx)) {
                   warn("Model exceeded the configured tool iteration limit");

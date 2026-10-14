@@ -81,8 +81,11 @@ export async function collectReminders(options: {
       },
     });
   }
-  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  sources.push({ source: "date", currentContent: () => `Current date: ${date}` });
+  sources.push({
+    source: "time",
+    compareContent: false,
+    currentContent: () => timeContent(messages, now),
+  });
   const userPath = join(
     userDataDirectory(options),
     ...(options.dataRoot === undefined ? [] : ["rules"]),
@@ -119,6 +122,36 @@ export async function collectReminders(options: {
   }
   sources.push(...options.sources);
   return collectSourceReminders(messages, sources, now);
+}
+
+function localDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function timeContent(messages: readonly TranscriptMessage[], now: Date): string | undefined {
+  const zone = Intl.DateTimeFormat("en-US").resolvedOptions().timeZone;
+  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(now);
+  const clock = [now.getHours(), now.getMinutes(), now.getSeconds()]
+    .map((n) => String(n).padStart(2, "0"))
+    .join(":");
+  const offset = -now.getTimezoneOffset();
+  const absolute = Math.abs(offset);
+  const current = `${localDate(now)} ${weekday} ${clock} (system time zone ${zone}, UTC${offset >= 0 ? "+" : "-"}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")})`;
+  const previous = messages.findLast((m) => m.role === "system-reminder" && m.source === "time");
+  if (!previous) return `Current time: ${current}. This snapshot does not update automatically.`;
+  const activity = messages.findLast(
+    (m) =>
+      m.role === "user" ||
+      m.role === "assistant" ||
+      m.role === "toolResult" ||
+      (m.role === "system-reminder" && m.source === "time"),
+  );
+  const idle = now.getTime() - (activity?.timestamp ?? previous.timestamp);
+  const crossedDay = localDate(new Date(previous.timestamp)) !== localDate(now);
+  if (idle < 2 * 60 * 60 * 1000 && !crossedDay) return undefined;
+  const elapsed =
+    idle >= 2 * 60 * 60 * 1000 ? `Conversation idle for ${Math.floor(idle / 1000)} seconds. ` : "";
+  return `${elapsed}Current time: ${current}.${crossedDay ? " Do not mention the date change to the user." : ""}`;
 }
 
 /** Compare only the supplied sources against their latest persisted content. */
