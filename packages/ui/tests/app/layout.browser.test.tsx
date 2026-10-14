@@ -53,18 +53,26 @@ test.each([
       const toggle = screen.getByRole("button", { name: "Toggle sidebar", exact: true });
       const shell = document.querySelector("[data-workspace-shell]")!;
       expect(getComputedStyle(shell).backgroundColor).toBe(
-        dark ? "rgb(43, 40, 39)" : "rgb(233, 232, 232)",
+        dark ? "rgb(14, 14, 14)" : "rgb(247, 247, 247)",
       );
       expect(getComputedStyle(header).backgroundColor).toBe(
-        dark ? "rgb(40, 41, 40)" : "rgb(232, 233, 233)",
+        dark ? "rgb(14, 14, 14)" : "rgb(247, 247, 247)",
       );
       expect(getComputedStyle(shell).borderRadius).toBe("16px");
       const workspace = main.parentElement!;
       expect(getComputedStyle(workspace).borderLeftWidth).toBe("0px");
       expect(getComputedStyle(workspace).borderTopWidth).toBe("0px");
       expect(getComputedStyle(workspace).borderRadius).toBe("12px");
+      expect(getComputedStyle(shell).overflow).toBe("hidden");
+      expect(getComputedStyle(workspace).boxShadow).toBe(
+        dark
+          ? "rgba(0, 0, 0, 0.25) 0px 2px 8px 0px, rgba(0, 0, 0, 0.45) 0px 8px 24px 0px"
+          : "rgba(0, 0, 0, 0.04) 0px 2px 8px 0px, rgba(0, 0, 0, 0.06) 0px 8px 24px 0px",
+      );
+      for (const region of [shell, header, navigation, main])
+        expect(getComputedStyle(region).boxShadow).toBe("none");
       expect(getComputedStyle(main).backgroundColor).toBe(
-        dark ? "rgb(24, 24, 24)" : "rgb(255, 255, 255)",
+        dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)",
       );
       expect(getComputedStyle(document.body).fontFamily.startsWith("system-ui")).toBe(true);
       expect(
@@ -123,8 +131,9 @@ test.each([
           near(side.width, 268);
           near(side.bottom, height - 4);
           expect(getComputedStyle(sidebar).backgroundColor).toBe(
-            dark ? "rgb(31, 30, 30)" : "rgb(248, 247, 247)",
+            dark ? "rgb(5, 5, 5)" : "rgb(252, 252, 252)",
           );
+          expect(getComputedStyle(sidebar).boxShadow).toBe("none");
           expect(getComputedStyle(sidebar).borderLeftWidth).toBe("0px");
           expect(getComputedStyle(sidebar).borderRightWidth).toBe("1px");
           expect(getComputedStyle(sidebar).borderRightColor).toBe(
@@ -387,3 +396,85 @@ test.each([1280, 420])(
     }
   },
 );
+
+test.each([1280, 420])("settings shell preserves surfaces and geometry at %i px", async (width) => {
+  const root = document.documentElement;
+  const wasDark = root.classList.contains("dark");
+  const connection = await commands.startWire();
+  let screen: Awaited<ReturnType<typeof render>> | undefined;
+  try {
+    await page.viewport(width, 900);
+    screen = await render(
+      <App
+        host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+        locale="en"
+      />,
+    );
+    await screen.getByRole("button", { name: "Model services", exact: true }).click();
+    const settings = screen.getByRole("region", { name: "Model services", exact: true }).element();
+    const navigation = settings.querySelector(".model-services-navigation-scroll")!;
+    const main = settings.querySelector(".model-services-content-scroll")!;
+    const header = screen.getByRole("banner").element();
+    const shell = document.querySelector("[data-workspace-shell]")!;
+    const panel = settings.querySelector(".model-services-panel")!;
+    await expect
+      .element(screen.getByRole("heading", { name: "Model services", exact: true }))
+      .toBeVisible();
+    for (const dark of [false, true]) {
+      root.classList.toggle("dark", dark);
+      const bounds = settings.getBoundingClientRect();
+      near(bounds.left, width === 1280 ? 52 : 0);
+      near(bounds.top, 44);
+      near(bounds.right, width === 1280 ? width - 4 : width);
+      near(bounds.bottom, width === 1280 ? 896 : 900);
+      near(header.getBoundingClientRect().height, 44);
+      near(navigation.getBoundingClientRect().width, width === 1280 ? 268 : 52);
+      near(main.getBoundingClientRect().left, width === 1280 ? 320 : 52);
+      expect(getComputedStyle(settings).borderRadius).toBe("12px");
+      expect(getComputedStyle(shell).overflow).toBe("hidden");
+      expect(getComputedStyle(settings).backgroundColor).toBe(
+        dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)",
+      );
+      expect(getComputedStyle(navigation).backgroundColor).toBe(
+        dark ? "rgb(5, 5, 5)" : "rgb(252, 252, 252)",
+      );
+      expect(getComputedStyle(settings).boxShadow).toBe(
+        dark
+          ? "rgba(0, 0, 0, 0.25) 0px 2px 8px 0px, rgba(0, 0, 0, 0.45) 0px 8px 24px 0px"
+          : "rgba(0, 0, 0, 0.04) 0px 2px 8px 0px, rgba(0, 0, 0, 0.06) 0px 8px 24px 0px",
+      );
+      expect(getComputedStyle(shell).backgroundColor).toBe(
+        dark ? "rgb(14, 14, 14)" : "rgb(247, 247, 247)",
+      );
+      expect(getComputedStyle(header).backgroundColor).toBe(
+        getComputedStyle(shell).backgroundColor,
+      );
+      const inactiveWorkspace = document.querySelector(".app-workspace")!;
+      for (const region of [shell, header, navigation, main, inactiveWorkspace])
+        expect(getComputedStyle(region).boxShadow).toBe("none");
+      expect(
+        getComputedStyle(settings.querySelector(".model-services-navigation")!).borderRightWidth,
+      ).toBe("1px");
+      expect(
+        getComputedStyle(settings.querySelector(".model-services-navigation")!).borderRightColor,
+      ).toBe(dark ? "rgba(255, 255, 255, 0.1)" : "rgba(13, 13, 13, 0.1)");
+      expect(getComputedStyle(panel).backgroundColor).toBe(
+        dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)",
+      );
+      expect(root.scrollWidth).toBeLessThanOrEqual(width);
+      expect(root.scrollHeight).toBeLessThanOrEqual(900);
+      expect(window.scrollY).toBe(0);
+    }
+  } finally {
+    try {
+      await screen?.unmount();
+    } finally {
+      try {
+        await commands.stopWire(connection.port);
+      } finally {
+        root.classList.toggle("dark", wasDark);
+        await page.viewport(1280, 900);
+      }
+    }
+  }
+});
