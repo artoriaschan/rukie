@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: claimed
 
 # Spec: 对话独立目录、Project 绑定、访问范围与独立工作树
 
