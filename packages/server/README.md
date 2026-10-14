@@ -24,7 +24,7 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 Session 摘要的必填 `projectId: string | null` 是 server 按目录真实身份派生的展示归属，`sessions.list`、初次连接、重连与 `sessions_changed` 共享该投影；无所属 Project 时为 `null`。归属和同一事件的 Project 列表取一致登记状态，目录解析期间若登记改变则重新派生。Frontend 用它分组、显示项目标题、搜索、计数、选中及排除移动目标，不根据 cwd 字符串自行猜测。编辑后 canonical 目录仍关联原别名 cwd 的 Session；移除或删除其成员目录后只改变归属，不修改 cwd 或 Transcript。
 
-`project.create { name, directories, trusted: true }` 在调用方确认信任后创建 Project，返回 `{ id, name, directories, primary, trusted }`；目录必须存在且为绝对路径，保存时去重并取真实路径，首个目录是主目录；必填名称去除首尾空白后为 1–128 字符。所有权按精确真实路径比较，包括旧登记表保留的路径别名：主目录已登记时返回原 Project，保留原名称；其余目录重叠返回带冲突 Project 名称的 `project_conflict`。互相嵌套的不同目录允许独立登记，应用数据根及其子目录（含共用 `workspace/`）返回 `project_reserved`。旧 `{ id, path, name }` 记录读取为 `directories: [path]`、`primary: path`、`trusted: false`，保留既有 Session 的 cwd 与分组。
+`project.create { name, directories, trusted: true }` 在调用方确认信任后创建 Project，返回 `{ id, name, directories, primary, trusted }`；目录必须存在且为绝对路径，保存时去重并取真实路径，首个目录是主目录；必填名称去除首尾空白后为 1–128 字符。所有权按精确真实路径比较，包括旧登记表保留的路径别名：主目录已登记时返回原 Project，保留原名称；其余目录重叠返回带冲突 Project 名称的 `project_conflict`。互相嵌套的不同目录允许独立登记，应用数据根及其子目录（含对话目录根 `workspace/`）返回 `project_reserved`。旧 `{ id, path, name }` 记录读取为 `directories: [path]`、`primary: path`、`trusted: false`，保留既有 Session 的 cwd 与分组。
 
 `project.update { projectId, name, directories, primary, trusted? }` 提交完整编辑状态，复用创建的名称、目录、保留路径和冲突校验，并排除自身；目录非空，主目录必须属于目录列表。已信任 Project 新增目录要求 `trusted: true`，否则返回 `project_trust_required`；未信任 Project 编辑后保持未信任。只改名、移除目录或切换主目录无需确认。`project.remove { projectId }` 只移除登记，返回 `{}`，保留目录文件、Session、Transcript、置顶和归档；任一成员目录下存在执行中、等待 Interaction、正在打开或其他进程占用的 Session 时返回 `session_busy`。所有 Project 变更在同一队列中校验与持久化，成功后发布 `sessions_changed`。
 
@@ -38,7 +38,7 @@ Session 摘要的必填 `projectId: string | null` 是 server 按目录真实身
 
 无订阅且没有 Run、挂起权限请求、Queued Input、运行中 Background Job 或子代理的 Session，在持续空闲 10 分钟后关闭并释放 lease。归档或删除的准入保护结束后，无论成功或失败，仍由服务持有的空闲 Session 重新开始计时；已删除的 Session 不重新打开。进程收到 SIGTERM/SIGINT，先等待全部 Session abort，再释放 Effect runtime 和 Session、Job 进程组；调用方应等待 close 完成。SIGKILL 无法执行这些清理，孤儿 Job 不回收。
 
-应用库位于 `dataRoot/app.sqlite`，默认工作区位于同级 `workspace/`。应用写入使用事务及 WAL/FULL；失败不报告保存成功。Session 索引从数据根内各 Session 库的已提交元数据核对，不依赖项目注册表，发现不取得执行 lease、不恢复任务。损坏元数据记录 warning，不读取旧目录。
+应用库位于 `dataRoot/app.sqlite`，新对话各自独占同级 `workspace/<id>/`；打开失败清理新建空目录。Core 删除 Session 成功后，server 仅删除 cwd 为 `workspace/` 直接子目录且不含符号链接的目录；Project 目录与旧 `workspace/` 根保留，目录清理失败只报告 warning。应用写入使用事务及 WAL/FULL；失败不报告保存成功。Session 索引从数据根内各 Session 库的已提交元数据核对，不依赖项目注册表，发现不取得执行 lease、不恢复任务。损坏元数据记录 warning，不读取旧目录。
 
 [AppDatabase](src/storage/app-database.ts) 提供配置和凭证的原子替换、删除，以及应用索引与能力缓存操作。敏感 MCP 配置（包括 headers、client_secret）及完整 OAuth state（包括 codeVerifier）通过[加密配置 adapter](src/storage/configuration.ts) 整体加密；终端文件来源保持原行为。模型服务写入通过独立鉴权的 `/private/model-services` 接口，仅供 main 调用；会话 WS 不接受凭证写入，也不返回密文或明文。私有通道能力从进程环境捕获后删除，不向工具子进程传递。
 

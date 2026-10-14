@@ -65,7 +65,13 @@ export function DeleteSession({
       <div className="relative flex min-h-0 flex-col gap-3 p-2" aria-busy={pending}>
         <div className="shrink-0 pr-8">
           <h2 className="text-ui-lg font-medium">{t("app.delete-title")}</h2>
-          <p className="text-ui-base text-muted-foreground">{t("app.delete-description")}</p>
+          <p className="text-ui-base text-muted-foreground">
+            {t(
+              session.projectId === null
+                ? "app.delete-conversation-description"
+                : "app.delete-description",
+            )}
+          </p>
         </div>
         <ScrollArea
           className="flex min-h-0 flex-1 flex-col [&>[data-slot=scroll-area-viewport]]:min-h-0"

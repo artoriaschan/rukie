@@ -19,6 +19,187 @@ import { startServer as startServerImpl, AppDatabase, type ServerOptions } from 
 const startServer = (options: Omit<ServerOptions, "dataRoot">) =>
   startServerImpl({ ...options, dataRoot: join(options.homeDir, "desktop-data") });
 
+test("conversation workspaces are independent and deletion removes their files", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-conversation-workspace-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const first = (await client.command("session.create", { project: null, text: "first" }))
+      .result as { sessionId: string };
+    await client.next(
+      (message) => message.type === "result" && message.sessionId === first.sessionId,
+    );
+    const second = (await client.command("session.create", { project: null, text: "second" }))
+      .result as { sessionId: string };
+    await client.next(
+      (message) => message.type === "result" && message.sessionId === second.sessionId,
+    );
+    const summaries = (await client.command("sessions.list")).result as {
+      id: string;
+      cwd: string;
+    }[];
+    const firstCwd = summaries.find((session) => session.id === first.sessionId)!.cwd;
+    const secondCwd = summaries.find((session) => session.id === second.sessionId)!.cwd;
+    expect(firstCwd).not.toBe(secondCwd);
+    for (const cwd of [firstCwd, secondCwd]) {
+      expect(cwd.slice(0, cwd.lastIndexOf("/"))).toBe(join(homeDir, "desktop-data", "workspace"));
+      expect((await stat(cwd)).isDirectory()).toBe(true);
+    }
+    await writeFile(join(firstCwd, "owned.txt"), "owned");
+    expect(
+      (await client.command("session.delete", { sessionId: first.sessionId })).error,
+    ).toBeUndefined();
+    expect(await Bun.file(join(firstCwd, "owned.txt")).exists()).toBe(false);
+    expect(
+      await filesystem.access(firstCwd).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
+    expect((await stat(secondCwd)).isDirectory()).toBe(true);
+  } finally {
+    await owner.close();
+  }
+});
+
+test.each(["project", "root", "symlink", "outside", "ancestor-symlink"] as const)(
+  "conversation deletion preserves %s directories",
+  async (kind) => {
+    const owner = ownResources();
+    try {
+      const homeDir = await owner.acquire(
+        () => mkdtemp(join(tmpdir(), "rukie-workspace-delete-boundary-")),
+        (path) => rm(path, { recursive: true, force: true }),
+      );
+      const workspace = join(homeDir, "desktop-data", "workspace");
+      await mkdir(workspace, { recursive: true });
+      const outside = join(homeDir, "project");
+      await mkdir(outside);
+      const link = join(workspace, "link");
+      if (kind === "symlink") await symlink(outside, link);
+      const cwd =
+        kind === "root"
+          ? workspace
+          : kind === "symlink"
+            ? link
+            : kind === "ancestor-symlink"
+              ? join(workspace, "child")
+              : outside;
+      await mkdir(cwd, { recursive: true });
+      await writeFile(join(cwd, "keep.txt"), "keep");
+      const history = await owner.acquire(
+        () =>
+          createSession({
+            homeDir,
+            dataRoot: join(homeDir, "desktop-data"),
+            cwd,
+            ...fakeModel([fauxAssistantMessage("done")]),
+          }),
+        (session) => session.close(),
+      );
+      await history.run("history");
+      await history.close();
+      if (kind === "ancestor-symlink") {
+        const actual = join(homeDir, "actual-workspace");
+        await filesystem.rename(workspace, actual);
+        await symlink(actual, workspace);
+      }
+      if (kind === "project") {
+        const database = await owner.acquire(
+          () => AppDatabase.open(join(homeDir, "desktop-data")),
+          (database) => database.close(),
+        );
+        await database.saveRegistry({
+          ...(await database.registry()),
+          projects: [
+            {
+              id: "project",
+              name: "Project",
+              directories: [outside],
+              primary: outside,
+              trusted: true,
+            },
+          ],
+          pinned: [],
+          archived: [],
+        });
+        await database.close();
+      }
+      const server = await owner.acquire(
+        () => startServer({ homeDir, onHandshake: () => {} }),
+        (server) => server.close(),
+      );
+      const client = await connect(server, "app://rukie", owner);
+      expect(
+        (await client.command("session.delete", { sessionId: history.id })).error,
+      ).toBeUndefined();
+      expect((await client.command("sessions.list")).result).toEqual([]);
+      expect(await Bun.file(join(cwd, "keep.txt")).text()).toBe("keep");
+      if (kind === "symlink" || kind === "ancestor-symlink")
+        expect(
+          (await filesystem.lstat(kind === "symlink" ? link : workspace)).isSymbolicLink(),
+        ).toBe(true);
+    } finally {
+      await owner.close();
+    }
+  },
+);
+
+test("conversation workspace cleanup failure warns without undoing Session deletion", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-workspace-cleanup-warning-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const warnings: string[] = [];
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+          onWarning: (warning) => warnings.push(warning),
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const { sessionId } = (await client.command("session.create", { project: null, text: "hello" }))
+      .result as { sessionId: string };
+    await client.next((message) => message.type === "result");
+    const cwd = (
+      (await client.command("sessions.list")).result as { id: string; cwd: string }[]
+    ).find((session) => session.id === sessionId)!.cwd;
+    const original = filesystem.rm;
+    const remove = spyOn(filesystem, "rm").mockImplementation(async (path, options) => {
+      if (path === cwd) throw new Error("workspace removal denied");
+      return original(path, options);
+    });
+    try {
+      expect((await client.command("session.delete", { sessionId })).error).toBeUndefined();
+    } finally {
+      remove.mockRestore();
+    }
+    expect((await client.command("sessions.list")).result).toEqual([]);
+    expect((await stat(cwd)).isDirectory()).toBe(true);
+    expect(warnings).toEqual([expect.stringContaining("workspace removal denied")]);
+  } finally {
+    await owner.close();
+  }
+});
+
 test("initial and reconnect registry metadata present the canonical configured home", async () => {
   const owner = ownResources();
   try {
@@ -146,6 +327,7 @@ test("startup catalog and history never unlock encrypted execution configuration
       code: "internal",
     });
     expect(decryptions).toBe(1);
+    expect(await filesystem.readdir(join(homeDir, "desktop-data", "workspace"))).toEqual([]);
     authorized = true;
     client.messages.length = 0;
     expect(
@@ -1830,7 +2012,9 @@ test.each(["success", "failure"])(
       });
       await client.command("session.unsubscribe", { sessionId });
       const dataRoot = join(homeDir, "desktop-data");
-      const cwd = join(dataRoot, "workspace");
+      const cwd = (
+        (await client.command("sessions.list")).result as { id: string; cwd: string }[]
+      ).find((session) => session.id === sessionId)!.cwd;
       await clock.tickAsync(600000 - 1);
       await expect(
         createSession({ ...fake, homeDir, dataRoot, cwd, resumeId: sessionId }),
@@ -1877,7 +2061,9 @@ test("idle unsubscribed Session releases its lease exactly at ten minutes", asyn
     await client.next((message) => message.type === "result");
     clock = FakeTimers.install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout"] });
     await client.command("session.unsubscribe", { sessionId });
-    const cwd = join(homeDir, "desktop-data", "workspace");
+    const cwd = (
+      (await client.command("sessions.list")).result as { id: string; cwd: string }[]
+    ).find((session) => session.id === sessionId)!.cwd;
     await clock.tickAsync(600000 - 1);
     await expect(
       createSession({
@@ -1926,7 +2112,9 @@ test("SIGTERM awaits Session shutdown and kills running Background Job process g
     const created = await client.command("session.create", { project: null, text: "start job" });
     const sessionId = (created.result as { sessionId: string }).sessionId;
     await client.next((message) => message.type === "result");
-    const cwd = join(homeDir, "desktop-data", "workspace");
+    const cwd = (
+      (await client.command("sessions.list")).result as { id: string; cwd: string }[]
+    ).find((session) => session.id === sessionId)!.cwd;
     const pid = await waitForPidFile(join(cwd, "pid"));
     expect(() => process.kill(pid, 0)).not.toThrow();
     child.kill("SIGTERM");
@@ -2015,7 +2203,9 @@ test("Run, pending Interaction and Queued Input prevent idle reclamation", async
         ...fake,
         homeDir,
         dataRoot: join(homeDir, "desktop-data"),
-        cwd: join(homeDir, "desktop-data", "workspace"),
+        cwd: ((await client.command("sessions.list")).result as { id: string; cwd: string }[]).find(
+          (session) => session.id === sessionId,
+        )!.cwd,
         resumeId: sessionId,
       }),
     ).rejects.toMatchObject({ code: "session-busy" });
@@ -2054,7 +2244,9 @@ test("a running Background Job holds an unsubscribed idle Session", async () => 
     const created = await client.command("session.create", { project: null, text: "job" });
     const sessionId = (created.result as { sessionId: string }).sessionId;
     await client.next((message) => message.type === "result");
-    const cwd = join(homeDir, "desktop-data", "workspace");
+    const cwd = (
+      (await client.command("sessions.list")).result as { id: string; cwd: string }[]
+    ).find((session) => session.id === sessionId)!.cwd;
     const pid = await waitForPidFile(join(cwd, "pid"));
     expect((await client.command("session.archive", { sessionId })).error).toEqual({
       code: "session_busy",
@@ -2136,7 +2328,9 @@ test("a native background Subagent holds a parent Session after its Run ends", a
         ...fake,
         homeDir,
         dataRoot: join(homeDir, "desktop-data"),
-        cwd: join(homeDir, "desktop-data", "workspace"),
+        cwd: ((await client.command("sessions.list")).result as { id: string; cwd: string }[]).find(
+          (session) => session.id === sessionId,
+        )!.cwd,
         resumeId: sessionId,
       }),
     ).rejects.toMatchObject({ code: "session-busy" });
@@ -2320,7 +2514,9 @@ test("desktop output wire reads committed bytes after server restart without ope
       (await client.command("prompt", { sessionId, text: "unconfigured model" })).error,
     ).toMatchObject({ code: "model_unavailable" });
     const owner = await createSession({
-      cwd: join(homeDir, "desktop-data", "workspace"),
+      cwd: ((await client.command("sessions.list")).result as { id: string; cwd: string }[]).find(
+        (session) => session.id === sessionId,
+      )!.cwd,
       homeDir,
       dataRoot: join(homeDir, "desktop-data"),
       resumeId: sessionId,
