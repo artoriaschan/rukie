@@ -191,7 +191,7 @@ export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptM
         ];
     }
     return (entry.model ?? []).map((message): TranscriptMessage => {
-      const projected: TranscriptMessage = {
+      let projected: TranscriptMessage = {
         ...structuredClone(message),
         entryId: String(entry.id),
       };
@@ -219,6 +219,20 @@ export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptM
                       .flatMap((block) => (block.type === "text" ? [block.text] : []))
                       .join("")) === fact.content)));
         if (!matches) continue;
+        if (
+          message.role === "user" &&
+          typeof fact.reminderContent === "string" &&
+          typeof fact.source === "string"
+        ) {
+          projected = {
+            role: "system-reminder",
+            source: fact.source,
+            content: fact.reminderContent,
+            timestamp: message.timestamp,
+            entryId: String(entry.id),
+          };
+          continue;
+        }
         if (projected.role === "user") {
           if (
             Array.isArray(fact.imageNames) &&
