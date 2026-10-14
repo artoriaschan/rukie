@@ -295,11 +295,30 @@ test("a queued human Run takes precedence over the next Goal round without incre
   await human;
   await session.waitForIdle();
   expect(fake.contexts).toHaveLength(3);
-  expect(fake.contexts[1]!.messages.findLast((message) => message.role !== "system")).toMatchObject(
-    {
-      content: [{ text: "check this detail" }],
-    },
+  const humanContext = fake.contexts[1]!.messages;
+  const humanIndex = humanContext.findIndex(
+    (message) =>
+      message.role === "user" &&
+      Array.isArray(message.content) &&
+      message.content.some((part) => part.type === "text" && part.text === "check this detail"),
   );
+  expect(humanIndex).toBeGreaterThan(-1);
+  expect(humanContext[humanIndex]).toMatchObject({
+    role: "user",
+    content: [{ type: "text", text: "check this detail" }],
+  });
+  expect(humanContext[humanIndex + 1]).toMatchObject({
+    role: "user",
+    content: [
+      { type: "text", text: expect.stringContaining("arrived while work was in progress") },
+    ],
+  });
+  expect(JSON.stringify(humanContext)).not.toContain("Round: 2/2");
+  expect(
+    session.messages.filter(
+      (message) => message.role === "system-reminder" && message.source === "input-arrival",
+    ),
+  ).toHaveLength(1);
   expect(JSON.stringify(fake.contexts[2]!.messages)).toContain("Round: 2/2");
   expect(session.checkpoints().map((checkpoint) => checkpoint.preview)).toEqual([
     "check this detail",

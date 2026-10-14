@@ -120,7 +120,7 @@ export function contextReport(options: {
   for (const source of ["user-instructions", "project-instructions"]) {
     const message = latest.get(source);
     if (!message) continue;
-    const path = /^Project Instructions \(([^\n]+)\):\n/.exec(message.content)?.[1];
+    const path = /^(?:User|Project) Instructions \(([^\n]+)\):\n/.exec(message.content)?.[1];
     if (!path) continue;
     const count = Object.values(contextUsage(message.model, window).segments).reduce(
       (sum, value) => sum + value,
