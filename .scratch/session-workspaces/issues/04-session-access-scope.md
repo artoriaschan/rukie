@@ -1,6 +1,6 @@
 # 04：Session 访问范围
 
-Status: claimed
+Status: resolved
 
 **What to build:** 按 [spec](../spec.md#session-访问范围工单-04) 与 [ADR-0044](../../../docs/adr/0044-session-access-scope.md)，在 Agent Core 权限模块按访问范围决定文件工具的模式默认值。
 
@@ -19,3 +19,11 @@ Status: claimed
 - 生命周期和 TUI 现有消费者中的超 1 s 用例保留原有真实子进程／多次 Session 打开合同；新增每例均低于 1 s。只运行票据聚焦测试，root 负责最终 check:dev、共享权限执行基础设施的聚合 check 与 GUI 验收。格式化与 `git diff --check` 通过；未宣称 CI 验收。
 
 - 聚合补充（2026-10-14）：原最终 Bun 阶段保留 coding-agent 1528 pass / 16 fail（253.35 s）；16 个旧权限展示／Headless fixture 依赖 cwd write 触发询问，现按 ADR-0044 在隔离根内使用 cwd 外目标，或对不依赖评审／JSON 详情的面板用例显式 ask(write)。所有原断言保留，无 runtime／共享 harness 变更。公开 CLI red 0 pass / 1 fail（479 ms），仅目标路径修正后的 probe 通过。六文件 focused 212 pass / 1 fail（1161 assertions, 77.42 s），其中 fullscreen 显式 ask 的规则原因替换了 JSON 详情；再仅改该例为范围外目标，focused 1 pass / 0 fail（10 assertions, 530 ms），复用其余 212 例。16 个原失败均有通过证据，不宣称全量重新通过。changed-file format/lint、tsc 与 test-policy（446 files）通过；每个修改用例 165–533 ms。详见 `/tmp/rukie-session-workspaces-evidence/permission-fixtures-verification.md`、`fixtures-focused.log`、`fixtures-fullscreen-final.log`；保持 claimed，root 负责剩余验收与交付。
+
+## Final delivery evidence
+
+- 2026-10-15：六个工单的实现、受影响文档、评审修复与适用本地验证完成；本工单与 spec 在同一变更设为 resolved。集成分支 `feat/session-workspaces`，PR #25 待最终推送、CI 与用户 review；resolved 不表示 CI 已通过或 PR 已合并。
+- Standards / Spec review 的三个 P1 已由新修复代理处理，公开 Core / server reproducer 先红后绿；新 targeted reviewer 确认全部修正且没有剩余 actionable finding。详细记录：`/tmp/rukie-session-workspaces-evidence/review-corrections.md`、`review-fixes-verification.md`。
+- 复用本工单现有 focused 证据与跨模块增量记录：Bun 514 pass / 0 fail + Agent e2e 1470 / 0；coding-agent 原全量 1528 / 16，全部 16 个旧权限 fixture 失败经六文件 212 / 1 与最后修正例 1 / 0 获得通过证据。Release 113 / 0；Desktop Node 70 通过，Chromium 原包 200 / 5，修正五例 5 / 0。工作树弹窗颜色修正 2 / 0，取消按钮尺寸修正 2 / 0。未声称全量重新通过。
+- 最终 isolated Chromium GUI：实际对话创建/移动/删除、工作树创建/列表/刷新/取消/删除及 Session 回主目录、三入口菜单、Project 移除确认、Light/Dark/窄宽度、键盘/cursor/disabled、console/network 与清理通过。弹窗最终复验基于 `20b6e9aa`：Cancel 32px、Delete 36px，软危险色及 hover 正确，宽 448px / 窄 388px 无溢出，取消初始焦点与 Enter 取消保留工作树。详见 `gui-verification.md`、`gui-dialog-final.md`；未做真实 Electron、系统钥匙串或文件夹选择器视觉验收。
+- ADR Coverage 审阅完成：决定、链接、accepted 状态与最终实现一致；工作树 host 根扩展由 ADR-0045 定义、ADR-0037 已链接承接。查看 [spec ADR Coverage](../spec.md#adr-coverage)。最终合同审阅与文档/tracker 命令记录：`/tmp/rukie-session-workspaces-evidence/delivery-verification.md`。

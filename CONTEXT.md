@@ -23,7 +23,7 @@ _Avoid_: CLI（会和 TUI 混淆）
 _Avoid_: CLI, REPL
 
 **Session**:
-用户与 agent 的一段连续对话，可以凭 id 恢复。Session 只有一个当前工作目录，SQLite Session 可经 Session Move 改绑，身份与 Transcript 保持不变。桌面端 Session 持久绑定 Project；主目录变化在下一次空闲打开执行前同步，只读订阅历史不移动，活跃 Run 不被中断。Frontend 可在打开时提供附加目录；这些目录只贡献环境快照中的路径与各自 `AGENTS.md` 的 Project Instructions，不改变工具执行目录、权限路径解析或文件跟踪，也不合并 settings、hooks、MCP 与技能。
+用户与 agent 的一段连续对话，可以凭 id 恢复。Session 只有一个当前工作目录，SQLite Session 可经 Session Move 改绑，身份与 Transcript 保持不变。桌面端 Session 持久绑定 Project；主目录变化在下一次空闲打开执行前同步，只读订阅历史不移动，活跃 Run 不被中断。Frontend 可在打开时提供附加目录；这些目录贡献环境快照中的路径、各自 `AGENTS.md` 的 Project Instructions 与 Session 访问范围中的可读写根，不改变工具执行目录、相对权限路径解析或文件跟踪，也不合并 settings、hooks、MCP 与技能。
 _Avoid_: conversation, thread, chat
 
 **Session Move**:
