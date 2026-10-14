@@ -134,7 +134,7 @@ Interaction 由 Agent Core 发起，frontend 提供响应回调。[`interaction/
 
 ## 模型上下文
 
-System Prompt 提供固定行为指令；System Reminder 承载日期、项目说明、Skill 目录或正文、MCP 描述以及其他有来源的上下文。用户说明读取 `~/.rukie/AGENTS.md`；项目说明优先读取项目根的 `AGENTS.md`，缺失时读取 `CLAUDE.md`。[`reminders/`](../packages/agent/src/reminders/index.ts)按来源与最近持久化内容比较，仅提交需要更新的提醒，通过可追溯模型投影贡献上下文。
+System Prompt 提供行为指令，只读取会话内稳定的输入；System Reminder 承载日期、项目说明、Skill 目录或正文、MCP 描述以及其他有来源的上下文。两者的分工与待补指引见 [ADR-0046](adr/0046-system-prompt-sections-and-reminder-roles.md)。用户说明读取 `~/.rukie/AGENTS.md`；项目说明优先读取项目根的 `AGENTS.md`，缺失时读取 `CLAUDE.md`。[`reminders/`](../packages/agent/src/reminders/index.ts)按来源与最近持久化内容比较，仅提交需要更新的提醒，通过可追溯模型投影贡献上下文。
 
 Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它追加原生 compaction 记录，模型上下文由 System Prompt、摘要、保留尾部与之后的消息重建；原始 Transcript 仍保留。压缩后重新建立当前提醒来源，后续请求和恢复走相同的上下文投影。
 

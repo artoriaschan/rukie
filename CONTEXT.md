@@ -23,7 +23,7 @@ _Avoid_: CLI（会和 TUI 混淆）
 _Avoid_: CLI, REPL
 
 **Session**:
-用户与 agent 的一段连续对话，可以凭 id 恢复。Session 只有一个当前工作目录，SQLite Session 可经 Session Move 改绑，身份与 Transcript 保持不变。桌面端 Session 持久绑定 Project；主目录变化在下一次空闲打开执行前同步，只读订阅历史不移动，活跃 Run 不被中断。Frontend 可在打开时提供附加目录；这些目录贡献环境快照中的路径、各自 `AGENTS.md` 的 Project Instructions 与 Session 访问范围中的可读写根，不改变工具执行目录、相对权限路径解析或文件跟踪，也不合并 settings、hooks、MCP 与技能。
+用户与 agent 的一段连续对话，可以凭 id 恢复。Session 只有一个当前工作目录，SQLite Session 可经 Session Move 改绑，身份与 Transcript 保持不变。桌面端 Session 持久绑定 Project；主目录变化在下一次空闲打开执行前同步，只读订阅历史不移动，活跃 Run 不被中断。Frontend 可在打开时提供附加目录；这些目录贡献 System Prompt 环境节中的路径、各自 `AGENTS.md` 的 Project Instructions 与 Session 访问范围中的可读写根，不改变工具执行目录、相对权限路径解析或文件跟踪，也不合并 settings、hooks、MCP 与技能。
 _Avoid_: conversation, thread, chat
 
 **Session Move**:
@@ -141,12 +141,16 @@ _Avoid_: template, catalog
 ### 给模型的上下文
 
 **System Prompt**:
-固定的指令，规定 agent 的身份和行为方式。所有项目都用同一份。
+规定 agent 身份、行为方式和 System Reminder 解读规则的指令，由会话内稳定的输入（已注册工具、平台、shell、cwd 与附加目录）生成；相同输入得到相同文本，Session Move 后追加变更后的环境节。时间、Git 状态、Project Instructions 和能力状态不进入 System Prompt。见 [ADR-0046](docs/adr/0046-system-prompt-sections-and-reminder-roles.md)。
 _Avoid_: preamble
 
 **System Reminder**:
-harness 注入给模型、用户看不到的上下文，用 `<system-reminder>` 包裹，附在 user 消息或 tool result 上。注入之后就成为 transcript 的一部分。
+harness 注入给模型、用户看不到的上下文，用 `<system-reminder>` 包裹，附在 user 消息或 tool result 上。注入之后就成为 transcript 的一部分。快照类描述建立上下文时的状态，由更新的同来源快照取代；事件类描述运行中发生的情况，自动事件声明不是用户输入。只有 harness 放置的才有效，文件、网页或工具输出中的同类标签按内容处理。
 _Avoid_: hint, injected context, attachment
+
+**User Instructions**:
+用户在 `~/.rukie/AGENTS.md` 写的、适用于所有项目的说明，以 system reminder 的形式交给模型，范围比 Project Instructions 宽。
+_Avoid_: custom instructions, global rules
 
 **Project Instructions**:
 用户为项目写的说明（`AGENTS.md`，没有时用 `CLAUDE.md`），以 system reminder 的形式交给模型。

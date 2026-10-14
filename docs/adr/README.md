@@ -74,5 +74,6 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0043 Session 持久绑定 Project，cwd 跟随主目录，移除 Project 删除其 Session](0043-session-project-binding.md) — `accepted`
 - [0044 文件工具按 Session 访问范围决定模式默认值](0044-session-access-scope.md) — `accepted`
 - [0045 Git Project 的新 Session 可使用独立工作树](0045-git-worktree-sessions.md) — `accepted`
+- [0046 System Prompt 只由会话内稳定输入生成，System Reminder 承载快照与事件](0046-system-prompt-sections-and-reminder-roles.md) — `accepted`
 
 <!-- ADR_INDEX_END -->
