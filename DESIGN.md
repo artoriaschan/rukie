@@ -8,7 +8,9 @@ This file is meant for coding agents. When generating or editing GUI code, follo
 
 ## Baseline
 
-The visual reference is the ZCode Design System: calm surfaces, compact operational controls, repeated spacing, nested radius, restrained depth, and motion that explains state changes. Rukie retains its GitHub Light/Dark palette and its Session, Run, Transcript, and Interaction behavior. ZCode's desktop design rules apply through the semantic roles and conditional feature contracts below; Zai theme choices and mobile-specific behavior are outside this adoption.
+The basic-component visual reference is `rukie.pen` → `F01 · shadcn 基础 UI / 唯一维护源` (`B6V38W`). Its A01–A12 components and state examples own reusable control colors, typography, dimensions, spacing, and radius; the corresponding contracts are recorded below. Pages compose these roles and override content and documented feature geometry, rather than maintaining independent base-control styles. F01's shadcn label does not change the repository's beUI-first component sourcing.
+
+The ZCode Design System supplies the remaining workspace guidance: calm surfaces, compact operational controls, repeated spacing, nested radius, restrained depth, and motion that explains state changes. GitHub colors remain for technical output and explicitly retained functional roles; they do not define the basic controls' primary fill. Session, Run, Transcript, and Interaction behavior remains unchanged. Zai theme choices and mobile-specific behavior are outside this adoption.
 
 The GUI is built from [beUI](https://beui.dev) first and [shadcn/ui](https://ui.shadcn.com) for roles beUI does not provide, installed through the shadcn CLI (sourcing rules: [AGENTS.md](AGENTS.md#ui-components)). Registry components supply structure, accessibility, and behavior. This document owns their final typography, geometry, surfaces, radius, elevation, and motion. A copied component's original defaults do not establish compliance.
 
@@ -35,40 +37,65 @@ Use hierarchy in text, surfaces, and spacing before adding borders or color. Avo
 
 ## Themes
 
-User-facing theme choices are System, Light, and Dark. Functional colors use GitHub Light and GitHub Dark. Values are copied from the functional themes of `@primer/primitives` 11.10.0; Rukie does not depend on the package at runtime. The application shell's three structural columns use the neutral background values defined in [Workspace structure](#workspace-structure); these roles remain independent of cards, fields, menus, and semantic state colors.
+User-facing theme choices are System, Light, and Dark. Basic controls use F01's neutral Light/Dark palette. The primary action is black with white text in Light and white with black text in Dark, across all GUI screens, including Project dialogs. Blue is reserved for links, execution emphasis, charts, and technical roles that explicitly require it. The application shell's three structural columns use the neutral background values defined in [Workspace structure](#workspace-structure); these roles remain independent of cards, fields, menus, and semantic state colors.
+
+The tables below are binding design targets, not a claim that the current CSS already implements every value. [theme.css](packages/ui/src/theme.css) owns the implementation; changing this document alone does not change rendered controls. Retained GitHub values come from the functional themes of `@primer/primitives` 11.10.0; Rukie does not depend on the package at runtime.
 
 The theme keeps beUI's token names (shadcn semantic tokens plus beUI extensions) and the `dark` class variant, so beUI and shadcn components share the same semantic palette; geometry and interaction styling still follow this file.
 
-| Token                  | Light                     | Dark                      | Primer source                   |
-| ---------------------- | ------------------------- | ------------------------- | ------------------------------- |
-| `--background`         | `#ffffff`                 | `#0d1117`                 | `bgColor-default`               |
-| `--foreground`         | `#1f2328`                 | `#f0f6fc`                 | `fgColor-default`               |
-| `--card`               | `#f6f8fa`                 | `#151b23`                 | `bgColor-muted`                 |
-| `--muted-foreground`   | `#59636e`                 | `#9198a1`                 | `fgColor-muted`                 |
-| `--border`             | `#d1d9e0b3`               | `#3d444db3`               | `borderColor-muted`             |
-| `--border-strong`      | `#d1d9e0`                 | `#3d444d`                 | `borderColor-default`           |
-| `--primary`            | `#0969da`                 | `#1f6feb`                 | `bgColor-accent-emphasis`       |
-| `--primary-foreground` | `#ffffff`                 | `#ffffff`                 | `fgColor-onEmphasis`            |
-| `--accent`             | `#0969da`                 | `#4493f8`                 | `fgColor-accent`                |
-| `--accent-fg`          | `#ffffff`                 | `#0d1117`                 | contrast pair                   |
-| `--ring`               | `#0969da`                 | `#1f6feb`                 | `borderColor-accent-emphasis`   |
-| `--danger`             | `#d1242f`                 | `#f85149`                 | `fgColor-danger`                |
-| `--success`            | `#1a7f37`                 | `#3fb950`                 | `fgColor-success`               |
-| `--warning`            | `#9a6700`                 | `#d29922`                 | `fgColor-attention`             |
-| `--neon`               | `#1a7f37`                 | `#3fb950`                 | `fgColor-success`               |
-| `--violet`             | `#8250df`                 | `#ab7df8`                 | `fgColor-done`                  |
-| `--glass-bg`           | `rgb(255 255 255 / 0.55)` | `rgb(21 27 35 / 0.55)`    | background or card with alpha   |
-| `--glass-border`       | `rgb(31 35 40 / 0.08)`    | `rgb(240 246 252 / 0.08)` | foreground with alpha           |
-| `--glass-strong-bg`    | `rgb(255 255 255 / 0.7)`  | `rgb(21 27 35 / 0.6)`     | card with alpha                 |
-| `--glass-thin-bg`      | `rgb(255 255 255 / 0.45)` | `rgb(13 17 23 / 0.45)`    | background with alpha           |
-| `--diff-added`         | `#dafbe1`                 | `#2ea04326`               | `diffBlob-additionLine-bgColor` |
-| `--diff-added-word`    | `#aceebb`                 | `#2ea04366`               | `diffBlob-additionWord-bgColor` |
-| `--diff-removed`       | `#ffebe9`                 | `#f851491a`               | `diffBlob-deletionLine-bgColor` |
-| `--diff-removed-word`  | `#ffcecb`                 | `#f8514966`               | `diffBlob-deletionWord-bgColor` |
+| Token                  | Light                     | Dark                      | Source                           |
+| ---------------------- | ------------------------- | ------------------------- | -------------------------------- |
+| `--background`         | `#ffffff`                 | `#000000`                 | F01 `background` / shell content |
+| `--foreground`         | `#262626`                 | `#d4d4d4`                 | F01 `foreground`                 |
+| `--card`               | `#ffffff`                 | `#2b2b2b`                 | F01 `card`                       |
+| `--muted-foreground`   | `#26262699`               | `#d4d4d499`               | F01 `subtle`                     |
+| `--border`             | `#0d0d0d1a`               | `#ffffff1a`               | F01 `border`                     |
+| `--border-strong`      | `#d1d9e0`                 | `#3d444d`                 | `borderColor-default`            |
+| `--primary`            | `#000000`                 | `#ffffff`                 | F01 `primary`                    |
+| `--primary-foreground` | `#ffffff`                 | `#000000`                 | F01 `inverse`                    |
+| `--accent`             | `#0969da`                 | `#4493f8`                 | `fgColor-accent`                 |
+| `--accent-fg`          | `#ffffff`                 | `#0d1117`                 | contrast pair                    |
+| `--ring`               | `#0d0d0d26`               | `#ffffff26`               | F01 `input-border-focused`       |
+| `--danger`             | `#d1242f`                 | `#f85149`                 | `fgColor-danger`                 |
+| `--success`            | `#1e8a3e`                 | `#46bf72`                 | F01 `success` / `added`          |
+| `--warning`            | `#e07b00`                 | `#ff8a30`                 | F01 `warning`                    |
+| `--neon`               | `#1a7f37`                 | `#3fb950`                 | `fgColor-success`                |
+| `--violet`             | `#8250df`                 | `#ab7df8`                 | `fgColor-done`                   |
+| `--glass-bg`           | `rgb(255 255 255 / 0.55)` | `rgb(21 27 35 / 0.55)`    | background or card with alpha    |
+| `--glass-border`       | `rgb(31 35 40 / 0.08)`    | `rgb(240 246 252 / 0.08)` | foreground with alpha            |
+| `--glass-strong-bg`    | `rgb(255 255 255 / 0.7)`  | `rgb(21 27 35 / 0.6)`     | card with alpha                  |
+| `--glass-thin-bg`      | `rgb(255 255 255 / 0.45)` | `rgb(13 17 23 / 0.45)`    | background with alpha            |
+| `--diff-added`         | `#dafbe1`                 | `#2ea04326`               | `diffBlob-additionLine-bgColor`  |
+| `--diff-added-word`    | `#aceebb`                 | `#2ea04366`               | `diffBlob-additionWord-bgColor`  |
+| `--diff-removed`       | `#ffebe9`                 | `#f851491a`               | `diffBlob-deletionLine-bgColor`  |
+| `--diff-removed-word`  | `#ffcecb`                 | `#f8514966`               | `diffBlob-deletionWord-bgColor`  |
 
-The existing shadcn tokens keep beUI's derivations: `--card-foreground`, `--popover-foreground`, and `--secondary-foreground` use `--foreground`; `--popover`, `--secondary`, and `--muted` use `--card`; `--accent-foreground` uses `--accent-fg`; `--destructive` uses `--danger`; `--input` uses `--border`. The `--diff-*` tokens are Rukie extensions exposed as `--color-diff-*` in `@theme inline`.
+### F01 basic-component palette
 
-The semantic role extensions below preserve those GitHub foundations while providing separately named surface, text, border, Interaction, search, and feature feedback tokens. `input-surface` names field fill; `input` keeps its shadcn border meaning. Confirmation waiting foreground is `#116329` in Light and `#7ee787` in Dark, with surfaces `#dafbe1` and `#033a16`; these are dedicated values, not aliases of success.
+Map Pencil roles to repository semantic tokens at the shared owner. In particular, Pencil `input` means field fill and maps to `input-surface`; the registry `input` token continues to mean border. Do not alias `primary` to blue `accent`, or `destructive` to the independently retained `danger` text role.
+
+| Repository role / token                                              | F01 source                                                   | Light       | Dark        |
+| -------------------------------------------------------------------- | ------------------------------------------------------------ | ----------- | ----------- |
+| `popover`, `menu`, `input-surface`, `input-focused`, `card-selected` | `popover`, `menu`, `input`, `input-focused`, `card-selected` | `#ffffff`   | `#2b2b2b`   |
+| `secondary`                                                          | `secondary`                                                  | `#e6e6e6`   | `#363636`   |
+| `foreground-subtle` / `muted-foreground`                             | `subtle`                                                     | `#26262699` | `#d4d4d499` |
+| `foreground-subtlest`                                                | `subtlest`                                                   | `#26262666` | `#d4d4d44d` |
+| `foreground-inverse` / `primary-foreground`                          | `inverse`                                                    | `#ffffff`   | `#000000`   |
+| `card-border`, `popover-border`, `input-border`                      | `border` aliases                                             | `#0d0d0d1a` | `#ffffff1a` |
+| `border-hover`, `input-border-hover`, `input-border-focused`         | `border-hover` aliases                                       | `#0d0d0d26` | `#ffffff26` |
+| `surface`                                                            | `surface`                                                    | `#0d0d0d08` | `#ffffff0d` |
+| `surface-hover`, `selected`                                          | `surface-hover`, `selected`                                  | `#0d0d0d0d` | `#ffffff1a` |
+| `hover`                                                              | `hover`                                                      | `#0d0d0d0d` | `#ffffff0d` |
+| `menu-hover`                                                         | `menu-hover`                                                 | `#f0f0f0`   | `#363636`   |
+| `destructive`                                                        | `destructive`                                                | `#e03131`   | `#ff5c5c`   |
+| `destructive-foreground`                                             | `destructive-foreground`                                     | `#ffffff`   | `#ffffff`   |
+| `overlay`                                                            | `overlay`                                                    | `#26262633` | `#d4d4d433` |
+
+The F01 palette is the visual baseline; the [contrast requirement](#accessibility-and-internationalization) still applies to actual text and essential control boundaries. F01's white text on Dark `#ff5c5c` destructive fill does not reach 4.5:1 for normal-size labels; use a contrast-compliant destructive foreground or a documented accessible fill adjustment at the shared owner. Do not copy an insufficient pair unchanged or silently relax contrast. Weak text and focus borders also require verification against their actual surfaces.
+
+`card-foreground`, `popover-foreground`, and `secondary-foreground` use `foreground`; `muted` uses `card`; `accent-foreground` uses `accent-fg`; `input` uses `input-border`. The `diff-*` tokens remain independent Rukie extensions exposed as `--color-diff-*` in `@theme inline`. Charts use F01's independent `chart-1…5` palette: Light `#0b7fff`, `#1e8a3e`, `#9e77ed`, `#e03131`, `#e07b00`; Dark `#4099ff`, `#46bf72`, `#7b5ce5`, `#ff5c5c`, `#ff8a30`. Chart colors do not replace state or diff roles.
+
+The semantic role extensions provide separately named surface, text, border, Interaction, search, and feature feedback tokens. Confirmation waiting foreground is `#116329` in Light and `#7ee787` in Dark, with surfaces `#dafbe1` and `#033a16`; these retained functional values are dedicated roles, not aliases of F01 success.
 
 Code blocks and diffs highlighted by shiki use the `github-light` and `github-dark` themes, replacing beUI's high-contrast default.
 
@@ -82,7 +109,7 @@ Code blocks and diffs highlighted by shiki use the `github-light` and `github-da
 
 ### Semantic roles and token mapping
 
-Classify each surface as structure, content, interaction, or state before choosing its tokens. The mappings below retain GitHub colors while separating independently adjustable structural, content, interaction, and feedback roles. A shared color value does not make its roles interchangeable. Tokens are owned by [theme.css](packages/ui/src/theme.css), exposed as matching `--color-*` utilities; components consume the role, not an incidental shared value.
+Classify each surface as structure, content, interaction, or state before choosing its tokens. The mappings below separate independently adjustable structural, content, interaction, and feedback roles, using F01 for basic components and explicit functional contracts for specialized feedback. A shared color value does not make its roles interchangeable. Tokens are owned by [theme.css](packages/ui/src/theme.css), exposed as matching `--color-*` utilities; components consume the role, not an incidental shared value.
 
 | Role                             | Token contract                                                                                     | Boundary                                                                 |
 | -------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -130,33 +157,33 @@ These feature-scoped contracts apply whenever workflow timeline, compilation fee
 
 All desktop rules described here are adopted. Roles for absent search, workflow, terminal, Side Pane, scheduling, feedback, and CUA surfaces are conditional design contracts: use them when the corresponding feature exists, and record that feature as not applicable in acceptance until then. Their presence in this document does not imply new panels, execution capabilities, or OS compositor behavior are implemented.
 
-Rukie keeps its existing System / GitHub Light / GitHub Dark choices. Zai theme values, mobile fixed-size input compatibility tokens, and mobile remote-control drawer rules are not adopted. Narrow desktop and Web windows still follow the existing responsive and accessibility requirements.
+Rukie keeps its System / Light / Dark choices, with F01 basic controls and the retained GitHub technical roles described above. Zai theme values, mobile fixed-size input compatibility tokens, and mobile remote-control drawer rules are not adopted. Narrow desktop and Web windows still follow the existing responsive and accessibility requirements.
 
 ## Typography
 
 ### Font families
 
-- **Sans**: `system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`. All GUI surfaces, settings, dialogs and conversation controls use the platform system font; do not bundle or request a separate web font.
-- **Mono**: `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace`. Use `font-mono` for paths, commands, code, identifiers, shortcuts, commit hashes, model IDs, and terminal-like output.
+- **Sans**: `"Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`, matching F01's sans role when locally available and falling back to the platform system font. All GUI surfaces consume the shared sans token; do not bundle or request a separate web font as part of adopting this reference.
+- **Mono**: `"JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace`, matching F01's mono role when locally available. Use `font-mono` for paths, commands, code, identifiers, shortcuts, commit hashes, model IDs, and terminal-like output.
 
 ### UI font scale
 
 All interface typography uses the `text-ui-*` scale, derived from `--ui-font-size` (default `14px`). Choose by role rather than isolated visual preference. The scale is defined in [theme.css](packages/ui/src/theme.css); the role table governs all consumers.
 
-| Token             | Target formula         | Default | Target line height | Roles                                                               |
-| ----------------- | ---------------------- | ------: | -----------------: | ------------------------------------------------------------------- |
-| `text-ui-xl`      | `--ui-font-size + 4px` |    18px |               28px | Markdown h1 and first-level reading headings                        |
-| `text-ui-lg`      | `--ui-font-size + 2px` |    16px |               24px | Markdown h2 and second-level reading headings                       |
-| `text-ui-base`    | `--ui-font-size`       |    14px |               20px | Body, common buttons, section titles, Run and Trace labels          |
-| `text-ui-caption` | `--ui-font-size - 1px` |    13px |               20px | Deliberate compact supporting captions                              |
-| `text-ui-sm`      | `--ui-font-size - 2px` |    12px |               16px | Secondary copy, helper text, tooltips, Markdown inline code         |
-| `text-ui-xs`      | `--ui-font-size - 4px` |    10px |               14px | Badges, counters, shortcuts, very weak metadata                     |
-| `text-ui-2xs`     | `--ui-font-size - 5px` |     9px |               12px | Workflow timeline axis ticks, channel codes, and unit suffixes only |
-| `text-ui-control` | `--ui-font-size - 1px` |    13px |               20px | Existing compact Trace and tool controls only                       |
+| Token             | Target formula         | Default | Target line height | Roles                                                                                        |
+| ----------------- | ---------------------- | ------: | -----------------: | -------------------------------------------------------------------------------------------- |
+| `text-ui-xl`      | `--ui-font-size + 4px` |    18px |               28px | Markdown h1 and first-level reading headings                                                 |
+| `text-ui-lg`      | `--ui-font-size + 2px` |    16px |               24px | Markdown h2 and second-level reading headings                                                |
+| `text-ui-base`    | `--ui-font-size`       |    14px |               20px | Body, common buttons, section titles, Run and Trace labels                                   |
+| `text-ui-caption` | `--ui-font-size - 1px` |    13px |               20px | Compact supporting captions and F01 small Button labels                                      |
+| `text-ui-sm`      | `--ui-font-size - 2px` |    12px |               16px | Secondary copy, helper text, tooltips, F01 Badge/Tabs/xs Button labels, Markdown inline code |
+| `text-ui-xs`      | `--ui-font-size - 4px` |    10px |               14px | Counters, shortcuts, very weak metadata                                                      |
+| `text-ui-2xs`     | `--ui-font-size - 5px` |     9px |               12px | Workflow timeline axis ticks, channel codes, and unit suffixes only                          |
+| `text-ui-control` | `--ui-font-size - 1px` |    13px |               20px | Existing compact Trace and tool controls only                                                |
 
 `text-ui-2xs` is the only permitted exception below the 10px floor. It is restricted to workflow timeline axis furniture; never use it for content, field labels, status, counters, Run/Trace metadata, or ordinary supporting copy.
 
-Line-height ratios follow the default pairs above as interface text scales. `text-ui-control` is a Rukie-specific retained role, not an alternative default for every button or body. Legacy 13px text without a deliberate caption or compact Trace role migrates to `text-ui-base`. Loader glyphs use `text-ui-loader`, whose `--loader-font-size` describes glyph geometry, not content typography.
+F01 basic components use the same size scale with 1.5 line height: base 14/21px, caption 13/19.5px, sm 12/18px, lg 16/24px, and xl 18/27px. Their labels are normal weight except Card and Dialog titles, which use medium. The table's reading and retained technical roles keep their stated line heights. `text-ui-control` is a Rukie-specific retained role, not an alternative default for every button or body. Legacy 13px text without a deliberate caption, small Button, or compact Trace role migrates to `text-ui-base`. Loader glyphs use `text-ui-loader`, whose `--loader-font-size` describes glyph geometry, not content typography.
 
 - Do not use Tailwind's built-in `text-xs`, `text-sm`, `text-base`, `text-lg`, arbitrary sizes such as `text-[13px]`, or inline `font-size` for interface text.
 - Interface font scaling changes only `--ui-font-size`; never change the root `html` font size. Icons, spacing, and radius do not scale with it.
@@ -179,32 +206,34 @@ Line-height ratios follow the default pairs above as interface text scales. `tex
 
 ## Spacing and sizing
 
-All dimensions in this section are CSS pixels at the 14px interface setting. Use a 4px spacing grid: 4px for tight icon/text joins; 8px for inline gaps; 12px for compact rows and inset content; 16px for panels; 20px–24px for dialog interiors. The 2px menu-row gap and documented rail/scrollbar geometry are explicit exceptions. Do not inherit arbitrary registry spacing as a new exception.
+All dimensions in this section are CSS pixels at the 14px interface setting. Use a 4px spacing grid: 4px for tight icon/text joins; 8px for inline gaps; 12px for compact rows and inset content; 16px for panels; 20px–24px for dialog interiors. F01's 10px standard Button inset, 6px Button gap, 3px Tabs inset and 2px row/item gaps, plus documented rail/scrollbar geometry, are explicit exceptions. Do not inherit arbitrary registry spacing as a new exception.
 
 ### Compact geometry targets
 
 These names describe reusable design roles, not CSS variables already shipped. Implement them in the shared owning primitive rather than repeating overrides at call sites.
 
-| Role                                                 |                                      Height / minimum height |     Horizontal padding | Vertical padding | Icon / gap              |
-| ---------------------------------------------------- | -----------------------------------------------------------: | ---------------------: | ---------------: | ----------------------- |
-| Micro action                                         |                                                         24px |                    8px |              4px | 12px / 4px              |
-| Dense toolbar action                                 |                                                         28px |                    8px |              4px | 14px / 4px              |
-| Standard button / single-line input / Select trigger |                                                         32px |                   12px |              4px | 16px / 8px              |
-| Emphasized action                                    |                                                         36px |                   16px |              8px | 16px / 8px              |
-| Icon-only action                                     | 24px, 28px, 32px, or 36px square, matching adjacent controls |                      0 |                0 | 12px, 14px, or 16px     |
-| Menu / option row                                    |                                                         28px |                    8px |              4px | 16px / 8px              |
-| Session / navigation row                             |                                                         32px |                   12px |              4px | 16px / 8px              |
-| Run / Trace group / tool summary row                 |                                                         28px |                      0 |              4px | 16px / 8px              |
-| Multiline field                                      |                                                 64px minimum |                   12px |              8px | 8px between controls    |
-| Card / approval content                              |                                               Content-driven |                   16px |             12px | 12px / 8px content gaps |
-| Dialog content                                       |                                               Content-driven | 24px wide, 16px narrow |             20px | 12px section gaps       |
+| Role                                       |                                      Height / minimum height |     Horizontal padding | Vertical padding | Icon / gap              |
+| ------------------------------------------ | -----------------------------------------------------------: | ---------------------: | ---------------: | ----------------------- |
+| Micro Button A01                           |                                                         24px |                    8px |                0 | 12px / 6px              |
+| Small Button A01                           |                                                         28px |                    8px |                0 | 14px / 6px              |
+| Standard Button A01                        |                                                         32px |                   10px |                0 | 16px / 6px              |
+| Single-line Input A02 / Select trigger A03 |                                                         32px |                   12px |                0 | 16px / 8px              |
+| Large Button A01                           |                                                         36px |                   12px |                0 | 16px / 6px              |
+| Icon-only action                           | 24px, 28px, 32px, or 36px square, matching adjacent controls |                      0 |                0 | 12px, 14px, or 16px     |
+| MenuItem A12 / ordinary option row         |                                                         32px |                    8px |                0 | 16px / 8px              |
+| Session / navigation row                   |                                                         32px |                   12px |              4px | 16px / 8px              |
+| Run / Trace group / tool summary row       |                                                         28px |                      0 |              4px | 16px / 8px              |
+| Textarea A08                               |                                        104px baseline, grows |                   12px |             12px | Content-driven          |
+| Card A11                                   |                                               Content-driven |                   16px |             16px | 8px content gaps        |
+| Approval content                           |                                               Content-driven |                   16px |             12px | 12px / 8px content gaps |
+| Ordinary Dialog content                    |                                               Content-driven | 24px wide, 16px narrow |             24px | 16px section gaps       |
 
-Control heights are compact baselines at the default font size, not clipping constraints. At larger text sizes or with wrapped labels, allow height to grow to fit the line box plus padding. Keep small icon-only controls' hit targets at least 24px square; larger targets must not overlap adjacent actions. Micro actions use `text-ui-sm` for sparse auxiliary controls, never primary approval actions or normal body text. Other text actions use `text-ui-base` unless an explicit role above applies.
+Control heights are compact baselines at the default font size, not clipping constraints. F01's standard and large Buttons use `text-ui-base`; small Buttons use `text-ui-caption`, and xs Buttons use `text-ui-sm`. Small and xs Buttons have 8px horizontal padding and no extra vertical padding. At larger text sizes or with wrapped labels, allow height to grow to fit the line box plus padding. Keep small icon-only controls' hit targets at least 24px square; larger targets must not overlap adjacent actions. Micro actions are for sparse auxiliary controls, never primary approval actions or normal body text. Component example widths and Card/Dialog sample heights on F01 illustrate content; they do not impose fixed page layout.
 
 - Default icon: 16px. Supported icon sizes: 12px, 14px, 16px, 20px, 24px. Larger icons are for explicit empty-state or brand artwork roles.
-- Reuse existing Button size names: `sm` targets 28px, `md` targets 32px, `lg` targets 36px, `icon` targets 32px square. Additional micro sizes require a shared primitive API, not isolated inline overrides.
+- Reuse existing Button size names: `sm` targets 28px, `md` targets 32px, `lg` targets 36px, `icon` targets 32px square. F01's xs role targets 24px; when the installed primitive lacks that size, add it at the shared owner rather than applying isolated inline overrides.
 - Menu shells use 4px padding, 2px gaps between adjacent option rows, and a 4px trigger offset. Tooltips use 8px padding and 4px offset.
-- Ordinary cards have 12px content gaps; repeated Trace rows have 4px gaps, Trace groups have 8px gaps, and separate messages have 16px gaps. Do not stack a row's vertical padding with an equivalent external spacer.
+- Ordinary F01 cards have 8px content gaps; repeated Trace rows have 4px gaps, Trace groups have 8px gaps, and separate messages have 16px gaps. Do not stack a row's vertical padding with an equivalent external spacer.
 - In flex layouts with text, use `min-w-0`; in nested scroll or split panels, use `min-h-0`. Technical values wrap or scroll inside their own content region, never push action buttons beyond the shell.
 - Prefer fluid widths with a maximum. Standard menus target 240px maximum width, supporting menus may use 320px; ordinary dialogs target 480px maximum, settings or rich-content dialogs may use 640px. All clamp to viewport width minus 32px. A documented content need can choose a different shared role before implementation.
 - Dialog shells clamp to viewport height minus 32px. Scroll the body when needed; keep title and footer actions visible. Approval details may scroll internally, but the action footer must never be inside a clipped detail region.
@@ -218,7 +247,7 @@ Control heights are compact baselines at the default font size, not clipping con
 Radius follows actual visible rounded containers, not component importance or DOM nesting. Layout regions, ordinary wrappers, Trace groups, and separators do not add a level. At the default root geometry, use the shared scale: `rounded-sm` 4px, `rounded-md` 6px, `rounded-lg` 8px, `rounded-xl` 12px, `rounded-2xl` 16px. Adapt the shared radius mapping where the current theme's `--radius` derivation disagrees; do not scatter numeric radius overrides.
 
 - First rounded content container: `rounded-xl`. Nested containers step down through `rounded-lg` → `rounded-md` → `rounded-sm`; 4px is the minimum. Peers share a radius; count the nearest visible rounded ancestor through plain wrappers.
-- Buttons, Input, Textarea, and Select triggers follow the control table below. Primary emphasis and height do not increase radius.
+- F01 standard and large Buttons, Input, Textarea, and Select triggers start at 8px; small and xs Buttons start at 6px. Checkbox and Badge use their explicit 4px and 6px roles below. The control nesting table applies when a documented composite places a control within a smaller visible rounded parent; primary emphasis alone does not increase radius.
 - Dialog shells use `rounded-2xl`. Their content hierarchy restarts at `rounded-xl`; the dialog shell does not force all inner controls down a level. Only chat attachment, feedback screenshot, and CUA screenshot preview dialogs use `rounded-xl` shells; this is not a generic exception for all image dialogs.
 - Menus, context menus, Select option panels, and suggestion panels use `rounded-lg`; items use `rounded-md`, nested controls `rounded-sm`. Each submenu restarts this overlay hierarchy, independently of its trigger.
 - Standalone ordinary popovers start at `rounded-xl` and follow content nesting.
@@ -267,6 +296,28 @@ Opening and closing use scale 0.98 to 1 plus opacity, with a 160ms ease-out tran
 
 Component sourcing (existing → beUI → shadcn/ui → dedicated libraries → custom) remains defined in [AGENTS.md](AGENTS.md#ui-components). Every source follows the same compact geometry, semantic palette, typography, radius, and localization rules.
 
+### F01 basic-component roles
+
+These roles apply to the shared primitives throughout the GUI. Page-specific contracts may change documented dimensions without replacing the default neutral primary palette. Resolve the source node and its current variables before a later design-reference update; maintain the reusable contract here rather than copying independent values into each screen.
+
+| F01 component                      | Required reusable treatment                                                                                                                                                             |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A01 Button (`v789Gm`)              | Standard 32px / small 28px / xs 24px / large 36px; padding, type, radius and variants follow the shared tables. Width follows the label and content.                                    |
+| A02 Input (`kM60g`)                | 32px baseline, 12px horizontal inset, 8px corners, 1px `input-border`, base text; placeholder uses the weak-text role, subject to readable contrast.                                    |
+| A03 Select (`D9tgs`)               | Same field shell as Input; base value, 16px chevron and 8px gap; options use the shared menu roles.                                                                                     |
+| A04 Switch (`L1DBM`)               | 36 × 20px rounded track, 2px inset and 16px circular thumb; on uses primary/inverse, off uses secondary/foreground.                                                                     |
+| A05 Checkbox (`Adwq5`)             | 16px mark with 4px corners; checked primary/inverse with a 12px check; unchecked transparent with 1px border. The activating hit area meets the interaction minimum.                    |
+| A06 Radio (`g18LTT`)               | 16px circle with 1px border and 8px checked dot; checked border/dot use primary, unchecked border uses border. The activating hit area meets the interaction minimum.                   |
+| A07 Badge (`Tx664`)                | 20px baseline, 8px horizontal inset, 6px corners and `text-ui-sm`; ordinary badge uses secondary/foreground, semantic variants describe actual states.                                  |
+| A08 Textarea (`cJYOj`)             | Same fill, border and 8px corners as Input; 12px inset, base text and 104px illustrative baseline, with explicit growth or internal scroll ownership.                                   |
+| A09 Tabs (`rAOc3`)                 | 32px baseline, surface tray with 8px corners and 3px inset, 2px item gaps, 6px item corners; sm labels, active card/foreground and inactive transparent/subtle.                         |
+| A10 Separator (`Y5KeL`)            | 1px border-colored separator without a rounded container or elevation.                                                                                                                  |
+| A11 Card (`I1pPCq`)                | Card/card-border, 1px border, 12px corners, 16px inset, 8px gaps, base medium title and sm supporting copy; no ordinary shadow.                                                         |
+| A12 MenuItem (`ctUio`)             | 32px baseline, 6px corners, 8px horizontal inset/gap, 16px icon and base label; menu-hover feedback, semantic destructive action and shared disabled behavior.                          |
+| F01 DropdownMenu / Dialog examples | Menu: 8px shell corners, 4px inset and 2px row gaps. Dialog: 16px shell corners, 24px inset, 16px gaps and lg medium title. Both use a 1px popover-border and 0/4px/6px overlay shadow. |
+
+F01 lists default, hover, focus and disabled examples. Preserve the additional pressed, selected, pending and keyboard behaviors below. Its disabled controls use 50% opacity on the individual target, with geometry unchanged and activation blocked. Its focus example uses `input-border-focused`; the complete keyboard focus treatment must also meet visibility and contrast requirements. The standalone hover sample uses surface-hover/border with foreground text; it does not replace a primary action's inverse color pair on hover.
+
 ### Shared state language
 
 | State               | Required treatment                                                                                                                                      |
@@ -279,8 +330,8 @@ Component sourcing (existing → beUI → shadcn/ui → dedicated libraries → 
 | Running             | `accent` state copy/glyph where needed, optional loading feedback; no success styling before completion                                                 |
 | Complete / approved | `success` only for actual completion or approval, paired with text                                                                                      |
 | Error / denied      | `danger` paired with error or denial copy; ordinary unselected controls never use it                                                                    |
-| Disabled            | Keep geometry and label, use `muted-foreground`, no hover/press response; expose native disabled or appropriate ARIA semantics                          |
-| Keyboard focus      | Visible 2px `ring`, 2px offset where applicable; preserve outline space and overlay shadow, independently of hover and status                           |
+| Disabled            | Keep geometry and label, F01 50% opacity on the target, no hover/press response; expose native disabled or appropriate ARIA semantics                   |
+| Keyboard focus      | F01 focused-border role plus a visible 2px indicator where needed; preserve outline space and overlay shadow, independently of hover and status         |
 
 Semantic alpha backgrounds (`warning/10`, `success/10`, `danger/10`) and dedicated confirmation surfaces are allowed for state badges, not whole conversation surfaces. Opacity-only weak furniture such as rail ticks is not a substitute for readable label contrast. Disabled labels must remain distinguishable; do not dim an entire panel and its still-enabled controls together.
 
@@ -304,20 +355,20 @@ Use semantic controls and accessible names for actions; a cursor or an `onClick`
 
 Use the installed shared Button variants and sizes first; visual roles below do not imply additional APIs already exist. Keep a clear action hierarchy, usually one primary action per region, and square icon-only controls with an accessible name.
 
-| Variant role | Resting appearance                                        | Interaction                                                                                                                                       |
-| ------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Primary      | `primary` with `primary-foreground`                       | Modest theme-derived emphasis, no extra resting focus border                                                                                      |
-| Outline      | Neutral or transparent surface and `border`               | Subtle neutral hover and stronger border                                                                                                          |
-| Secondary    | `secondary` with matching foreground                      | Neutral surface emphasis below primary                                                                                                            |
-| Ghost        | Transparent, readable foreground                          | Neutral background only on hover or press                                                                                                         |
-| Destructive  | Semantic destructive fill with `foreground-inverse` text  | Default and pressed use opaque fill; hover may use 90% fill while preserving 4.5:1 text contrast. Only destructive operations, not routine denial |
-| Link         | Text-only action or semantic link, no filled button shell | Underline on hover and visible keyboard focus; navigation uses a link element                                                                     |
+| Variant role | Resting appearance                                                           | Interaction                                                                                                                                       |
+| ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Primary      | F01 `primary` with `primary-foreground`: Light black/white, Dark white/black | Preserve the inverse color pair on hover and press; modest emphasis, no extra resting focus border                                                |
+| Outline      | Neutral or transparent surface and `border`                                  | Subtle neutral hover and stronger border                                                                                                          |
+| Secondary    | `secondary` with matching foreground                                         | Neutral surface emphasis below primary                                                                                                            |
+| Ghost        | Transparent, readable foreground                                             | Neutral background only on hover or press                                                                                                         |
+| Destructive  | F01 destructive fill with contrast-compliant `destructive-foreground`        | Default and pressed use opaque fill; hover may use 90% fill while preserving 4.5:1 text contrast. Only destructive operations, not routine denial |
+| Link         | Text-only action or semantic link, no filled button shell                    | Underline on hover and visible keyboard focus; navigation uses a link element                                                                     |
 
-Tool Approval retains its registry's deliberate `foreground` / inverse primary approval action; it uses the same compact sizing and radius rules. The approval button's initial appearance has no blue decorative outline or ring. Programmatic focus when the card appears must not be interpreted as keyboard navigation or force the keyboard focus treatment to appear. Preserve the card's keyboard entry point, shortcuts, focus containment where required, and restoration; when the user navigates with the keyboard, show a visible, unclipped focus indicator. Do not solve a resting-style defect by removing focus feedback for keyboard users.
+Tool Approval uses the shared neutral primary/inverse action, with the same compact sizing and radius rules. The approval button's initial appearance has no blue decorative outline or ring. Programmatic focus when the card appears must not be interpreted as keyboard navigation or force the keyboard focus treatment to appear. Preserve the card's keyboard entry point, shortcuts, focus containment where required, and restoration; when the user navigates with the keyboard, show a visible, unclipped focus indicator. Do not solve a resting-style defect by removing focus feedback for keyboard users.
 
 Inputs use `input-surface`, `foreground`, and `input-border`. Hover uses `input-border-hover`; focus uses `input-focused` and `input-border-focused`, without glow. The field wrapper owns the rounded border and an inset focus/error ring, so a scrolling parent cannot clip the indicator into square corners. Keep focus geometry unchanged. Select triggers follow fields while their option panels follow menus. Normal fields are not cards. Multiline content grows or scrolls in an explicit field viewport.
 
-The Rename chat dialog Save action uses a scoped neutral primary: black with white text in Light, white with black text in Dark. Keep these fills on hover and press, preserving disabled and keyboard focus feedback. This role does not change the global GitHub primary or the dialog layout.
+The Rename chat dialog Save action follows the shared F01 primary, including its inverse fill on hover and press, disabled behavior and visible keyboard focus. Its dialog layout remains unchanged.
 
 - Error styling represents an actual validation error, paired with explanatory copy; it does not decorate an untouched field.
 - Ordinary Input and Textarea follow the basic-control radius table. A composite field shell follows content-container nesting; only the actual main composer has the approved `2xl` exception.
@@ -500,7 +551,7 @@ Pencil C03 and C10–C17 own the settings region geometry. At 1887 × 1210, keep
 
 The no-provider state follows P01-E / L-P01-E and C26 in the same workspace: one full-width 880 × 560px panel, 12px corners and a 1px theme border, without the toolbar, provider rail, details or model actions. Center the 32px Box icon at panel y180, the 16px title at y232, the 14px description at y268, and the beUI primary Add provider action (144 × 28px, 8px corners) at y312. Title and description are 560px wide on desktop; at narrow widths they fit the panel with 24px side padding and may wrap, keeping the action below the copy. Dark icon uses foreground at 30% opacity; Light uses 40%. Action text is black on Dark white fill and white on Light black fill. The action opens the custom-provider and Provider Preset catalog; cancelling returns to the empty state. Preserve populated provider and shell geometry.
 
-Model dialogs use a 672px maximum width and 704px height, a separate 82px title region, 20px form padding, a fixed 60px footer, and a scrolling form. Basic information, reasoning and multimodal capabilities remain outside the advanced section, which defaults to collapsed. The advanced section follows current C16: automatic compression and runtime cards in two columns, then the price card; 16px section gaps, 12px card padding, 16px card radii and 189px card minimum height. Its title and summary use the reference copy. Advanced fields are editable optional model settings: compression threshold is context occupancy percent (1–100, `%` placeholder); Temperature is 0–2; tool iterations are positive whole rounds, one model reply with its entire tool batch per round; prices are nonnegative USD per million tokens and price source is metadata. Empty fields retain existing execution defaults. After the configured tool round limit, the model receives a request without tools to summarize. Root Session compression uses its selected model threshold; children retain the native Harness root compression policy. Intelligent configuration, extra capability controls, protocol JSON mapping and form reset are absent; editing preserves existing model compatibility and reasoning mappings. Two-column fields reflow at narrow widths; fields use 32px controls with 8px corners, 4px label spacing and 54px single-line groups, and capability options use compact 28px chips with 8px corners and 16px marks. Default reasoning uses the installed beUI Select in the C16 188px field with a 32px control and 54px group; its options exactly match the checked reasoning chips in order. C16 level labels are fixed across locales: 关闭, 自动, Minimal, Low, Medium, High, XHigh, Max. This user-authorized label exception does not apply to other copy. Automatic is an opt-in desktop configuration choice that omits a request reasoning override, not a Core thinking level. An empty default uses a localized placeholder, with no extra menu option. Model ID and optional display name are independently editable and persisted; no field is filled from the other. Settings scrolling uses shadcn ScrollArea with the Pencil A13 overlay: a transparent 8px track, centered 4px rounded thumb, minimum 24px length, and foreground at 30% opacity. Native scrollbars are hidden; only overflowing regions show the custom thumb. The delete confirmation uses 448px maximum width and 36px actions (112px cancel, 128px destructive action with #ff5c5c fill). API options overlay the field with 28px rows, 6px horizontal item padding, 16px checkmarks, and 2px gaps (P04/C14: 624 × 96px panel; its 4px item inset includes the 1px border); provider action menus are 136px wide with 44px rows. The settings navigation shows the reference category hierarchy; unavailable destinations are disabled and explain availability. Narrow windows collapse the settings rail and stack the provider rail without horizontal overflow. The settings frame keeps the reference 4px right/bottom inset and 12px corners. These roles apply only to settings, preserving the chat shell geometry. The user requested strict Pencil restoration: this settings region and its dialogs have scoped Pencil tokens, leaving other functional theme roles independent. The middle settings navigation follows the C03 `layout-sidebar` role defined above; internal settings surfaces do not override the three-column shell. Dark internal settings background is #161616, panel/input/popover #2b2b2b, foreground #d4d4d4, subtle foreground #d4d4d499, border #ffffff1a, secondary controls #ffffff1a, primary controls white with #161616 foreground. Light internal settings use background #f8f8f8, white panel/input/popover, foreground #262626, subtle foreground #26262699, border #0d0d0d1a, secondary controls #0d0d0d0d, and black primary controls with white text. Model ID placeholders use the foreground role. Settings and dialogs use the shared system sans token and semantic text-ui sizes at the Pencil 1.5 line-height; model IDs use the shared system mono token.
+Model dialogs use a 672px maximum width and 704px height, a separate 82px title region, 20px form padding, a fixed 60px footer, and a scrolling form. Basic information, reasoning and multimodal capabilities remain outside the advanced section, which defaults to collapsed. The advanced section follows current C16: automatic compression and runtime cards in two columns, then the price card; 16px section gaps, 12px card padding, 16px card radii and 189px card minimum height. Its title and summary use the reference copy. Advanced fields are editable optional model settings: compression threshold is context occupancy percent (1–100, `%` placeholder); Temperature is 0–2; tool iterations are positive whole rounds, one model reply with its entire tool batch per round; prices are nonnegative USD per million tokens and price source is metadata. Empty fields retain existing execution defaults. After the configured tool round limit, the model receives a request without tools to summarize. Root Session compression uses its selected model threshold; children retain the native Harness root compression policy. Intelligent configuration, extra capability controls, protocol JSON mapping and form reset are absent; editing preserves existing model compatibility and reasoning mappings. Two-column fields reflow at narrow widths; fields use 32px controls with 8px corners, 4px label spacing and 54px single-line groups, and capability options use compact 28px chips with 8px corners and 16px marks. Default reasoning uses the installed beUI Select in the C16 188px field with a 32px control and 54px group; its options exactly match the checked reasoning chips in order. C16 level labels are fixed across locales: 关闭, 自动, Minimal, Low, Medium, High, XHigh, Max. This user-authorized label exception does not apply to other copy. Automatic is an opt-in desktop configuration choice that omits a request reasoning override, not a Core thinking level. An empty default uses a localized placeholder, with no extra menu option. Model ID and optional display name are independently editable and persisted; no field is filled from the other. Settings scrolling uses shadcn ScrollArea with the Pencil A13 overlay: a transparent 8px track, centered 4px rounded thumb, minimum 24px length, and foreground at 30% opacity. Native scrollbars are hidden; only overflowing regions show the custom thumb. The delete confirmation uses 448px maximum width and 36px actions (112px cancel, 128px destructive action with #ff5c5c fill). API options overlay the field with 28px rows, 6px horizontal item padding, 16px checkmarks, and 2px gaps (P04/C14: 624 × 96px panel; its 4px item inset includes the 1px border); provider action menus are 136px wide with 44px rows. The settings navigation shows the reference category hierarchy; unavailable destinations are disabled and explain availability. Narrow windows collapse the settings rail and stack the provider rail without horizontal overflow. The settings frame keeps the reference 4px right/bottom inset and 12px corners. These roles apply only to settings, preserving the chat shell geometry. The user requested strict Pencil restoration: this settings region and its dialogs have scoped Pencil tokens, leaving other functional theme roles independent. The middle settings navigation follows the C03 `layout-sidebar` role defined above; internal settings surfaces do not override the three-column shell. Dark internal settings background is #161616, panel/input/popover #2b2b2b, foreground #d4d4d4, subtle foreground #d4d4d499, border #ffffff1a, secondary controls #ffffff1a, primary controls use the shared white/black F01 pair. Light internal settings use background #f8f8f8, white panel/input/popover, foreground #262626, subtle foreground #26262699, border #0d0d0d1a, secondary controls #0d0d0d0d, and primary controls use the shared black/white F01 pair. Model ID placeholders use the foreground role. Settings and dialogs use the shared sans token and semantic text-ui sizes at the Pencil 1.5 line-height; model IDs use the shared mono token.
 
 Model dialog numeric fields keep the installed beUI Input and numeric semantics, minimum validation, and keyboard stepping. Hide browser-native increment/decrement buttons in this dialog to match Pencil; retain the 32px control geometry.
 
@@ -516,4 +567,4 @@ API Key visibility controls retain the installed beUI Input and Button. Saved cr
 
 Pencil C04–C09 source nodes own the scoped conversation controls, including their Light references. C04 placeholder uses foreground at 30% in Dark and 40% in Light. Its bottom toolbar starts at x16/y64 at the default 100px height; the Plus is 16px, permission icon is 16px, chevrons are 12px, context ring is 16px, and send is 28px with 8px corners. Permission icon/text/chevron gap is 6px; Plus-to-permission gap is 16px. Model labels are 14px with a subtle reasoning label and 2px internal gap. C05 uses 10px left icon inset, 34px text inset, 44px repeating rows with 21px title and 18px description, and a 16px right check at x350. Full access uses #ff8a30 in Dark and #e07b00 in Light for both copy lines, icon and check. C06 model name begins at row x36, supplier name at x224 and check at x302; preserve 4px outer inset and 2px row gaps. C07 dividers lie at y42 and y110, facts at y56/y80 and chips at y146 for the default font.
 
-C08 uses an icon-free title at x16/y12, subtitle at y38, a percentage/count row at y72, and a 6px bar at y108. Statistics have 10px colored legends, 42px minimum rows, 12px values in the shared system mono font, 10px scope descriptions and a separated footer. Current report has System, Messages and Tools totals: retain those exact facts, using subtle, blue (#4099ff Dark / #0b7fff Light) and orange colors respectively. Percentages use report.used as the denominator; capacity segments use report.window. Opening context and compaction count remain distinct footer facts; do not label count as a token threshold. C09 uses a 752px maximum menu with 8px corners, a 12px group title at x16/y10, 32px rows starting at x6/y38 with 6px corners, 16px icons at row x10 and labels at x36. Its height follows supported items, with A13 ScrollArea at 354px maximum; only the implemented image attachment action is currently available. These scoped styles use the Pencil border and 0/4px/6px shadow, permit text scaling and wrapping, and preserve keyboard/focus/disabled behavior. Unsupported functionality does not acquire a placeholder action or misleading prompt hint.
+C08 uses an icon-free title at x16/y12, subtitle at y38, a percentage/count row at y72, and a 6px bar at y108. Statistics have 10px colored legends, 42px minimum rows, 12px values in the shared mono font, 10px scope descriptions and a separated footer. Current report has System, Messages and Tools totals: retain those exact facts, using subtle, blue (#4099ff Dark / #0b7fff Light) and orange colors respectively. Percentages use report.used as the denominator; capacity segments use report.window. Opening context and compaction count remain distinct footer facts; do not label count as a token threshold. C09 uses a 752px maximum menu with 8px corners, a 12px group title at x16/y10, 32px rows starting at x6/y38 with 6px corners, 16px icons at row x10 and labels at x36. Its height follows supported items, with A13 ScrollArea at 354px maximum; only the implemented image attachment action is currently available. These scoped styles use the Pencil border and 0/4px/6px shadow, permit text scaling and wrapping, and preserve keyboard/focus/disabled behavior. Unsupported functionality does not acquire a placeholder action or misleading prompt hint.
