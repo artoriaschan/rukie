@@ -92,7 +92,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       <div
         data-state={hasError ? "error" : success ? "success" : focused ? "focused" : "idle"}
         className={cn(
-          "relative flex min-h-8 items-center rounded-lg border ring-inset transition-colors duration-120",
+          "relative flex min-h-8 items-center rounded-lg border ring-inset",
           "border-input-border bg-input-surface",
           !focused && !hasError && !disabled && "hover:border-input-border-hover",
           focused && !hasError && "border-input-border-focused bg-input-focused ring-2 ring-ring",

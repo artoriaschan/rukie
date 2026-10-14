@@ -1,7 +1,6 @@
 import { useComponentText } from "@/lib/i18n";
 
 import { Check, Loader2, X } from "lucide-react";
-import { motion } from "motion/react";
 import { forwardRef, type ReactNode } from "react";
 import { Button, type ButtonProps } from "./base";
 
@@ -47,19 +46,10 @@ export const StatefulButton = forwardRef<HTMLButtonElement, StatefulButtonProps>
     const textKey = typeof stateText === "string" ? `${state}-${stateText}` : state;
 
     return (
-      <Button
-        ref={ref}
-        disabled={disabled || isBusy}
-        aria-busy={isBusy}
-        whileHover={undefined}
-        {...rest}
-      >
-        <motion.span
+      <Button ref={ref} disabled={disabled || isBusy} aria-busy={isBusy} {...rest}>
+        <span
           key={textKey}
           aria-live="polite"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.12 }}
           className="inline-flex min-w-0 items-center justify-center gap-[inherit]"
         >
           {state === "loading" ? <Loader2 className="size-4 shrink-0 animate-spin" /> : null}
@@ -67,7 +57,7 @@ export const StatefulButton = forwardRef<HTMLButtonElement, StatefulButtonProps>
           {state === "error" ? <X className="size-4 shrink-0" /> : null}
           <span>{stateText}</span>
           {state === "idle" ? icon : null}
-        </motion.span>
+        </span>
       </Button>
     );
   },

@@ -179,7 +179,7 @@ export function PromptInput({
     <form
       onSubmit={submit}
       className={cn(
-        "relative w-full rounded-2xl border border-border/80 bg-background p-2 transition-colors focus-within:border-foreground/25",
+        "relative w-full rounded-2xl border border-border/80 bg-background p-2 focus-within:border-foreground/25",
         className,
       )}
     >
@@ -215,13 +215,12 @@ export function PromptInput({
                 aria-label={componentText("component.add-to-prompt")}
                 className={cn("min-h-8 min-w-8 rounded-lg", !trailingAction && "ml-auto")}
               >
-                <motion.span
+                <span
                   aria-hidden="true"
-                  animate={{ rotate: actionsOpen ? 45 : 0 }}
-                  transition={{ duration: reduce ? 0 : 0.12 }}
+                  style={{ transform: actionsOpen ? "rotate(45deg)" : undefined }}
                 >
                   <Plus className="size-4" />
-                </motion.span>
+                </span>
               </Button>
             </MorphPopoverTrigger>
 

@@ -49,7 +49,7 @@ function DropdownMenuContent({
         align={align}
         className={cn(
           OVERLAY_LAYER.interactive,
-          " max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-32 max-w-[calc(100vw-32px)] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-md duration-160 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:overflow-hidden data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          " max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-32 max-w-[calc(100vw-32px)] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-md",
           className,
         )}
         {...props}
@@ -224,6 +224,7 @@ function DropdownMenuSubTrigger({
   className,
   disabled,
   onClickCapture,
+  onPointerLeave,
   inset,
   children,
   ...props
@@ -234,6 +235,25 @@ function DropdownMenuSubTrigger({
     <DropdownMenuPrimitive.SubTrigger
       disabled={disabled}
       onClickCapture={menuItemClickCapture(disabled, onClickCapture)}
+      onPointerLeave={(event) => {
+        onPointerLeave?.(event);
+        if (
+          event.defaultPrevented ||
+          event.pointerType !== "mouse" ||
+          disabled ||
+          event.currentTarget.getAttribute("aria-expanded") !== "true"
+        )
+          return;
+        const contentId = event.currentTarget.getAttribute("aria-controls");
+        const content = contentId
+          ? event.currentTarget.ownerDocument.getElementById(contentId)
+          : null;
+        // A direct crossing into the linked submenu already completed the pointer corridor.
+        // Radix's last parent-only pointer direction may still point away after a left flip.
+        if (event.relatedTarget instanceof Node && content?.contains(event.relatedTarget)) {
+          event.preventDefault();
+        }
+      }}
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
       className={cn(
@@ -257,7 +277,7 @@ function DropdownMenuSubContent({
       data-slot="dropdown-menu-sub-content"
       className={cn(
         OVERLAY_LAYER.interactive,
-        " min-w-[96px] origin-(--radix-dropdown-menu-content-transform-origin) max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-md duration-160 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+        " min-w-[96px] origin-(--radix-dropdown-menu-content-transform-origin) max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-md",
         className,
       )}
       {...props}

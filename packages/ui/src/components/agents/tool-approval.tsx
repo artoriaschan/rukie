@@ -173,7 +173,7 @@ export function ToolApproval({
             </div>
             <span
               className={cn(
-                "shrink-0 min-h-5 rounded-md border px-2 py-0 text-ui-sm leading-[1.5] font-normal transition-colors",
+                "shrink-0 min-h-5 rounded-md border px-2 py-0 text-ui-sm leading-[1.5] font-normal",
                 getStatusBadgeClass(status),
               )}
             >
@@ -188,16 +188,12 @@ export function ToolApproval({
               aria-expanded={currentOpen}
               aria-controls={detailsId}
               onClick={() => setOpen(!currentOpen)}
-              className="mt-2 inline-flex min-h-7 items-center gap-1 rounded-md text-ui-base font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className="mt-2 inline-flex min-h-7 items-center gap-1 rounded-md text-ui-base font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
               {componentText("component.view-details")}
-              <motion.span
-                aria-hidden="true"
-                animate={{ rotate: currentOpen ? 180 : 0 }}
-                transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
-              >
+              <span aria-hidden="true" style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}>
                 <ChevronDown className="size-3.5" />
-              </motion.span>
+              </span>
             </button>
           ) : null}
         </div>

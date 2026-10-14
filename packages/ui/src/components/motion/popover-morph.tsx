@@ -1,13 +1,5 @@
 import { OVERLAY_LAYER } from "@/lib/overlay";
 import {
-  AnimatePresence,
-  animate,
-  motion,
-  useMotionValue,
-  usePresence,
-  useReducedMotion,
-} from "motion/react";
-import {
   cloneElement,
   createContext,
   isValidElement,
@@ -24,7 +16,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { usePopoverPortalPosition } from "@/components/motion/popover-position";
-import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 type Side = "top" | "bottom";
@@ -61,9 +52,8 @@ export interface MorphPopoverProps {
 }
 
 /**
- * A popover whose panel morphs open from the trigger corner: it's laid out at
- * full size but clipped to the corner nearest the trigger, then unclips as one
- * piece. Closes on outside pointer / Escape. Controlled or uncontrolled.
+ * An anchored action popover with immediate visibility.
+ * Closes on outside pointer / Escape. Controlled or uncontrolled.
  */
 export function MorphPopover({
   children,
@@ -195,27 +185,11 @@ export function MorphPopoverTrigger({ children }: MorphPopoverTriggerProps) {
   });
 }
 
-const originFor = (side: Side, align: Align) =>
-  `${side === "bottom" ? "top" : "bottom"} ${align === "end" ? "right" : "left"}`;
-
-// A clip that hides everything but the corner nearest the trigger, so the
-// panel appears to grow out of it. inset(top right bottom left).
-function clipAt(side: Side, align: Align, radius: number, inset: number) {
-  const top = side === "bottom" ? "0%" : `${inset}%`;
-  const bottom = side === "bottom" ? `${inset}%` : "0%";
-  const right = align === "end" ? "0%" : `${inset}%`;
-  const left = align === "end" ? `${inset}%` : "0%";
-  return `inset(${top} ${right} ${bottom} ${left} round ${radius}px)`;
-}
-
-// A short tween keeps the surface and clip synchronized without overshoot.
-const MORPH_CLIP_TRANSITION = { duration: 0.16, ease: EASE_OUT } as const;
-
 export interface MorphPopoverContentProps {
   children: ReactNode;
   side?: Side;
   align?: Align;
-  /** Gap between trigger and panel, in px. Default 8. */
+  /** Gap between trigger and panel, in px. Default 4. */
   sideOffset?: number;
   /** Panel corner radius, in px. Default 12. */
   radius?: number;
@@ -231,10 +205,7 @@ export function MorphPopoverContent(props: MorphPopoverContentProps) {
   const [portalReady, setPortalReady] = useState(false);
   useEffect(() => setPortalReady(true), []);
   if (!portalReady) return null;
-  return createPortal(
-    <AnimatePresence>{ctx.open && <MorphPopoverSurface {...props} />}</AnimatePresence>,
-    document.body,
-  );
+  return createPortal(ctx.open ? <MorphPopoverSurface {...props} /> : null, document.body);
 }
 
 // Measurement belongs to the mounted portal session: reopening must not start
@@ -250,9 +221,7 @@ function MorphPopoverSurface({
   className,
 }: MorphPopoverContentProps) {
   const ctx = useMorphContext("MorphPopoverContent");
-  const reduce = useReducedMotion() ?? false;
-  const [isPresent, safeToRemove] = usePresence();
-  const layout = usePopoverPortalPosition(ctx.triggerRef, ctx.contentRef, isPresent);
+  const layout = usePopoverPortalPosition(ctx.triggerRef, ctx.contentRef, true);
 
   const preferredLeft = layout
     ? align === "end"
@@ -287,83 +256,29 @@ function MorphPopoverSurface({
       : Math.max(gutter, layout.trigger.top - layout.content.height - sideOffset)
     : 0;
 
-  // Both directions travel between the exact same hidden/show states. Exit
-  // targets "hidden" directly instead of introducing separate choreography.
-  const wrap = reduce
-    ? undefined
-    : {
-        hidden: { scale: 0.98, transition: { duration: 0.16, ease: EASE_OUT } },
-        show: { scale: 1, transition: { duration: 0.16, ease: EASE_OUT } },
-      };
-  const clip = reduce
-    ? undefined
-    : {
-        hidden: {
-          clipPath: clipAt(resolvedSide, align, radius, 2),
-          transition: MORPH_CLIP_TRANSITION,
-        },
-        show: {
-          clipPath: clipAt(resolvedSide, align, radius, 0),
-          transition: MORPH_CLIP_TRANSITION,
-        },
-      };
-  // Animate the value directly so opacity stays in the inline style throughout
-  // the entrance. A native opacity animation can expose the initial inline 0
-  // for a frame when it finishes, before Motion writes the final value.
-  const opacity = useMotionValue(0);
   const ready = layout !== null;
   const focusedOnOpen = useRef(false);
   useEffect(() => {
-    if (!ready || !isPresent || focusedOnOpen.current || !ctx.contentRef.current) return;
+    if (!ready || focusedOnOpen.current || !ctx.contentRef.current) return;
     focusedOnOpen.current = true;
     onOpenAutoFocus?.(ctx.contentRef.current);
-  }, [ready, isPresent, ctx.contentRef, onOpenAutoFocus]);
-  useEffect(() => {
-    if (!ready) {
-      if (!isPresent) safeToRemove?.();
-      return;
-    }
-    const animation = animate(opacity, isPresent ? 1 : 0, {
-      ...(reduce ? { duration: 0.12 } : { duration: 0.16, ease: EASE_OUT }),
-      onComplete: () => {
-        if (!isPresent) safeToRemove?.();
-      },
-    });
-    return () => animation.stop();
-  }, [opacity, ready, isPresent, reduce, safeToRemove]);
+  }, [ready, ctx.contentRef, onOpenAutoFocus]);
 
   return (
-    <motion.div
+    <div
       data-morph-popover-portal=""
-      inert={!isPresent}
-      // Wrapper carries the shadow as a drop-shadow filter, which hugs the
-      // clipped shape below (box-shadow would just get clipped away).
-      variants={wrap}
-      initial="hidden"
-      animate={layout ? "show" : "hidden"}
-      exit="hidden"
       style={{
         left,
         top,
-        opacity,
-        pointerEvents: isPresent ? "auto" : "none",
         visibility: layout ? "visible" : "hidden",
-        transformOrigin: originFor(resolvedSide, align),
       }}
       className={cn(OVERLAY_LAYER.interactive, "fixed ", shadow && "drop-shadow-md")}
     >
-      <motion.div
+      <div
         ref={ctx.contentRef}
         id={ctx.contentId}
         role="dialog"
         aria-labelledby={ctx.triggerId}
-        // Own states rather than inherited ones: reopening during the close
-        // cancels the exit per element, and only an element that owns its
-        // target returns to it. Inherited, the clip stayed at its hidden corner.
-        variants={clip}
-        initial="hidden"
-        animate={layout ? "show" : "hidden"}
-        exit="hidden"
         style={{
           borderRadius: radius,
           maxHeight: layout ? availableHeight : undefined,
@@ -373,7 +288,7 @@ function MorphPopoverSurface({
         className={cn("overflow-hidden border border-popover-border bg-popover", className)}
       >
         {children}
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }

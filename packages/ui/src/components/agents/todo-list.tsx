@@ -269,14 +269,13 @@ export function TodoList({
             <span>{items.length}</span>
           </span>
         </span>
-        <motion.span
+        <span
           aria-hidden="true"
-          animate={{ rotate: currentOpen ? 180 : 0 }}
-          transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
-          className="text-muted-foreground/50 transition-colors group-hover:text-muted-foreground"
+          style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}
+          className="text-muted-foreground/50 group-hover:text-muted-foreground"
         >
           <ChevronDown className="size-3.5" />
-        </motion.span>
+        </span>
       </button>
 
       <AgentDisclosure id={contentId} role="region" aria-labelledby={triggerId} open={currentOpen}>

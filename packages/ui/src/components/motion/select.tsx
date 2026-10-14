@@ -2,7 +2,6 @@ import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 
 import { Check, ChevronDown } from "lucide-react";
-import { motion, type Transition, useReducedMotion } from "motion/react";
 import {
   createContext,
   type ReactNode,
@@ -15,10 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
-
-const CHEVRON_TRANSITION: Transition = { duration: 0.16, ease: EASE_OUT };
 
 type Placement = "bottom" | "top";
 
@@ -30,7 +26,6 @@ interface SelectContextValue {
   register: (value: string, label: string) => void;
   unregister: (value: string) => void;
   labelFor: (value: string | undefined) => string | undefined;
-  reduce: boolean;
   triggerId: string;
   listId: string;
   disabled: boolean;
@@ -80,7 +75,6 @@ export function Select({
   className,
   children,
 }: SelectProps) {
-  const reduce = useReducedMotion() ?? false;
   const baseId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
@@ -146,26 +140,13 @@ export function Select({
       register,
       unregister,
       labelFor: (v) => (v === undefined ? undefined : labels.get(v)),
-      reduce,
       triggerId: `${baseId}-trigger`,
       listId: `${baseId}-list`,
       disabled,
       placement,
       setPlacement,
     }),
-    [
-      current,
-      open,
-      setOpen,
-      select,
-      register,
-      unregister,
-      labels,
-      reduce,
-      baseId,
-      disabled,
-      placement,
-    ],
+    [current, open, setOpen, select, register, unregister, labels, baseId, disabled, placement],
   );
 
   return (
@@ -190,7 +171,7 @@ export function SelectTrigger({
 }: SelectTriggerProps) {
   const ctx = useSelectContext("SelectTrigger");
   return (
-    <motion.button
+    <button
       type="button"
       id={ctx.triggerId}
       disabled={ctx.disabled}
@@ -200,22 +181,21 @@ export function SelectTrigger({
       aria-controls={ctx.listId}
       onClick={() => ctx.setOpen(!ctx.open)}
       className={cn(
-        "relative z-10 flex w-full items-center justify-between gap-2 min-h-8 rounded-lg border border-input-border bg-input-surface px-3 py-1 text-ui-base leading-[1.5] text-foreground outline-none transition-colors",
+        "relative z-10 flex w-full items-center justify-between gap-2 min-h-8 rounded-lg border border-input-border bg-input-surface px-3 py-1 text-ui-base leading-[1.5] text-foreground outline-none",
         "not-disabled:hover:border-input-border-hover focus-visible:border-input-border-focused focus-visible:bg-input-focused focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
     >
       {children}
-      <motion.span
+      <span
         aria-hidden
-        animate={{ rotate: ctx.open ? 180 : 0 }}
-        transition={ctx.reduce ? { duration: 0 } : CHEVRON_TRANSITION}
+        style={{ transform: ctx.open ? "rotate(180deg)" : undefined }}
         className="text-muted-foreground"
       >
         <ChevronDown className="h-4 w-4" />
-      </motion.span>
-    </motion.button>
+      </span>
+    </button>
   );
 }
 
@@ -284,20 +264,19 @@ export function SelectContent({ className, children }: SelectContentProps) {
 
   const isTop = ctx.placement === "top";
 
-  // Items stay mounted (open just animates the panel) so each item's label
+  // Items stay mounted while visibility changes so each item's label
   // registration persists — otherwise the trigger would fall back to the
   // placeholder the moment the panel closes.
   return (
-    <motion.div
+    <div
       id={ctx.listId}
       role="listbox"
       aria-labelledby={ctx.triggerId}
       aria-hidden={!open}
       inert={!open}
-      initial={false}
-      animate={{ opacity: open ? 1 : 0, height: open ? height : 0 }}
-      transition={{ duration: ctx.reduce ? 0 : 0.16, ease: EASE_OUT }}
       style={{
+        visibility: open ? "visible" : "hidden",
+        height: open ? height : 0,
         maxHeight: availableHeight,
         marginTop: isTop ? 0 : 4,
         marginBottom: isTop ? 4 : 0,
@@ -321,7 +300,7 @@ export function SelectContent({ className, children }: SelectContentProps) {
       >
         {children}
       </ul>
-    </motion.div>
+    </div>
   );
 }
 

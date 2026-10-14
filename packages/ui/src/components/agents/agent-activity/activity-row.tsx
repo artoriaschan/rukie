@@ -89,7 +89,7 @@ function SearchResultRow({ result }: { result: AgentSearchResult }) {
     </>
   );
   const className = cn(
-    "flex min-h-7 items-center gap-2 rounded-md px-2 py-1 text-left outline-none transition-colors",
+    "flex min-h-7 items-center gap-2 rounded-md px-2 py-1 text-left outline-none",
     result.url && "focus-visible:ring-2 focus-visible:ring-ring",
   );
 

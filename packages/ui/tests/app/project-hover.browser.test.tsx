@@ -362,86 +362,97 @@ test("long Project paths wrap, remain selectable and scroll within the viewport"
   }
 });
 
-test("Project hover uses exact intent deadlines and retains the measured pointer corridor", async () => {
-  const owner = ownProjectBrowserTest();
-  await page.viewport(1280, 900);
-  await commands.reducedMotion(true);
-  const connection = await owner.startWire();
-  const screen = await owner.render(
-    <App
-      locale="en"
-      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
-    />,
-  );
-  try {
-    const disclosure = screen
-      .getByRole("region", { name: "Projects", exact: true })
-      .getByRole("button", { name: "Project", exact: true });
-    await expect.element(disclosure).toBeVisible();
-    const row = disclosure.element().parentElement!;
-    const card = document.querySelector<HTMLElement>('[aria-label="Project details"]')!;
-    const event = (element: Element | Window, type: string, point = { clientX: 0, clientY: 0 }) =>
-      act(() => {
-        element.dispatchEvent(
-          new PointerEvent(type, { bubbles: true, pointerType: "mouse", pointerId: 1, ...point }),
-        );
-      });
-    const visible = () => getComputedStyle(card).visibility !== "hidden";
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const tick = async (time: number) =>
-      act(async () => {
-        await vi.advanceTimersByTimeAsync(time);
-      });
-    await event(row, "pointerover");
-    await tick(299);
-    expect(visible()).toBe(false);
-    await event(row, "pointerout");
-    await tick(1);
-    expect(visible()).toBe(false);
-    await event(row, "pointerover");
-    await tick(299);
-    expect(visible()).toBe(false);
-    await tick(1);
-    expect(visible()).toBe(true);
-    const anchor = row.getBoundingClientRect();
-    await event(row, "pointerout");
-    await event(window, "pointermove", { clientX: anchor.right + 2, clientY: anchor.top + 16 });
-    await tick(151);
-    expect(visible()).toBe(true);
-    await event(card, "pointerover");
-    await event(card, "pointerout");
-    await event(window, "pointermove", { clientX: 1200, clientY: 800 });
-    await tick(149);
-    expect(visible()).toBe(true);
-    await tick(1);
-    expect(visible()).toBe(false);
-    await event(row, "pointerover");
-    await tick(300);
-    await event(row, "pointerout");
-    await tick(100);
-    await event(row, "pointerover");
-    await tick(50);
-    expect(visible()).toBe(true);
-    vi.useRealTimers();
-    const pin = screen
-      .getByRole("dialog", { name: "Project details", exact: true })
-      .getByRole("button", { name: "Pin details", exact: true });
-    await pin.click();
-    await expect
-      .element(screen.getByRole("button", { name: "Unpin details", exact: true }))
-      .toHaveAttribute("aria-pressed", "true");
-    // Move keyboard focus out too: pin persistence must not rely on focus retention.
-    screen.getByRole("textbox", { name: "Prompt", exact: true }).element().focus();
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    await event(card, "pointerout");
-    await event(window, "pointermove", { clientX: 1200, clientY: 800 });
-    await tick(150);
-    expect(visible()).toBe(true);
-    vi.useRealTimers();
-    await screen.getByRole("button", { name: "Unpin details", exact: true }).click();
-    expect(visible()).toBe(false);
-    await expect.element(disclosure).toHaveFocus();
-  } finally {
-    await owner.close();
-  }
-});
+test.each(["light", "dark"] as const)(
+  "%s Project hover is immediate at exact intent deadlines and retains the measured pointer corridor",
+  async (theme) => {
+    const owner = ownProjectBrowserTest();
+    await page.viewport(1280, 900);
+    await commands.reducedMotion(false);
+    document.documentElement.className = theme;
+    const connection = await owner.startWire();
+    const screen = await owner.render(
+      <App
+        locale="en"
+        host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      />,
+    );
+    try {
+      const disclosure = screen
+        .getByRole("region", { name: "Projects", exact: true })
+        .getByRole("button", { name: "Project", exact: true });
+      await expect.element(disclosure).toBeVisible();
+      const row = disclosure.element().parentElement!;
+      const card = document.querySelector<HTMLElement>('[aria-label="Project details"]')!;
+      const event = (element: Element | Window, type: string, point = { clientX: 0, clientY: 0 }) =>
+        act(() => {
+          element.dispatchEvent(
+            new PointerEvent(type, { bubbles: true, pointerType: "mouse", pointerId: 1, ...point }),
+          );
+        });
+      const visible = () => getComputedStyle(card).visibility !== "hidden";
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const tick = async (time: number) =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(time);
+        });
+      await event(row, "pointerover");
+      await tick(299);
+      expect(visible()).toBe(false);
+      await event(row, "pointerout");
+      await tick(1);
+      expect(visible()).toBe(false);
+      await event(row, "pointerover");
+      await tick(299);
+      expect(visible()).toBe(false);
+      await tick(1);
+      expect(visible()).toBe(true);
+      const panel = card.parentElement!;
+      expect(getComputedStyle(panel).clipPath).toBe("none");
+      expect(panel.getAnimations({ subtree: true })).toHaveLength(0);
+      const shown = card.getBoundingClientRect();
+      expect(shown.width).toBe(320);
+      const anchor = row.getBoundingClientRect();
+      expect(shown.left - anchor.right).toBeCloseTo(4, 0);
+      expect(shown.top).toBeCloseTo(anchor.top, 0);
+      await event(row, "pointerout");
+      await event(window, "pointermove", { clientX: anchor.right + 2, clientY: anchor.top + 16 });
+      await tick(151);
+      expect(visible()).toBe(true);
+      await event(card, "pointerover");
+      await event(card, "pointerout");
+      await event(window, "pointermove", { clientX: 1200, clientY: 800 });
+      await tick(149);
+      expect(visible()).toBe(true);
+      await tick(1);
+      expect(visible()).toBe(false);
+      await event(row, "pointerover");
+      await tick(300);
+      await event(row, "pointerout");
+      await tick(100);
+      await event(row, "pointerover");
+      await tick(50);
+      expect(visible()).toBe(true);
+      vi.useRealTimers();
+      const pin = screen
+        .getByRole("dialog", { name: "Project details", exact: true })
+        .getByRole("button", { name: "Pin details", exact: true });
+      await pin.click();
+      await expect
+        .element(screen.getByRole("button", { name: "Unpin details", exact: true }))
+        .toHaveAttribute("aria-pressed", "true");
+      // Move keyboard focus out too: pin persistence must not rely on focus retention.
+      screen.getByRole("textbox", { name: "Prompt", exact: true }).element().focus();
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      await event(card, "pointerout");
+      await event(window, "pointermove", { clientX: 1200, clientY: 800 });
+      await tick(150);
+      expect(visible()).toBe(true);
+      vi.useRealTimers();
+      await screen.getByRole("button", { name: "Unpin details", exact: true }).click();
+      expect(visible()).toBe(false);
+      await expect.element(disclosure).toHaveFocus();
+    } finally {
+      await owner.close();
+    }
+  },
+);

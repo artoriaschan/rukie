@@ -139,7 +139,7 @@ export function CodeBlock({
             }
             onClick={handleCopy}
             transition={{ duration: 0.16, ease: EASE_OUT }}
-            className="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
           </motion.button>

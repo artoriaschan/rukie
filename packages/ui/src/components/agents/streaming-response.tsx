@@ -66,7 +66,7 @@ function ResponseAction({
       onClick={onClick}
       transition={{ duration: 0.16, ease: EASE_OUT }}
       className={cn(
-        "grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+        "grid size-7 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
         active && "bg-muted text-foreground",
       )}
     >
@@ -208,7 +208,7 @@ export function StreamingResponse({
                   aria-expanded={currentSourcesOpen}
                   aria-controls={sourcesContentId}
                   onClick={() => setSourcesOpen(!currentSourcesOpen)}
-                  className="group ml-1 inline-flex min-h-7 items-center gap-2 rounded-md px-2 text-ui-base text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  className="group ml-1 inline-flex min-h-7 items-center gap-2 rounded-md px-2 text-ui-base text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <CitationStack citations={sources} />
                   <span className="tabular-nums">
@@ -217,14 +217,13 @@ export function StreamingResponse({
                       ? componentText("component.source")
                       : componentText("component.sources")}
                   </span>
-                  <motion.span
+                  <span
                     aria-hidden="true"
-                    animate={{ rotate: currentSourcesOpen ? 180 : 0 }}
-                    transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
+                    style={{ transform: `rotate(${currentSourcesOpen ? 180 : 0}deg)` }}
                     className="text-muted-foreground/50 group-hover:text-muted-foreground"
                   >
                     <ChevronDown className="size-3" />
-                  </motion.span>
+                  </span>
                 </button>
               ) : null}
             </div>

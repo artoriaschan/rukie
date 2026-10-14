@@ -485,20 +485,3 @@
 .conversation-tool-option svg {
   color: var(--muted-foreground);
 }
-
-/* Pencil C08 is an independent surface; retain the beUI dismissal and focus owner. */
-[data-popover-portal]:has(.conversation-context-panel) > [aria-hidden] {
-  display: none;
-}
-[data-popover-portal]:has(.conversation-context-panel) > div:last-child > div {
-  pointer-events: none !important;
-}
-[data-popover-portal]:has(.conversation-context-open) > div:last-child > div {
-  clip-path: none !important;
-}
-.conversation-context-panel:not(.conversation-context-open) {
-  visibility: hidden;
-}
-.conversation-context-open {
-  pointer-events: auto;
-}
