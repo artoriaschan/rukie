@@ -244,12 +244,16 @@ test("composer selects reasoning from native capabilities, keeps IME input and u
   }
 });
 
-test("narrow layout retains new-chat shortcuts, manual project entry and final-disconnect Retry", async () => {
+test("narrow layout retains new-chat shortcuts, selected project folders and final-disconnect Retry", async () => {
   await page.viewport(420, 800);
   const connection = await commands.startWire();
   const screen = await render(
     <App
-      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      host={{
+        getConnection: async () => connection,
+        modelServices: modelServicesFixture,
+        pickProjectFolder: async () => ["/selected/project"],
+      }}
       locale="en"
     />,
   );
@@ -259,7 +263,9 @@ test("narrow layout retains new-chat shortcuts, manual project entry and final-d
       .element(screen.getByRole("button", { name: "New chat", exact: true }))
       .toBeVisible();
     await screen.getByRole("button", { name: "Add project", exact: true }).click();
-    await screen.getByRole("textbox", { name: "Project folder path" }).fill("/manual/project");
+    await screen
+      .getByRole("button", { name: "Add folders Rukie can read and edit", exact: true })
+      .click();
     await screen.getByRole("button", { name: "Create project", exact: true }).click();
     await screen.getByRole("button", { name: "Trust and create", exact: true }).click();
     await expect
@@ -268,7 +274,7 @@ test("narrow layout retains new-chat shortcuts, manual project entry and final-d
           (c: { type: string }) => c.type === "project.create",
         ),
       )
-      .toMatchObject({ directories: ["/manual/project"], trusted: true });
+      .toMatchObject({ directories: ["/selected/project"], trusted: true });
     await userEvent.keyboard("{Control>}1{/Control}");
     await expect
       .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
@@ -434,14 +440,20 @@ test("Chinese project errors and disconnected pending sends present localized ac
   const connection = await commands.startWire();
   const screen = await render(
     <App
-      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      host={{
+        getConnection: async () => connection,
+        modelServices: modelServicesFixture,
+        pickProjectFolder: async () => ["/missing"],
+      }}
       locale="zh"
     />,
   );
   const url = `http://127.0.0.1:${connection.port}`;
   try {
     await screen.getByRole("button", { name: "添加项目", exact: true }).click();
-    await screen.getByRole("textbox", { name: "项目文件夹路径" }).fill("/missing");
+    await screen
+      .getByRole("button", { name: "添加 Rukie 可读取和编辑的文件夹", exact: true })
+      .click();
     await fetch(`${url}/error`, {
       method: "POST",
       body: JSON.stringify({ type: "project.create", code: "project_not_found" }),
@@ -455,6 +467,7 @@ test("Chinese project errors and disconnected pending sends present localized ac
       method: "POST",
       body: JSON.stringify({ type: "project.create", code: "unsafe-code-secret" }),
     });
+    await screen.getByRole("button", { name: "创建项目", exact: true }).click();
     await screen.getByRole("button", { name: "信任并创建", exact: true }).click();
     await expect.element(screen.getByRole("alert")).toHaveTextContent("无法处理此操作，请重试。");
     await screen.getByRole("button", { name: "取消", exact: true }).click();
@@ -492,6 +505,7 @@ test("sidebar status follows fresh summaries across unselected permission waits 
     });
   const summary = (running: boolean, waitingPermission: boolean) => ({
     type: "sessions_changed",
+    homeDir: "/fixture-home",
     sessions: [
       {
         id: "one",
@@ -502,6 +516,7 @@ test("sidebar status follows fresh summaries across unselected permission waits 
         messageCount: 1,
         model: "test/script",
         cwd: "/project",
+        projectId: "long",
         running,
         waitingPermission,
       },
@@ -733,6 +748,7 @@ test("sidebar limits Projects and their Sessions independently and keeps categor
       .toBeVisible();
     const registry = {
       type: "sessions_changed",
+      homeDir: "/fixture-home",
       pinned: [],
       archived: [],
       preferences: {},
@@ -748,6 +764,7 @@ test("sidebar limits Projects and their Sessions independently and keeps categor
         title: `Project Session ${index}`,
         titleSource: "prompt",
         cwd: "/project0",
+        projectId: "p0",
         model: "test/script",
         createdAt: 7 - index,
         updatedAt: 7 - index,
@@ -1002,6 +1019,7 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
       method: "POST",
       body: JSON.stringify({
         type: "sessions_changed",
+        homeDir: "/fixture-home",
         sessions: [
           {
             id: "one",
@@ -1012,6 +1030,7 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
             messageCount: 1,
             model: "test/script",
             cwd: "/project",
+            projectId: "project",
             running: true,
           },
           {
@@ -1023,6 +1042,7 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
             messageCount: 1,
             model: "test/script",
             cwd: "/workspace",
+            projectId: null,
             waitingPermission: true,
           },
         ],
@@ -1352,12 +1372,14 @@ test("delete confirmation scrolls long titles while keeping title and actions vi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type: "sessions_changed",
+        homeDir: "/fixture-home",
         sessions: [
           {
             id: "long",
             title,
             titleSource: "user",
             cwd: "/workspace",
+            projectId: null,
             updatedAt: 20,
             createdAt: 10,
             messageCount: 0,

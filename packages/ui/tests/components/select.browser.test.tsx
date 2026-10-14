@@ -42,7 +42,7 @@ test("Select options stay compact without the browser test runner's list reset",
       expect(option.parentElement!.getBoundingClientRect().height).toBe(
         option.getBoundingClientRect().height,
       );
-      expect(option.getBoundingClientRect().height).toBe(28);
+      expect(option.getBoundingClientRect().height).toBe(32);
     }
     options[1]!.click();
     expect(changed).toHaveBeenCalledWith("second");

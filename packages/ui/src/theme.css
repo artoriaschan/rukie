@@ -39,18 +39,18 @@
 
   /* Base palette */
   --background: #ffffff;
-  --foreground: #1f2328;
-  --card: #f6f8fa;
-  --muted-foreground: #59636e;
-  --border: #d1d9e0b3;
+  --foreground: #262626;
+  --card: #ffffff;
+  --muted-foreground: #666666;
+  --border: #0d0d0d1a;
   /* beUI extensions */
   --border-strong: #d1d9e0;
   --accent-fg: #ffffff;
   --neon: #1a7f37;
   --violet: #8250df;
   --danger: #d1242f;
-  --success: #1a7f37;
-  --warning: #9a6700;
+  --success: #187a35;
+  --warning: #a65b00;
   --glass-bg: rgb(255 255 255 / 0.55);
   --glass-border: rgb(31 35 40 / 0.08);
   --glass-strong-bg: rgb(255 255 255 / 0.7);
@@ -64,35 +64,39 @@
   --header: var(--background);
   --panel: var(--background);
   --sidebar: var(--background);
-  --surface: var(--card);
-  --surface-hover: color-mix(in srgb, var(--foreground) 5%, var(--surface));
-  --card-selected: var(--selected);
+  --surface: #0d0d0d08;
+  --surface-hover: #0d0d0d0d;
+  --card-selected: #ffffff;
   --menu: var(--popover);
-  --menu-hover: color-mix(in srgb, var(--foreground) 5%, var(--menu));
-  --input-surface: var(--background);
-  --input-focused: var(--background);
+  --menu-hover: #f0f0f0;
+  --input-surface: #ffffff;
+  --input-focused: #ffffff;
   --foreground-subtle: var(--muted-foreground);
-  --foreground-inverse: var(--background);
-  --border-hover: var(--border-strong);
+  --foreground-inverse: #ffffff;
+  --border-hover: #0d0d0d26;
   --card-border: var(--border);
-  --popover-border: var(--border-strong);
-  --input-border: var(--border);
-  --input-border-hover: var(--border-strong);
-  --input-border-focused: var(--ring);
+  --popover-border: var(--border);
+  --input-border: #808080;
+  --input-border-hover: #6b6b6b;
+  --input-border-focused: #0d0d0d26;
   --idle-task: var(--violet);
   --idle-task-surface: color-mix(in srgb, var(--idle-task) 10%, var(--background));
   --workflow-rule: color-mix(in srgb, var(--border) 50%, transparent);
   --workflow-trace: var(--border-strong);
   --workflow-trace-strong: var(--muted-foreground);
   --toast: var(--popover);
+  --path-tooltip: #161616;
+  --path-tooltip-foreground: #ffffff;
+  --destructive-soft: #fde8e8;
+  --destructive-soft-foreground: #cf222e;
   --tooltip: var(--popover);
   --tooltip-foreground: var(--foreground);
   --tooltip-tag: var(--muted);
   --tooltip-tag-foreground: var(--muted-foreground);
   --tag: var(--muted);
-  --hover: color-mix(in srgb, var(--foreground) 5%, var(--background));
-  --selected: color-mix(in srgb, var(--foreground) 8%, var(--background));
-  --foreground-subtlest: #656d76;
+  --hover: #0d0d0d0d;
+  --selected: #0d0d0d0d;
+  --foreground-subtlest: #6b6b6b;
   --interaction-confirmation-surface: #dafbe1;
   --interaction-confirmation-foreground: #116329;
   --find-highlight: #fff8c5;
@@ -101,21 +105,27 @@
   --card-foreground: var(--foreground);
   --popover: var(--card);
   --popover-foreground: var(--foreground);
-  --primary: #0969da;
+  --primary: #000000;
   --primary-foreground: #ffffff;
-  --secondary: var(--card);
+  --secondary: #e6e6e6;
   --secondary-foreground: var(--foreground);
   --muted: var(--card);
   --accent: #0969da;
   --accent-foreground: var(--accent-fg);
-  --destructive: var(--danger);
-  --input: var(--border);
-  --ring: #0969da;
+  --destructive: #e03131;
+  --destructive-foreground: #ffffff;
+  --chart-1: #0b7fff;
+  --chart-2: #1e8a3e;
+  --chart-3: #9e77ed;
+  --chart-4: #e03131;
+  --chart-5: #e07b00;
+  --input: var(--input-border);
+  --ring: #737373;
   --diff-added: #dafbe1;
   --diff-added-word: #aceebb;
   --diff-removed: #ffebe9;
   --diff-removed-word: #ffcecb;
-  --overlay: rgb(0 0 0 / 0.4);
+  --overlay: #26262633;
 }
 
 .dark {
@@ -138,16 +148,20 @@
   --diff-added-fg: #aff5b4;
   --diff-removed-fg: #ffdcd7;
 
-  --foreground-subtlest: #848d97;
+  --foreground-subtlest: #a8a8a8;
   --interaction-confirmation-surface: #033a16;
   --interaction-confirmation-foreground: #7ee787;
   --find-highlight: #3b2300;
   --find-highlight-active: #5a3d00;
-  --background: #0d1117;
-  --foreground: #f0f6fc;
-  --card: #151b23;
-  --muted-foreground: #9198a1;
-  --border: #3d444db3;
+  --path-tooltip: #3a3a3a;
+  --path-tooltip-foreground: #f5f5f5;
+  --destructive-soft: #ff5c5c26;
+  --destructive-soft-foreground: #ff7a7a;
+  --background: #000000;
+  --foreground: #d4d4d4;
+  --card: #2b2b2b;
+  --muted-foreground: #aaaaaa;
+  --border: #ffffff1a;
   --border-strong: #3d444d;
   --accent: #4493f8;
   --accent-fg: #0d1117;
@@ -155,19 +169,69 @@
   --glass-border: rgb(240 246 252 / 0.08);
   --glass-strong-bg: rgb(21 27 35 / 0.6);
   --glass-thin-bg: rgb(13 17 23 / 0.45);
-  --primary: #1f6feb;
-  --primary-foreground: #ffffff;
-  --ring: #1f6feb;
+  --primary: #ffffff;
+  --primary-foreground: #000000;
+  --ring: #a8a8a8;
   --danger: #f85149;
-  --success: #3fb950;
-  --warning: #d29922;
+  --success: #46bf72;
+  --warning: #ff8a30;
   --neon: #3fb950;
   --violet: #ab7df8;
   --diff-added: #2ea04326;
   --diff-added-word: #2ea04366;
   --diff-removed: #f851491a;
   --diff-removed-word: #f8514966;
-  --overlay: rgb(0 0 0 / 0.4);
+  --overlay: #d4d4d433;
+  --secondary: #363636;
+  --surface: #ffffff0d;
+  --surface-hover: #ffffff1a;
+  --card-selected: #2b2b2b;
+  --menu-hover: #363636;
+  --input-surface: #2b2b2b;
+  --input-focused: #2b2b2b;
+  --foreground-inverse: #000000;
+  --border-hover: #ffffff26;
+  --input-border-focused: #ffffff26;
+  --input-border: #888888;
+  --input-border-hover: #aaaaaa;
+  --hover: #ffffff0d;
+  --selected: #ffffff1a;
+  --destructive: #ff5c5c;
+  --destructive-foreground: #000000;
+  --chart-1: #4099ff;
+  --chart-2: #46bf72;
+  --chart-3: #7b5ce5;
+  --chart-4: #ff5c5c;
+  --chart-5: #ff8a30;
+
+  /* Rebind inherited aliases at this theme scope, including nested surfaces. */
+  --brand: var(--accent);
+  --icon-blue: var(--accent);
+  --background-alt: var(--card);
+  --background-win-alt: var(--background);
+  --header: var(--background);
+  --panel: var(--background);
+  --sidebar: var(--background);
+  --menu: var(--popover);
+  --foreground-subtle: var(--muted-foreground);
+  --card-border: var(--border);
+  --popover-border: var(--border);
+  --idle-task: var(--violet);
+  --workflow-trace: var(--border-strong);
+  --workflow-trace-strong: var(--muted-foreground);
+  --toast: var(--popover);
+  --tooltip: var(--popover);
+  --tooltip-foreground: var(--foreground);
+  --tooltip-tag: var(--muted);
+  --tooltip-tag-foreground: var(--muted-foreground);
+  --tag: var(--muted);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--card);
+  --accent-foreground: var(--accent-fg);
+  --input: var(--input-border);
 }
 
 @theme inline {
@@ -199,6 +263,10 @@
   --color-workflow-trace: var(--workflow-trace);
   --color-workflow-trace-strong: var(--workflow-trace-strong);
   --color-toast: var(--toast);
+  --color-path-tooltip: var(--path-tooltip);
+  --color-path-tooltip-foreground: var(--path-tooltip-foreground);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-destructive-soft-foreground: var(--destructive-soft-foreground);
   --color-tooltip: var(--tooltip);
   --color-tooltip-foreground: var(--tooltip-foreground);
   --color-tooltip-tag: var(--tooltip-tag);
@@ -236,9 +304,10 @@
   --color-diff-added-fg: var(--diff-added-fg);
   --color-diff-removed-fg: var(--diff-removed-fg);
 
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
   --color-danger: var(--danger);
   --color-overlay: var(--overlay);
   --color-diff-added: var(--diff-added);
@@ -290,6 +359,12 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   --color-input: var(--input);
   --color-ring: var(--ring);
 }
@@ -402,16 +477,20 @@
     --diff-added-fg: #aff5b4;
     --diff-removed-fg: #ffdcd7;
 
-    --foreground-subtlest: #848d97;
+    --foreground-subtlest: #a8a8a8;
     --interaction-confirmation-surface: #033a16;
     --interaction-confirmation-foreground: #7ee787;
     --find-highlight: #3b2300;
     --find-highlight-active: #5a3d00;
-    --background: #0d1117;
-    --foreground: #f0f6fc;
-    --card: #151b23;
-    --muted-foreground: #9198a1;
-    --border: #3d444db3;
+    --path-tooltip: #3a3a3a;
+    --path-tooltip-foreground: #f5f5f5;
+    --destructive-soft: #ff5c5c26;
+    --destructive-soft-foreground: #ff7a7a;
+    --background: #000000;
+    --foreground: #d4d4d4;
+    --card: #2b2b2b;
+    --muted-foreground: #aaaaaa;
+    --border: #ffffff1a;
     --border-strong: #3d444d;
     --accent: #4493f8;
     --accent-fg: #0d1117;
@@ -419,19 +498,69 @@
     --glass-border: rgb(240 246 252 / 0.08);
     --glass-strong-bg: rgb(21 27 35 / 0.6);
     --glass-thin-bg: rgb(13 17 23 / 0.45);
-    --primary: #1f6feb;
-    --primary-foreground: #ffffff;
-    --ring: #1f6feb;
+    --primary: #ffffff;
+    --primary-foreground: #000000;
+    --ring: #a8a8a8;
     --danger: #f85149;
-    --success: #3fb950;
-    --warning: #d29922;
+    --success: #46bf72;
+    --warning: #ff8a30;
     --neon: #3fb950;
     --violet: #ab7df8;
     --diff-added: #2ea04326;
     --diff-added-word: #2ea04366;
     --diff-removed: #f851491a;
     --diff-removed-word: #f8514966;
-    --overlay: rgb(0 0 0 / 0.4);
+    --overlay: #d4d4d433;
+    --secondary: #363636;
+    --surface: #ffffff0d;
+    --surface-hover: #ffffff1a;
+    --card-selected: #2b2b2b;
+    --menu-hover: #363636;
+    --input-surface: #2b2b2b;
+    --input-focused: #2b2b2b;
+    --foreground-inverse: #000000;
+    --border-hover: #ffffff26;
+    --input-border-focused: #ffffff26;
+    --input-border: #888888;
+    --input-border-hover: #aaaaaa;
+    --hover: #ffffff0d;
+    --selected: #ffffff1a;
+    --destructive: #ff5c5c;
+    --destructive-foreground: #000000;
+    --chart-1: #4099ff;
+    --chart-2: #46bf72;
+    --chart-3: #7b5ce5;
+    --chart-4: #ff5c5c;
+    --chart-5: #ff8a30;
+
+    /* Rebind inherited aliases at this theme scope, including nested surfaces. */
+    --brand: var(--accent);
+    --icon-blue: var(--accent);
+    --background-alt: var(--card);
+    --background-win-alt: var(--background);
+    --header: var(--background);
+    --panel: var(--background);
+    --sidebar: var(--background);
+    --menu: var(--popover);
+    --foreground-subtle: var(--muted-foreground);
+    --card-border: var(--border);
+    --popover-border: var(--border);
+    --idle-task: var(--violet);
+    --workflow-trace: var(--border-strong);
+    --workflow-trace-strong: var(--muted-foreground);
+    --toast: var(--popover);
+    --tooltip: var(--popover);
+    --tooltip-foreground: var(--foreground);
+    --tooltip-tag: var(--muted);
+    --tooltip-tag-foreground: var(--muted-foreground);
+    --tag: var(--muted);
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --secondary-foreground: var(--foreground);
+    --muted: var(--card);
+    --accent-foreground: var(--accent-fg);
+    --input: var(--input-border);
   }
 }
 
@@ -451,18 +580,22 @@
 
 /* C01 shell roles are independent of cards and model-service form surfaces. */
 :root {
-  --layout-rail: #e9e8e8;
-  --layout-titlebar: #e8e9e9;
-  --layout-sidebar: #f8f7f7;
+  --layout-rail: #f7f7f7;
+  --layout-titlebar: #f7f7f7;
+  --layout-sidebar: #fcfcfc;
   --layout-content: #ffffff;
   --layout-divider: #0d0d0d1a;
+  --layout-shadow-near: #0000000a;
+  --layout-shadow-far: #0000000f;
 }
 .dark {
-  --layout-rail: #2b2827;
-  --layout-titlebar: #282928;
-  --layout-sidebar: #1f1e1e;
-  --layout-content: #181818;
+  --layout-rail: #0e0e0e;
+  --layout-titlebar: #0e0e0e;
+  --layout-sidebar: #050505;
+  --layout-content: #000000;
   --layout-divider: #ffffff1a;
+  --layout-shadow-near: #00000040;
+  --layout-shadow-far: #00000073;
 }
 [data-workspace-shell] {
   background: var(--layout-rail);
@@ -489,7 +622,7 @@
 }
 .app-titlebar-navigation button:disabled {
   background: transparent;
-  opacity: 0.4;
+  opacity: 0.5;
 }
 .app-titlebar-navigation button:focus-visible {
   outline: 2px solid var(--ring);
@@ -508,6 +641,16 @@
   margin-bottom: 4px;
   border-radius: 12px;
   background: var(--layout-content);
+}
+.app-workspace,
+.model-services {
+  box-shadow:
+    0 2px 8px var(--layout-shadow-near),
+    0 8px 24px var(--layout-shadow-far);
+}
+/* Settings replaces the visible workspace; keep its underlying chat depth inactive. */
+[inert] .app-workspace {
+  box-shadow: none;
 }
 .app-workspace > main {
   background: var(--layout-content);
@@ -530,4 +673,53 @@
 /* C02 keeps long Session names readable until their trailing fade. */
 .session-row-title {
   mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
+}
+
+/* C27–C31 own this chrome without changing other MorphingModal consumers. */
+.project-dialog > div {
+  padding: 20px 24px;
+}
+.project-dialog button > svg {
+  width: 16px;
+  height: 16px;
+}
+.project-directory-list {
+  min-height: 0;
+  max-height: 240px;
+  flex: 0 1 auto;
+}
+.project-directory-list [data-slot="scroll-area-viewport"] {
+  max-height: inherit;
+}
+@media (max-width: 640px) {
+  .project-dialog > div {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* Opaque inverse fills keep label contrast; inset edges distinguish pointer states. */
+.f01-primary:not(:disabled):hover {
+  --tw-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-foreground) 25%, transparent);
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.f01-primary:not(:disabled):active {
+  --tw-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary-foreground) 40%, transparent);
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.f01-destructive:not(:disabled):hover {
+  --tw-shadow: inset 0 0 0 1px color-mix(in srgb, var(--destructive-foreground) 25%, transparent);
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.f01-destructive:not(:disabled):active {
+  --tw-shadow: inset 0 0 0 2px color-mix(in srgb, var(--destructive-foreground) 40%, transparent);
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }

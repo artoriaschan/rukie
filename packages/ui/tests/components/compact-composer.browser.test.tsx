@@ -18,8 +18,8 @@ test("composer model options preserve compact rows and selection", async () => {
   try {
     await screen.getByRole("button", { name: "First model", exact: true }).click();
     const second = screen.getByRole("option", { name: "Second model", exact: true });
-    expect(second.element().getBoundingClientRect().height).toBe(28);
-    expect(second.element().parentElement!.getBoundingClientRect().height).toBe(28);
+    expect(second.element().getBoundingClientRect().height).toBe(32);
+    expect(second.element().parentElement!.getBoundingClientRect().height).toBe(32);
     expect(getComputedStyle(second.element().parentElement!).listStyleType).toBe("none");
     await second.click();
     expect(changed).toHaveBeenCalledWith("second");

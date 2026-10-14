@@ -1,7 +1,7 @@
 import { forwardRef } from "react";
 import { Button, type ButtonProps } from "./base";
 
-export interface MetallicButtonProps extends Omit<ButtonProps, "ripple" | "variant"> {
+export interface MetallicButtonProps extends Omit<ButtonProps, "variant"> {
   paused?: boolean;
 }
 

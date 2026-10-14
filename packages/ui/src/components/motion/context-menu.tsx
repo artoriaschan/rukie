@@ -3,7 +3,6 @@ import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/motion/context-menu
 
 import { Check } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   cloneElement,
   createContext,
@@ -24,17 +23,14 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { EASE_OUT } from "@/lib/ease";
 import { holdSelection, TOUCH_GESTURE_CONTENT_CLASS } from "@/lib/touch";
 import { cn } from "@/lib/utils";
 
-type OpenModality = "pointer" | "keyboard" | "touch";
 type MenuPoint = { x: number; y: number };
 
 const VIEWPORT_PADDING = 8;
 const LONG_PRESS_DELAY = 520;
 const LONG_PRESS_TOLERANCE = 10;
-const MORPH_DURATION = 0.16;
 
 type TriggerElementProps = React.HTMLAttributes<HTMLElement> & {
   ref?: Ref<HTMLElement>;
@@ -43,16 +39,14 @@ type TriggerElementProps = React.HTMLAttributes<HTMLElement> & {
 interface ContextMenuContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
-  openAt: (point: MenuPoint, modality: OpenModality) => void;
+  openAt: (point: MenuPoint) => void;
   point: MenuPoint;
-  modality: OpenModality;
   invocation: number;
   menuId: string;
   triggerRef: React.MutableRefObject<HTMLElement | null>;
   contentRef: React.MutableRefObject<HTMLDivElement | null>;
   activeId: string | null;
   setActiveId: (id: string | null) => void;
-  reduce: boolean;
 }
 
 const ContextMenuContext = createContext<ContextMenuContextValue | null>(null);
@@ -86,15 +80,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function collapsedClip(origin: MenuPoint, size: { width: number; height: number }) {
-  const half = 8;
-  const top = clamp(origin.y - half, 0, size.height);
-  const right = clamp(size.width - origin.x - half, 0, size.width);
-  const bottom = clamp(size.height - origin.y - half, 0, size.height);
-  const left = clamp(origin.x - half, 0, size.width);
-  return `inset(${top}px ${right}px ${bottom}px ${left}px round 8px)`;
-}
-
 export interface ContextMenuProps {
   children: ReactNode;
   open?: boolean;
@@ -112,7 +97,6 @@ export function ContextMenu({
 }: ContextMenuProps) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const [point, setPoint] = useState<MenuPoint>({ x: 0, y: 0 });
-  const [modality, setModality] = useState<OpenModality>("pointer");
   const [invocation, setInvocation] = useState(0);
   const [activeId, setActiveId] = useState<string | null>(null);
   const controlled = controlledOpen !== undefined;
@@ -120,7 +104,6 @@ export function ContextMenu({
   const triggerRef = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const menuId = useId();
-  const reduce = useReducedMotion() ?? false;
 
   const setOpen = useCallback(
     (next: boolean) => {
@@ -132,9 +115,8 @@ export function ContextMenu({
   );
 
   const openAt = useCallback(
-    (nextPoint: MenuPoint, nextModality: OpenModality) => {
+    (nextPoint: MenuPoint) => {
       setPoint(nextPoint);
-      setModality(nextModality);
       setInvocation((current) => current + 1);
       setActiveId(null);
       setOpen(true);
@@ -166,16 +148,14 @@ export function ContextMenu({
       setOpen,
       openAt,
       point,
-      modality,
       invocation,
       menuId,
       triggerRef,
       contentRef,
       activeId,
       setActiveId,
-      reduce,
     }),
-    [open, setOpen, openAt, point, modality, invocation, menuId, activeId, reduce],
+    [open, setOpen, openAt, point, invocation, menuId, activeId],
   );
 
   return (
@@ -245,7 +225,7 @@ export function ContextMenuTrigger({
     const origin = { x: event.clientX, y: event.clientY };
     touchOrigin.current = origin;
     longPressTimer.current = setTimeout(() => {
-      context.openAt(origin, "touch");
+      context.openAt(origin);
       longPressTimer.current = null;
       touchOrigin.current = null;
     }, LONG_PRESS_DELAY);
@@ -269,10 +249,7 @@ export function ContextMenuTrigger({
 
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
-    context.openAt(
-      { x: rect.left + Math.min(24, rect.width / 2), y: rect.top + rect.height / 2 },
-      "keyboard",
-    );
+    context.openAt({ x: rect.left + Math.min(24, rect.width / 2), y: rect.top + rect.height / 2 });
   };
 
   return cloneElement(children, {
@@ -295,7 +272,7 @@ export function ContextMenuTrigger({
       if (event.defaultPrevented || disabled) return;
       event.preventDefault();
       endPress();
-      context.openAt({ x: event.clientX, y: event.clientY }, "pointer");
+      context.openAt({ x: event.clientX, y: event.clientY });
     },
     onKeyDown,
     onPointerDown,
@@ -328,19 +305,13 @@ export function ContextMenuContent({
   const context = useContextMenuContext("ContextMenuContent");
   const [mounted, setMounted] = useState(false);
   const [position, setPosition] = useState<MenuPoint>(context.point);
-  const [origin, setOrigin] = useState<MenuPoint>({ x: 0, y: 0 });
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const [morphReady, setMorphReady] = useState(false);
   const typeahead = useRef("");
   const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setMounted(true), []);
 
   useLayoutEffect(() => {
-    if (!context.open) {
-      setMorphReady(false);
-      return;
-    }
+    if (!context.open) return;
     const content = context.contentRef.current;
     if (!content) return;
     content.dataset.invocation = String(context.invocation);
@@ -362,37 +333,7 @@ export function ContextMenuContent({
     );
 
     setPosition({ x: left, y: top });
-    setSize({ width: rect.width, height: rect.height });
-    setOrigin({
-      x: clamp(context.point.x - left, 12, Math.max(12, rect.width - 12)),
-      y: clamp(context.point.y - top, 12, Math.max(12, rect.height - 12)),
-    });
-    setMorphReady(false);
-
-    if (context.reduce || context.modality === "keyboard") {
-      setMorphReady(true);
-      return;
-    }
-
-    // Let the measured collapsed clip paint once before expanding it. Without
-    // this preparation frame, the first invocation can batch both states and
-    // appear at full size without the morph.
-    let openFrame = 0;
-    const prepareFrame = requestAnimationFrame(() => {
-      openFrame = requestAnimationFrame(() => setMorphReady(true));
-    });
-    return () => {
-      cancelAnimationFrame(prepareFrame);
-      cancelAnimationFrame(openFrame);
-    };
-  }, [
-    context.open,
-    context.point,
-    context.contentRef,
-    context.invocation,
-    context.modality,
-    context.reduce,
-  ]);
+  }, [context.open, context.point, context.contentRef, context.invocation]);
 
   // Nested target groups may grow after opening; keep the existing overlay in the viewport.
   useEffect(() => {
@@ -480,62 +421,33 @@ export function ContextMenuContent({
 
   if (!mounted) return null;
 
-  const visualOpen = context.open && morphReady;
-  const clipHidden = collapsedClip(origin, size);
-  const clipShown = "inset(0px 0px 0px 0px round 12px)";
-
   return createPortal(
     <div
       data-context-menu-portal=""
       aria-hidden={!context.open}
       inert={!context.open}
-      style={{ left: position.x, top: position.y }}
+      style={{ left: position.x, top: position.y, visibility: context.open ? "visible" : "hidden" }}
       className={cn(
         OVERLAY_LAYER.interactive,
-        "fixed drop-shadow-md",
+        "fixed",
         context.open ? "pointer-events-auto" : "pointer-events-none",
       )}
     >
-      <motion.div
+      <div
         ref={context.contentRef}
         id={context.menuId}
         role={context.open ? "menu" : undefined}
         aria-label={ariaLabel}
-        data-morph-ready={morphReady ? "true" : "false"}
         tabIndex={-1}
-        initial={false}
-        animate={{
-          opacity: visualOpen ? 1 : 0,
-          clipPath:
-            context.reduce || context.modality === "keyboard" || visualOpen
-              ? clipShown
-              : clipHidden,
-        }}
-        transition={
-          context.modality === "keyboard"
-            ? { duration: 0 }
-            : context.reduce
-              ? { duration: 0, ease: EASE_OUT }
-              : {
-                  clipPath: {
-                    duration: MORPH_DURATION,
-                    ease: EASE_OUT,
-                  },
-                  opacity: {
-                    duration: MORPH_DURATION,
-                    ease: EASE_OUT,
-                  },
-                }
-        }
         onKeyDown={onKeyDown}
         onContextMenu={(event) => event.preventDefault()}
         className={cn(
-          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground outline-none",
+          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-md outline-none",
           className,
         )}
       >
         {children}
-      </motion.div>
+      </div>
     </div>,
     document.body,
   );
@@ -601,11 +513,11 @@ function ContextMenuItemBase({
         if (closeOnSelect) context.setOpen(false);
       }}
       className={cn(
-        "relative isolate flex w-full select-none items-center min-h-7 gap-2 rounded-md px-2 py-1 text-left text-ui-base outline-none",
-        "focus-visible:ring-2 focus-visible:ring-foreground/15",
-        "cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 [&_svg]:cursor-inherit [&_span]:cursor-inherit",
+        "relative isolate flex w-full select-none items-center min-h-8 gap-2 rounded-md px-2 py-0 text-left text-ui-base leading-[1.5] outline-none",
+        "focus-visible:ring-2 focus-visible:ring-ring",
+        "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:cursor-inherit [&_span]:cursor-inherit",
         inset && "pl-8",
-        tone === "destructive" ? "text-destructive" : "text-foreground",
+        tone === "destructive" ? "text-destructive-soft-foreground" : "text-foreground",
         className,
       )}
     >
@@ -613,7 +525,7 @@ function ContextMenuItemBase({
         <span
           className={cn(
             "absolute inset-0 -z-10 rounded-md",
-            tone === "destructive" ? "bg-destructive/10" : "bg-menu-hover",
+            tone === "destructive" ? "bg-destructive-soft" : "bg-menu-hover",
           )}
         />
       ) : null}
@@ -637,7 +549,6 @@ export function ContextMenuCheckboxItem({
   children,
   ...props
 }: ContextMenuCheckboxItemProps) {
-  const context = useContextMenuContext("ContextMenuCheckboxItem");
   return (
     <ContextMenuItemBase
       {...props}
@@ -646,19 +557,7 @@ export function ContextMenuCheckboxItem({
       onSelect={() => onCheckedChange?.(!checked)}
     >
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-        <AnimatePresence initial={false}>
-          {checked ? (
-            <motion.span
-              key="check"
-              initial={context.reduce ? false : { opacity: 0, scale: 0.75 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: context.reduce ? 1 : 0.75 }}
-              transition={context.reduce ? { duration: 0.08 } : { duration: 0.16, ease: EASE_OUT }}
-            >
-              <Check aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2.4} />
-            </motion.span>
-          ) : null}
-        </AnimatePresence>
+        {checked ? <Check aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2.4} /> : null}
       </span>
       {children}
     </ContextMenuItemBase>
@@ -713,7 +612,7 @@ export function ContextMenuRadioItem({ value, children, ...props }: ContextMenuR
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
         <span
           className={cn(
-            "h-1.5 w-1.5 rounded-full bg-current transition-opacity",
+            "h-1.5 w-1.5 rounded-full bg-current",
             checked ? "opacity-100" : "opacity-0",
           )}
         />

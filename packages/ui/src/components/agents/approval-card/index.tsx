@@ -161,7 +161,7 @@ function QuestionOptions({
           }
           className={cn("p-0.5", question.options?.length && "mt-1.5")}
           classNames={{
-            field: "min-h-8 rounded-md border-0 bg-background/70 focus-within:bg-background",
+            field: "min-h-8 rounded-lg",
             input: "px-3 text-ui-base",
           }}
         />
@@ -344,7 +344,7 @@ export function ApprovalCard({
             ) : (
               <span
                 className={cn(
-                  "shrink-0 rounded-md border px-2 py-0.5 text-ui-xs font-medium transition-colors",
+                  "shrink-0 min-h-5 rounded-md border px-2 py-0 text-ui-sm leading-[1.5] font-normal",
                   getStatusBadgeClass(status),
                 )}
               >
@@ -357,7 +357,7 @@ export function ApprovalCard({
                 aria-label={componentText("component.dismiss")}
                 disabled={busy || disabled}
                 onClick={onDismiss}
-                className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="size-4" />
               </button>

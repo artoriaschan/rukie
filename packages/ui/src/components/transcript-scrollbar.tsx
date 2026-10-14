@@ -120,7 +120,7 @@ export function TranscriptScrollbar({
           event.key === "Home"
             ? 0
             : event.key === "End"
-              ? geometry.max
+              ? Math.max(0, feed.scrollHeight - feed.clientHeight)
               : event.key === "ArrowDown"
                 ? feed.scrollTop + 40
                 : event.key === "ArrowUp"

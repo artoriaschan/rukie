@@ -117,20 +117,15 @@ export function browserHost(): DesktopHost {
     },
     pickProjectFolder: async () => {
       if (!client) throw new Error("Browser host client is not connected");
-      try {
-        await client.connect();
-        const result: unknown = await client.request({ type: "host.pickFolder" });
-        if (
-          result !== null &&
-          (!Array.isArray(result) ||
-            !result.every((path): path is string => typeof path === "string"))
-        )
-          throw new Error("Invalid folder response");
-        return result;
-      } catch (error) {
-        if (error instanceof WireError && error.code === "unsupported") return null;
-        throw error;
-      }
+      await client.connect();
+      const result: unknown = await client.request({ type: "host.pickFolder" });
+      if (
+        result !== null &&
+        (!Array.isArray(result) ||
+          !result.every((path): path is string => typeof path === "string"))
+      )
+        throw new Error("Invalid folder response");
+      return result;
     },
   };
 }

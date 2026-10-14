@@ -1,10 +1,30 @@
 import { expect, test } from "vitest";
 import { createDesktopStore, recentSessions } from "../../src/store";
 
+test("registry presentation accepts authoritative home and rejects malformed home metadata", () => {
+  const store = createDesktopStore();
+  const message = {
+    type: "sessions_changed",
+    homeDir: "/custom/canonical-home",
+    sessions: [],
+    projects: [],
+    pinned: [],
+    archived: [],
+    preferences: {},
+  };
+  store.receive(message);
+  expect(store.getState()).toMatchObject({ homeDir: "/custom/canonical-home" });
+  for (const homeDir of [undefined, null, 42, ""]) {
+    store.receive({ ...message, homeDir, preferences: { showPinned: false } });
+    expect(store.getState()).toMatchObject({ homeDir: "/custom/canonical-home", preferences: {} });
+  }
+});
+
 test("registry snapshots preserve pin membership and selected Session sort ordering", () => {
   const store = createDesktopStore();
   store.receive({
     type: "sessions_changed",
+    homeDir: "/fixture-home",
     sessions: [
       {
         id: "a",
@@ -13,6 +33,7 @@ test("registry snapshots preserve pin membership and selected Session sort order
         messageCount: 1,
         model: "test/script",
         cwd: "/project",
+        projectId: "p",
         createdAt: 10,
         updatedAt: 30,
       },
@@ -23,6 +44,7 @@ test("registry snapshots preserve pin membership and selected Session sort order
         messageCount: 1,
         model: "test/script",
         cwd: "/project",
+        projectId: "p",
         createdAt: 20,
         updatedAt: 10,
       },
@@ -148,7 +170,14 @@ test("model catalogs reject malformed capabilities at the wire boundary", () => 
 test("malformed wire envelopes do not alter usable registry or context state", () => {
   const store = createDesktopStore();
   for (const message of [
-    { type: "sessions_changed", sessions: null, projects: [], pinned: [], preferences: {} },
+    {
+      type: "sessions_changed",
+      homeDir: "/fixture-home",
+      sessions: null,
+      projects: [],
+      pinned: [],
+      preferences: {},
+    },
     {
       type: "session_state",
       sessionId: "a",
@@ -300,6 +329,7 @@ test("archive envelopes invalidate cached history and reject invalid archived id
   const store = createDesktopStore();
   const registry = {
     type: "sessions_changed",
+    homeDir: "/fixture-home",
     sessions: [],
     projects: [],
     pinned: [],
@@ -333,6 +363,7 @@ test("multi-directory Projects parse complete state and reject missing membershi
   };
   const message = {
     type: "sessions_changed",
+    homeDir: "/fixture-home",
     projects: [project],
     sessions: [],
     pinned: [],
@@ -350,4 +381,55 @@ test("multi-directory Projects parse complete state and reject missing membershi
   ])
     store.receive({ ...message, projects: [invalid] });
   expect(store.getState().projects).toEqual([project]);
+});
+
+test("Project edit and removal snapshots preserve Session membership facts, pin and archive state", () => {
+  const store = createDesktopStore();
+  const session = {
+    id: "s",
+    title: "Kept",
+    titleSource: "prompt",
+    messageCount: 1,
+    model: "test/script",
+    cwd: "/first",
+    projectId: "p",
+    createdAt: 1,
+    updatedAt: 2,
+  };
+  const project = {
+    id: "p",
+    name: "Edited Project",
+    directories: ["/first", "/second"],
+    primary: "/second",
+    trusted: true,
+  };
+  const message = {
+    type: "sessions_changed",
+    homeDir: "/fixture-home",
+    projects: [project],
+    sessions: [session],
+    pinned: ["s"],
+    archived: ["archived"],
+    preferences: {},
+  };
+  store.receive(message);
+  expect(store.getState()).toMatchObject({
+    projects: [project],
+    sessions: [session],
+    pinned: ["s"],
+    archived: ["archived"],
+  });
+  store.receive({ ...message, projects: [{ ...project, name: 42 }] });
+  expect(store.getState().projects).toEqual([project]);
+  for (const projectId of [undefined, 42, ""]) {
+    store.receive({ ...message, sessions: [{ ...session, projectId }] });
+    expect(store.getState().sessions).toEqual([session]);
+  }
+  store.receive({ ...message, projects: [], sessions: [{ ...session, projectId: null }] });
+  expect(store.getState()).toMatchObject({
+    projects: [],
+    sessions: [{ ...session, projectId: null }],
+    pinned: ["s"],
+    archived: ["archived"],
+  });
 });

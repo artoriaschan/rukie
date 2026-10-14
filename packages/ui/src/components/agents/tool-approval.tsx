@@ -5,6 +5,7 @@ import { Check, ChevronDown, CircleAlert, LoaderCircle, ShieldCheck, X } from "l
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { AgentCode, type AgentCodeLanguage } from "@/components/agents/agent-code";
+import { Button } from "@/components/motion/button/base";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
 import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
@@ -137,7 +138,7 @@ export function ToolApproval({
       data-state={status}
       aria-busy={busy}
       className={cn(
-        "w-full overflow-hidden rounded-xl border border-border/60 bg-muted/20 text-ui-base",
+        "w-full overflow-hidden rounded-xl border border-card-border bg-card text-ui-base",
         className,
       )}
     >
@@ -172,7 +173,7 @@ export function ToolApproval({
             </div>
             <span
               className={cn(
-                "shrink-0 rounded-md border px-2 py-0.5 text-ui-xs font-medium transition-colors",
+                "shrink-0 min-h-5 rounded-md border px-2 py-0 text-ui-sm leading-[1.5] font-normal",
                 getStatusBadgeClass(status),
               )}
             >
@@ -187,16 +188,12 @@ export function ToolApproval({
               aria-expanded={currentOpen}
               aria-controls={detailsId}
               onClick={() => setOpen(!currentOpen)}
-              className="mt-2 inline-flex min-h-7 items-center gap-1 rounded-md text-ui-base font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className="mt-2 inline-flex min-h-7 items-center gap-1 rounded-md text-ui-base font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
               {componentText("component.view-details")}
-              <motion.span
-                aria-hidden="true"
-                animate={{ rotate: currentOpen ? 180 : 0 }}
-                transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
-              >
+              <span aria-hidden="true" style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}>
                 <ChevronDown className="size-3.5" />
-              </motion.span>
+              </span>
             </button>
           ) : null}
         </div>
@@ -225,35 +222,27 @@ export function ToolApproval({
             transition={{ duration: reduce ? 0 : 0.16, ease: EASE_OUT }}
             className="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-3"
           >
-            <motion.button
-              type="button"
+            <Button
               data-permission-primary
               disabled={disabled}
               onClick={onApprove}
-              transition={{ duration: 0.16, ease: EASE_OUT }}
-              className="min-h-8 max-w-full rounded-lg bg-foreground px-3 py-1 text-ui-base font-medium text-foreground-inverse outline-none disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="max-w-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {approveLabel ?? componentText("component.allow-once")}
-            </motion.button>
+            </Button>
             {onAlwaysAllow ? (
-              <motion.button
-                type="button"
+              <Button
+                variant="outline"
                 disabled={disabled}
                 onClick={onAlwaysAllow}
-                transition={{ duration: 0.16, ease: EASE_OUT }}
-                className="min-h-8 max-w-full rounded-lg border border-border/60 bg-background px-3 py-1 text-ui-base font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                className="max-w-full"
               >
                 {sessionAllowLabel ?? componentText("component.always-allow")}
-              </motion.button>
+              </Button>
             ) : null}
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={onDeny}
-              className="min-h-8 max-w-full rounded-lg px-3 py-1 text-ui-base font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            >
+            <Button variant="ghost" disabled={disabled} onClick={onDeny} className="max-w-full">
               {denyLabel ?? componentText("component.deny")}
-            </button>
+            </Button>
           </motion.div>
         ) : null}
       </AnimatePresence>

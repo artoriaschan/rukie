@@ -38,16 +38,16 @@ import { Composer, type PromptImages, type ModelSelection } from "../components/
 import { Button } from "../components/motion/button/base";
 import { Tooltip } from "../components/motion/tooltip";
 import { CommandPalette } from "../components/motion/command-palette";
-import { MorphingModal } from "../components/motion/morphing-modal";
-import { Input } from "../components/motion/input";
 import * as Menu from "../components/ui/dropdown-menu";
 import { UiLocaleProvider, useAppText } from "../lib/i18n";
 import { cn } from "../lib/utils";
 import type { PermissionDecision } from "../lib/transcript";
 import { ModelServices } from "./model-services";
 import { AppConversation } from "./conversation";
-import { ProjectTrust, ProjectDirectories } from "./project-trust";
-import { ScrollArea } from "../components/ui/scroll-area";
+import { ProjectCreate } from "./project-create";
+import { directoryName, removeProjectDirectory } from "./project-directories";
+import { ProjectEdit } from "./project-edit";
+import { ProjectTrust } from "./project-trust";
 import { DeleteSession } from "./delete-session";
 import { RenameSession } from "./rename-session";
 import { useErrorText } from "./error";
@@ -115,10 +115,14 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [deleting, setDeleting] = useState<WireSessionSummary | null>(null);
   const [renaming, setRenaming] = useState<WireSessionSummary | null>(null);
   const [pathOpen, setPathOpen] = useState(false);
-  const [path, setPath] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [projectError, setProjectError] = useState("");
+  const [pickingFolder, setPickingFolder] = useState(false);
   const [directories, setDirectories] = useState<string[]>([]);
   const [primary, setPrimary] = useState("");
-  const [directoryProject, setDirectoryProject] = useState<string | null>(null);
+  const [detailEpoch, setDetailEpoch] = useState(0);
+  const [detailProject, setDetailProject] = useState<{ id: string; pinned: boolean } | null>(null);
+  const [editingProject, setEditingProject] = useState<WireProject | null>(null);
   const [trust, setTrust] = useState<{
     project: Pick<WireProject, "directories" | "primary">;
     creating: boolean;
@@ -150,6 +154,18 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [drafts, setDrafts] = useState<Record<string, InputDraft>>({});
   const newDraftSequence = useRef(0);
   const [newDraftKey, setNewDraftKey] = useState("new-0");
+  const detailsDisabled =
+    settingsOpen || search || !!deleting || !!renaming || pathOpen || !!editingProject || !!trust;
+  useEffect(() => {
+    setDetailProject(null);
+    // Invalidate pending hover intent even when no card has opened yet.
+    setDetailEpoch((previous) => previous + 1);
+  }, [detailsDisabled, state.selected, state.target, newDraftKey]);
+  useEffect(() => {
+    setDetailProject((previous) =>
+      previous && !state.projects.some((project) => project.id === previous.id) ? null : previous,
+    );
+  }, [state.projects]);
   const [navigation, setNavigation] = useState<{ entries: NavigationEntry[]; index: number }>({
     entries: [{ settings: false, session: null, target: null, draft: "new-0" }],
     index: 0,
@@ -237,9 +253,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   );
   const view = state.selected ? (state.views[state.selected] ?? emptyView) : emptyView;
   const targetProject = state.projects.find((project) => project.id === state.target);
-  const currentProject = state.projects.find((project) =>
-    project.directories.includes(current?.cwd ?? ""),
-  );
+  const currentProject = state.projects.find((project) => project.id === current?.projectId);
   const connected = state.connection === "connected";
   const safe = (action: () => Promise<unknown>) => {
     void action().catch((reason) => setError(t("app.error", { message: errorText(reason) })));
@@ -248,10 +262,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     await ensureTrust(
       store
         .getState()
-        .projects.find((project) =>
-          project.directories.includes(
-            store.getState().sessions.find((session) => session.id === sessionId)?.cwd ?? "",
-          ),
+        .projects.find(
+          (project) =>
+            project.id ===
+            store.getState().sessions.find((session) => session.id === sessionId)?.projectId,
         ),
       reuseDecline,
     );
@@ -538,41 +552,55 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       });
     else setModel(selection);
   };
-  const prepareProject = async (selected: string[]) => {
-    const existing = state.projects.find((project) => project.primary === selected[0]);
-    if (existing) {
-      setPathOpen(false);
-      await ensureTrust(existing);
-      enterNewChat(existing.id);
-      return;
-    }
-    setDirectories([...new Set(selected)]);
-    setPrimary(selected[0] ?? "");
-    setDirectoryProject(null);
-    setPathOpen(true);
-  };
   const addProject = async () => {
-    const selected = await host.pickProjectFolder?.();
     pathOpener.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    await prepareProject(selected ?? []);
+    setProjectName("");
+    setDirectories([]);
+    setPrimary("");
+    setProjectError("");
+    setPathOpen(true);
+  };
+  const pickFolder = async () => {
+    if (pickingFolder) return;
+    setPickingFolder(true);
+    setProjectError("");
+    try {
+      if (!host.pickProjectFolder) throw new WireError("unsupported");
+      const selected = await host.pickProjectFolder();
+      if (!selected?.length) return;
+      const existing =
+        !directories.length && state.projects.find((project) => project.primary === selected[0]);
+      if (existing) {
+        setPathOpen(false);
+        await ensureTrust(existing);
+        enterNewChat(existing.id);
+        return;
+      }
+      if (!directories.length)
+        setProjectName((previous) => (previous.trim() ? previous : directoryName(selected[0]!)));
+      setDirectories((previous) => [...new Set([...previous, ...selected])]);
+      setPrimary((previous) => previous || selected[0] || "");
+    } catch (reason) {
+      setProjectError(errorText(reason));
+    } finally {
+      setPickingFolder(false);
+    }
   };
   const closePath = () => {
     setPathOpen(false);
-    setDirectoryProject(null);
-    setPath("");
+    setProjectName("");
+    setProjectError("");
+  };
+  const removeDirectory = (directory: string) => {
+    const next = removeProjectDirectory(directories, primary, directory);
+    setDirectories(next.directories);
+    setPrimary(next.primary);
   };
   const confirmProject = () => {
-    const chosen = path.trim()
-      ? [...directories, ...(directories.includes(path.trim()) ? [] : [path.trim()])]
-      : directories;
-    const selectedPrimary = primary || chosen[0];
-    if (!selectedPrimary) return;
-    const ordered = [
-      selectedPrimary,
-      ...chosen.filter((directory) => directory !== selectedPrimary),
-    ];
-    const existing = state.projects.find((project) => project.primary === selectedPrimary);
+    if (!projectName.trim() || !directories.length || !primary || pickingFolder || !connected)
+      return;
+    const existing = state.projects.find((project) => project.primary === primary);
     if (existing) {
       closePath();
       safe(async () => {
@@ -581,28 +609,38 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       });
       return;
     }
+    const ordered = [primary, ...directories.filter((directory) => directory !== primary)];
+    setProjectError("");
     setTrust({
-      project: { directories: ordered, primary: selectedPrimary },
+      project: { directories: ordered, primary },
       creating: true,
       cancel: () => {
         setTrust(null);
+        setPathOpen(true);
       },
       confirm: async () => {
-        const result = await client.request({
-          type: "project.create",
-          directories: ordered,
-          trusted: true,
-        });
-        if (
-          typeof result !== "object" ||
-          result === null ||
-          !("id" in result) ||
-          typeof result.id !== "string"
-        )
-          throw new WireError("invalid_command");
-        setTrust(null);
-        closePath();
-        enterNewChat(result.id);
+        try {
+          const result = await client.request({
+            type: "project.create",
+            name: projectName.trim(),
+            directories: ordered,
+            trusted: true,
+          });
+          if (
+            typeof result !== "object" ||
+            result === null ||
+            !("id" in result) ||
+            typeof result.id !== "string"
+          )
+            throw new WireError("invalid_command");
+          setTrust(null);
+          closePath();
+          enterNewChat(result.id);
+        } catch (reason) {
+          setProjectError(errorText(reason));
+          setTrust(null);
+          setPathOpen(true);
+        }
       },
     });
     setPathOpen(false);
@@ -656,11 +694,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               {targetProject ? (
                 <Menu.DropdownMenuItem
                   onSelect={() => {
-                    setDirectoryProject(targetProject.id);
-                    setPathOpen(true);
+                    setEditingProject(targetProject);
                   }}
                 >
-                  {t("app.project-directories")}
+                  {t("app.edit-project")}
                 </Menu.DropdownMenuItem>
               ) : null}
               <Menu.DropdownMenuItem onSelect={() => safe(addProject)}>
@@ -933,6 +970,27 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               <div className="absolute inset-y-0 left-0 z-20 md:relative md:z-auto">
                 <Sidebar
                   recent={recent}
+                  homeDir={state.homeDir}
+                  detailProject={detailProject}
+                  detailEpoch={detailEpoch}
+                  detailsDisabled={detailsDisabled}
+                  onDetailProject={(id, open) =>
+                    setDetailProject((previous) =>
+                      open
+                        ? previous?.pinned
+                          ? previous
+                          : { id, pinned: false }
+                        : previous?.id === id
+                          ? null
+                          : previous,
+                    )
+                  }
+                  onDetailPin={(id, pinned) =>
+                    setDetailProject((previous) =>
+                      previous?.id === id ? { ...previous, pinned } : previous,
+                    )
+                  }
+                  onEditProject={setEditingProject}
                   projects={state.projects}
                   pinned={state.pinned}
                   archived={state.archived}
@@ -1047,8 +1105,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             label: session.title,
             group: t("app.chats"),
             keywords: [
-              state.projects.find((project) => project.directories.includes(session.cwd))?.name ??
-                "",
+              state.projects.find((project) => project.id === session.projectId)?.name ?? "",
             ],
             status: session.running ? (
               <LoaderCircle
@@ -1056,8 +1113,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 className="size-3 animate-spin motion-reduce:animate-none"
               />
             ) : undefined,
-            badge: state.projects.find((project) => project.directories.includes(session.cwd))
-              ?.name,
+            badge: state.projects.find((project) => project.id === session.projectId)?.name,
             onSelect: () => safe(() => select(session.id)),
           })),
           {
@@ -1086,91 +1142,50 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           onCancel={trust.cancel}
         />
       ) : null}
-      {!trust ? (
-        <MorphingModal
-          label={t(directoryProject ? "app.project-directories" : "app.add-project")}
-          viewId={pathOpen ? "path" : null}
+      {!trust && pathOpen ? (
+        <ProjectCreate
+          name={projectName}
+          directories={directories}
+          primary={primary}
+          error={projectError}
+          picking={pickingFolder}
+          connected={connected}
+          onName={setProjectName}
+          onPick={() => {
+            void pickFolder();
+          }}
+          onPrimary={setPrimary}
+          onRemove={removeDirectory}
+          onCreate={confirmProject}
           onClose={closePath}
-          placement="center"
-        >
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              confirmProject();
-            }}
-            className="flex min-h-0 flex-col gap-3"
-          >
-            <h2 className="shrink-0 text-ui-base font-medium">
-              {t(directoryProject ? "app.project-directories" : "app.add-project")}
-            </h2>
-            <ScrollArea
-              className="min-h-0 flex-1"
-              viewportLabel={t("app.project-directories")}
-              viewportClassName="space-y-3 [contain:inline-size]"
-            >
-              <ProjectDirectories
-                directories={
-                  directoryProject
-                    ? (state.projects.find((p) => p.id === directoryProject)?.directories ?? [])
-                    : directories
-                }
-                primary={
-                  directoryProject
-                    ? (state.projects.find((p) => p.id === directoryProject)?.primary ?? "")
-                    : primary
-                }
-                onPrimary={(directory) => {
-                  if (directoryProject)
-                    safe(() =>
-                      client.request({
-                        type: "project.setPrimary",
-                        projectId: directoryProject,
-                        directory,
-                      }),
-                    );
-                  else setPrimary(directory);
-                }}
-              />
-              {!directoryProject ? (
-                <Input autoFocus label={t("app.project-path")} value={path} onChange={setPath} />
-              ) : null}
-            </ScrollArea>
-            <div className="flex shrink-0 flex-wrap justify-end gap-2">
-              {!directoryProject ? (
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    if (path.trim()) {
-                      setDirectories((previous) => [...new Set([...previous, path.trim()])]);
-                      setPrimary((previous) => previous || path.trim());
-                      setPath("");
-                    } else
-                      safe(async () => {
-                        const selected = await host.pickProjectFolder?.();
-                        if (selected) {
-                          setDirectories((previous) => [...new Set([...previous, ...selected])]);
-                          setPrimary((previous) => previous || selected[0] || "");
-                        }
-                      });
-                  }}
-                >
-                  {t(path.trim() ? "app.add" : "app.choose-directories")}
-                </Button>
-              ) : null}
-              <Button variant="ghost" onClick={closePath}>
-                {t("app.cancel")}
-              </Button>
-              {!directoryProject ? (
-                <Button
-                  type="submit"
-                  disabled={(!path.trim() && !directories.length) || !connected}
-                >
-                  {t("app.create-project")}
-                </Button>
-              ) : null}
-            </div>
-          </form>
-        </MorphingModal>
+        />
+      ) : null}
+      {editingProject ? (
+        <ProjectEdit
+          key={editingProject.id}
+          project={
+            state.projects.find((project) => project.id === editingProject.id) ?? editingProject
+          }
+          busy={state.sessions.some(
+            (session) =>
+              editingProject.id === session.projectId &&
+              (session.running ||
+                session.waitingPermission ||
+                state.views[session.id]?.running ||
+                state.views[session.id]?.busy ||
+                Object.keys(state.views[session.id]?.interactions ?? {}).length > 0),
+          )}
+          connected={connected}
+          onPick={async () => {
+            if (!host.pickProjectFolder) throw new WireError("unsupported");
+            return host.pickProjectFolder();
+          }}
+          onSave={(draft) =>
+            client.request({ type: "project.update", projectId: editingProject.id, ...draft })
+          }
+          onRemove={() => client.request({ type: "project.remove", projectId: editingProject.id })}
+          onClose={() => setEditingProject(null)}
+        />
       ) : null}
     </div>
   );

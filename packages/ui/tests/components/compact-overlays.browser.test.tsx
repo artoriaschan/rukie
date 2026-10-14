@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "../../src/components/motion/select";
 import { Button } from "../../src/components/motion/button/base";
+import { Tooltip } from "../../src/components/motion/tooltip";
 import "../../src/theme.css";
 
 test("compact menu groups preserve row spacing, shadow, and action focus restoration", async () => {
@@ -41,7 +42,7 @@ test("compact menu groups preserve row spacing, shadow, and action focus restora
   expect(getComputedStyle(menu).borderRadius).toBe("8px");
   expect(getComputedStyle(menu).zIndex).toBe("60");
   expect(getComputedStyle(menu).boxShadow).not.toBe("none");
-  expect(getComputedStyle(item.element()).height).toBe("28px");
+  expect(getComputedStyle(item.element()).height).toBe("32px");
   expect(getComputedStyle(item.element()).paddingLeft).toBe("8px");
   const next = screen.getByRole("menuitem", { name: "Open session" }).element();
   await expect
@@ -76,9 +77,27 @@ test("compact Select clamps long options and keeps selected label after choosing
   await expect.element(list).toBeVisible();
   await expect.poll(() => list.element().getBoundingClientRect().height).toBeLessThanOrEqual(320);
   const option = screen.getByRole("option", { name: "Option 1", exact: true });
-  expect(getComputedStyle(option.element()).height).toBe("28px");
+  expect(getComputedStyle(option.element()).height).toBe("32px");
   await option.click();
   expect(chosen).toHaveBeenCalledWith("1");
   await expect.element(screen.getByRole("button", { name: "Option 1" })).toBeVisible();
   await expect.element(list).not.toBeInTheDocument();
+});
+
+test("ordinary hints retain F01 padding without moving their trigger", async () => {
+  const screen = await render(
+    <Tooltip content="Action hint" open>
+      <Button variant="ghost">Hint trigger</Button>
+    </Tooltip>,
+  );
+  try {
+    const trigger = screen.getByRole("button", { name: "Hint trigger", exact: true }).element();
+    const bounds = trigger.getBoundingClientRect().toJSON();
+    const hint = screen.getByRole("tooltip");
+    await expect.element(hint).toBeVisible();
+    expect(getComputedStyle(hint.element()).padding).toBe("8px");
+    expect(trigger.getBoundingClientRect().toJSON()).toEqual(bounds);
+  } finally {
+    await screen.unmount();
+  }
 });

@@ -173,14 +173,13 @@ export function FileDiff({
             <Check aria-label={componentText("component.changes-applied")} className="size-3.5" />
           )}
         </span>
-        <motion.span
+        <span
           aria-hidden="true"
-          animate={{ rotate: currentOpen ? 180 : 0 }}
-          transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
-          className="shrink-0 text-muted-foreground/45 transition-colors group-hover:text-muted-foreground"
+          style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}
+          className="shrink-0 text-muted-foreground/45 group-hover:text-muted-foreground"
         >
           <ChevronDown className="size-3.5" />
-        </motion.span>
+        </span>
       </button>
 
       <AgentDisclosure id={contentId} role="region" aria-labelledby={triggerId} open={currentOpen}>
@@ -247,7 +246,7 @@ export function FileDiff({
                   }
                   onClick={handleCopy}
                   transition={{ duration: 0.16, ease: EASE_OUT }}
-                  className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
                 </motion.button>

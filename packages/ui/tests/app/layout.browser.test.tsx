@@ -1,7 +1,8 @@
 import { modelServicesFixture } from "../helpers/model-services";
-import { expect, test } from "vitest";
-import { commands, page, userEvent } from "vitest/browser";
-import { render } from "vitest-browser-react";
+import { expect, onTestFinished, test } from "vitest";
+import { page, userEvent } from "vitest/browser";
+import type { render } from "vitest-browser-react";
+import { ownProjectBrowserTest } from "../helpers/project-browser";
 import { App } from "../../src/app";
 import "../../src/theme.css";
 
@@ -28,16 +29,15 @@ test.each([
 ])(
   "page regions preserve geometry at $width px, font $fontSize",
   async ({ width, height, dark, fontSize }) => {
+    const owner = ownProjectBrowserTest();
     const root = document.documentElement;
-    const previousStyle = root.getAttribute("style");
-    const wasDark = root.classList.contains("dark");
-    const connection = await commands.startWire();
+    const connection = await owner.startWire();
     let screen: Awaited<ReturnType<typeof render>> | undefined;
     try {
       await page.viewport(width, height);
       root.classList.toggle("dark", dark);
       root.style.setProperty("--ui-font-size", `${fontSize}px`);
-      screen = await render(
+      screen = await owner.render(
         <App
           host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
           locale="en"
@@ -53,24 +53,34 @@ test.each([
       const toggle = screen.getByRole("button", { name: "Toggle sidebar", exact: true });
       const shell = document.querySelector("[data-workspace-shell]")!;
       expect(getComputedStyle(shell).backgroundColor).toBe(
-        dark ? "rgb(43, 40, 39)" : "rgb(233, 232, 232)",
+        dark ? "rgb(14, 14, 14)" : "rgb(247, 247, 247)",
       );
       expect(getComputedStyle(header).backgroundColor).toBe(
-        dark ? "rgb(40, 41, 40)" : "rgb(232, 233, 233)",
+        dark ? "rgb(14, 14, 14)" : "rgb(247, 247, 247)",
       );
       expect(getComputedStyle(shell).borderRadius).toBe("16px");
       const workspace = main.parentElement!;
       expect(getComputedStyle(workspace).borderLeftWidth).toBe("0px");
       expect(getComputedStyle(workspace).borderTopWidth).toBe("0px");
       expect(getComputedStyle(workspace).borderRadius).toBe("12px");
-      expect(getComputedStyle(main).backgroundColor).toBe(
-        dark ? "rgb(24, 24, 24)" : "rgb(255, 255, 255)",
+      expect(getComputedStyle(shell).overflow).toBe("hidden");
+      expect(getComputedStyle(workspace).boxShadow).toBe(
+        dark
+          ? "rgba(0, 0, 0, 0.25) 0px 2px 8px 0px, rgba(0, 0, 0, 0.45) 0px 8px 24px 0px"
+          : "rgba(0, 0, 0, 0.04) 0px 2px 8px 0px, rgba(0, 0, 0, 0.06) 0px 8px 24px 0px",
       );
-      expect(getComputedStyle(document.body).fontFamily.startsWith("system-ui")).toBe(true);
+      for (const region of [shell, header, navigation, main])
+        expect(getComputedStyle(region).boxShadow).toBe("none");
+      expect(getComputedStyle(main).backgroundColor).toBe(
+        dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)",
+      );
+      expect(
+        getComputedStyle(document.body).fontFamily.startsWith('"Noto Sans SC", system-ui'),
+      ).toBe(true);
       expect(
         getComputedStyle(
           screen.getByRole("button", { name: "Choose model" }).element(),
-        ).fontFamily.startsWith("system-ui"),
+        ).fontFamily.startsWith('"Noto Sans SC", system-ui'),
       ).toBe(true);
       expect(
         [...document.fonts].some((face) =>
@@ -123,8 +133,9 @@ test.each([
           near(side.width, 268);
           near(side.bottom, height - 4);
           expect(getComputedStyle(sidebar).backgroundColor).toBe(
-            dark ? "rgb(31, 30, 30)" : "rgb(248, 247, 247)",
+            dark ? "rgb(5, 5, 5)" : "rgb(252, 252, 252)",
           );
+          expect(getComputedStyle(sidebar).boxShadow).toBe("none");
           expect(getComputedStyle(sidebar).borderLeftWidth).toBe("0px");
           expect(getComputedStyle(sidebar).borderRightWidth).toBe("1px");
           expect(getComputedStyle(sidebar).borderRightColor).toBe(
@@ -220,25 +231,73 @@ test.each([
         timestamp: index + 1,
         content: `Layout message ${index + 1}\n${"Long conversation content.\n".repeat(12)}`,
       }));
-      await fetch(`http://127.0.0.1:${connection.port}/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "snapshot",
-          sessionId: "one",
-          model: "test/script",
-          messages,
-          compactions: [],
-          queuedInputs: [],
-          toolStates: {},
-          background: [],
-          runSummaries: [],
-        }),
+      let lag: { liveMax: number; cachedMax: number; topAfterEnd: number } | undefined;
+      const track = document.querySelector<HTMLElement>(
+        '[role="scrollbar"][aria-label="Conversation scroll position"]',
+      )!;
+      const measurement = new ResizeObserver(() => {
+        const liveMax = feed.scrollHeight - feed.clientHeight;
+        const cachedMax = Number(track.getAttribute("aria-valuemax"));
+        if (width !== 1280 || lag || cachedMax <= 0 || liveMax <= cachedMax) return;
+        // Native row measurement changes height before the scrollbar's deferred RAF update.
+        // Dispatch the public key at that observable boundary rather than waiting a guessed delay.
+        track.focus();
+        track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+        lag = { liveMax, cachedMax, topAfterEnd: feed.scrollTop };
+        measurement.disconnect();
       });
-      await expect.poll(() => feed.scrollHeight).toBeGreaterThan(feed.clientHeight);
+      onTestFinished(() => measurement.disconnect());
+      measurement.observe(feed.firstElementChild!);
+      try {
+        await fetch(`http://127.0.0.1:${connection.port}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "snapshot",
+            sessionId: "one",
+            model: "test/script",
+            messages,
+            compactions: [],
+            queuedInputs: [],
+            toolStates: {},
+            background: [],
+            runSummaries: [],
+          }),
+        });
+        await expect.poll(() => feed.scrollHeight).toBeGreaterThan(feed.clientHeight);
+        if (width === 1280) {
+          await expect.poll(() => lag).toBeDefined();
+          expect(lag!.liveMax).toBeGreaterThan(lag!.cachedMax);
+          expect(lag!.liveMax - lag!.topAfterEnd).toBeLessThanOrEqual(1);
+        }
+      } finally {
+        measurement.disconnect();
+      }
       const scrollbar = screen.getByRole("scrollbar", { name: "Conversation scroll position" });
       await expect.element(scrollbar).toBeVisible();
+      // Settle the complete snapshot's final measured row and the rendered scrollbar extent.
+      await expect
+        .poll(() => {
+          const last = feed.querySelector('article[aria-posinset="16"]');
+          if (!last) return Infinity;
+          return (
+            last.getBoundingClientRect().bottom -
+            feed.getBoundingClientRect().top +
+            feed.scrollTop -
+            feed.scrollHeight
+          );
+        })
+        .toBeLessThanOrEqual(1);
+      await expect
+        .poll(
+          () =>
+            Number(scrollbar.element().getAttribute("aria-valuemax")) -
+            Math.round(feed.scrollHeight - feed.clientHeight),
+        )
+        .toBe(0);
       scrollbar.element().focus();
+      await userEvent.keyboard("{Home}");
+      await expect.poll(() => feed.scrollTop).toBe(0);
       await userEvent.keyboard("{End}");
       await expect
         .poll(() => feed.scrollHeight - feed.clientHeight - feed.scrollTop)
@@ -276,18 +335,7 @@ test.each([
       await expect.poll(() => header.getBoundingClientRect().width).toBe(width);
       assertConversation();
     } finally {
-      try {
-        await screen?.unmount();
-      } finally {
-        try {
-          await commands.stopWire(connection.port);
-        } finally {
-          root.classList.toggle("dark", wasDark);
-          if (previousStyle === null) root.removeAttribute("style");
-          else root.setAttribute("style", previousStyle);
-          await page.viewport(1280, 900);
-        }
-      }
+      await owner.close();
     }
   },
 );
@@ -295,9 +343,10 @@ test.each([
 test.each([1280, 420])(
   "sidebar keeps its top fixed and overlays its scrollbar at %i px",
   async (width) => {
+    const owner = ownProjectBrowserTest();
     await page.viewport(width, 700);
-    const connection = await commands.startWire();
-    const screen = await render(
+    const connection = await owner.startWire();
+    const screen = await owner.render(
       <App
         host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
         locale="en"
@@ -313,6 +362,7 @@ test.each([1280, 420])(
         method: "POST",
         body: JSON.stringify({
           type: "sessions_changed",
+          homeDir: "/fixture-home",
           projects: [],
           pinned: [],
           archived: [],
@@ -322,6 +372,7 @@ test.each([1280, 420])(
             title: `Scroll Session ${index}`,
             titleSource: "prompt",
             cwd: "/workspace",
+            projectId: null,
             model: "test/script",
             createdAt: index,
             updatedAt: index,
@@ -363,6 +414,7 @@ test.each([1280, 420])(
         method: "POST",
         body: JSON.stringify({
           type: "sessions_changed",
+          homeDir: "/fixture-home",
           projects: [],
           pinned: [],
           archived: [],
@@ -381,9 +433,80 @@ test.each([1280, 420])(
       await screen.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
       near(screen.getByRole("main").element().getBoundingClientRect().left, 52);
     } finally {
-      await screen.unmount();
-      await commands.stopWire(connection.port);
-      await page.viewport(1280, 900);
+      await owner.close();
     }
   },
 );
+
+test.each([1280, 420])("settings shell preserves surfaces and geometry at %i px", async (width) => {
+  const owner = ownProjectBrowserTest();
+  const root = document.documentElement;
+  const connection = await owner.startWire();
+  let screen: Awaited<ReturnType<typeof render>> | undefined;
+  try {
+    await page.viewport(width, 900);
+    screen = await owner.render(
+      <App
+        host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+        locale="en"
+      />,
+    );
+    await screen.getByRole("button", { name: "Model services", exact: true }).click();
+    const settings = screen.getByRole("region", { name: "Model services", exact: true }).element();
+    const navigation = settings.querySelector(".model-services-navigation-scroll")!;
+    const main = settings.querySelector(".model-services-content-scroll")!;
+    const header = screen.getByRole("banner").element();
+    const shell = document.querySelector("[data-workspace-shell]")!;
+    const panel = settings.querySelector(".model-services-panel")!;
+    await expect
+      .element(screen.getByRole("heading", { name: "Model services", exact: true }))
+      .toBeVisible();
+    for (const dark of [false, true]) {
+      root.classList.toggle("dark", dark);
+      const bounds = settings.getBoundingClientRect();
+      near(bounds.left, width === 1280 ? 52 : 0);
+      near(bounds.top, 44);
+      near(bounds.right, width === 1280 ? width - 4 : width);
+      near(bounds.bottom, width === 1280 ? 896 : 900);
+      near(header.getBoundingClientRect().height, 44);
+      near(navigation.getBoundingClientRect().width, width === 1280 ? 268 : 52);
+      near(main.getBoundingClientRect().left, width === 1280 ? 320 : 52);
+      expect(getComputedStyle(settings).borderRadius).toBe("12px");
+      expect(getComputedStyle(shell).overflow).toBe("hidden");
+      expect(getComputedStyle(settings).backgroundColor).toBe(
+        dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)",
+      );
+      expect(getComputedStyle(navigation).backgroundColor).toBe(
+        dark ? "rgb(5, 5, 5)" : "rgb(252, 252, 252)",
+      );
+      expect(getComputedStyle(settings).boxShadow).toBe(
+        dark
+          ? "rgba(0, 0, 0, 0.25) 0px 2px 8px 0px, rgba(0, 0, 0, 0.45) 0px 8px 24px 0px"
+          : "rgba(0, 0, 0, 0.04) 0px 2px 8px 0px, rgba(0, 0, 0, 0.06) 0px 8px 24px 0px",
+      );
+      expect(getComputedStyle(shell).backgroundColor).toBe(
+        dark ? "rgb(14, 14, 14)" : "rgb(247, 247, 247)",
+      );
+      expect(getComputedStyle(header).backgroundColor).toBe(
+        getComputedStyle(shell).backgroundColor,
+      );
+      const inactiveWorkspace = document.querySelector(".app-workspace")!;
+      for (const region of [shell, header, navigation, main, inactiveWorkspace])
+        expect(getComputedStyle(region).boxShadow).toBe("none");
+      expect(
+        getComputedStyle(settings.querySelector(".model-services-navigation")!).borderRightWidth,
+      ).toBe("1px");
+      expect(
+        getComputedStyle(settings.querySelector(".model-services-navigation")!).borderRightColor,
+      ).toBe(dark ? "rgba(255, 255, 255, 0.1)" : "rgba(13, 13, 13, 0.1)");
+      expect(getComputedStyle(panel).backgroundColor).toBe(
+        dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)",
+      );
+      expect(root.scrollWidth).toBeLessThanOrEqual(width);
+      expect(root.scrollHeight).toBeLessThanOrEqual(900);
+      expect(window.scrollY).toBe(0);
+    }
+  } finally {
+    await owner.close();
+  }
+});

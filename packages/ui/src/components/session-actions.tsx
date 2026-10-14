@@ -35,7 +35,7 @@ export function sessionActions(
   projects: WireProject[],
   onMove: (session: WireSessionSummary, project: WireProject) => void,
 ): SessionAction[] {
-  const targets = projects.filter((project) => !project.directories.includes(session.cwd));
+  const targets = projects.filter((project) => project.id !== session.projectId);
   return [
     {
       id: "rename",

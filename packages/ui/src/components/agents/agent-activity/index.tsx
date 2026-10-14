@@ -216,7 +216,7 @@ export function AgentActivity({
           aria-expanded={expanded}
           aria-controls={contentId}
           onClick={toggle}
-          className="group flex min-h-7 min-w-0 max-w-full items-center gap-2 rounded-md text-left font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="group flex min-h-7 min-w-0 max-w-full items-center gap-2 rounded-md text-left font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <span className="min-w-0 truncate">
             {working ? (
@@ -231,14 +231,13 @@ export function AgentActivity({
               completedSummary
             )}
           </span>
-          <motion.span
+          <span
             aria-hidden="true"
-            animate={{ rotate: expanded ? 0 : -90 }}
-            transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
+            style={{ transform: `rotate(${expanded ? 0 : -90}deg)` }}
             className="inline-flex shrink-0 text-muted-foreground group-hover:text-foreground"
           >
             <ChevronDown className="size-3.5" />
-          </motion.span>
+          </span>
         </button>
       )}
 

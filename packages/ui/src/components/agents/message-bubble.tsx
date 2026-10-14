@@ -135,7 +135,7 @@ function bubbleContentClass(variant: MessageBubbleVariant, interactive: boolean)
     variant === "ghost" && "w-full max-w-none rounded-none px-0 py-0",
     variant === "danger" && "text-destructive",
     interactive &&
-      "cursor-pointer text-left outline-none transition-[background-color,color,transform] duration-150 hover:brightness-[0.98] focus-visible:ring-2 focus-visible:ring-ring",
+      "cursor-pointer text-left outline-none hover:brightness-[0.98] focus-visible:ring-2 focus-visible:ring-ring",
   );
 }
 
@@ -265,7 +265,6 @@ export function MessageBubbleCollapsible({
   const moreLabel = moreLabelProp ?? componentText("component.show-more");
   const lessLabel = lessLabelProp ?? componentText("component.show-less");
 
-  const reduce = useReducedMotion() ?? false;
   const contentId = useId();
   const notifyLayout = useContext(MessageBubbleLayoutContext);
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
@@ -304,18 +303,14 @@ export function MessageBubbleCollapsible({
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
         className={cn(
-          "mt-2 inline-flex min-h-7 items-center gap-1 rounded-lg px-2 text-ui-base font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+          "mt-2 inline-flex min-h-7 items-center gap-1 rounded-lg px-2 text-ui-base font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
           triggerClassName,
         )}
       >
         <span>{currentOpen ? lessLabel : moreLabel}</span>
-        <motion.span
-          aria-hidden="true"
-          animate={{ rotate: currentOpen ? 180 : 0 }}
-          transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
-        >
+        <span aria-hidden="true" style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}>
           <ChevronDown className="size-3.5" />
-        </motion.span>
+        </span>
       </button>
     </div>
   );

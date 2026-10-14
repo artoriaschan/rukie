@@ -40,6 +40,7 @@ const SessionIndexSchema = Type.Object({
   messageCount: Type.Number(),
   model: Type.String(),
   cwd: Type.String(),
+  projectId: Type.Union([Type.String(), Type.Null()]),
   running: Type.Optional(Type.Boolean()),
   waitingPermission: Type.Optional(Type.Boolean()),
 });

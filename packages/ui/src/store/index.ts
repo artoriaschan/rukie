@@ -41,6 +41,7 @@ export interface SessionViewState {
 }
 export interface DesktopState {
   connection: ConnectionState;
+  homeDir: string | null;
   sessions: WireSessionSummary[];
   projects: WireProject[];
   pinned: string[];
@@ -54,6 +55,7 @@ export interface DesktopState {
 export function createDesktopStore() {
   const store = createStore<DesktopState>(() => ({
     connection: "disconnected",
+    homeDir: null,
     sessions: [],
     projects: [],
     pinned: [],
@@ -74,6 +76,7 @@ export function createDesktopStore() {
       if (message.closedSessionId) delete views[message.closedSessionId];
       store.setState({
         views,
+        homeDir: message.homeDir,
         sessions: message.sessions,
         projects: message.projects,
         pinned: message.pinned,
@@ -290,12 +293,15 @@ function identity(value: unknown) {
 function validEnvelope(input: unknown): boolean {
   if (!record(input) || typeof input.type !== "string") return false;
   if (input.type === "sessions_changed") {
+    if (typeof input.homeDir !== "string" || !input.homeDir.trim()) return false;
     if (
       !Array.isArray(input.sessions) ||
       !input.sessions.every(
         (item) =>
           record(item) &&
           [item.id, item.title, item.model, item.cwd].every((value) => typeof value === "string") &&
+          (item.projectId === null ||
+            (typeof item.projectId === "string" && Boolean(item.projectId))) &&
           ["prompt", "model", "user"].includes(String(item.titleSource)) &&
           finite(item.createdAt) &&
           finite(item.updatedAt) &&

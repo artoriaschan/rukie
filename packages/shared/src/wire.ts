@@ -61,11 +61,19 @@ export const WireCommandSchema = Type.Union([
   command("host.openInTerminal", { path: id }),
   command("projects.list", {}),
   command("project.create", {
+    name: Type.String(),
     directories: Type.Array(id, { minItems: 1, uniqueItems: true }),
     trusted: Type.Literal(true),
   }),
+  command("project.update", {
+    projectId: id,
+    name: Type.String(),
+    directories: Type.Array(id, { minItems: 1, uniqueItems: true }),
+    primary: id,
+    trusted: Type.Optional(Type.Boolean()),
+  }),
+  command("project.remove", { projectId: id }),
   command("project.trust", { projectId: id }),
-  command("project.setPrimary", { projectId: id, directory: id }),
   command("sessions.list", {}),
   command("session.create", {
     project: Type.Union([id, Type.Null()]),
@@ -130,6 +138,7 @@ export type WireErrorCode =
   | "project_not_found"
   | "project_conflict"
   | "project_reserved"
+  | "project_trust_required"
   | "invalid_command"
   | "not_queued"
   | "interaction_stale"
@@ -155,6 +164,8 @@ export interface WireSessionSummary {
   messageCount: number;
   model: string;
   cwd: string;
+  /** Presentation ownership by filesystem identity; cwd keeps its persisted spelling. */
+  projectId: string | null;
   running?: boolean;
   waitingPermission?: boolean;
 }
@@ -211,6 +222,8 @@ export type WireServerMessage<Event> =
   | { type: "interaction_settled"; sessionId: string; identity: WireInteractionIdentity }
   | {
       type: "sessions_changed";
+      /** Configured home identity (canonical when available), for frontend path presentation only. */
+      homeDir: string;
       /** Invalidate cached history; an archived selected Session also returns to new chat. */
       closedSessionId?: string;
       sessions: WireSessionSummary[];

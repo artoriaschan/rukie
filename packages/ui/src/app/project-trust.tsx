@@ -1,6 +1,8 @@
+import { AnimatedBadge } from "../components/motion/animated-badge";
 import { useRef, useState } from "react";
 import type { WireProject } from "@rukie/shared";
-import { MorphingModal } from "../components/motion/morphing-modal";
+import { Folder } from "lucide-react";
+import { ProjectDialog } from "./project-dialog";
 import { Button } from "../components/motion/button/base";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { useAppText } from "../lib/i18n";
@@ -10,11 +12,15 @@ import { useErrorText } from "./error";
 export function ProjectTrust({
   project,
   creating = false,
+  saving = false,
+  addedDirectories = [],
   onConfirm,
   onCancel,
 }: {
   project: Pick<WireProject, "directories" | "primary">;
   creating?: boolean;
+  saving?: boolean;
+  addedDirectories?: string[];
   onConfirm: () => Promise<unknown>;
   onCancel: () => void;
 }) {
@@ -28,109 +34,75 @@ export function ProjectTrust({
     if (!submitting.current) onCancel();
   };
   return (
-    <MorphingModal
-      viewId="project-trust"
-      label={t("app.trust-title")}
-      placement="center"
+    <ProjectDialog
+      title={t("app.trust-title")}
+      width={416}
       initialFocus={cancel}
+      pending={pending}
       onClose={close}
     >
-      <div className="flex min-h-0 flex-col gap-3" aria-busy={pending}>
-        <h2 className="shrink-0 text-ui-lg font-medium">{t("app.trust-title")}</h2>
-        <ScrollArea
-          className="min-h-0 flex-1"
-          viewportLabel={t("app.project-directories")}
-          viewportClassName="space-y-3 [contain:inline-size]"
-        >
-          <ul className="space-y-2">
-            {project.directories.map((directory) => (
-              <li key={directory} className="flex items-center gap-2 text-ui-base">
-                <span className="min-w-0 flex-1 break-all">{directory}</span>
-                {directory === project.primary ? (
-                  <span className="shrink-0 text-ui-caption text-muted-foreground">
-                    {t("app.primary")}
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          <p className="text-ui-base text-muted-foreground">{t("app.trust-primary")}</p>
-          {project.directories.length > 1 ? (
-            <p className="text-ui-base text-muted-foreground">{t("app.trust-additional")}</p>
-          ) : null}
-          {error ? (
-            <p role="alert" className="text-ui-sm text-destructive">
-              {error}
-            </p>
-          ) : null}
-        </ScrollArea>
-        <div className="flex shrink-0 justify-end gap-2">
-          <Button ref={cancel} variant="secondary" disabled={pending} onClick={close}>
-            {t("app.cancel")}
-          </Button>
-          <Button
-            disabled={pending}
-            onClick={() => {
-              if (submitting.current) return;
-              submitting.current = true;
-              setPending(true);
-              setError("");
-              void onConfirm()
-                .catch((reason) => setError(errorText(reason)))
-                .finally(() => {
-                  submitting.current = false;
-                  setPending(false);
-                });
-            }}
-          >
-            {t(creating ? "app.trust-create" : "app.trust")}
-          </Button>
-        </div>
-      </div>
-    </MorphingModal>
-  );
-}
-
-/** Directory-specific rows composed from the shared Button; reveal reserves action space. */
-export function ProjectDirectories({
-  directories,
-  primary,
-  onPrimary,
-  disabled = false,
-}: {
-  directories: string[];
-  primary: string;
-  onPrimary: (directory: string) => void;
-  disabled?: boolean;
-}) {
-  const t = useAppText();
-  return (
-    <ul className="space-y-2">
-      {directories.map((directory) => (
-        <li
-          key={directory}
-          tabIndex={0}
-          className="group/directory flex items-center gap-2 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <span className="min-w-0 flex-1 break-all text-ui-base">{directory}</span>
-          {directory === primary ? (
-            <span className="shrink-0 text-ui-caption text-muted-foreground">
-              {t("app.primary")}
-            </span>
-          ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`${t("app.set-primary")} ${directory}`}
-              className="shrink-0 opacity-0 group-hover/directory:opacity-100 group-focus-within/directory:opacity-100"
-              disabled={disabled}
-              onClick={() => onPrimary(directory)}
+      <ScrollArea
+        className="project-directory-list rounded-xl border border-border"
+        viewportLabel={t("app.source-folders")}
+      >
+        <ul className="flex flex-col">
+          {project.directories.map((directory) => (
+            <li
+              key={directory}
+              className="flex items-center gap-2 border-b border-border px-3 py-1.5 last:border-b-0"
             >
-              {t("app.set-primary")}
-            </Button>
-          )}
-        </li>
-      ))}
-    </ul>
+              <Folder className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 break-all font-mono text-ui-sm">{directory}</span>
+              {directory === project.primary ? (
+                <AnimatedBadge showIcon={false} size="sm" className="h-6">
+                  {t("app.primary")}
+                </AnimatedBadge>
+              ) : null}
+              {addedDirectories.includes(directory) ? (
+                <AnimatedBadge showIcon={false} size="sm" className="h-6">
+                  {t("app.new-folder")}
+                </AnimatedBadge>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </ScrollArea>
+      <p className="text-ui-base text-muted-foreground">{t("app.trust-description")}</p>
+      {error ? (
+        <p role="alert" className="text-ui-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex shrink-0 flex-col gap-2">
+        <Button
+          className="h-9 w-full"
+          disabled={pending}
+          onClick={() => {
+            if (submitting.current) return;
+            submitting.current = true;
+            setPending(true);
+            setError("");
+            void onConfirm()
+              .catch((reason) => setError(errorText(reason)))
+              .finally(() => {
+                submitting.current = false;
+                setPending(false);
+              });
+          }}
+        >
+          {t(creating ? "app.trust-create" : saving ? "app.trust-save" : "app.trust")}
+        </Button>
+        <Button
+          autoFocus
+          ref={cancel}
+          variant="secondary"
+          className="h-8 w-full"
+          disabled={pending}
+          onClick={close}
+        >
+          {t("app.cancel")}
+        </Button>
+      </div>
+    </ProjectDialog>
   );
 }

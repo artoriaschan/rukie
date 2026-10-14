@@ -38,8 +38,11 @@ export default defineConfig({
                 return fixture.connection;
               },
               stopWire: async (_context, port: number) => {
-                await fixtures.get(port)?.close();
-                fixtures.delete(port);
+                try {
+                  await fixtures.get(port)?.close();
+                } finally {
+                  fixtures.delete(port);
+                }
               },
             },
             provider: playwright(),

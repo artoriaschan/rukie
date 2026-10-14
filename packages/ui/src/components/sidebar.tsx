@@ -1,15 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import {
-  Folder,
-  FolderOpen,
-  Search,
-  Plus,
-  ChevronDown,
-  Pin,
-  PinOff,
-  Ellipsis,
-  LoaderCircle,
-} from "lucide-react";
+import { Search, Plus, ChevronDown, Pin, PinOff, Ellipsis, LoaderCircle } from "lucide-react";
 import type { WireSessionSummary, WireProject, WirePreferences } from "@rukie/shared";
 import { Button } from "./motion/button/base";
 import { Tooltip } from "./motion/tooltip";
@@ -20,10 +10,18 @@ import { ContextMenu, ContextMenuTrigger, ContextMenuContent } from "./motion/co
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "radix-ui";
 import { sessionGroups } from "../lib/session-groups";
+import { ProjectRow } from "./project-row";
 import { cn } from "../lib/utils";
 
 export interface SidebarProps {
   recent: WireSessionSummary[];
+  homeDir: string | null;
+  detailProject: { id: string; pinned: boolean } | null;
+  detailsDisabled: boolean;
+  detailEpoch: number;
+  onDetailProject: (id: string, open: boolean) => void;
+  onDetailPin: (id: string, pinned: boolean) => void;
+  onEditProject: (project: WireProject) => void;
   projects: WireProject[];
   pinned: string[];
   archived: string[];
@@ -309,39 +307,45 @@ export function Sidebar(props: SidebarProps) {
               <>
                 {(expandedProjects ? navigation.projects : navigation.projects.slice(0, 5)).map(
                   ({ project, sessions }) => (
-                    <div key={project.id}>
-                      <div className="group/project flex items-center">
-                        <button
-                          aria-expanded={!projectGroups.includes(project.id)}
-                          onClick={() =>
-                            props.onPreferences({
-                              ...p,
-                              collapsedProjects: projectGroups.includes(project.id)
-                                ? projectGroups.filter((id) => id !== project.id)
-                                : [...projectGroups, project.id],
-                            })
-                          }
-                          className="flex cursor-pointer active:bg-muted min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          {projectGroups.includes(project.id) ? (
-                            <Folder className="size-4" />
-                          ) : (
-                            <FolderOpen className="size-4" />
-                          )}
-                          <span className="truncate">{project.name}</span>
-                        </button>
-                        <Tooltip content={t("app.new-in-project", { project: project.name })}>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={t("app.new-in-project", { project: project.name })}
-                            className="opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100"
-                            onClick={() => props.onNew(project.id)}
-                          >
-                            <Plus className="size-4" />
-                          </Button>
-                        </Tooltip>
-                      </div>
+                    <div key={project.id} role="group" aria-label={project.name}>
+                      <ProjectRow
+                        resetKey={props.detailEpoch}
+                        project={project}
+                        homeDir={props.homeDir}
+                        count={
+                          props.recent.filter(
+                            (session) =>
+                              project.id === session.projectId &&
+                              !props.archived.includes(session.id),
+                          ).length
+                        }
+                        selected={props.recent.some(
+                          (session) =>
+                            session.id === props.selected && project.id === session.projectId,
+                        )}
+                        expanded={!projectGroups.includes(project.id)}
+                        open={props.detailProject?.id === project.id}
+                        pinned={
+                          props.detailProject?.id === project.id && props.detailProject.pinned
+                        }
+                        disabled={
+                          props.detailsDisabled ||
+                          (Boolean(props.detailProject?.pinned) &&
+                            props.detailProject?.id !== project.id)
+                        }
+                        onOpenChange={(open) => props.onDetailProject(project.id, open)}
+                        onPinChange={(pinned) => props.onDetailPin(project.id, pinned)}
+                        onToggle={() =>
+                          props.onPreferences({
+                            ...p,
+                            collapsedProjects: projectGroups.includes(project.id)
+                              ? projectGroups.filter((id) => id !== project.id)
+                              : [...projectGroups, project.id],
+                          })
+                        }
+                        onNew={() => props.onNew(project.id)}
+                        onEdit={() => props.onEditProject(project)}
+                      />
                       {!projectGroups.includes(project.id) ? (
                         <div className="pl-3">
                           {(expandedSessions.includes(project.id)

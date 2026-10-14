@@ -154,7 +154,8 @@ test("Pencil model footer keeps cancel surface and primary save colors in both t
       cancel.element().focus();
       await userEvent.keyboard("{Tab}");
       await expect.element(save).toHaveFocus();
-      expect(getComputedStyle(save.element()).outlineStyle).not.toBe("none");
+      const focusStyle = getComputedStyle(save.element());
+      expect(focusStyle.outlineStyle !== "none" || focusStyle.boxShadow !== "none").toBe(true);
       for (const [button, width] of [
         [cancel, 68],
         [save, 128],
@@ -323,9 +324,9 @@ test("model services creates a provider and preserves input when encrypted save 
     await advanced.hover();
     await expect
       .poll(() => getComputedStyle(advanced.element()).backgroundColor)
-      .toBe("color(srgb 0.931373 0.931373 0.931373)");
+      .toBe("rgba(13, 13, 13, 0.05)");
     await expect.poll(() => getComputedStyle(advanced.element()).color).toBe("rgb(38, 38, 38)");
-    // Rendered Light title/background have 12.98:1 contrast (38 against 237.5).
+    // The neutral F01 hover remains readable against the scoped Light settings surface.
     advanced.element().focus();
     await expect.element(advanced).toHaveFocus();
     expect(getComputedStyle(advanced.element()).color).toBe("rgb(38, 38, 38)");
@@ -722,7 +723,9 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     await expect.element(screen.getByRole("heading", { name: "DeepSeek" })).toBeVisible();
     const workspace = document.querySelector<HTMLElement>(".model-services-workspace");
     expect(workspace).not.toBeNull();
-    expect(getComputedStyle(workspace!).fontFamily.startsWith("system-ui")).toBe(true);
+    expect(getComputedStyle(workspace!).fontFamily.startsWith('"Noto Sans SC", system-ui')).toBe(
+      true,
+    );
     const box = workspace!.getBoundingClientRect();
     expect(box.width).toBe(880);
     expect(box.top).toBe(100);
@@ -804,13 +807,13 @@ test.each([
   {
     theme: "Light",
     dark: false,
-    background: "color(srgb 0.931373 0.931373 0.931373)",
+    background: "rgb(240, 240, 240)",
     foreground: "rgb(38, 38, 38)",
   },
   {
     theme: "Dark",
     dark: true,
-    background: "color(srgb 0.123529 0.123529 0.123529)",
+    background: "rgb(54, 54, 54)",
     foreground: "rgb(212, 212, 212)",
   },
 ])(
@@ -1251,9 +1254,22 @@ test("API Key reveals saved credentials only on request and toggles compact mask
       <ModelServices services={services} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup = () =>
+    (cleanupPromise ??= (async () => {
+      try {
+        await screen.unmount();
+      } finally {
+        vi.useRealTimers();
+      }
+    })());
+  onTestFinished(cleanup);
   try {
     const input = screen.getByLabelText("API Key");
     await expect.element(input).toBeVisible();
+    // Visibility and credential coalescing are independent of the 500ms autosave contract.
+    // Hold that clock so browser interaction speed cannot persist the replacement mid-case.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     expect(reads).toBe(0);
     await screen.getByRole("button", { name: "Show API Key", exact: true }).click();
     await expect.element(input).toHaveValue("fixture-key-only");
@@ -1277,7 +1293,7 @@ test("API Key reveals saved credentials only on request and toggles compact mask
     await expect.poll(() => saved.length).toBe(1);
     expect(saved[0]!.credential).toEqual({ type: "keep" });
   } finally {
-    await screen.unmount();
+    await cleanup();
   }
 });
 
@@ -2306,3 +2322,84 @@ test("retrying a failed new model save replaces its draft without duplicating th
   expect(saved[1]!.provider.models.map((model) => model.id)).toEqual(["new-model"]);
   await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
 });
+
+function credentialMarkContrast(mark: Element) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d")!;
+  const ancestors: Element[] = [];
+  for (let current = mark.parentElement; current; current = current.parentElement)
+    ancestors.push(current);
+  for (const surface of ancestors.reverse()) {
+    context.fillStyle = getComputedStyle(surface).backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+  }
+  const background = [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+  context.clearRect(0, 0, 1, 1);
+  context.fillStyle = getComputedStyle(mark).fill;
+  context.fillRect(0, 0, 1, 1);
+  const foreground = [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+  const luminance = (channels: number[]) =>
+    channels.reduce((result, channel, index) => {
+      const value = channel / 255;
+      return (
+        result +
+        (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4) *
+          [0.2126, 0.7152, 0.0722][index]!
+      );
+    }, 0);
+  const first = luminance(foreground);
+  const second = luminance(background);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+for (const theme of ["light", "dark"] as const) {
+  test(`${theme} settings credential marks retain contrast on selected and unselected providers`, async () => {
+    const original = document.documentElement.className;
+    let screen: Awaited<ReturnType<typeof render>> | undefined;
+    let cleanupPromise: Promise<void> | undefined;
+    const cleanup = () =>
+      (cleanupPromise ??= (async () => {
+        try {
+          await screen?.unmount();
+        } finally {
+          document.documentElement.className = original;
+        }
+      })());
+    onTestFinished(cleanup);
+    document.documentElement.className = theme;
+    try {
+      screen = await render(
+        <UiLocaleProvider locale="en">
+          <ModelServices
+            services={{
+              ...modelServicesFixture,
+              list: async () =>
+                [true, false].map((hasCredential) => ({
+                  id: hasCredential ? "ready" : "missing",
+                  name: hasCredential ? "Ready provider" : "Missing provider",
+                  api: "openai-completions",
+                  baseUrl: "https://example.com",
+                  models: [],
+                  hasCredential,
+                })),
+            }}
+            onChanged={async () => {}}
+          />
+        </UiLocaleProvider>,
+      );
+      const ready = screen.getByLabelText("Credential configured", { exact: true });
+      const missing = screen.getByLabelText("Credential not configured", { exact: true });
+      await expect.element(ready).toBeVisible();
+      await expect.element(missing).toBeVisible();
+      for (const name of ["Ready provider", "Missing provider"]) {
+        const provider = screen.getByRole("button", { name, exact: true });
+        await provider.click();
+        await expect.element(provider).toHaveAttribute("aria-pressed", "true");
+        expect(credentialMarkContrast(ready.element())).toBeGreaterThanOrEqual(3);
+        expect(credentialMarkContrast(missing.element())).toBeGreaterThanOrEqual(3);
+      }
+    } finally {
+      await cleanup();
+    }
+  });
+}

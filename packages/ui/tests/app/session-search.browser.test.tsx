@@ -25,6 +25,7 @@ test("search lists every unarchived chat in updated order and matches title or P
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type: "sessions_changed",
+        homeDir: "/fixture-home",
         sessions: Array.from({ length: 12 }, (_, index) => ({
           id: `chat-${index}`,
           title: `Chat ${index}`,
@@ -34,6 +35,7 @@ test("search lists every unarchived chat in updated order and matches title or P
           messageCount: 1,
           model: "test/script",
           cwd: index % 2 ? "/project" : "/workspace",
+          projectId: index % 2 ? "project" : null,
           running: index === 11,
         })),
         projects: [
@@ -103,7 +105,7 @@ test("search lists every unarchived chat in updated order and matches title or P
   }
 });
 
-test("Tab focused Open folder executes the host picker with Enter", async () => {
+test("Tab focused Open folder opens the shared creation form with Enter", async () => {
   await page.viewport(1280, 900);
   const connection = await commands.startWire();
   const screen = await render(
@@ -126,6 +128,9 @@ test("Tab focused Open folder executes the host picker with Enter", async () => 
       .element(screen.getByRole("option", { name: "Open folder", exact: true }))
       .toHaveFocus();
     await userEvent.keyboard("{Enter}");
+    await screen
+      .getByRole("button", { name: "Add folders Rukie can read and edit", exact: true })
+      .click();
     await screen.getByRole("button", { name: "Create project", exact: true }).click();
     await screen.getByRole("button", { name: "Trust and create", exact: true }).click();
     await expect
@@ -133,13 +138,14 @@ test("Tab focused Open folder executes the host picker with Enter", async () => 
       .toContainEqual(
         expect.objectContaining({
           type: "project.create",
+          name: "chosen-folder",
           directories: ["/chosen-folder"],
           trusted: true,
         }),
       );
     await expect.element(trigger).toHaveFocus();
     await expect
-      .element(screen.getByRole("dialog", { name: "Add project", exact: true }))
+      .element(screen.getByRole("dialog", { name: "Create project", exact: true }))
       .not.toBeInTheDocument();
   } finally {
     await screen.unmount();
@@ -163,6 +169,7 @@ test("search is centered, clamps narrow viewports and keeps shortcuts outside it
       method: "POST",
       body: JSON.stringify({
         type: "sessions_changed",
+        homeDir: "/fixture-home",
         sessions: Array.from({ length: 20 }, (_, index) => ({
           id: `chat-${index}`,
           title: `Chat ${index} ${"long title ".repeat(8)}`,
@@ -172,6 +179,7 @@ test("search is centered, clamps narrow viewports and keeps shortcuts outside it
           messageCount: 1,
           model: "test/script",
           cwd: "/workspace",
+          projectId: null,
         })),
         projects: [],
         pinned: [],
@@ -297,7 +305,11 @@ test("search keyboard crosses both groups and hands folder dialog focus back to 
   const connection = await commands.startWire();
   const screen = await render(
     <App
-      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      host={{
+        getConnection: async () => connection,
+        modelServices: modelServicesFixture,
+        pickProjectFolder: async () => ["/new-project"],
+      }}
       locale="en"
     />,
   );
@@ -330,12 +342,15 @@ test("search keyboard crosses both groups and hands folder dialog focus back to 
     await trigger.click();
     await expect.element(screen.getByRole("combobox", { name: "Search chats" })).toHaveFocus();
     await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{Enter}");
-    const folder = screen.getByRole("dialog", { name: "Add project", exact: true });
+    const folder = screen.getByRole("dialog", { name: "Create project", exact: true });
     await expect.element(folder.getByRole("textbox")).toHaveFocus();
     await expect
       .element(screen.getByRole("dialog", { name: "Search chats" }))
       .not.toBeInTheDocument();
-    await userEvent.keyboard("/new-project");
+    await userEvent.keyboard("new-project");
+    await folder
+      .getByRole("button", { name: "Add folders Rukie can read and edit", exact: true })
+      .click();
     await folder.getByRole("button", { name: "Create project", exact: true }).click();
     await screen.getByRole("button", { name: "Trust and create", exact: true }).click();
     await expect.element(trigger).toHaveFocus();
@@ -344,6 +359,7 @@ test("search keyboard crosses both groups and hands folder dialog focus back to 
       .toContainEqual(
         expect.objectContaining({
           type: "project.create",
+          name: "new-project",
           directories: ["/new-project"],
           trusted: true,
         }),

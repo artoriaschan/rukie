@@ -1,4 +1,3 @@
-import { motion, MotionConfig, useReducedMotion } from "motion/react";
 import {
   createContext,
   useCallback,
@@ -10,13 +9,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 type RadioCtx = {
   value: string;
   setValue: (value: string) => void;
-  layoutId: string;
 };
 
 const RadioCtx = createContext<RadioCtx | null>(null);
@@ -52,8 +49,6 @@ export function RadioGroup({
 }: RadioGroupProps) {
   const groupRef = useRef<HTMLDivElement>(null);
   const [internal, setInternal] = useState(defaultValue);
-  const layoutId = useId();
-  const reduce = useReducedMotion();
   const controlled = value !== undefined;
   const current = controlled ? value : internal;
   const setValue = useCallback(
@@ -63,10 +58,7 @@ export function RadioGroup({
     },
     [controlled, onValueChange],
   );
-  const contextValue = useMemo(
-    () => ({ value: current, setValue, layoutId }),
-    [current, layoutId, setValue],
-  );
+  const contextValue = useMemo(() => ({ value: current, setValue }), [current, setValue]);
 
   useEffect(() => {
     const items = Array.from(
@@ -77,43 +69,41 @@ export function RadioGroup({
   }, [current, children]);
 
   return (
-    <MotionConfig transition={reduce ? { duration: 0 } : { duration: 0.12, ease: EASE_OUT }}>
-      <RadioCtx.Provider value={contextValue}>
-        <div
-          ref={groupRef}
-          role="radiogroup"
-          aria-label={ariaLabel}
-          aria-labelledby={ariaLabelledby}
-          aria-orientation={orientation}
-          onKeyDown={(event) => {
-            const direction = ["ArrowRight", "ArrowDown"].includes(event.key)
-              ? 1
-              : ["ArrowLeft", "ArrowUp"].includes(event.key)
-                ? -1
-                : 0;
-            if (!direction) return;
-            const items = Array.from(
-              event.currentTarget.querySelectorAll<HTMLButtonElement>(
-                '[role="radio"]:not(:disabled)',
-              ),
-            );
-            const index = items.findIndex((item) => item === event.target);
-            if (index < 0 || !items.length) return;
-            event.preventDefault();
-            const next = items[(index + direction + items.length) % items.length]!;
-            next.focus();
-            next.click();
-          }}
-          className={cn(
-            "flex gap-2",
-            orientation === "vertical" ? "flex-col" : "flex-row flex-wrap",
-            className,
-          )}
-        >
-          {children}
-        </div>
-      </RadioCtx.Provider>
-    </MotionConfig>
+    <RadioCtx.Provider value={contextValue}>
+      <div
+        ref={groupRef}
+        role="radiogroup"
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledby}
+        aria-orientation={orientation}
+        onKeyDown={(event) => {
+          const direction = ["ArrowRight", "ArrowDown"].includes(event.key)
+            ? 1
+            : ["ArrowLeft", "ArrowUp"].includes(event.key)
+              ? -1
+              : 0;
+          if (!direction) return;
+          const items = Array.from(
+            event.currentTarget.querySelectorAll<HTMLButtonElement>(
+              '[role="radio"]:not(:disabled)',
+            ),
+          );
+          const index = items.findIndex((item) => item === event.target);
+          if (index < 0 || !items.length) return;
+          event.preventDefault();
+          const next = items[(index + direction + items.length) % items.length]!;
+          next.focus();
+          next.click();
+        }}
+        className={cn(
+          "flex gap-2",
+          orientation === "vertical" ? "flex-col" : "flex-row flex-wrap",
+          className,
+        )}
+      >
+        {children}
+      </div>
+    </RadioCtx.Provider>
   );
 }
 
@@ -132,22 +122,21 @@ export function RadioGroupItem({
   className,
   id: idProp,
 }: RadioGroupItemProps) {
-  const { value: groupValue, setValue, layoutId } = useRadioGroup();
+  const { value: groupValue, setValue } = useRadioGroup();
   const autoId = useId();
   const id = idProp ?? autoId;
-  const reduce = useReducedMotion();
   const selected = groupValue === value;
 
   return (
     <label
       htmlFor={id}
       className={cn(
-        "inline-flex items-center gap-2",
+        "inline-flex min-h-6 items-center gap-2",
         disabled ? "cursor-not-allowed" : "cursor-pointer",
         className,
       )}
     >
-      <motion.button
+      <button
         id={id}
         type="button"
         role="radio"
@@ -155,25 +144,20 @@ export function RadioGroupItem({
         tabIndex={selected && !disabled ? 0 : -1}
         disabled={disabled}
         onClick={() => !disabled && setValue(value)}
-        transition={{ duration: reduce ? 0 : 0.12, ease: EASE_OUT }}
         data-state={selected ? "checked" : "unchecked"}
         className={cn(
-          "relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border outline-none transition-colors duration-120",
+          "relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border outline-none before:absolute before:-inset-1 before:content-['']",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          "disabled:cursor-not-allowed disabled:opacity-60",
-          selected ? "border-primary" : "border-muted-foreground/50 hover:border-muted-foreground",
+          "not-disabled:not-focus-visible:hover:ring-1 not-disabled:not-focus-visible:hover:ring-inset not-disabled:not-focus-visible:hover:ring-ring not-disabled:active:ring-2 disabled:cursor-not-allowed disabled:opacity-50",
+          selected
+            ? "border-primary"
+            : "border-input-border not-disabled:hover:border-input-border-hover",
         )}
       >
-        {selected ? (
-          <motion.span
-            layoutId={layoutId}
-            className="absolute inset-1 rounded-full bg-primary"
-            transition={reduce ? { duration: 0 } : { duration: 0.12, ease: EASE_OUT }}
-          />
-        ) : null}
-      </motion.button>
+        {selected ? <span className="absolute size-2 rounded-full bg-primary" /> : null}
+      </button>
       {label ? (
-        <span className={cn("select-none text-ui-base text-foreground", disabled && "opacity-60")}>
+        <span className={cn("select-none text-ui-base text-foreground", disabled && "opacity-50")}>
           {label}
         </span>
       ) : null}

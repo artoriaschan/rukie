@@ -35,13 +35,13 @@ for (const theme of ["light", "dark"] as const) {
       );
       expect(getComputedStyle(approved).color).not.toBe(getComputedStyle(waiting).color);
       expect(getComputedStyle(changes).color).toBe(
-        theme === "light" ? "rgb(154, 103, 0)" : "rgb(210, 153, 34)",
+        theme === "light" ? "rgb(166, 91, 0)" : "rgb(255, 138, 48)",
       );
       const input = screen.getByRole("textbox", { name: "Setting" });
       await input.click();
       expect(input.element().parentElement?.classList.contains("bg-input-focused")).toBe(true);
       expect(getComputedStyle(input.element(), "::placeholder").color).toBe(
-        theme === "light" ? "rgb(101, 109, 118)" : "rgb(132, 141, 151)",
+        theme === "light" ? "rgb(107, 107, 107)" : "rgb(168, 168, 168)",
       );
     } finally {
       await screen.unmount();

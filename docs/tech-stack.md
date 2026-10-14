@@ -148,8 +148,8 @@ ui 状态使用 Zustand vanilla store，React 订阅由 app 层的 `useSyncExter
 
 本地 macOS arm64 构建使用 electron-builder **26.15.3** 和 @electron/fuses **2.0.0**。Electron **41.0.3** 与 Bun **1.4.2** 为运行时，sidecar 的原生搜索资源来自 @vscode/ripgrep-darwin-arm64 **1.18.0**。这些是已安装的构建依赖；桌面打包不进入 GitHub Actions。命令与签名验收见 [desktop README](../packages/desktop/README.md#本地构建)。
 
-桌面/Web 页面、设置与弹窗使用系统字体栈；代码、模型标识和数值使用系统等宽字体，不打包或请求额外字体文件。beUI Switch 为已复制并按设置组件规范适配的源码，复用现有运行依赖。
+桌面/Web 共用 [DESIGN.md 的字体栈](../DESIGN.md#font-families)，优先使用本机已有的 Noto Sans SC 和 JetBrains Mono，缺失时回退平台系统字体；不打包或请求额外字体文件。beUI Switch 为已复制并按设置组件规范适配的源码，复用现有运行依赖。
 
-模型服务设置的覆盖式滚动条使用经 shadcn CLI 安装并适配 Pencil A13 的 ScrollArea，复用已锁定的 radix-ui 1.7.0 Root/Viewport；beUI 目录没有对应的 ScrollArea 角色。Radix 的滚动条比例计算固定最小滑块为 18px，无法满足 A13 的 24px；因此轨道组合已有 TranscriptScrollbar 的比例、输入和最小长度实现，通过局部样式采用 8px 轨道与 4px 滑块，不改变聊天轨道几何。按钮、输入、开关、复选框、单选按钮、Select、Tooltip 和弹窗继续使用已有 beUI 源码。
+模型服务设置的覆盖式滚动条使用经 shadcn CLI 安装并适配 Pencil A13 的 ScrollArea，复用已锁定的 radix-ui 1.7.0 Root/Viewport；beUI 目录没有对应的 ScrollArea 角色。Radix 的滚动条比例计算固定最小滑块为 18px，无法满足 A13 的 24px；因此轨道组合已有 TranscriptScrollbar 的比例、输入和最小长度实现，通过局部样式采用 8px 轨道与 4px 滑块，不改变聊天轨道几何。按钮、输入、开关、复选框、单选按钮、Select、Tooltip 和弹窗继续使用已有 beUI 源码。项目目录的主要与新增徽标采用 beUI AnimatedBadge 完整组件源码，按 DESIGN.md 的 24px 描边徽标与 reduced-motion 规则适配，复用已锁定的运行依赖。
 
 ProviderIcon 仅深导入 @lobehub/icons 5.23.0 的 Mono 与 Color SVG 组件。Bun 采用仓库级 `install.peer = false` 策略，避免安装图标库未使用的 antd 与 @lobehub/ui peer；锁文件仍保留这些包的解析元数据。Workspace 必须显式声明实际使用的运行依赖：ui 保留 React 与 React DOM 19.3.0 的 peer 合同，并在 devDependencies 中提供同版本供本地测试与 Vite 构建使用。

@@ -1,9 +1,7 @@
-import { type HTMLMotionProps, motion } from "motion/react";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
-import { Button } from "./button/base";
+import { Button, type ButtonProps } from "./button/base";
 
 export type ActionSwapItem = {
   id: string;
@@ -14,19 +12,14 @@ export type ActionSwapItem = {
 
 export type ActionSwapButtonVariant = "primary" | "secondary" | "outline" | "ghost";
 export type ActionSwapButtonSize = "sm" | "md" | "lg" | "icon";
-export type ActionSwapAnimation = "blur" | "roll" | "cascade";
 
-export interface ActionSwapButtonProps extends Omit<
-  HTMLMotionProps<"button">,
-  "children" | "onChange"
-> {
+export interface ActionSwapButtonProps extends Omit<ButtonProps, "children" | "onChange"> {
   items: ActionSwapItem[];
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string, item: ActionSwapItem) => void;
   variant?: ActionSwapButtonVariant;
   size?: ActionSwapButtonSize;
-  animation?: ActionSwapAnimation;
   iconOnly?: boolean;
   cycle?: boolean;
 }
@@ -34,54 +27,33 @@ export interface ActionSwapButtonProps extends Omit<
 export interface ActionSwapTextProps {
   value: string;
   children: ReactNode;
-  animation?: ActionSwapAnimation;
   className?: string;
 }
 
 export interface ActionSwapIconProps {
   value: string;
   children: ReactNode;
-  animation?: ActionSwapAnimation;
   className?: string;
 }
 
-// Named animation choices retain one calm state transition in workspace controls.
-export function ActionSwapText({
-  value,
-  children,
-  animation = "blur",
-  className,
-}: ActionSwapTextProps) {
+// Action labels and glyphs swap in place without click feedback.
+export function ActionSwapText({ value, children, className }: ActionSwapTextProps) {
   return (
-    <motion.span
-      key={`${animation}-${value}`}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.12, ease: EASE_OUT }}
-      className={cn("inline-block min-w-0 max-w-full", className)}
-    >
+    <span key={value} className={cn("inline-block min-w-0 max-w-full", className)}>
       {children}
-    </motion.span>
+    </span>
   );
 }
 
-export function ActionSwapIcon({
-  value,
-  children,
-  animation = "blur",
-  className,
-}: ActionSwapIconProps) {
+export function ActionSwapIcon({ value, children, className }: ActionSwapIconProps) {
   return (
-    <motion.span
-      key={`${animation}-${value}`}
+    <span
+      key={value}
       aria-hidden
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.12, ease: EASE_OUT }}
       className={cn("inline-grid shrink-0 place-items-center", className)}
     >
       {children}
-    </motion.span>
+    </span>
   );
 }
 
@@ -92,7 +64,6 @@ export function ActionSwapButton({
   onValueChange,
   variant = "secondary",
   size = "md",
-  animation = "blur",
   iconOnly = size === "icon",
   cycle = true,
   className,
@@ -136,15 +107,11 @@ export function ActionSwapButton({
       {...rest}
     >
       {hasIcon ? (
-        <ActionSwapIcon value={activeItem.id} animation={animation} className="h-4 w-4">
+        <ActionSwapIcon value={activeItem.id} className="h-4 w-4">
           {activeItem.icon ?? null}
         </ActionSwapIcon>
       ) : null}
-      {!iconOnly ? (
-        <ActionSwapText value={activeItem.id} animation={animation}>
-          {activeItem.label}
-        </ActionSwapText>
-      ) : null}
+      {!iconOnly ? <ActionSwapText value={activeItem.id}>{activeItem.label}</ActionSwapText> : null}
     </Button>
   );
 }

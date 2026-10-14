@@ -307,10 +307,7 @@ export function Composer(props: ComposerProps) {
               </Tooltip>
               <PopoverContent
                 ariaLabel={t("app.context")}
-                className={cn(
-                  "conversation-context-panel conversation-pencil",
-                  contextOpen && "conversation-context-open",
-                )}
+                className="conversation-context-panel conversation-pencil"
               >
                 <ScrollArea
                   className="conversation-context-scroll"

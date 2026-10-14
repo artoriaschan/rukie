@@ -1,6 +1,6 @@
 import { useComponentText } from "@/lib/i18n";
 
-import { motion, useReducedMotion } from "motion/react";
+import { useReducedMotion } from "motion/react";
 import {
   type MouseEvent,
   type PointerEvent,
@@ -10,7 +10,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { EASE_OUT } from "@/lib/ease";
 import { useDismiss } from "@/lib/hooks/use-dismiss";
 import { useHoverGesture } from "@/lib/hooks/use-hover-gesture";
 import { useTapGesture } from "@/lib/hooks/use-tap-gesture";
@@ -130,8 +129,7 @@ export function PreviewRail({
   };
 
   return (
-    <motion.div
-      layoutRoot
+    <div
       ref={rootRef}
       onBlur={(event) => {
         // Both tick sources leave with the focus: a tap does not always land
@@ -180,12 +178,15 @@ export function PreviewRail({
 
           const itemContent = (
             <>
-              <motion.span
+              <span
                 data-slot="preview-rail-tick"
                 data-highlighted={colored ? "" : undefined}
                 aria-hidden="true"
-                animate={isHorizontal ? { scaleY: scale } : { scaleX: scale }}
-                transition={{ duration: reduce ? 0 : 0.16, ease: EASE_OUT }}
+                style={{
+                  transform: isHorizontal ? `scaleY(${scale})` : `scaleX(${scale})`,
+                  transition:
+                    !reduce && hoveredId !== null ? "transform 160ms var(--ease-out)" : undefined,
+                }}
                 className={cn(
                   "block bg-current",
                   isHorizontal ? "h-12 w-0.5 origin-bottom" : "h-0.5 w-12 origin-left",
@@ -312,6 +313,6 @@ export function PreviewRail({
       ) : null}
 
       {children ? <div className="min-h-0 min-w-0 flex-1">{children}</div> : null}
-    </motion.div>
+    </div>
   );
 }

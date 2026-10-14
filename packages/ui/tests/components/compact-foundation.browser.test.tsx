@@ -9,6 +9,7 @@ test("shared controls render compact geometry and grow with interface text", asy
   const screen = await render(
     <div>
       <Button size="sm">Small</Button>
+      <Button size="xs">Micro</Button>
       <Button>Standard</Button>
       <Button size="lg">Large</Button>
       <Button size="icon" aria-label="Icon">
@@ -22,15 +23,32 @@ test("shared controls render compact geometry and grow with interface text", asy
   try {
     for (const [name, height] of [
       ["Small", 28],
+      ["Micro", 24],
       ["Standard", 32],
       ["Large", 36],
       ["Icon", 32],
     ] as const) {
       const element = screen.getByRole("button", { name, exact: true }).element();
       expect(element.getBoundingClientRect().height).toBe(height);
-      expect(getComputedStyle(element).fontSize).toBe("14px");
-      expect(getComputedStyle(element).borderRadius).toBe("8px");
+      expect(getComputedStyle(element).fontSize).toBe(
+        name === "Small" ? "13px" : name === "Micro" ? "12px" : "14px",
+      );
+      expect(getComputedStyle(element).borderRadius).toBe(
+        name === "Small" || name === "Micro" ? "6px" : "8px",
+      );
+      expect(getComputedStyle(element).lineHeight).toBe(
+        name === "Small" ? "19.5px" : name === "Micro" ? "18px" : "21px",
+      );
     }
+    const standardStyle = getComputedStyle(
+      screen.getByRole("button", { name: "Standard", exact: true }).element(),
+    );
+    expect(standardStyle.paddingLeft).toBe("10px");
+    expect(standardStyle.columnGap).toBe("6px");
+    expect(
+      getComputedStyle(screen.getByRole("button", { name: "Large", exact: true }).element())
+        .paddingLeft,
+    ).toBe("12px");
     expect(
       screen.getByRole("link", { name: "Link" }).element().getBoundingClientRect().height,
     ).toBe(32);

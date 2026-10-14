@@ -23,6 +23,8 @@ status: accepted
 - 客户端命令以 TypeBox 定义在 `@rukie/shared`，由 server 校验。server 到客户端的消息只用 TS 类型：SessionEvent 原样转发，server 自有消息使用不冲突的 `type`。
 - Interaction 直接以 `InteractionIdentity` 关联，pending 表以 `epoch` 为键；epoch 不匹配的回复返回 `interaction_stale`。
 - Run 进行中的发送走 Queued Input，可以立即发送或撤回，停止时交还给客户端。
+- `sessions_changed` 同步组织信息及展示用 `homeDir`，后者来自 sidecar 配置家目录的真实路径（不存在时保留配置值），Frontend 仅用它按目录分隔符边界缩写路径；不增加宿主命令，也不改变 Project 归属或信任。
+- wire Session 摘要必填 `projectId: string | null`，由 server 按 Session cwd 与 Project 目录的真实身份匹配派生；初次连接、重连、`sessions.list` 与 `sessions_changed` 保持一致。事件的归属和 Project 列表来自同一登记状态，异步路径解析期间登记变化时重新派生。这个字段只提供展示归属，不改变 Session cwd、Transcript 或执行信任合同；目录身份规则见 [ADR-0041](0041-desktop-project-explicit-trust.md)。
 - Headless stream-json 不做破坏性修改。
 
 访问控制：
