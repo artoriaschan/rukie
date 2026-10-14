@@ -162,6 +162,8 @@ export const appCopy = {
     "app.delete-title": "Permanently delete chat?",
     "app.delete-description":
       "This cannot be undone. The chat, subagents, attachments and file history will be permanently removed.",
+    "app.delete-conversation-description":
+      "This cannot be undone. The chat, subagents, attachments and file history will be permanently removed. The chat’s working directory will also be deleted.",
     "app.delete-close": "Close delete chat",
     "app.delete-busy": "This chat is in use. Try again when it is idle.",
     "app.error-session_archived": "Archived chats cannot be pinned.",
@@ -388,6 +390,8 @@ export const appCopy = {
     "app.delete": "永久删除",
     "app.delete-title": "永久删除聊天？",
     "app.delete-description": "此操作不可撤销。聊天、子代理、附件和文件历史将被永久删除。",
+    "app.delete-conversation-description":
+      "此操作不可撤销。聊天、子代理、附件和文件历史将被永久删除。对话的工作目录也会被删除。",
     "app.delete-close": "关闭删除聊天",
     "app.delete-busy": "会话被占用，请在空闲后重试。",
     "app.error-session_archived": "已归档的聊天不能置顶。",

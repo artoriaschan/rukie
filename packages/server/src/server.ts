@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, stat, realpath } from "node:fs/promises";
+import { mkdir, stat, realpath, lstat, rmdir, rm } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { Hono } from "hono";
 import { upgradeWebSocket, websocket } from "@hono/bun";
@@ -896,15 +896,27 @@ export async function startServer(options: ServerOptions) {
         case "session.create": {
           const cwd =
             command.project === null
-              ? workspace
+              ? join(workspace, crypto.randomUUID())
               : registry.projects.find((p) => p.id === command.project)?.primary;
           if (!cwd) throw new CommandError("project_not_found");
-          const session = await runtime.runPromise(
-            Effect.gen(function* () {
-              const core = yield* AgentCore;
-              return yield* Effect.promise(() => core.open(cwd, undefined, command));
-            }),
-          );
+          if (command.project === null) await mkdir(cwd);
+          let session: Session;
+          try {
+            session = await runtime.runPromise(
+              Effect.gen(function* () {
+                const core = yield* AgentCore;
+                return yield* Effect.promise(() => core.open(cwd, undefined, command));
+              }),
+            );
+          } catch (error) {
+            if (command.project === null)
+              await rmdir(cwd).catch((cleanupError: unknown) =>
+                warning(
+                  `Could not remove unopened conversation workspace: ${String(cleanupError)}`,
+                ),
+              );
+            throw error;
+          }
           subscribe(socket, session);
           const requestId = await startRun(session, command.text, command.images);
           await changed();
@@ -1124,6 +1136,27 @@ export async function startServer(options: ServerOptions) {
             dataRoot: options.dataRoot,
             id: summary.id,
           });
+          // Only app-owned direct children qualify. Never follow a replaced workspace or cwd link.
+          const child = relative(workspace, summary.cwd);
+          if (child && child !== ".." && !isAbsolute(child) && !child.includes(sep)) {
+            try {
+              const [rootInfo, childInfo] = await Promise.all([
+                lstat(workspace),
+                lstat(summary.cwd),
+              ]);
+              if (
+                !rootInfo.isSymbolicLink() &&
+                !childInfo.isSymbolicLink() &&
+                childInfo.isDirectory()
+              ) {
+                const root = await realpath(workspace);
+                const target = await realpath(summary.cwd);
+                if (relative(root, target) === child) await rm(summary.cwd, { recursive: true });
+              }
+            } catch (error) {
+              warning(`Could not remove conversation workspace: ${String(error)}`);
+            }
+          }
           registry.pinned = registry.pinned.filter((id) => id !== command.sessionId);
           registry.archived = registry.archived.filter((id) => id !== command.sessionId);
           await save();

@@ -99,7 +99,7 @@ Transcript、documents、任务与父子 ownership 的持久化位置。Headless
 _Avoid_: database, history store
 
 **Project**:
-用户在桌面端登记的有序非空目录集合，具有可编辑的名称、一个主目录与显式信任状态。新 Session 使用当前主目录；已有 Session 保留 cwd，cwd 与该 Project 任一目录的真实身份相等时归属于它；server 在 wire Session 摘要中提供该展示归属，Frontend 不改写 cwd 或自行推测路径身份。其余 Session 列在“对话”分类下，共用应用数据根的 `workspace/`；该分类只是导航呈现，不是领域概念。Project 的真实目录不重叠且不包含应用数据根或其子目录。创建或补确认授予全部目录的精确信任；已信任 Project 新增目录必须再次确认，未信任 Project 编辑后保持未信任。切换主目录不改变名称或重询信任。编辑或移除只改变组织归属与后续打开配置，保留 Session cwd、Transcript、置顶、归档和目录文件；其任一目录下有执行中或等待 Interaction 的 Session 时不能移除。
+用户在桌面端登记的有序非空目录集合，具有可编辑的名称、一个主目录与显式信任状态。新 Session 使用当前主目录；已有 Session 保留 cwd，cwd 与该 Project 任一目录的真实身份相等时归属于它；server 在 wire Session 摘要中提供该展示归属，Frontend 不改写 cwd 或自行推测路径身份。其余 Session 列在“对话”分类下，每个新对话独占应用数据根的 `workspace/<id>/`，删除对话时一并删除该目录；既有 cwd 为 `workspace/` 根的 Session 不迁移，删除时保留根目录；该分类只是导航呈现，不是领域概念。Project 的真实目录不重叠且不包含应用数据根或其子目录。创建或补确认授予全部目录的精确信任；已信任 Project 新增目录必须再次确认，未信任 Project 编辑后保持未信任。切换主目录不改变名称或重询信任。编辑或移除只改变组织归属与后续打开配置，保留 Session cwd、Transcript、置顶、归档和目录文件；其任一目录下有执行中或等待 Interaction 的 Session 时不能移除。
 _Avoid_: workspace, folder
 
 **Archived Session**:
