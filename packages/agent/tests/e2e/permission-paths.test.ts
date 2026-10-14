@@ -428,7 +428,9 @@ test.each(["at", "file-url", "unicode-space", "home", "ordinary"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      settings: { permissions: { allow: ["write(~/public/**)", "edit(~/public/**)"] } },
+      settings: {
+        permissions: { allow: ["read(~/public/**)", "write(~/public/**)", "edit(~/public/**)"] },
+      },
     });
     await session.run("perform");
     expect(

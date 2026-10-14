@@ -169,9 +169,12 @@ test.each([false, true])(
   async (frontend) => {
     dirs = await tempDirs();
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("write", { path: "no.txt", content: "no" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: join(dirs.homeDir, "no.txt"), content: "no" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     const events: SessionEvent[] = [];
@@ -190,7 +193,7 @@ test.each([false, true])(
     expect(events.filter((event) => event.type === "permission_denied")).toMatchObject([
       { by: frontend ? "user" : "rule", ...(!frontend && { rule: "write" }) },
     ]);
-    expect(await Bun.file(join(dirs.cwd, "no.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.homeDir, "no.txt")).exists()).toBe(false);
   },
 );
 
@@ -199,7 +202,11 @@ test("batched reviews skip rule allow, ask, deny and invalid calls", async () =>
   const fake = fakeModel([
     fauxAssistantMessage(
       [
-        fauxToolCall("write", { path: "reviewed.txt", content: "reviewed" }, { id: "reviewed" }),
+        fauxToolCall(
+          "write",
+          { path: join(dirs.homeDir, "reviewed.txt"), content: "reviewed" },
+          { id: "reviewed" },
+        ),
         fauxToolCall(
           "bash",
           { description: "Run test command", command: "printf allowed > allowed" },
@@ -293,9 +300,12 @@ test.each([
 ] as const)("review outcome %s %s retains denial source %s", async (frontend, response, by) => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("write", { path: "no.txt", content: "no" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: join(dirs.homeDir, "no.txt"), content: "no" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const main = modelStream(fake.models);
@@ -327,7 +337,7 @@ test.each([
       .filter((event) => event.type === "permission_denied")
       .some((event) => event.rule !== undefined),
   ).toBe(false);
-  expect(await Bun.file(join(dirs.cwd, "no.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "no.txt")).exists()).toBe(false);
 });
 
 test("session allowRules accepts bash specifiers without asking", async () => {

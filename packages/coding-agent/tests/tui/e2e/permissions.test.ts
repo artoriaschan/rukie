@@ -448,7 +448,7 @@ test("session allow remembers only this command across Runs and leaves settings 
       content: [{ type: "text", text: "first-allowed" }],
     });
     expect(app.screen().join("\n")).not.toContain("等待审批");
-    app.calls[3]!.tool("write", { path: "other.txt", content: "other tool" });
+    app.calls[3]!.tool("write", { path: "../outside/other.txt", content: "other tool" });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     expect(app.screen().join("\n")).toContain("写入");
     app.stdin.write("\x1b");

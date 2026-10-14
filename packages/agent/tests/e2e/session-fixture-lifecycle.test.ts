@@ -81,7 +81,7 @@ beforeEach(async () => {
   session = await owner.open({
     ...fixture,
     ...fakeModel([
-      fauxAssistantMessage(fauxToolCall("write", { path: "blocked.txt", content: "bad" }), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("write", { path: join(fixture.homeDir, "blocked.txt"), content: "bad" }), { stopReason: "toolUse" }),
       fauxAssistantMessage("done"),
     ]),
     permissionMode: "ask",

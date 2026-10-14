@@ -327,16 +327,23 @@ test("full-access permits edits and bash; tool exceptions are returned so the mo
   });
 });
 
-test("default permissions reject write, edit, and bash with errors and ordered denial events", async () => {
+test("default permissions reject external write/edit and bash with errors and ordered denial events", async () => {
   dirs = await tempDirs();
-  await Bun.write(join(dirs.cwd, "original.txt"), "original");
+  await Bun.write(join(dirs.homeDir, "original.txt"), "original");
   const fake = fakeModel([
     fauxAssistantMessage(
       [
-        fauxToolCall("write", { path: "new.txt", content: "changed" }, { id: "write-1" }),
+        fauxToolCall(
+          "write",
+          { path: join(dirs.homeDir, "new.txt"), content: "changed" },
+          { id: "write-1" },
+        ),
         fauxToolCall(
           "edit",
-          { path: "original.txt", edits: [{ oldText: "original", newText: "changed" }] },
+          {
+            path: join(dirs.homeDir, "original.txt"),
+            edits: [{ oldText: "original", newText: "changed" }],
+          },
           { id: "edit-1" },
         ),
         fauxToolCall(
@@ -395,8 +402,8 @@ test("default permissions reject write, edit, and bash with errors and ordered d
       ),
     );
   }
-  expect(await Bun.file(join(dirs.cwd, "original.txt")).text()).toBe("original");
-  expect(await Bun.file(join(dirs.cwd, "new.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "original.txt")).text()).toBe("original");
+  expect(await Bun.file(join(dirs.homeDir, "new.txt")).exists()).toBe(false);
   expect(await Bun.file(join(dirs.cwd, "bash-ran")).exists()).toBe(false);
 });
 

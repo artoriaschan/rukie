@@ -433,6 +433,9 @@ export function createJobs(
   }
   return {
     persistentOutput: options.outputs !== undefined,
+    get outputDirectory() {
+      return spillDir;
+    },
     start,
     list,
     get,

@@ -89,7 +89,10 @@ function runningTools(app: Awaited<ReturnType<typeof start>>) {
 test("a tool animates its localized header then remains once in the scrollable body", async () => {
   const permission = Promise.withResolvers<"allow" | "deny">();
   const app = await startWithClock(["write a file"], {
-    session: { onPermissionAsk: () => permission.promise },
+    session: {
+      settings: { permissions: { ask: ["write", "edit"] } },
+      onPermissionAsk: () => permission.promise,
+    },
   });
   try {
     await app.waitFor(() => app.calls.length === 1);

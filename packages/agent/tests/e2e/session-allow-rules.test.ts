@@ -155,15 +155,18 @@ test.each([
 });
 
 const writeTurn = (path: string) =>
-  fauxAssistantMessage(fauxToolCall("write", { path, content: "written" }), {
-    stopReason: "toolUse",
-  });
+  fauxAssistantMessage(
+    fauxToolCall("write", { path: join(dirs.homeDir, path), content: "written" }),
+    {
+      stopReason: "toolUse",
+    },
+  );
 test("session directory grant follows canonical paths and respects deny and ask", async () => {
   dirs = await tempDirs();
-  await mkdir(join(dirs.cwd, "allowed"));
-  await mkdir(join(dirs.cwd, "outside"));
-  await symlink(join(dirs.cwd, "allowed"), join(dirs.cwd, "alias"));
-  await symlink(join(dirs.cwd, "outside"), join(dirs.cwd, "allowed/escape"));
+  await mkdir(join(dirs.homeDir, "allowed"));
+  await mkdir(join(dirs.homeDir, "outside"));
+  await symlink(join(dirs.homeDir, "allowed"), join(dirs.homeDir, "alias"));
+  await symlink(join(dirs.homeDir, "outside"), join(dirs.homeDir, "allowed/escape"));
   const fake = fakeModel([
     writeTurn("alias/first"),
     writeTurn("allowed/second"),
@@ -177,7 +180,12 @@ test("session directory grant follows canonical paths and respects deny and ask"
   const session = await openSession({
     ...dirs,
     ...fake,
-    settings: { permissions: { deny: ["write(allowed/blocked)"], ask: ["write(allowed/asked)"] } },
+    settings: {
+      permissions: {
+        deny: ["write(../home/allowed/blocked)"],
+        ask: ["write(../home/allowed/asked)"],
+      },
+    },
     onPermissionAsk: async (request) => {
       requests.push(request);
       return requests.length <= 2 ? "allow-session" : "deny";
@@ -185,18 +193,18 @@ test("session directory grant follows canonical paths and respects deny and ask"
   });
   await session.run("write");
   expect(requests.map((request) => (request.args as { path: string }).path)).toEqual([
-    join(dirs.cwd, "alias/first"),
-    join(dirs.cwd, "allowed/asked"),
-    join(dirs.cwd, "allowed/asked"),
-    join(dirs.cwd, "allowed/escape/last"),
+    join(dirs.homeDir, "alias/first"),
+    join(dirs.homeDir, "allowed/asked"),
+    join(dirs.homeDir, "allowed/asked"),
+    join(dirs.homeDir, "allowed/escape/last"),
   ]);
   expect(requests[0]!.sessionAllow).toEqual({
     kind: "directory",
-    rule: `write(${realpathSync(dirs.cwd)}/allowed/**)`,
+    rule: `write(${realpathSync(dirs.homeDir)}/allowed/**)`,
   });
-  expect(await Bun.file(join(dirs.cwd, "allowed/second")).text()).toBe("written");
-  expect(await Bun.file(join(dirs.cwd, "allowed/blocked")).exists()).toBe(false);
-  expect(await Bun.file(join(dirs.cwd, "outside/last")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "allowed/second")).text()).toBe("written");
+  expect(await Bun.file(join(dirs.homeDir, "allowed/blocked")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "outside/last")).exists()).toBe(false);
 });
 
 test("session command grants are absent from transcript and expire on resume", async () => {
@@ -277,6 +285,7 @@ test.each(["command", "directory"] as const)(
       ...dirs,
       ...fake,
       rules: parsePermissionRules({ ask: ["write(same/ask)"], deny: ["write(same/deny)"] }),
+      getAccessScope: () => ({ readWrite: [], readOnly: [] }),
       getMode: () => "ask",
       getTools: () => tools,
       getMessages: async () => [],
@@ -414,7 +423,7 @@ test("directory name glob characters cannot grant adjacent directories or anothe
     writeTurn("groupa/other"),
     fauxAssistantMessage(
       fauxToolCall("edit", {
-        path: "group[ab]/first",
+        path: join(dirs.homeDir, "group[ab]/first"),
         edits: [{ oldText: "written", newText: "changed" }],
       }),
       { stopReason: "toolUse" },
@@ -432,10 +441,12 @@ test("directory name glob characters cannot grant adjacent directories or anothe
   });
   await session.run("write");
   expect(requests.map((request) => request.toolName)).toEqual(["write", "write", "edit"]);
-  expect(requests[0]!.sessionAllow.rule).toBe(`write(${realpathSync(dirs.cwd)}/group\\[ab\\]/**)`);
-  expect(await Bun.file(join(dirs.cwd, "group[ab]/nested/second")).text()).toBe("written");
-  expect(await Bun.file(join(dirs.cwd, "groupa/other")).exists()).toBe(false);
-  expect(await Bun.file(join(dirs.cwd, "group[ab]/first")).text()).toBe("written");
+  expect(requests[0]!.sessionAllow.rule).toBe(
+    `write(${realpathSync(dirs.homeDir)}/group\\[ab\\]/**)`,
+  );
+  expect(await Bun.file(join(dirs.homeDir, "group[ab]/nested/second")).text()).toBe("written");
+  expect(await Bun.file(join(dirs.homeDir, "groupa/other")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "group[ab]/first")).text()).toBe("written");
 });
 
 test("other tools receive an exact bare tool session grant", async () => {
@@ -457,6 +468,7 @@ test("other tools receive an exact bare tool session grant", async () => {
     ...dirs,
     ...fake,
     rules: [],
+    getAccessScope: () => ({ readWrite: [], readOnly: [] }),
     getMode: () => "ask",
     getTools: () => tools,
     getMessages: async () => [],

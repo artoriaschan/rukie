@@ -223,9 +223,12 @@ _Avoid_: plan permission mode, read-only mode
 _Avoid_: policy, whitelist, allowTools
 
 **Permission Mode**:
-决定 permission decision 如何得出的 session 级开关，三选一：`ask`（只读工具 allow，其余 ask）、`auto-review`（由 permission review 判定，安全的 allow，有风险的 ask）、`full-access`（模式本身不再询问：本该由模式 ask 的都 allow，但用户显式写下的 deny / ask 规则与 hooks 照常生效）。默认 `ask`；运行中可切换，只对当前 session 生效，resume 时回到默认值。
+决定 permission decision 如何得出的 session 级开关，三选一：`ask`（文件工具在 Session 访问范围内 allow，范围外 ask；其他工具沿用各自默认值）、`auto-review`（文件工具在范围内 allow，其余需授权调用由 permission review 判定，安全的 allow，有风险的 ask）、`full-access`（模式本身不再询问：本该由模式 ask 的都 allow，但用户显式写下的 deny / ask 规则与 hooks 照常生效）。默认 `ask`；运行中可切换，只对当前 session 生效，resume 时回到默认值。
 _Avoid_: yolo（仅作 CLI 别名 `--yolo`）, approval mode, trust level
 
 **Permission Review**:
 `auto-review` 模式下，对单次工具调用发起的一次独立模型调用，判断风险等级（low / medium / high）并给出 allow 或 deny。它看用户指令和历史工具调用，不看 assistant 文本和工具结果。deny 或评审失败都转为向用户 ask。
 _Avoid_: classifier, auto approval, safety check
+
+**Session 访问范围（Session Access Scope）**:
+Agent Core 用于文件工具 Permission Mode 默认值的真实路径范围。cwd 与附加目录可读写，已发现技能根目录与本 Session 的 Background Job 输出目录只读；子 Session 共享父范围。范围内默认放行，范围外或只读范围内写入按 Permission Mode 询问、评审或放行。显式权限规则与 hooks 保持优先，范围不限制 bash 或 MCP，也不是操作系统 sandbox。见 [ADR-0044](docs/adr/0044-session-access-scope.md) 与[权限参考](docs/permission-rules.md#session-访问范围)。

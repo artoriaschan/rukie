@@ -40,7 +40,11 @@ afterEach(async () => {
 function reviewedModel(review = fauxAssistantMessage('{"risk":"low","decision":"allow"}')) {
   const main = fakeModel([
     fauxAssistantMessage(
-      fauxToolCall("write", { path: "reviewed.txt", content: "safe" }, { id: "write-review" }),
+      fauxToolCall(
+        "write",
+        { path: join(dirs.homeDir, "reviewed.txt"), content: "safe" },
+        { id: "write-review" },
+      ),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
@@ -77,7 +81,7 @@ test("auto-review allows a safe call and emits its review outcome without asking
       })
     ).text,
   ).toBe("done");
-  expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
+  expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).text()).toBe("safe");
   expect(events.filter((event) => event.type === "permission_review")).toEqual([
     {
       type: "permission_review",
@@ -112,9 +116,12 @@ test("old review history truncates first while keeping current authorization and
   });
   const replies = [
     fauxAssistantMessage("short"),
-    fauxAssistantMessage(fauxToolCall("write", { path: "reviewed.txt", content: "safe" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: join(dirs.homeDir, "reviewed.txt"), content: "safe" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ];
   for (const reply of replies)
@@ -134,7 +141,7 @@ test("old review history truncates first while keeping current authorization and
   expect(text).not.toContain("OLD_HISTORY");
   expect(text).toContain("CURRENT_AUTHORIZATION");
   expect(text).toContain("reviewed.txt");
-  expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
+  expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).text()).toBe("safe");
 });
 
 test("oversized required review input asks without sending a reviewer request", async () => {
@@ -144,7 +151,10 @@ test("oversized required review input asks without sending a reviewer request", 
   // Main turns may compact old work; an oversized pending action cannot be removed.
   fake.main.models = fakeModel([
     fauxAssistantMessage(
-      fauxToolCall("write", { path: "reviewed.txt", content: "x".repeat(10_000) }),
+      fauxToolCall("write", {
+        path: join(dirs.homeDir, "reviewed.txt"),
+        content: "x".repeat(10_000),
+      }),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("summary"),
@@ -163,14 +173,14 @@ test("oversized required review input asks without sending a reviewer request", 
   await session.run("write");
   expect(requests[0]?.reason).toContain("half the context window");
   expect(fake.reviewer.contexts).toEqual([]);
-  expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).exists()).toBe(false);
 });
 
 test("review tokens and review messages are excluded from Run usage and Context Usage", async () => {
   dirs = await tempDirs();
   const fake = reviewedModel();
   const first = fauxAssistantMessage(
-    fauxToolCall("write", { path: "reviewed.txt", content: "safe" }),
+    fauxToolCall("write", { path: join(dirs.homeDir, "reviewed.txt"), content: "safe" }),
     { stopReason: "toolUse" },
   );
   const second = fauxAssistantMessage("done");
@@ -256,7 +266,7 @@ test("reviewModel selects a separate model with temperature zero using the Sessi
     await session.run("write");
     expect(selected).toMatchObject({ provider: "review-test", id: "cheap", contextWindow: 8000 });
     expect(temperature).toBe(0);
-    expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
+    expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).text()).toBe("safe");
   } finally {
     delete process.env[env];
   }
@@ -321,7 +331,7 @@ test("aborting an uncooperative review cancels it and never asks or executes", a
     { phase: "end", decision: "deny", reason: expect.stringContaining("cancelled") },
   ]);
   expect(events.at(-1)).toMatchObject({ type: "result", success: false });
-  expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).exists()).toBe(false);
 });
 
 test("a review still pending at 30s cancels its request and asks the user", async () => {
@@ -348,7 +358,7 @@ test("a review still pending at 30s cancels its request and asks the user", asyn
     jest.advanceTimersByTime(1);
     expect((await run).text).toBe("done");
     expect(requests[0]?.reason).toContain("30s timeout");
-    expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).exists()).toBe(false);
   } finally {
     try {
       await session.close();
@@ -372,9 +382,12 @@ test("review uses project instructions and user/call history without assistant t
       ],
       { stopReason: "toolUse" },
     ),
-    fauxAssistantMessage(fauxToolCall("write", { path: "reviewed.txt", content: "safe" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: join(dirs.homeDir, "reviewed.txt"), content: "safe" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   fake.main.models = withModelStream(fake.main.models, modelStream(scripted.models));
@@ -426,8 +439,8 @@ test("parallel tool calls start their reviews before either review completes", a
   const main = fakeModel([
     fauxAssistantMessage(
       [
-        fauxToolCall("write", { path: "a.txt", content: "a" }, { id: "a" }),
-        fauxToolCall("write", { path: "b.txt", content: "b" }, { id: "b" }),
+        fauxToolCall("write", { path: join(dirs.homeDir, "a.txt"), content: "a" }, { id: "a" }),
+        fauxToolCall("write", { path: join(dirs.homeDir, "b.txt"), content: "b" }, { id: "b" }),
       ],
       { stopReason: "toolUse" },
     ),
@@ -509,13 +522,13 @@ test("parallel tool calls start their reviews before either review completes", a
     expect(started).toBe(2);
     expect(new Set(reviews.map((event) => event.toolCallId))).toEqual(new Set(["a", "b"]));
     expect(reviews.map((event) => event.phase)).toEqual(["start", "start"]);
-    expect(await Bun.file(join(dirs.cwd, "a.txt")).exists()).toBe(false);
-    expect(await Bun.file(join(dirs.cwd, "b.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.homeDir, "a.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.homeDir, "b.txt")).exists()).toBe(false);
 
     release.resolve();
     expect((await run).text).toBe("done");
-    expect(await Bun.file(join(dirs.cwd, "a.txt")).text()).toBe("a");
-    expect(await Bun.file(join(dirs.cwd, "b.txt")).text()).toBe("b");
+    expect(await Bun.file(join(dirs.homeDir, "a.txt")).text()).toBe("a");
+    expect(await Bun.file(join(dirs.homeDir, "b.txt")).text()).toBe("b");
   } finally {
     await cleanup();
   }
@@ -549,7 +562,7 @@ test.each(["medium", "high"])(
       ],
     });
     expect(JSON.stringify(fake.contexts)).not.toContain(reason);
-    expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).exists()).toBe(false);
   },
 );
 
@@ -566,7 +579,7 @@ test("the user can allow a call rejected by the reviewer", async () => {
     },
   });
   await session.run("write");
-  expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
+  expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).text()).toBe("safe");
 });
 
 test("switching mode while answering a review applies to the next admitted Turn", async () => {
@@ -574,11 +587,19 @@ test("switching mode while answering a review applies to the next admitted Turn"
   const fake = reviewedModel(fauxAssistantMessage('{"risk":"high","decision":"deny"}'));
   fake.main.models = fakeModel([
     fauxAssistantMessage(
-      fauxToolCall("write", { path: "first.txt", content: "first" }, { id: "first" }),
+      fauxToolCall(
+        "write",
+        { path: join(dirs.homeDir, "first.txt"), content: "first" },
+        { id: "first" },
+      ),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage(
-      fauxToolCall("write", { path: "second.txt", content: "second" }, { id: "second" }),
+      fauxToolCall(
+        "write",
+        { path: join(dirs.homeDir, "second.txt"), content: "second" },
+        { id: "second" },
+      ),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
@@ -598,8 +619,8 @@ test("switching mode while answering a review applies to the next admitted Turn"
   expect(requests).toMatchObject([
     { toolCallId: "first", mode: "auto-review", reason: expect.stringContaining("high") },
   ]);
-  expect(await Bun.file(join(dirs.cwd, "first.txt")).exists()).toBe(false);
-  expect(await Bun.file(join(dirs.cwd, "second.txt")).text()).toBe("second");
+  expect(await Bun.file(join(dirs.homeDir, "first.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "second.txt")).text()).toBe("second");
 });
 
 test.each([
@@ -630,7 +651,7 @@ test.each([
   expect(requests).toMatchObject([
     { mode: "auto-review", reason: expect.stringContaining("failed") },
   ]);
-  expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
+  expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).text()).toBe("safe");
 });
 
 test.each(["error", "length", "toolUse"] as const)(
@@ -655,7 +676,7 @@ test.each(["error", "length", "toolUse"] as const)(
     });
     expect((await session.run("write")).text).toBe("done");
     expect(requests[0]?.reason).toContain("failed");
-    expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).exists()).toBe(false);
   },
 );
 
@@ -683,7 +704,7 @@ test.each(["throw", "reject"])(
     });
     expect((await session.run("write")).text).toBe("done");
     expect(requests[0]?.reason).toContain("provider offline");
-    expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).exists()).toBe(false);
   },
 );
 
@@ -700,8 +721,12 @@ test("a batch reviews only valid calls that still require permission", async () 
           { description: "Run test command", command: "printf allowed" },
           { id: "allowed" },
         ),
-        fauxToolCall("write", { path: "invalid.txt" }, { id: "invalid" }),
-        fauxToolCall("write", { path: "reviewed.txt", content: "safe" }, { id: "reviewed" }),
+        fauxToolCall("write", { path: join(dirs.homeDir, "invalid.txt") }, { id: "invalid" }),
+        fauxToolCall(
+          "write",
+          { path: join(dirs.homeDir, "reviewed.txt"), content: "safe" },
+          { id: "reviewed" },
+        ),
       ],
       { stopReason: "toolUse" },
     ),
@@ -736,7 +761,7 @@ test("a batch reviews only valid calls that still require permission", async () 
     { toolCallId: "invalid", isError: true },
     { toolCallId: "reviewed", isError: false },
   ]);
-  expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
+  expect(await Bun.file(join(dirs.homeDir, "reviewed.txt")).text()).toBe("safe");
 });
 
 test("permission requests publish the owner call view before tool execution starts", async () => {
