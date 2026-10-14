@@ -79,7 +79,7 @@ Rewind 要求原生任务已结算；fork 按 document 策略保留 Goal facts�
 
 `Session.messages` 是当前选中对话的完整已提交消息投影，保留 Compaction 前的消息、原始图片和按时间顺序追加的 Compaction notice。原生当前模型上下文从最新 head、摘要、保留尾部和新消息构造，可以排除仍可观察的旧消息；相同内容在保留尾部再次出现时仍然可见。底层 Storage 的公开 entries 和 Conversation 查询保留被 Rewind 放弃的原对话。原生 reset 接收 handoff 并更新上下文 head，既不删除旧 entries，也不清空 Tool State documents；Session 不另外提供一条 reset 执行路径。
 
-状态 reminders 按来源比较当前内容与已持久化贡献，Compaction 后按当前 document 重建；未经确认的提醒不推进模型已知状态。文件变化提醒与最终基线或删除事实同事务提交。冷恢复不保留进程内已读文件内容；检测到变化后要求重读，再允许覆盖。
+状态 reminders 按来源比较当前内容与已持久化贡献，Compaction 后按当前 document 重建；未经确认的提醒不推进模型已知状态。Todo 额外检查实际模型上下文，清单缺失时立即重发；存在未完成项且八个 Turn 未更新时提醒，提醒之间至少八个 Turn，更新年龄与提醒间隔均由已提交 Transcript 重建，Resume、Rewind 与 Compaction 保留其相应历史。运行中到达的用户输入只在实际放入后追加说明，撤回不会产生说明，普通 steer 不打断输出。Resume 只在继续已接受的 Run 且精确原生工具回执表明 Unknown Tool Outcome 时提醒核实效果，空闲重开或新 Run 不因旧未知结果触发。文件变化提醒与最终基线或删除事实同事务提交。冷恢复不保留进程内已读文件内容；检测到变化后要求重读，再允许覆盖。
 
 # Checkpoint and Rewind
 

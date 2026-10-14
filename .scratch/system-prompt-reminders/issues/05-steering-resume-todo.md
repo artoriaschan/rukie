@@ -1,6 +1,6 @@
 # 05：插入消息、中断恢复与 Todo 提醒
 
-Status: ready-for-agent
+Status: claimed
 
 Blocked by: 01
 
@@ -12,3 +12,8 @@ Blocked by: 01
 - [ ] 测试：插入消息两种情形、续跑提醒、Todo 阈值与间隔、Compaction 后重新提供
 
 ## Comments
+
+- Claimed by fresh implementer 05 on feat/reminders-05, based on integration 952b9fe8. Public createSession/model context/Transcript seams pre-agreed in spec; using TDD. Verification owner: root; focused evidence /tmp/rukie-reminders-evidence/05.md.
+
+- Implemented arrival facts after actual native placement (withdrawal has no notice; admission does not itself interrupt), exact-receipt accepted-Run Resume recovery guidance, and durable Todo 8-Turn update age / 8-Turn cooldown with actual-context re-publication for root and child Conversations. Owner documentation updated; ADR-0046 covers the contract.
+- Focused verification: 24 tests passed / 0 failed, 159 assertions, 2.28s across Todo, queued inputs, native tool replay and arrival formatter. Narrow agent types/lint, documentation checker, task formatting and diff checks passed. Initial red, Compaction regression/fix, environment/type errors and unsupported experimental abort-queue fixture are retained in external evidence `/tmp/rukie-reminders-evidence/05.md`; no aggregate run or push by implementer. Status remains claimed pending final review and root verification.

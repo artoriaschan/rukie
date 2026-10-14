@@ -46,6 +46,10 @@ test("queued inputs keep their identity and each enters a separate user message 
           m.content.some((p) => p.type === "text" && ["first", "second", "third"].includes(p.text)),
       ).map((m) => m.content),
     ).toEqual([[{ type: "text", text: "first" }], [{ type: "text", text: "second" }]]);
+    expect(JSON.stringify(fake.calls[1]!.context.messages)).toContain(
+      "arrived while work was in progress",
+    );
+    expect(JSON.stringify(fake.calls[1]!.context.messages)).toContain("was not interrupted");
     fake.calls[1]!.finish(fauxAssistantMessage("second reply"));
     await fake.until(() => fake.calls.length === 3, ctx);
     fake.calls[2]!.finish(fauxAssistantMessage("third reply"));
@@ -95,6 +99,11 @@ test("withdraw and abort return original queued text and attachments in admissio
     await expect(run).rejects.toThrow("aborted");
     expect(session.queuedInputs).toEqual([]);
     expect(fake.calls).toHaveLength(1);
+    expect(
+      session.messages.some(
+        (message) => message.role === "system-reminder" && message.source === "input-arrival",
+      ),
+    ).toBe(false);
   } finally {
     await session.abort();
     await session.close();
@@ -120,6 +129,10 @@ test("a selected queued input can steer at the next tool boundary", async () => 
     );
     await fake.until(() => fake.calls.length === 2, ctx);
     expect(JSON.stringify(fake.calls[1]!.context.messages)).toContain("steer now");
+    expect(JSON.stringify(fake.calls[1]!.context.messages)).toContain(
+      "arrived while work was in progress",
+    );
+    expect(JSON.stringify(fake.calls[1]!.context.messages)).toContain("was not interrupted");
     expect(await session.steerNow(selected)).toEqual({ status: "not_queued" });
     fake.calls[1]!.finish(fauxAssistantMessage("steered"));
     await run;

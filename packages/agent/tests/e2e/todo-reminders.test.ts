@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { runRequest } from "../helpers/crashed-subagents.ts";
 import { withModelAlias } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -417,3 +418,99 @@ test.each([
     ).toBe(true);
   },
 );
+
+test("unfinished Todo age reminder starts at eight Turns and waits eight more Turns", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("todo_write", { todos: [{ content: "Review", status: "pending" }] }),
+      { stopReason: "toolUse" },
+    ),
+    ...Array.from({ length: 18 }, () => fauxAssistantMessage("working")),
+  ]);
+  const session = await openSession({ ...dirs, ...fake });
+  await session.run("plan");
+  for (let turn = 1; turn <= 16; turn++) {
+    await session.run("continue");
+    const reminders = session.messages.filter(
+      (message) => message.role === "system-reminder" && message.source === "todo-stale",
+    );
+    expect(reminders).toHaveLength(turn < 8 ? 0 : turn < 16 ? 1 : 2);
+  }
+  expect(JSON.stringify(fake.contexts[9])).toContain("Do not mention this reminder to the user.");
+});
+
+test("a same-content Todo write resets update age and Resume preserves committed Turn age", async () => {
+  dirs = await tempDirs();
+  const todos = [{ content: "Review", status: "pending" }];
+  const write = () =>
+    fauxAssistantMessage(fauxToolCall("todo_write", { todos }), { stopReason: "toolUse" });
+  const fake = fakeModel([
+    write(),
+    ...Array.from({ length: 7 }, () => fauxAssistantMessage("working")),
+    write(),
+    fauxAssistantMessage("updated"),
+  ]);
+  const session = await openSession({ ...dirs, ...fake });
+  await session.run("plan");
+  for (let i = 0; i < 6; i++) await session.run("continue");
+  await session.run("update the same list");
+  expect(
+    session.messages.some(
+      (message) => message.role === "system-reminder" && message.source === "todo-stale",
+    ),
+  ).toBe(false);
+  const next = fakeModel(Array.from({ length: 8 }, () => fauxAssistantMessage("working")));
+  await session.close();
+  const resumed = await openSession({ ...dirs, ...next, resumeId: session.id });
+  for (let i = 0; i < 7; i++) await resumed.run("continue");
+  expect(
+    resumed.messages.some(
+      (message) => message.role === "system-reminder" && message.source === "todo-stale",
+    ),
+  ).toBe(false);
+  await resumed.run("continue");
+  expect(
+    resumed.messages.filter(
+      (message) => message.role === "system-reminder" && message.source === "todo-stale",
+    ),
+  ).toHaveLength(1);
+});
+
+test("a child Conversation receives its own Todo age reminder", async () => {
+  dirs = await tempDirs();
+  await Bun.write(join(dirs.cwd, "evidence.txt"), "evidence");
+  let childTurns = 0;
+  const response: Parameters<typeof fakeModel>[0][number] = (context) => {
+    const isParent = context.messages.some(
+      (message) =>
+        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+    );
+    if (isParent) return fauxAssistantMessage("parent accepted result");
+    childTurns++;
+    if (childTurns === 1)
+      return fauxAssistantMessage(
+        fauxToolCall("todo_write", { todos: [{ content: "Child review", status: "pending" }] }),
+        { stopReason: "toolUse" },
+      );
+    if (childTurns < 10) {
+      expect(JSON.stringify(context.messages)).not.toContain("has not been updated for");
+      return fauxAssistantMessage(fauxToolCall("read", { path: "evidence.txt" }), {
+        stopReason: "toolUse",
+      });
+    }
+    expect(JSON.stringify(context.messages)).toContain("has not been updated for 8 Turns");
+    expect(JSON.stringify(context.messages)).toContain("○ Child review");
+    return fauxAssistantMessage("child reviewed");
+  };
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", { description: "Review", prompt: "Review with your own todo list" }),
+      { stopReason: "toolUse" },
+    ),
+    ...Array.from({ length: 13 }, () => response),
+  ]);
+  const session = await openSession({ ...dirs, ...fake });
+  await runRequest(session, "delegate review");
+  expect(childTurns).toBe(10);
+});

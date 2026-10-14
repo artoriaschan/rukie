@@ -136,7 +136,7 @@ Interaction 由 Agent Core 发起，frontend 提供响应回调。[`interaction/
 
 根 Session 用 pi-durable `section()` 生成 System Prompt，`instructions` 保留身份段，各节只读取已注册工具、平台、shell、cwd 与附加目录等会话内稳定输入；环境节在 Compaction 后保留，Session Move 后追加新节，时间与 Git 状态不进入各节。子代理拼接基础指引、子代理通用规则与类型 prompt；System Reminder 承载时间、项目说明、Skill 目录或正文、MCP 描述以及其他有来源的上下文。`environment` 提醒只记录 Git 分支与状态，Compaction 后不重发。`time` 提醒使用 Session 时钟，开场与 Compaction 后给出本地时间、星期、IANA 时区和 UTC 偏移的快照；后续按最近对话活动判断空闲两小时或本地跨日并刷新，Resume 沿历史活动判断。两者的分工与待补指引见 [ADR-0046](adr/0046-system-prompt-sections-and-reminder-roles.md)。用户说明读取 `~/.rukie/AGENTS.md`；项目说明优先读取项目根的 `AGENTS.md`，缺失时读取 `CLAUDE.md`。[`reminders/`](../packages/agent/src/reminders/index.ts)按来源与最近持久化内容比较，仅提交需要更新的提醒，通过可追溯模型投影贡献上下文。
 
-Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它追加原生 compaction 记录，模型上下文由 System Prompt、摘要、保留尾部与之后的消息重建；原始 Transcript 仍保留。压缩后重新建立当前提醒来源，后续请求和恢复走相同的上下文投影。
+Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它追加原生 compaction 记录，模型上下文由 System Prompt、摘要、保留尾部与之后的消息重建；原始 Transcript 仍保留。压缩后重新建立当前提醒来源，后续请求和恢复走相同的上下文投影。Session 在实际输入放置和接受工作的 Resume 边界追加事实性提醒；Todo 的更新年龄与提醒间隔通过已提交 Turn 重建，是否重发清单取决于实际模型上下文。具体触发及恢复限制见 [Agent README](../packages/agent/README.md)。
 
 原生准备在新 head 建立当前工具的完整基线；新投影尚无 system 工具基线时，Session 先从选中分支的完整 Transcript 重建可见工具，再规划基线，避免丢失已发现的 MCP 工具。已有基线时使用当前投影，Rewind 也沿选中分支恢复。`deferred-tools` reminder 从当前投影中的来源文本重建名单差异，压缩后重新提供完整名单。
 

@@ -1,3 +1,4 @@
+import { inputArrivalContent, todoReminderSources } from "./input-todo-reminders.ts";
 import { readTranscript, readRunSummaries } from "./history.ts";
 import { PendingInputFactsDoc, queuedInputProjection, type QueuedInput } from "./queued-inputs.ts";
 export type { QueuedInput } from "./queued-inputs.ts";
@@ -29,6 +30,7 @@ import {
   ProviderDoc,
   type Cursor,
   type ConversationId,
+  type Conversation,
   configure,
   createRegistry,
   defineDoc,
@@ -141,7 +143,7 @@ import { userDataDirectory } from "../config/paths.ts";
 import { createThinkingTiming } from "./thinking.ts";
 import { createSubagentController } from "../tools/subagents/index.ts";
 import { createToolLoadout } from "./tools.ts";
-import { createConversationObservation } from "./observation.ts";
+import { createConversationObservation, projectCommittedOutcomeFacts } from "./observation.ts";
 
 type RequestResult = RunResult & { requestId: string };
 interface RunSummaryFact {
@@ -959,6 +961,83 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       );
     };
     const fullHistory = (id = conversation.id) => readTranscript(lease.storage, id, context);
+    const resumedRunAnchors = new Map<number, number>();
+    async function prepareAcceptedInputReminders(owner: Conversation, ctx: Context) {
+      const history = await fullHistory(owner.id);
+      for (const entry of history) {
+        const facts = entry.kind === "rukie.message-facts" ? entryData(entry) : undefined;
+        if (
+          Number(entry.conversationId) !== Number(owner.id) ||
+          facts?.arrivedDuringRun !== true ||
+          typeof facts.entryId !== "number"
+        )
+          continue;
+        const inputEntry = facts.entryId;
+        if (
+          history.some(
+            (item) =>
+              item.kind === "rukie.reminder" && entryData(item)?.arrivalEntryId === inputEntry,
+          )
+        )
+          continue;
+        const content = inputArrivalContent(history, inputEntry);
+        const timestamp = (options.now?.() ?? new Date()).getTime();
+        await owner.commit(
+          (tx) =>
+            tx.appendEntry(owner.id, {
+              ...reminderEntry({
+                role: "system-reminder",
+                source: "input-arrival",
+                content,
+                timestamp,
+              }),
+              data: {
+                source: "input-arrival",
+                content,
+                timestamp,
+                arrivalEntryId: inputEntry,
+              },
+            }),
+          ctx,
+        );
+      }
+      const anchor = resumedRunAnchors.get(Number(owner.id));
+      if (anchor === undefined) return;
+      const live = await harness.snapshot(LiveDoc, owner.id, ctx);
+      const submissionId = live?.run?.inputs[0];
+      if (submissionId === undefined || Number(submissionId) !== anchor) {
+        resumedRunAnchors.delete(Number(owner.id));
+        return;
+      }
+      const input = await lease.storage.submission(submissionId, ctx);
+      const activeHistory = history.filter(
+        (entry) => Number(entry.id) >= Number(input?.entry ?? Number.MAX_SAFE_INTEGER),
+      );
+      const messages = await projectCommittedOutcomeFacts(
+        transcriptMessages(activeHistory),
+        activeHistory,
+        harness,
+        ctx,
+      );
+      if (!messages.some((message) => message.role === "toolResult" && message.outcomeUnknown))
+        return;
+      resumedRunAnchors.delete(Number(owner.id));
+      await owner.commit(
+        (tx) =>
+          tx.appendEntry(
+            owner.id,
+            reminderEntry({
+              role: "system-reminder",
+              source: "resume-tool-outcome",
+              content:
+                "This Session is resuming already accepted work with an Unknown Tool Outcome. The interrupted tool may have produced effects without a committed success receipt. Inspect actual state before deciding whether to repeat it. Continue the accepted task. Do not ask the user whether to continue.",
+              timestamp: (options.now?.() ?? new Date()).getTime(),
+            }),
+          ),
+        ctx,
+      );
+    }
+
     const promptFacts = new Map<string, string>();
     const rememberPrompts = (entries: readonly EntryRecord[]) => {
       for (const entry of entries) {
@@ -1651,7 +1730,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             jobs: childJobs,
             getSkill: (name) => skills.get(name),
             setTodo: async (todos) => {
-              await childState.set("todo", todos, context);
+              await childState.set("todo", todos, context, { kind: "rukie.todo-update", data: {} });
             },
             onQuestion: options.onQuestion
               ? (request) =>
@@ -1710,6 +1789,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     );
                   pending.pending = [];
                 }, ctx);
+                await prepareAcceptedInputReminders(child, ctx);
                 const view = await child.context(ctx);
                 const reminders = await collectReminders({
                   messages: transcriptMessages(
@@ -1726,7 +1806,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   dataRoot: options.dataRoot,
                   now: options.now?.() ?? new Date(),
                   sources: [
-                    ...childState.reminderSources,
+                    ...childState.reminderSources.filter((source) => source.source !== "todo"),
+                    ...todoReminderSources(
+                      await fullHistory(child.id),
+                      view.entries,
+                      await childState.reminderSources
+                        .find((source) => source.source === "todo")
+                        ?.currentContent(),
+                    ),
                     childDeferredSource,
                     {
                       source: "skills",
@@ -2120,7 +2207,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   : "You have exited Plan Mode."
                 : undefined,
         },
-        ...state.reminderSources,
+        ...state.reminderSources.filter((source) => source.source !== "todo"),
+        ...todoReminderSources(
+          await fullHistory(),
+          afterCompactionId === undefined ? visibleContext.entries : [],
+          await state.reminderSources.find((source) => source.source === "todo")?.currentContent(),
+        ),
         tracking.reminderSource,
         ...(options.reminderSources ?? []),
       ];
@@ -2258,7 +2350,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           jobs,
           getSkill: (name) => skills.get(name),
           setTodo: async (todos: TodoItem[]) => {
-            await state.set("todo", todos, context);
+            await state.set("todo", todos, context, { kind: "rukie.todo-update", data: {} });
           },
           onQuestion: options.onQuestion,
           onInteractionStart: notifyInteraction,
@@ -2493,6 +2585,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     await checkpoints.start(String(record.entry));
                   }
                 }
+                await prepareAcceptedInputReminders(conversation, ctx);
                 await goalRuntime.prepareWrapup(ctx);
                 await prepareReminders(ctx);
                 await toolLoadout.publish(ctx);
@@ -2951,6 +3044,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await writeHookTranscript(hookTranscriptPath(lease.id), await fullHistory());
         throw new PromptHookBlocked(result);
       }
+      const arrivedDuringRun =
+        requestKind(requestId) === "human" &&
+        !!(await harness.snapshot(LiveDoc, conversation.id, context))?.run;
       const admissionContext = signal ? withAbortSignal(signal, context) : context;
       await prepareReminders(admissionContext, true, undefined, requestId);
       signal?.throwIfAborted();
@@ -2981,6 +3077,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       {
         const facts: Record<string, JsonValue> = {
           requestId,
+          ...(arrivedDuringRun ? { arrivedDuringRun: true } : {}),
           ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
           ...(invocation ? { skillInvocation: invocation } : {}),
           ...(!(requestKind(requestId) === "human")
@@ -3883,6 +3980,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         requestKind(input.requestId) === "human"
       )
         completeHumanRequest(input.requestId, input.id);
+    }
+    if (options.resumeId) {
+      for (const row of (await lease.storage.scanConversations({}, 100000, undefined, context))
+        .items) {
+        const live = await harness.snapshot(LiveDoc, row.id, context);
+        if (live?.run?.inputs[0] !== undefined)
+          resumedRunAnchors.set(Number(row.id), Number(live.run.inputs[0]));
+      }
     }
     harness.resume();
     return session;
