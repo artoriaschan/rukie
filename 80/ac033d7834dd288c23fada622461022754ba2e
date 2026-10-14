@@ -1,0 +1,50 @@
+packages/ui/src/components/sidebar.tsx
+  s_0ed9cd8eba432e::t_d3668059fef2d9 332-336
+  s_0ed9cd8eba432e::t_96b1c3e0ca3947 2,13,18-24,310-331,337-349
+packages/shared/src/wire.ts
+  s_0ed9cd8eba432e::t_d3668059fef2d9 224-225
+packages/ui/tests/app/project-hover.browser.test.tsx
+  s_0ed9cd8eba432e::t_3ec68d5209cf83 179,184-185
+  s_0ed9cd8eba432e::t_67c5a8a71d0117 1-4,6-12,19,23-28,43,45-49,446-452
+  s_0ed9cd8eba432e::t_6ce229d1f752d8 190-197,204,229-236,240-241,248-254,258-265,295-302,362-363
+  s_0ed9cd8eba432e::t_a45f51f85a4a64 32-33,39-42,183,266-268,272-273,277,284-287,294,303-312,319,323,342-351,355-357,361
+  s_0ed9cd8eba432e::t_af130541ec11be 13-18,20-22,29-31,34-38,51-53,62-65,71-76,78-81,84-126,128,130-134,146-149,151-155,161-164,166,170-176,180-182,198-203,205-228,237-239,242-247,255-257,269-271,274-276,278-283,288-293,313-318,320-322,324-341,352-354,358-360,372-377,379-381,385-390,393-396,428-430,432-434
+  s_0ed9cd8eba432e::t_b1b22c7ef2eff5 44,50,66-70,77,82-83,127,129,135-145,150,156-160,167-169,177-178,186-189,364-367
+  s_0ed9cd8eba432e::t_9112aa6c5effdc 5,54-61,368-371,378,382-384,391-392,397-427,431,435-445
+packages/ui/src/components/motion/popover.tsx
+  s_0ed9cd8eba432e::t_ebdd75b12289fd 518-521
+  s_0ed9cd8eba432e::t_c31ee10b26b0d7 19-20,37,39,101-102,104-106,108-112,271-274,289-290,296-297,354-355,358-360,494-496,525,528-534,693,699
+  s_0ed9cd8eba432e::t_0d8229d8489992 404,696,702
+packages/server/tests/server.test.ts
+  s_0ed9cd8eba432e::t_a275aeb5baf2cb 22-26,28-34,36-38,40-42,44-49
+packages/ui/tests/app/session-move.browser.test.tsx
+  s_0ed9cd8eba432e::t_96b1c3e0ca3947 109,179
+packages/ui/src/app/index.tsx
+  s_0ed9cd8eba432e::t_d3668059fef2d9 123,157-158,160-167,978,980-995
+  s_0ed9cd8eba432e::t_53367c89c2f61a 124,159,168,976-977,979,996
+packages/ui/src/components/project-row.tsx
+  s_0ed9cd8eba432e::t_a3c2cabaec0a07 44,72-73,75,104-109,164,214
+  s_0ed9cd8eba432e::t_e8678fd8cb7190 2-9,11-13,15-19,22-36,41,43,45-58,61-69,71,74,76-77,79-80,82-96,98,110-115,120-138,141-147,153-163,165,167-168,170-182,184,198-213,215-225,227,229,231-253,267-274,276-281,287-297,299-304,306-320,322
+  s_0ed9cd8eba432e::t_8e09d68f538548 1,10,20-21,37-40,59,116-119,148-152,282-286
+  s_0ed9cd8eba432e::t_df9b08450a74b6 14,42,60,78,99-103,139-140,185-197,254-266
+packages/ui/tests/store/desktop.test.ts
+  s_0ed9cd8eba432e::t_5256b68e35544f 4-12,14-22
+packages/ui/tests/lib/project-path.test.ts
+  s_0ed9cd8eba432e::t_375640a9b5c9c4 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "80ac033d7834dd288c23fada622461022754ba2e",
+  "prompts": {},
+  "sessions": {
+    "s_0ed9cd8eba432e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a138a9-fed3-7e92-bc38-1b2e53ed718c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
