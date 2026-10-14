@@ -235,7 +235,7 @@ test("Compaction retains discovered declarations and restores the complete defer
       expect(names(context.messages)).toContain("mcp__local__echo");
       expect(names(context.messages)).not.toContain("mcp__local__hidden");
       expect(JSON.stringify(context.messages)).toContain(
-        "Deferred MCP tools (use ToolSearch to load their definitions):\\n- mcp__local__hidden",
+        "Deferred MCP tools (use ToolSearch to load their definitions):\\nUse ToolSearch to load a listed tool definition before calling it. A schema not yet loaded does not mean the capability is unavailable.\\n- mcp__local__hidden",
       );
       return fauxAssistantMessage("continued");
     },

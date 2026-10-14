@@ -1,4 +1,6 @@
 const fullHeader = "Deferred MCP tools (use ToolSearch to load their definitions):";
+const guidance =
+  "Use ToolSearch to load a listed tool definition before calling it. A schema not yet loaded does not mean the capability is unavailable.";
 const deltaHeader = "Deferred MCP tools changed:";
 
 /** Prior contents belong to the current Transcript projection, including its compaction baseline. */
@@ -21,7 +23,7 @@ export function deferredToolsReminder(
   }
   if (!history.length) {
     if (!names.length) return;
-    return `${fullHeader}\n${names.map((name) => `- ${name}`).join("\n")}`;
+    return `${fullHeader}\n${guidance}\n${names.map((name) => `- ${name}`).join("\n")}`;
   }
   const current = new Set(names);
   const added = names.filter((name) => !previous.has(name));
@@ -29,6 +31,7 @@ export function deferredToolsReminder(
   if (!added.length && !removed.length) return;
   return [
     deltaHeader,
+    guidance,
     ...(added.length ? ["Added:", ...added.map((name) => `- ${name}`)] : []),
     ...(removed.length ? ["Removed:", ...removed.map((name) => `- ${name}`)] : []),
   ].join("\n");

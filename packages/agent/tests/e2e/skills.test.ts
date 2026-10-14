@@ -74,6 +74,8 @@ test.each([
     expect(catalog).toBeDefined();
     if (catalog?.role !== "system-reminder") throw new Error("Missing skills reminder");
     expect(catalog.content).toContain("Review a change");
+    expect(catalog.content).toContain("may be unrelated to the current task");
+    expect(catalog.content).toContain("Use the skill tool to load full instructions by name");
     expect(catalog.content).not.toContain("Inspect the diff carefully.");
     expect(JSON.stringify(fake.contexts[0]!.messages)).not.toContain("Inspect the diff carefully.");
     const loaded = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!;

@@ -121,7 +121,7 @@ Session 持有一个 registry；所有 bash 使用同一条进程组启动路径
 
 `job_list` 列出当前 Session 的后台任务。`job_output { job_id, wait?, timeout_ms? }` 消费模型游标之后的 stdout，再返回独立的 `[stderr]` 段与状态行；没有新输出时显示 `(no new output)`。`wait` 等待新输出或完成，默认 30 秒，最长 10 分钟；取消等待不杀进程、不移动游标。完成后的 `wait` 收集和模型 `job_kill` 会标记结束通知已被抑制。未知 id 的错误说明后台任务不跨 Session 重启。这三个工具直接通过 Permission Mode，仍经过权限规则与 hooks；bash 的后台参数沿用普通 bash 的授权路径。
 
-后台任务完成后，Session 将 `background job <id> (bash: <label>) finished [status: …]. Read its output with job_output.` 提交为原生会话输入。正在运行时通知追加到当前上下文，供后续模型请求读取；空闲时提交 follow-up，开启内部 Run。使用 `session.subscribe` 观察跨 Run 的任务通知。新输出不触发通知，父 Run 不等待后台任务；完成后的 `wait` 收集、模型停止和 teardown 抑制通知，取消等待仍保留通知资格。内部通知不触发 `UserPromptSubmit`。
+后台任务完成后，Session 将 `background job <id> (bash: <label>) finished [status: …]. Read its output with job_output.` 包裹为 System Reminder 提交给模型，并声明它是自动事件、不是用户输入，不能视为确认或授权。Transcript 通过消息事实保留通知正文与 `source: "job"`，Frontend 直接使用投影，不解析包裹文本。正在运行时通知追加到当前上下文，供后续模型请求读取；空闲时提交 follow-up，开启内部 Run。使用 `session.subscribe` 观察跨 Run 的任务通知。新输出不触发通知，父 Run 不等待后台任务；完成后的 `wait` 收集、模型停止和 teardown 抑制通知，取消等待仍保留通知资格。内部通知不触发 `UserPromptSubmit`。
 
 Frontend 使用 `session.jobs()` 获取本 Session 的后台任务快照，包括已结束的记录；`session.readJob(id, offset)` 从 stdout 与 stderr 共用的绝对 UTF-8 字节偏移读取，返回 `stdout`、`stderr`、`nextOffset`、`dropped`，不消费模型游标。首次读取传 `0`，后续增量读取传上次 `nextOffset`；多个观察者分别保存自己的偏移。偏移必须是非负安全整数；未知 id 报错。`JobView`、`JobOutput`、`JobEvent` 由 `@rukie/shared` 定义，`@rukie/agent` 同时导出。
 
@@ -130,6 +130,8 @@ Frontend 使用 `session.jobs()` 获取本 Session 的后台任务快照，包�
 `await session.killJob(id)` 请求终止后台任务，先抑制结束通知，再发送信号；重复停止或停止已结束任务是 no-op。正在执行 Run 时，`User stopped background job <id> (<label>).` 作为 steer 输入交给模型；空闲时消息排队到下一条人类 prompt 前，不唤醒模型。尚未投递的停止消息在取消 Run 后仍保留。Headless CLI 原样输出 stream-json 任务事件，text 只输出正常结果；普通 prompt 或 Goal 的因果请求结算后调用 `session.close()`，终止所有后台任务。
 
 stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保留 256 KiB；任务结束后合计保留 16 KiB，始终在 UTF-8 字符边界截断。完整原始输出写入 Session 专属的 0700 临时目录，日志权限为 0600。发生内存丢弃时，模型输出附带完整日志路径。宿主关闭移除这些输出资源；恢复后仍能读取已提交的工具结果文本和 details，历史路径不表示日志文件仍存在。
+
+后台子代理完成、失败与中止时，reporter 也提交带同一自动事件声明的 System Reminder；消息事实保留 Frontend 原有通知正文与来源。
 
 子 Session 拥有独立 registry 与 10 个后台任务名额，`job_*` 只操作自己的任务，完成通知只交给子模型；`job_event` 沿现有 `subagent_event` 转给父观察者，父 `jobs()` 与 `job_list` 不含子任务。子 Run 成功、失败或中止时，在发布 `result` 与解除运行占用前清理自己的任务；父任务继续运行。清理不发送任务事件、结束通知或唤醒输入，`send_message` 续跑同一子 Session 时旧任务 id 已不存在，新编号继续递增。
 

@@ -83,6 +83,7 @@ test("the first Run supplies static identity, environment and both levels of Pro
   expect(reminders[0]!.content).toContain("git branch: reminder-test");
   expect(reminders[0]!.content).toContain("?? AGENTS.md");
   expect(reminders[1]!.content).toBe("Current date: 2026-10-01");
+  expect(reminders[2]!.content).toStartWith("User Instructions (");
   expect(reminders[2]!.content).toContain("Personal coding preferences");
   expect(reminders[3]!.content).toContain("Project coding conventions");
   expect(JSON.stringify(messages)).not.toContain("Ignored fallback instructions");

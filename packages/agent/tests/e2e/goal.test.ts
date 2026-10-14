@@ -60,6 +60,15 @@ test("creating a Goal immediately runs rounds up to its cap without user prompt 
   for (const [index, context] of fake.contexts.entries()) {
     expect(JSON.stringify(context.messages)).toContain(`Round: ${index + 1}/2`);
     expect(JSON.stringify(context)).toContain(`round ${index + 1}/2`);
+    expect(JSON.stringify(context.messages)).toContain(
+      "Audit completion requirement by requirement",
+    );
+    expect(JSON.stringify(context.messages)).toContain(
+      "Tests passing or a finished plan alone do not establish completion",
+    );
+    expect(JSON.stringify(context.messages)).toContain(
+      "If any requirement is uncertain, the Goal is not complete",
+    );
   }
   expect(session.messages.filter((message) => message.role === "user")).toMatchObject([
     { source: "goal" },

@@ -1,3 +1,4 @@
+import { automaticEventMessage } from "../../reminders/index.ts";
 import type { Api, Model, Models } from "@earendil-works/pi-ai";
 import { requestIds } from "../../requests/index.ts";
 import {
@@ -35,6 +36,25 @@ import {
   type SubagentRun,
 } from "./state.ts";
 import type { SubagentType } from "./types.ts";
+
+/** Store presentation facts before admission so even an immediately placed reporter input projects unchanged. */
+async function reportAutomaticEvent(
+  parent: Conversation,
+  content: string,
+  requestId: string,
+  context: Context,
+) {
+  const modelContent = automaticEventMessage(content);
+  await parent.commit(async (tx) => {
+    // Reporter retries reuse an existing native submission and its presentation facts.
+    if (await tx.submissionByRequest(parent.id, requestId)) return;
+    await tx.appendEntry(parent.id, {
+      kind: "rukie.message-facts",
+      data: { requestId, modelContent, displayContent: content },
+    });
+  }, context);
+  return modelContent;
+}
 
 const SUBAGENT_PROMPT =
   "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot speak to the user, expand the parent Session permissions or create other Subagents. Resolve noncritical ambiguity using the most reasonable interpretation. Report critical blockers and authorization decisions to the parent Session instead of assuming permission. Your final reply must be self-contained and include the result, evidence and remaining limitations. Fix causes in owning modules, preserve unrelated work, respect shared ownership and do not duplicate ongoing work.";
@@ -541,7 +561,12 @@ export function createSubagentController(options: SubagentControllerOptions) {
             type: "input",
             whenBusy: "followUp",
             requestId: requestIds.subagentReport(Number(task.id)),
-            content: `Subagent ${agentId} (${task.input.description}) ${result.success ? "finished" : `failed: ${result.error ?? "unknown error"}`}.${result.text.trim() ? ` Its closing message:\n${result.text}` : ""}`,
+            content: await reportAutomaticEvent(
+              parent,
+              `Subagent ${agentId} (${task.input.description}) ${result.success ? "finished" : `failed: ${result.error ?? "unknown error"}`}.${result.text.trim() ? ` Its closing message:\n${result.text}` : ""}`,
+              requestIds.subagentReport(Number(task.id)),
+              context,
+            ),
           },
           context,
         );
@@ -631,9 +656,14 @@ export function createSubagentController(options: SubagentControllerOptions) {
             type: "input",
             whenBusy: "followUp",
             requestId: requestIds.subagentReport(Number(task.id)),
-            content: result.driverFailure
-              ? `Subagent ${row.id} (${task.input.description}) failed: ${result.driverFailure}.`
-              : `Subagent ${row.id} (${task.input.description}) aborted.`,
+            content: await reportAutomaticEvent(
+              parent,
+              result.driverFailure
+                ? `Subagent ${row.id} (${task.input.description}) failed: ${result.driverFailure}.`
+                : `Subagent ${row.id} (${task.input.description}) aborted.`,
+              requestIds.subagentReport(Number(task.id)),
+              context,
+            ),
           },
           context,
         );

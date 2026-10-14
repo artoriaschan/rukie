@@ -135,13 +135,50 @@ export function modelContextMessages(view: ContextView): readonly Message[] {
 
 /** Application facts remain distinct from each entry's native model contribution. */
 export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptMessage[] {
-  const facts = entries.flatMap((entry) =>
+  const factEntries = entries.flatMap((entry) =>
     entry.kind === "rukie.message-facts" &&
     entry.data &&
     typeof entry.data === "object" &&
     !Array.isArray(entry.data)
-      ? [entry.data]
+      ? [{ id: entry.id, fact: entry.data }]
       : [],
+  );
+  const facts = factEntries.map(({ fact }) => fact);
+  // Pre-admission notification facts apply to one subsequent native input only.
+  // A stable request/entry binding supersedes that temporary correlation on replay.
+  const presentationEntries = new Map(
+    factEntries.flatMap(({ id, fact }) => {
+      if (typeof fact.modelContent !== "string") return [];
+      const bound =
+        typeof fact.requestId === "string"
+          ? facts.findLast(
+              (candidate) =>
+                candidate.requestId === fact.requestId && typeof candidate.entryId === "number",
+            )
+          : undefined;
+      if (bound && typeof bound.entryId === "number") return [[fact, bound.entryId] as const];
+      const matched = entries.find(
+        (candidate) =>
+          candidate.id > id &&
+          candidate.kind === "pi.user" &&
+          !facts.some(
+            (owner) =>
+              owner.entryId === Number(candidate.id) &&
+              typeof owner.requestId === "string" &&
+              owner.requestId.startsWith("human:"),
+          ) &&
+          candidate.model?.some(
+            (message) =>
+              message.role === "user" &&
+              (typeof message.content === "string"
+                ? message.content
+                : message.content
+                    .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                    .join("")) === fact.modelContent,
+          ),
+      );
+      return matched ? [[fact, Number(matched.id)] as const] : [];
+    }),
   );
   return orderCompactionEntries(entries).flatMap((entry): TranscriptMessage[] => {
     const data = entry.data;
@@ -209,6 +246,7 @@ export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptM
         }
         const matches =
           fact.entryId === Number(entry.id) ||
+          presentationEntries.get(fact) === Number(entry.id) ||
           (fact.taskId === Number(entry.byTaskId) &&
             (fact.timestamp === message.timestamp ||
               (message.role === "user" &&
@@ -220,6 +258,8 @@ export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptM
                       .join("")) === fact.content)));
         if (!matches) continue;
         if (projected.role === "user") {
+          if (typeof fact.displayContent === "string")
+            projected.content = [{ type: "text", text: fact.displayContent }];
           if (
             Array.isArray(fact.imageNames) &&
             fact.imageNames.every((name) => name === null || typeof name === "string")

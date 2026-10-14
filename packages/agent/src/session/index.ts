@@ -1,3 +1,5 @@
+import { planModeExitReminder } from "../tools/plan-mode/index.ts";
+import { automaticEventContent, automaticEventMessage } from "../reminders/index.ts";
 import { readTranscript, readRunSummaries } from "./history.ts";
 import { PendingInputFactsDoc, queuedInputProjection, type QueuedInput } from "./queued-inputs.ts";
 export type { QueuedInput } from "./queued-inputs.ts";
@@ -1112,14 +1114,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   model: [
                     {
                       role: "user",
-                      content: [{ type: "text", text: content }],
+                      content: [{ type: "text", text: automaticEventMessage(content) }],
                       timestamp: Date.now(),
                     },
                   ],
                 });
                 await tx.appendEntry(conversation.id, {
                   kind: "rukie.message-facts",
-                  data: { entryId: Number(entry.id), source: "job" },
+                  data: { entryId: Number(entry.id), source: "job", displayContent: content },
                 });
               }, context);
             } else {
@@ -1511,7 +1513,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                       reminderEntry({
                         role: "system-reminder",
                         source: `job:${job.id}`,
-                        content: `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
+                        content: automaticEventContent(
+                          `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
+                        ),
                         timestamp: Date.now(),
                       }),
                     ),
@@ -2113,9 +2117,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             plan.getActive()
               ? planModeReminder(!!options.onPlanReview)
               : plan.hasEntered()
-                ? entryData(lastPlanReminder)?.content === "You have exited Plan Mode."
+                ? entryData(lastPlanReminder)?.content === planModeExitReminder
                   ? undefined
-                  : "You have exited Plan Mode."
+                  : planModeExitReminder
                 : undefined,
         },
         ...state.reminderSources,
@@ -2144,7 +2148,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const moveReminder = reminderEntry({
           role: "system-reminder",
           source: "session-move",
-          content: `Working directory changed from ${sessionMove.oldCwd} to ${sessionMove.newCwd}. Use the new working directory for subsequent work.`,
+          content: `Working directory changed from ${sessionMove.oldCwd} to ${sessionMove.newCwd}. Use the new working directory for subsequent work. Historical output tied to the old paths is stale; reread files and recheck relevant state in the new directory before relying on it. The old directory remains accessible by absolute path: ${sessionMove.oldCwd}.`,
           timestamp: (options.now?.() ?? new Date()).getTime(),
         });
         await conversation.commit(async (tx) => {
@@ -2466,6 +2470,27 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }
                 for (const id of live?.run?.inputs ?? []) {
                   const record = await lease.storage.submission(id, ctx);
+                  if (record?.entry && requestKind(record.requestId) === "subagent-report") {
+                    const presentation = (await fullHistory()).findLast(
+                      (entry) =>
+                        entry.kind === "rukie.message-facts" &&
+                        entryData(entry)?.requestId === record.requestId &&
+                        typeof entryData(entry)?.displayContent === "string",
+                    );
+                    if (presentation && entryData(presentation)?.entryId !== Number(record.entry))
+                      await conversation.commit(
+                        (tx) =>
+                          tx.appendEntry(conversation.id, {
+                            kind: "rukie.message-facts",
+                            data: {
+                              entryId: Number(record.entry),
+                              requestId: record.requestId!,
+                              displayContent: entryData(presentation)!.displayContent!,
+                            },
+                          }),
+                        ctx,
+                      );
+                  }
                   if (record?.entry)
                     await conversation.commit(async (tx) => {
                       const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
@@ -2961,7 +2986,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           timestamp: Date.now(),
         });
       const content: UserMessage["content"] = [
-        { type: "text", text: prompt },
+        {
+          type: "text",
+          text: requestKind(requestId) === "job" ? automaticEventMessage(prompt) : prompt,
+        },
         ...images.map((image) => ({
           type: "image" as const,
           data: image.data,
@@ -2978,6 +3006,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       {
         const facts: Record<string, JsonValue> = {
           requestId,
+          ...(requestKind(requestId) === "job" ? { displayContent: prompt } : {}),
           ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
           ...(invocation ? { skillInvocation: invocation } : {}),
           ...(!(requestKind(requestId) === "human")

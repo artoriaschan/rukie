@@ -90,6 +90,12 @@ test("Resume announces a move and refreshes environment once, and blocks code ac
   expect(JSON.stringify(fake.contexts[0])).toContain(
     `Working directory changed from ${dirs.cwd} to ${target}`,
   );
+  expect(JSON.stringify(fake.contexts[0])).toContain(
+    "Historical output tied to the old paths is stale",
+  );
+  expect(JSON.stringify(fake.contexts[0])).toContain(
+    "old directory remains accessible by absolute path",
+  );
   expect(
     session.messages.filter((m) => m.role === "system-reminder" && m.source === "environment"),
   ).toHaveLength(2);
