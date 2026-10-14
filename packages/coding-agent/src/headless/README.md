@@ -27,3 +27,5 @@ prompt 成功退出0；执行或 Goal 失败退出1；argv 错误退出2。Headl
 启动期间的信号也取消正在等待的 SessionStart Hook，并在返回前等待初始化资源释放。此时尚未接受的 prompt 不会被伪造为待恢复请求；打开完成后的退出继续沿 Session close 合同保留已接受任务。
 
 嵌入调用使用公开 `main` 与 IO `signal`：host signal 关闭 Session 并取消未完成 stdin 读取，保留 durable 工作；其 Headless 中断返回130。SIGTERM143由可执行入口的信号身份映射，不会改变嵌入调用的接口。具体生命周期见 [ADR-0024](../../../../docs/adr/0024-adopt-pi-durable-harness.md)。
+
+文件工具仅在 Session 访问范围内默认放行：cwd 与附加目录可读写，技能根与本 Session Job 输出目录只读。Headless 无审批回调，ask 下拒绝范围外访问；用 `--allow-tools 'read(~/reference/**)'` 授权具体路径，或 `--permission-mode full-access` 放宽模式默认值。显式 deny / ask 和 hooks 仍生效；完整规则见[权限参考](../../../../docs/permission-rules.md#session-访问范围)。

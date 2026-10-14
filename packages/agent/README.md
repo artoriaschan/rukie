@@ -161,6 +161,8 @@ Frontend 创建 Session 时通过 `SessionOptions.applicationVersion` 注入自�
 
 源码运行经 `@vscode/ripgrep` 的锁定平台包定位 rg。npm 编译产物由 release builder 的 `RUKIE_COMPILED` 常量选择平台执行文件 `realpath(process.execPath)` 同目录的 `rg`，避免 Bun 虚拟源码路径和用户 cwd 影响定位；二者使用同一 grep 工具和权限路径。缺失或不可执行的资源返回 `ripgrep-unavailable`；编译产物提示平台包不完整和重新安装 optionalDependencies。分发资源与验收见[构建教程](../../docs/release-building.md)。
 
+Session 访问范围按真实路径限定文件工具的模式默认值：cwd 与 `additionalDirectories` 可读写，已发现技能根目录和本 Session 的 Background Job 输出目录只读。父子 Session 共用范围；范围内读写默认放行，范围外及只读根中的写入在 ask 下询问、auto-review 下评审、full-access 下放行。显式 deny / ask 与 hooks 仍优先，`bash`、MCP、`web_fetch` 默认值不变；无审批回调时询问安全默认拒绝。目录级临时授权父子共享、Resume 后失效。完整规则见 [权限参考](../../docs/permission-rules.md#session-访问范围)。
+
 ## 附加目录
 
 `createSession` 的 `additionalDirectories` 接受绝对路径列表，按规范化路径去重并排除 cwd 本身；相对路径会在打开存储前被拒绝。Session 仍以 cwd 执行工具、解析权限路径和跟踪文件。首次 Run 的环境快照列出附加目录，每个目录只加载自己的 `AGENTS.md`，不使用 `CLAUDE.md` fallback，也不发现该目录的 settings、hooks、MCP 或技能。
