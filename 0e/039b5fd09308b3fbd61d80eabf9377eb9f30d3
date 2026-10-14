@@ -1,0 +1,19 @@
+.scratch/shell-palette-project-management/issues/06-acceptance.md
+  s_0ed9cd8eba432e::t_6759ec9a903cd4 23-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "0e039b5fd09308b3fbd61d80eabf9377eb9f30d3",
+  "prompts": {},
+  "sessions": {
+    "s_0ed9cd8eba432e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a138a9-fed3-7e92-bc38-1b2e53ed718c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
