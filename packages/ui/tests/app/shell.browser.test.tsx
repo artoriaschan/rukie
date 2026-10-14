@@ -913,6 +913,10 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
       .toHaveFocus();
     await userEvent.keyboard("{ArrowDown}");
     await expect
+      .element(screen.getByRole("menuitem", { name: "Move to Project", exact: true }))
+      .toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}");
+    await expect
       .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
       .toHaveFocus();
     await userEvent.keyboard("{Escape}");
