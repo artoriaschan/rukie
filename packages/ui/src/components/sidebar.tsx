@@ -21,7 +21,7 @@ export interface SidebarProps {
   detailEpoch: number;
   onDetailProject: (id: string, open: boolean) => void;
   onDetailPin: (id: string, pinned: boolean) => void;
-  onEditProject: (project: WireProject) => void;
+  onEditProject: (project: WireProject | null) => void;
   projects: WireProject[];
   pinned: string[];
   archived: string[];
@@ -35,7 +35,8 @@ export interface SidebarProps {
   onRename: (session: WireSessionSummary) => void;
   onArchive: (id: string) => void;
   onDelete: (session: WireSessionSummary) => void;
-  onMove: (session: WireSessionSummary, project: WireProject) => void;
+  onChooseFolder: (session: WireSessionSummary) => void;
+  onMove: (session: WireSessionSummary, project: WireProject | null) => void;
   onPreferences: (preferences: WirePreferences) => void;
 }
 export function Sidebar(props: SidebarProps) {
@@ -82,6 +83,7 @@ export function Sidebar(props: SidebarProps) {
       props.onDelete,
       props.projects,
       props.onMove,
+      props.onChooseFolder,
     );
     return (
       <ContextMenu key={session.id}>

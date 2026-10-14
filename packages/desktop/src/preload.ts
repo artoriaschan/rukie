@@ -3,7 +3,8 @@ import type { DesktopHost } from "@rukie/ui";
 
 const host: DesktopHost = {
   getConnection: () => ipcRenderer.invoke("rukie:getConnection"),
-  pickProjectFolder: () => ipcRenderer.invoke("rukie:pickProjectFolder"),
+  pickProjectFolder: (multiple) =>
+    ipcRenderer.invoke("rukie:pickProjectFolder", ...(multiple === undefined ? [] : [multiple])),
   modelServices: {
     prices: (input) => ipcRenderer.invoke("rukie:modelServices:prices", input),
     revealKey: (id) => ipcRenderer.invoke("rukie:modelServices:revealKey", id),

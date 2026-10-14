@@ -232,6 +232,13 @@ test("Electron installs app scheme before load and authenticates every native IP
     expect(electron.dialog.showOpenDialog).toHaveBeenLastCalledWith(electron.window, {
       properties: ["openDirectory", "createDirectory", "multiSelections"],
     });
+    await electron.handlers.get("rukie:pickProjectFolder")!(event, false);
+    expect(electron.dialog.showOpenDialog).toHaveBeenLastCalledWith(electron.window, {
+      properties: ["openDirectory", "createDirectory"],
+    });
+    await expect(electron.handlers.get("rukie:pickProjectFolder")!(event, "false")).rejects.toThrow(
+      "Invalid folder selection mode",
+    );
     expect(electron.handlers.has("rukie:revealPath")).toBe(false);
     expect(electron.handlers.has("rukie:openInTerminal")).toBe(false);
   } finally {

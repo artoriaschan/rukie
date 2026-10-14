@@ -74,6 +74,63 @@ test("conversation workspaces are independent and deletion removes their files",
   }
 });
 
+test("moving out of a Project creates an empty owned workspace, rejects repeating and deletes its files", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-move-out-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const primary = await realpath(await mkdtemp(join(homeDir, "project-")));
+    await writeFile(join(primary, "project.txt"), "keep");
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Project",
+        directories: [primary],
+        trusted: true,
+      })
+    ).result as { id: string };
+    const { sessionId } = (
+      await client.command("session.create", { project: project.id, text: "start" })
+    ).result as { sessionId: string };
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    expect(
+      (await client.command("session.move", { sessionId, projectId: null })).error,
+    ).toBeUndefined();
+    const summary = (
+      (await client.command("sessions.list")).result as {
+        id: string;
+        cwd: string;
+        projectId: string | null;
+      }[]
+    ).find((item) => item.id === sessionId)!;
+    expect(summary.projectId).toBeNull();
+    expect(summary.cwd.slice(0, summary.cwd.lastIndexOf("/"))).toBe(
+      join(homeDir, "desktop-data", "workspace"),
+    );
+    expect(await filesystem.readdir(summary.cwd)).toEqual([]);
+    expect((await client.command("session.move", { sessionId, projectId: null })).error).toEqual({
+      code: "invalid_command",
+    });
+    await writeFile(join(summary.cwd, "owned.txt"), "owned");
+    expect((await client.command("session.delete", { sessionId })).error).toBeUndefined();
+    expect(await Bun.file(join(summary.cwd, "owned.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(primary, "project.txt")).text()).toBe("keep");
+  } finally {
+    await owner.close();
+  }
+});
+
 test("Project binding survives directory removal, read-only subscription and restart; execution synchronizes cwd", async () => {
   const owner = ownResources();
   try {
@@ -2796,8 +2853,14 @@ for (const platform of ["darwin", "linux", "win32"] as const) {
         expect(selected.result).toEqual([await realpath(project)]);
         expect(calls[0]?.slice(0, 2)).toEqual(["/usr/bin/osascript", "-e"]);
         expect(calls[0]?.[2]).not.toContain(project);
+        calls.length = 0;
+        expect((await client.command("host.pickFolder", { multiple: false })).result).toEqual([
+          await realpath(project),
+        ]);
+        expect(calls[0]?.[2]).toContain("{choose folder}");
+        expect(calls[0]?.[2]).not.toContain("multiple selections allowed");
         folder = "";
-        expect((await client.command("host.pickFolder")).result).toBeNull();
+        expect((await client.command("host.pickFolder", { multiple: false })).result).toBeNull();
       } else {
         expect(selected.error).toEqual({ code: "unsupported" });
         expect(calls).toEqual([]);
@@ -3532,7 +3595,7 @@ test("session.move preserves an unopened Session and publishes its new Project c
     ).toEqual({ code: "session_not_found" });
     expect(
       (await client.command("session.move", { sessionId: history.id, projectId: null })).error,
-    ).toEqual({ code: "invalid_command" });
+    ).toBeUndefined();
   } finally {
     await owner.close();
   }

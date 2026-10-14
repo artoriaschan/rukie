@@ -1087,11 +1087,11 @@ export async function startServer(options: ServerOptions) {
         }
         case "session.move": {
           const project = registry.projects.find((item) => item.id === command.projectId);
-          if (!project) throw new CommandError("project_not_found");
-          if (removingProjects.has(project.id)) throw new CommandError("session_busy");
+          if (command.projectId !== null && !project) throw new CommandError("project_not_found");
+          if (project && removingProjects.has(project.id)) throw new CommandError("session_busy");
           const summary = (await summaries()).find((item) => item.id === command.sessionId);
           if (!summary) throw new CommandError("session_not_found");
-          if (summary.projectId === project.id) throw new CommandError("invalid_command");
+          if (summary.projectId === command.projectId) throw new CommandError("invalid_command");
           const current = sessions.get(command.sessionId);
           if (
             openings.has(command.sessionId) ||
@@ -1114,14 +1114,28 @@ export async function startServer(options: ServerOptions) {
               subscribed.delete(current.id);
             }
           }
-          await moveSession({
-            cwd: summary.cwd,
-            homeDir: options.homeDir,
-            dataRoot: options.dataRoot,
-            id: summary.id,
-            newCwd: project.primary,
-          });
-          await localDatabase.bindSession(summary.id, project.id);
+          const newCwd = project?.primary ?? join(workspace, crypto.randomUUID());
+          if (!project) await mkdir(newCwd);
+          try {
+            await moveSession({
+              cwd: summary.cwd,
+              homeDir: options.homeDir,
+              dataRoot: options.dataRoot,
+              id: summary.id,
+              newCwd,
+            });
+          } catch (error) {
+            if (!project) {
+              try {
+                await rm(newCwd, { recursive: true });
+              } catch (cleanupError) {
+                warning(`Could not remove unused conversation workspace: ${String(cleanupError)}`);
+              }
+            }
+            throw error;
+          }
+          if (project) await localDatabase.bindSession(summary.id, project.id);
+          else await localDatabase.unbindSession(summary.id);
           await changed();
           return {};
         }

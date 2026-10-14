@@ -328,12 +328,16 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     safe(() => client.request({ type: pinned ? "session.pin" : "session.unpin", sessionId: id }));
   const archive = (sessionId: string) =>
     safe(() => client.request({ type: "session.archive", sessionId }));
-  const move = (session: WireSessionSummary, project: WireProject) => {
+  const move = (session: WireSessionSummary, project: WireProject | null) => {
     const perform = async () => {
-      await client.request({ type: "session.move", sessionId: session.id, projectId: project.id });
+      await client.request({
+        type: "session.move",
+        sessionId: session.id,
+        projectId: project?.id ?? null,
+      });
       if (store.getState().selected === session.id) await client.subscribe(session.id);
     };
-    if (project.trusted) safe(perform);
+    if (!project || project.trusted) safe(perform);
     else
       setTrust({
         project,
@@ -345,6 +349,41 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         },
         cancel: () => setTrust(null),
       });
+  };
+  const chooseMoveFolder = (session: WireSessionSummary) => {
+    safe(async () => {
+      if (!host.pickProjectFolder) throw new WireError("unsupported");
+      const selected = await host.pickProjectFolder(false);
+      const directory = selected?.[0];
+      if (!directory) return;
+      setTrust({
+        project: { directories: [directory], primary: directory },
+        creating: true,
+        cancel: () => setTrust(null),
+        confirm: async () => {
+          const result = await client.request({
+            type: "project.create",
+            name: directoryName(directory),
+            directories: [directory],
+            trusted: true,
+          });
+          if (
+            typeof result !== "object" ||
+            result === null ||
+            !("id" in result) ||
+            typeof result.id !== "string"
+          )
+            throw new WireError("invalid_command");
+          await client.request({
+            type: "session.move",
+            sessionId: session.id,
+            projectId: result.id,
+          });
+          if (store.getState().selected === session.id) await client.subscribe(session.id);
+          setTrust(null);
+        },
+      });
+    });
   };
   const preferences = (preferences: WirePreferences) =>
     safe(() => client.request({ type: "preferences.set", preferences }));
@@ -866,6 +905,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                         setDeleting,
                         state.projects,
                         move,
+                        chooseMoveFolder,
                       )}
                     />
                     <Menu.DropdownMenuSub>
@@ -1005,6 +1045,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   onArchive={archive}
                   onDelete={setDeleting}
                   onMove={move}
+                  onChooseFolder={chooseMoveFolder}
                   onPreferences={preferences}
                 />
               </div>

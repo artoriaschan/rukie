@@ -8,11 +8,11 @@ import {
   ChevronRight,
   type LucideIcon,
 } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import type { WireProject, WireSessionSummary } from "@rukie/shared";
 import { useAppText } from "../lib/i18n";
 import * as Menu from "./ui/dropdown-menu";
-import { ContextMenuItem } from "./motion/context-menu";
+import { ContextMenuItem, ContextMenuSeparator } from "./motion/context-menu";
 
 interface SessionAction {
   id: string;
@@ -21,7 +21,7 @@ interface SessionAction {
   disabled: boolean;
   destructive: boolean;
   onSelect?: () => void;
-  targets?: { id: string; name: string; onSelect: () => void }[];
+  targets?: { id: string; name: string; onSelect: () => void; separator?: boolean }[];
 }
 
 /** All Session menu entries are derived here; presentation chooses its menu primitive. */
@@ -33,7 +33,8 @@ export function sessionActions(
   onArchive: (id: string) => void,
   onDelete: (session: WireSessionSummary) => void,
   projects: WireProject[],
-  onMove: (session: WireSessionSummary, project: WireProject) => void,
+  onMove: (session: WireSessionSummary, project: WireProject | null) => void,
+  onChooseFolder: (session: WireSessionSummary) => void,
 ): SessionAction[] {
   const targets = projects.filter((project) => project.id !== session.projectId);
   return [
@@ -57,13 +58,24 @@ export function sessionActions(
       id: "move",
       label: "app.move-project",
       icon: FolderInput,
-      disabled: Boolean(session.running || session.waitingPermission || !targets.length),
+      disabled: Boolean(session.running || session.waitingPermission),
       destructive: false,
-      targets: targets.map((project) => ({
-        id: project.id,
-        name: project.name,
-        onSelect: () => onMove(session, project),
-      })),
+      targets: [
+        ...targets.map((project) => ({
+          id: project.id,
+          name: project.name,
+          onSelect: () => onMove(session, project),
+        })),
+        ...(session.projectId
+          ? [{ id: "move-out", name: "app.move-out", onSelect: () => onMove(session, null) }]
+          : []),
+        {
+          id: "choose-folder",
+          name: "app.choose-folder",
+          separator: true,
+          onSelect: () => onChooseFolder(session),
+        },
+      ],
     },
     {
       id: "archive",
@@ -96,13 +108,20 @@ export function SessionDropdownItems({ actions }: { actions: SessionAction[] }) 
         <Menu.DropdownMenuSubContent>
           <Menu.DropdownMenuGroup>
             {action.targets.map((target) => (
-              <Menu.DropdownMenuItem
-                key={target.id}
-                disabled={action.disabled}
-                onSelect={target.onSelect}
-              >
-                {target.name}
-              </Menu.DropdownMenuItem>
+              <Fragment key={target.id}>
+                {target.separator ? <Menu.DropdownMenuSeparator /> : null}
+                <Menu.DropdownMenuItem
+                  key={target.id}
+                  disabled={action.disabled}
+                  onSelect={target.onSelect}
+                >
+                  {target.id === "move-out"
+                    ? t("app.move-out")
+                    : target.id === "choose-folder"
+                      ? t("app.choose-folder")
+                      : target.name}
+                </Menu.DropdownMenuItem>
+              </Fragment>
             ))}
           </Menu.DropdownMenuGroup>
         </Menu.DropdownMenuSubContent>
@@ -178,14 +197,27 @@ function SessionContextTargets({ action }: { action: SessionAction }) {
       {open ? (
         <div ref={group} role="menu" aria-label={t(action.label)} className="pl-4">
           {action.targets?.map((target) => (
-            <ContextMenuItem
-              key={target.id}
-              disabled={action.disabled}
-              onSelect={target.onSelect}
-              textValue={target.name}
-            >
-              {target.name}
-            </ContextMenuItem>
+            <Fragment key={target.id}>
+              {target.separator ? <ContextMenuSeparator /> : null}
+              <ContextMenuItem
+                key={target.id}
+                disabled={action.disabled}
+                onSelect={target.onSelect}
+                textValue={
+                  target.id === "move-out"
+                    ? t("app.move-out")
+                    : target.id === "choose-folder"
+                      ? t("app.choose-folder")
+                      : target.name
+                }
+              >
+                {target.id === "move-out"
+                  ? t("app.move-out")
+                  : target.id === "choose-folder"
+                    ? t("app.choose-folder")
+                    : target.name}
+              </ContextMenuItem>
+            </Fragment>
           ))}
         </div>
       ) : null}

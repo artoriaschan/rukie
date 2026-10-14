@@ -4,7 +4,7 @@
 
 ## 使用
 
-`App` 接收 `host` 与 `locale`（`zh` / `en`）。Electron preload 注入 `window.rukieHost` 的 `getConnection`、`pickProjectFolder` 和模型服务能力；浏览器开发入口从 URL fragment 读取 `port` 与 `token`，立即从 history 清除 fragment，通过 `getConnection` 连接 sidecar，`pickProjectFolder` 经 `host.pickFolder` wire 命令选择一个或多个目录，返回 `string[] | null`，取消返回 `null`。握手信息保存在当前标签页的 sessionStorage 中，完整刷新或 Vite 整页重载后复用；新的握手 fragment 会替换旧值，无效 fragment 清除缓存。关闭标签页后，或 sidecar 重启后，需要重新打开启动命令打印的完整地址。存储不可用时当前页面仍可连接，但刷新需重新附加握手 fragment。macOS 浏览器使用系统选择文件夹对话框；取消时保留创建表单；平台返回 `unsupported` 时显示本地化提示并保留可重试的文件夹入口，不提供手动路径输入。Electron 保留窗口内的文件夹对话框。两种入口的 Finder 与终端操作均通过 app 的 wire client 调用 sidecar，受已登记项目根与 workspace 的路径范围限制。浏览器 host 的 `bindClient` 由 app 在执行宿主操作前绑定唯一连接，host 不另开或关闭连接，避免抢占 app 的订阅。
+`App` 接收 `host` 与 `locale`（`zh` / `en`）。Electron preload 注入 `window.rukieHost` 的 `getConnection`、`pickProjectFolder` 和模型服务能力；浏览器开发入口从 URL fragment 读取 `port` 与 `token`，立即从 history 清除 fragment，通过 `getConnection` 连接 sidecar，`pickProjectFolder(multiple?)` 经 `host.pickFolder { multiple? }` wire 命令选择目录，默认支持多选，`false` 限定单个目录，返回 `string[] | null`，取消返回 `null`。握手信息保存在当前标签页的 sessionStorage 中，完整刷新或 Vite 整页重载后复用；新的握手 fragment 会替换旧值，无效 fragment 清除缓存。关闭标签页后，或 sidecar 重启后，需要重新打开启动命令打印的完整地址。存储不可用时当前页面仍可连接，但刷新需重新附加握手 fragment。macOS 浏览器使用系统选择文件夹对话框；取消时保留创建表单；平台返回 `unsupported` 时显示本地化提示并保留可重试的文件夹入口，不提供手动路径输入。Electron 保留窗口内的文件夹对话框。两种入口的 Finder 与终端操作均通过 app 的 wire client 调用 sidecar，受已登记项目根与 workspace 的路径范围限制。浏览器 host 的 `bindClient` 由 app 在执行宿主操作前绑定唯一连接，host 不另开或关闭连接，避免抢占 app 的订阅。
 
 从仓库根运行 `bun run dev:desktop:web`，启动当前源码 sidecar 与固定在 `http://localhost:5173/` 的 Vite dev server，并打印带握手 fragment 的完整地址；`--open` 用默认浏览器打开。UI 源码修改由 HMR 更新，sidecar 源码修改需重启命令。端口占用、握手超时或任一服务退出时命令失败并停止另一个服务；Ctrl+C 或 SIGTERM 等待 Vite、sidecar 顺序退出后释放锁。端口和 token 来自 sidecar stdout 握手，不放进 query、文件或设置。入口跟随系统主题并按浏览器语言选择 zh/en。数据与配置隔离、`--reset` 及锁说明见 [desktop README](../desktop/README.md#浏览器开发)。
 
@@ -26,7 +26,7 @@ Project 按 server 提供的 Session 摘要 `projectId` 分组；该值按 cwd �
 
 “移除本地项目”经确认后发送 `project.remove { projectId }`，只移除登记，保留文件、Session、Transcript、置顶和归档状态；取消确认回到草稿。项目下有执行中、等待 Interaction 或被其他执行 owner 占用的 Session 时禁用移除，服务端 `session_busy` 拒绝也在确认框显示原因。移除 Project 或其中目录后，原 cwd 的 Session 回到“对话”，当前打开的 Session 与 Transcript 保持打开，后续执行配置由 server 重新派生。提交期间禁止重复操作和关闭。弹窗使用 [DESIGN.md](../../DESIGN.md#project-directories-and-trust) 的局部尺寸与颜色，长名称保留完整可访问标题，窄屏仍显示关闭与底栏。
 
-会话行右键、行内更多与标题栏菜单共用“移动到项目”，目标排除当前所属 Project，执行中或等待确认时禁用。未信任目标先确认并完成 `project.trust`，再发送 `session.move`；取消不移动。成功后按新的 `projectId` 分组，当前 Session 重新订阅，失败显示本地化错误并保留当前对话。Session Move 的持久化和执行边界见 [server README](../server/README.md#行为与限制)。
+会话行右键、行内更多与标题栏菜单共用“移动到项目”，依次列出其他 Project、项目会话专有的“移出项目”、分隔线和“选择文件夹…”，执行中或等待确认时禁用。移出发送 `session.move { projectId: null }`，会话获得新的空对话目录。选择文件夹调用单目录 host 选择，经信任确认后执行 `project.create`，主目录相同时复用返回的 Project，再发送 `session.move`；目录冲突显示本地化错误，取消选择或信任不创建不移动，移动失败保留已经创建的 Project。未信任目标先确认并完成 `project.trust`，再发送 `session.move`；取消不移动。成功后按新的 `projectId` 分组，当前 Session 重新订阅，失败显示本地化错误并保留当前对话。Session Move 的持久化和执行边界见 [server README](../server/README.md#行为与限制)。
 
 搜索聊天浮层沿用 CommandPalette，聊天结果列出全部未归档 Session，独立按更新时间降序排列，匹配 Session Title 和 Project 名称；右侧仅显示所属 Project，执行中的 Session 显示 Running 图标。结果在 A13 ScrollArea 内滚动，快捷操作固定在其下方，提供新聊天与打开文件夹。方向键跨两个分组移动，Enter 执行，Esc 或点击背景关闭并恢复搜索入口焦点；打开文件夹沿用添加项目流程，并在搜索释放焦点后交给文件夹选择器或项目创建表单。浮层几何与直接切换的减少动态效果规则见 [DESIGN.md](../../DESIGN.md#search-overlay)。
 
