@@ -1,0 +1,23 @@
+DESIGN.md
+  s_0ed9cd8eba432e::t_4f173c8fffc01e 11-13,40-42,48,72-76,93,96-98,112,160,166-167
+  s_0ed9cd8eba432e::t_7799a809bb7205 94,186,231,234,236,250,299-302,317-320,360,367,371
+  s_0ed9cd8eba432e::t_1e73d7e91316b5 173-178,180-182
+  s_0ed9cd8eba432e::t_56e3b6fdbc0b6e 554,570
+  s_0ed9cd8eba432e::t_3a7e91bb260d0c 46-47,49-71,77-92,179,209,215-229,303-316,333-334,358-359,361-365
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "f1c118de707983f88ecf8e6df31cb6f3c56c9b53",
+  "prompts": {},
+  "sessions": {
+    "s_0ed9cd8eba432e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a138a9-fed3-7e92-bc38-1b2e53ed718c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
