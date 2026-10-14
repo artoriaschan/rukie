@@ -1815,12 +1815,18 @@ test("an application-root Session held by another owner permits only a read-only
 test("permission epochs survive takeover and settle once, with session rules applying to later calls", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-permission-wire-"));
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("write", { path: "first.txt", content: "one" }), {
-      stopReason: "toolUse",
-    }),
-    fauxAssistantMessage(fauxToolCall("write", { path: "second.txt", content: "two" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: join(homeDir, "first.txt"), content: "one" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: join(homeDir, "second.txt"), content: "two" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const server = await startServer({
@@ -2121,7 +2127,7 @@ test("SIGTERM awaits Session shutdown and kills running Background Job process g
 test("aborting a permission request broadcasts settlement and rejects its late epoch", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-cancel-permission-wire-"));
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("write", { path: "file", content: "one" }), {
+    fauxAssistantMessage(fauxToolCall("write", { path: join(homeDir, "file"), content: "one" }), {
       stopReason: "toolUse",
     }),
   ]);
@@ -2153,7 +2159,7 @@ test("aborting a permission request broadcasts settlement and rejects its late e
 test("Run, pending Interaction and Queued Input prevent idle reclamation", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-active-idle-wire-"));
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("write", { path: "file", content: "one" }), {
+    fauxAssistantMessage(fauxToolCall("write", { path: join(homeDir, "file"), content: "one" }), {
       stopReason: "toolUse",
     }),
   ]);
@@ -2328,8 +2334,8 @@ test("a session grant settles other pending permission cards covered by its rule
   const fake = fakeModel([
     fauxAssistantMessage(
       [
-        fauxToolCall("write", { path: "first", content: "one" }, { id: "first" }),
-        fauxToolCall("write", { path: "second", content: "two" }, { id: "second" }),
+        fauxToolCall("write", { path: join(homeDir, "first"), content: "one" }, { id: "first" }),
+        fauxToolCall("write", { path: join(homeDir, "second"), content: "two" }, { id: "second" }),
       ],
       { stopReason: "toolUse" },
     ),
@@ -2399,9 +2405,12 @@ test("unsubscribed Sessions publish permission creation, reconnect state and can
     await first.next((m) => summary(m, sessionId, false));
     first.messages.length = 0;
     reply.resolve(
-      fauxAssistantMessage(fauxToolCall("write", { path: "first.txt", content: "one" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: join(homeDir, "first.txt"), content: "one" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
     );
     await first.next((m) => m.type === "interaction_requested");
     await first.next((m) => summary(m, sessionId, true));
@@ -3018,9 +3027,12 @@ test("archive refuses running and waiting Sessions but accepts a subscribed idle
       async () => {
         entered.resolve();
         await proceed.promise;
-        return fauxAssistantMessage(fauxToolCall("write", { path: "file", content: "saved" }), {
-          stopReason: "toolUse",
-        });
+        return fauxAssistantMessage(
+          fauxToolCall("write", { path: join(homeDir, "file"), content: "saved" }),
+          {
+            stopReason: "toolUse",
+          },
+        );
       },
       fauxAssistantMessage("done"),
     ]);
@@ -3807,10 +3819,13 @@ test("project.remove rejects running and waiting Sessions in any directory and d
         entered.resolve();
         await proceed.promise;
         return fauxAssistantMessage(
-          fauxToolCall("write", { path: "kept.txt", content: "kept content" }),
+          fauxToolCall("write", { path: join(homeDir, "approval.txt"), content: "approved" }),
           { stopReason: "toolUse" },
         );
       },
+      fauxAssistantMessage(fauxToolCall("write", { path: "kept.txt", content: "kept content" }), {
+        stopReason: "toolUse",
+      }),
       fauxAssistantMessage("done"),
     ]);
     const server = await owner.acquire(
