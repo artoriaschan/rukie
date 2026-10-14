@@ -85,6 +85,10 @@
   --workflow-trace: var(--border-strong);
   --workflow-trace-strong: var(--muted-foreground);
   --toast: var(--popover);
+  --path-tooltip: #161616;
+  --path-tooltip-foreground: #ffffff;
+  --destructive-soft: #fde8e8;
+  --destructive-soft-foreground: #e03131;
   --tooltip: var(--popover);
   --tooltip-foreground: var(--foreground);
   --tooltip-tag: var(--muted);
@@ -143,6 +147,10 @@
   --interaction-confirmation-foreground: #7ee787;
   --find-highlight: #3b2300;
   --find-highlight-active: #5a3d00;
+  --path-tooltip: #3a3a3a;
+  --path-tooltip-foreground: #f5f5f5;
+  --destructive-soft: #ff5c5c26;
+  --destructive-soft-foreground: #ff7a7a;
   --background: #0d1117;
   --foreground: #f0f6fc;
   --card: #151b23;
@@ -199,6 +207,10 @@
   --color-workflow-trace: var(--workflow-trace);
   --color-workflow-trace-strong: var(--workflow-trace-strong);
   --color-toast: var(--toast);
+  --color-path-tooltip: var(--path-tooltip);
+  --color-path-tooltip-foreground: var(--path-tooltip-foreground);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-destructive-soft-foreground: var(--destructive-soft-foreground);
   --color-tooltip: var(--tooltip);
   --color-tooltip-foreground: var(--tooltip-foreground);
   --color-tooltip-tag: var(--tooltip-tag);
@@ -407,6 +419,10 @@
     --interaction-confirmation-foreground: #7ee787;
     --find-highlight: #3b2300;
     --find-highlight-active: #5a3d00;
+    --path-tooltip: #3a3a3a;
+    --path-tooltip-foreground: #f5f5f5;
+    --destructive-soft: #ff5c5c26;
+    --destructive-soft-foreground: #ff7a7a;
     --background: #0d1117;
     --foreground: #f0f6fc;
     --card: #151b23;
@@ -544,4 +560,27 @@
 /* C02 keeps long Session names readable until their trailing fade. */
 .session-row-title {
   mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
+}
+
+/* C27–C31 own this chrome without changing other MorphingModal consumers. */
+.project-dialog > div {
+  padding: 20px 24px;
+}
+.project-dialog button > svg {
+  width: 16px;
+  height: 16px;
+}
+.project-directory-list {
+  min-height: 0;
+  max-height: 240px;
+  flex: 0 1 auto;
+}
+.project-directory-list [data-slot="scroll-area-viewport"] {
+  max-height: inherit;
+}
+@media (max-width: 640px) {
+  .project-dialog > div {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
 }

@@ -40,6 +40,8 @@ export interface TooltipProps {
   side?: Side;
   /** Delay before showing (ms). Default 120. */
   delay?: number;
+  /** Hints inside a modal must render above that modal; ordinary hints keep the default layer. */
+  layer?: "hint" | "modalHint";
   className?: string;
   /** Classes for the outer wrapper span. Use to fix baseline / fill parent. */
   wrapperClassName?: string;
@@ -60,6 +62,7 @@ export function Tooltip({
   anchorRef: externalAnchorRef,
   anchorPoint,
   followCursor = false,
+  layer = "hint",
   open: controlledOpen,
   onOpenChange,
   id: providedId,
@@ -210,6 +213,7 @@ export function Tooltip({
               {open ? (
                 <TooltipPositioner
                   key="tooltip"
+                  layer={layer}
                   anchorRef={anchorRef}
                   floatingRef={floatingRef}
                   anchorPoint={anchorPoint}

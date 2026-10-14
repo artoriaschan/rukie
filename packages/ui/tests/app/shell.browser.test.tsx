@@ -244,12 +244,16 @@ test("composer selects reasoning from native capabilities, keeps IME input and u
   }
 });
 
-test("narrow layout retains new-chat shortcuts, manual project entry and final-disconnect Retry", async () => {
+test("narrow layout retains new-chat shortcuts, selected project folders and final-disconnect Retry", async () => {
   await page.viewport(420, 800);
   const connection = await commands.startWire();
   const screen = await render(
     <App
-      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      host={{
+        getConnection: async () => connection,
+        modelServices: modelServicesFixture,
+        pickProjectFolder: async () => ["/selected/project"],
+      }}
       locale="en"
     />,
   );
@@ -259,7 +263,9 @@ test("narrow layout retains new-chat shortcuts, manual project entry and final-d
       .element(screen.getByRole("button", { name: "New chat", exact: true }))
       .toBeVisible();
     await screen.getByRole("button", { name: "Add project", exact: true }).click();
-    await screen.getByRole("textbox", { name: "Project folder path" }).fill("/manual/project");
+    await screen
+      .getByRole("button", { name: "Add folders Rukie can read and edit", exact: true })
+      .click();
     await screen.getByRole("button", { name: "Create project", exact: true }).click();
     await screen.getByRole("button", { name: "Trust and create", exact: true }).click();
     await expect
@@ -268,7 +274,7 @@ test("narrow layout retains new-chat shortcuts, manual project entry and final-d
           (c: { type: string }) => c.type === "project.create",
         ),
       )
-      .toMatchObject({ directories: ["/manual/project"], trusted: true });
+      .toMatchObject({ directories: ["/selected/project"], trusted: true });
     await userEvent.keyboard("{Control>}1{/Control}");
     await expect
       .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))

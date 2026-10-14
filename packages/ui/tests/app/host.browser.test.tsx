@@ -73,7 +73,7 @@ test("a new launch replaces the cached handshake and malformed fragments clear i
 });
 
 for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
-  test(`browser folder ${outcome} uses the app connection and falls back to manual entry`, async () => {
+  test(`browser folder ${outcome} uses the app connection and keeps the folder entry retryable`, async () => {
     await page.viewport(1280, 900);
     const connection = await commands.startWire();
     const url = `http://127.0.0.1:${connection.port}`;
@@ -96,8 +96,29 @@ for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
       screen = await render(<App host={host} locale="en" />);
       await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
       await screen.getByRole("button", { name: "Add project", exact: true }).click();
+      const entry = screen.getByRole("button", {
+        name: "Add folders Rukie can read and edit",
+        exact: true,
+      });
+      await entry.click();
+      await expect
+        .element(screen.getByRole("textbox", { name: "Project folder path" }))
+        .not.toBeInTheDocument();
       if (outcome !== "selected") {
-        await screen.getByRole("textbox", { name: "Project folder path" }).fill("/manual/project");
+        await expect.element(entry).toBeEnabled();
+        await expect
+          .element(screen.getByRole("button", { name: "Create project", exact: true }))
+          .toBeDisabled();
+        if (outcome === "unsupported")
+          await expect
+            .element(screen.getByRole("alert"))
+            .toHaveTextContent("This action is unavailable on this platform.");
+        else await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
+        await fetch(`${url}/folder`, {
+          method: "POST",
+          body: JSON.stringify(["/retried/project"]),
+        });
+        await entry.click();
       }
       await screen.getByRole("button", { name: "Create project", exact: true }).click();
       await screen.getByRole("button", { name: "Trust and create", exact: true }).click();
@@ -109,7 +130,7 @@ for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
         )
         .toMatchObject([
           {
-            directories: [outcome === "selected" ? "/chosen/project" : "/manual/project"],
+            directories: [outcome === "selected" ? "/chosen/project" : "/retried/project"],
             trusted: true,
           },
         ]);
