@@ -82,7 +82,9 @@ test.each(["\x1b", "\x03"])(
 );
 
 test("questions and permission approvals share one FIFO; session grants skip matching commands", async () => {
-  const app = await start(["mixed calls"]);
+  const app = await start(["mixed calls"], {
+    session: { settings: { permissions: { ask: ["write"] } } },
+  });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools([

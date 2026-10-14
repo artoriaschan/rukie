@@ -246,7 +246,7 @@ test.each([
         : {};
   const { server, ...dirs } = await setup(settings, {
     toolCalls: [
-      { name: "write", arguments: { path: "new.txt", content: "written" } },
+      { name: "write", arguments: { path: "../new.txt", content: "written" } },
       {
         name: "bash",
         arguments: { command: "printf executed > bash-ran", description: "Run test command" },
@@ -273,7 +273,7 @@ test.each([
   });
   expect(result.exitCode).toBe(0);
   const denied = ["default", "ask", "auto-review", "override"].includes(mode);
-  expect(await Bun.file(join(dirs.cwd, "new.txt")).exists()).toBe(!denied);
+  expect(await Bun.file(join(dirs.cwd, "../new.txt")).exists()).toBe(!denied);
   expect(await Bun.file(join(dirs.cwd, "bash-ran")).exists()).toBe(!denied);
   const events = parseEvents(result.stdout);
   expect(events.filter((event) => event.type === "permission_denied")).toHaveLength(denied ? 2 : 0);
@@ -298,7 +298,7 @@ test.each([
     const { server, ...dirs } = await setup(
       {},
       {
-        toolCalls: [{ name: "write", arguments: { path: "reviewed.txt", content: "safe" } }],
+        toolCalls: [{ name: "write", arguments: { path: "../reviewed.txt", content: "safe" } }],
         reviewReply,
       },
     );
@@ -307,7 +307,7 @@ test.each([
       { ...dirs, key: "sk-test" },
     );
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
-    expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(allowed);
+    expect(await Bun.file(join(dirs.cwd, "../reviewed.txt")).exists()).toBe(allowed);
     const events = parseEvents(result.stdout);
     expect(events.filter((event) => event.type === "permission_review")).toMatchObject([
       { phase: "start", toolCallId: "call-0", toolName: "write" },
@@ -536,7 +536,11 @@ test("--goal denies headless interactions and still reaches completion", async (
     {},
     {
       responses: [
-        { toolCalls: [{ name: "write", arguments: { path: "forbidden.txt", content: "denied" } }] },
+        {
+          toolCalls: [
+            { name: "write", arguments: { path: "../forbidden.txt", content: "denied" } },
+          ],
+        },
         { toolCalls: [{ name: "update_goal", arguments: { action: "complete" } }] },
         "denial handled",
       ],
@@ -554,7 +558,7 @@ test("--goal denies headless interactions and still reaches completion", async (
   expect(
     events.some((event) => event.type === "permission_denied" && event.toolName === "write"),
   ).toBe(true);
-  expect(await Bun.file(join(dirs.cwd, "forbidden.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.cwd, "../forbidden.txt")).exists()).toBe(false);
   expect(JSON.stringify(server.requests[1]!.body.messages)).toContain("Tool not authorized");
 });
 

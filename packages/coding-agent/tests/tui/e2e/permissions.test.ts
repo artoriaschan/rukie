@@ -474,7 +474,9 @@ test("session allow remembers only this command across Runs and leaves settings 
 });
 
 test("concurrent questions are answered individually and dialog keys do not edit the draft", async () => {
-  const app = await start(["two calls"]);
+  const app = await start(["two calls"], {
+    session: { settings: { permissions: { ask: ["write"] } } },
+  });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.stdin.write("next draft");
@@ -585,7 +587,9 @@ test("session command grant permits subsequent matching calls", async () => {
 });
 
 test("session command grant permits matching calls while another tool keeps waiting", async () => {
-  const app = await start(["mixed concurrent calls"]);
+  const app = await start(["mixed concurrent calls"], {
+    session: { settings: { permissions: { ask: ["write"] } } },
+  });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools([
