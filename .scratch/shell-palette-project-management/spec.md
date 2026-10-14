@@ -180,13 +180,14 @@ Project 创建后无法再管理：不能改名、不能增删目录、不能从
 
 ## ADR Coverage
 
-| 决定或修改                                                                 | 归属                                                                                                                                               | 理由                                                                                              |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Project 名称可编辑；目录增删与主目录切换在一个命令中提交                   | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)（proposed，交付前确认）                                                     | ADR-0041 写明“切换主目录不改变 Project 名称”且只支持创建；编辑改变了这条既有取舍                  |
-| 已信任 Project 新增目录必须显式确认（`trusted: true`），否则服务端拒绝     | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md) | 信任仍是精确目录集合；服务端强制确认，与创建一致，不允许 UI 之外的信任提升                        |
-| 移除 Project 只删除登记；会话回到“对话”，按无项目信任重开                  | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)    | 组织信息与 Session 存储分离；不删除文件或 Transcript，信任在下一次空闲执行时随登记消失            |
-| 编辑后已打开会话在空闲时重开以派生新的附加目录与信任                       | 沿用 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md) 与 [ADR-0039](../../docs/adr/0039-session-additional-directories.md)        | 复用已有的信任更新重开机制，不中断活跃 Run，附加目录仍由前端每次打开时提供                        |
-| 三栏底色、工作区阴影、项目弹窗、目录行、详情卡、路径提示与柔和 destructive | 无需 ADR                                                                                                                                           | 局部视觉与交互，由 DESIGN.md 与 rukie.pen 维护；使用已安装 primitives，不改变外部持久化或执行合同 |
+| 决定或修改                                                                 | 归属                                                                                                                                               | 理由                                                                                                  |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Project 名称可编辑；目录增删与主目录切换在一个命令中提交                   | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)（proposed，交付前确认）                                                     | ADR-0041 写明“切换主目录不改变 Project 名称”且只支持创建；编辑改变了这条既有取舍                      |
+| 已信任 Project 新增目录必须显式确认（`trusted: true`），否则服务端拒绝     | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md) | 信任仍是精确目录集合；服务端强制确认，与创建一致，不允许 UI 之外的信任提升                            |
+| 移除 Project 只删除登记；会话回到“对话”，按无项目信任重开                  | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)    | 组织信息与 Session 存储分离；不删除文件或 Transcript，信任在下一次空闲执行时随登记消失                |
+| 编辑后已打开会话在空闲时重开以派生新的附加目录与信任                       | 沿用 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md) 与 [ADR-0039](../../docs/adr/0039-session-additional-directories.md)        | 复用已有的信任更新重开机制，不中断活跃 Run，附加目录仍由前端每次打开时提供                            |
+| 详情卡按 sidecar 实际配置的家目录身份缩写路径，复用现有组织信息事件        | 更新 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md)                                                                       | `sessions_changed.homeDir` 是仅供展示的元数据；不增加宿主 API，不改变精确目录归属或信任，不猜测家目录 |
+| 三栏底色、工作区阴影、项目弹窗、目录行、详情卡、路径提示与柔和 destructive | 无需 ADR                                                                                                                                           | 局部视觉与交互，由 DESIGN.md 与 rukie.pen 维护；使用已安装 primitives，不改变外部持久化或执行合同     |
 
 ## Further Notes
 

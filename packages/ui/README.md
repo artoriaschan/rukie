@@ -63,3 +63,5 @@ Transcript 呈现按用户输入分组（`PromptGroup`），组内保留多次 T
 The conversation Plus opens the Pencil C09 attachment menu and keeps image picking, paste and drop on their existing path. Context details use the Pencil C08 usage/legend layout with the current System, Messages and Tools report estimates; displayed percentages divide by used tokens, while the capacity bar divides by the model window. Opening context and compaction count remain separate facts. Unsupported plugin actions and finer message category totals are not fabricated.
 
 供应商表单自动保存：Base URL 和 API Key 停止输入 500ms 后提交，切换服务、离开设置或卸载立即提交待保存输入；服务开关、协议和模型操作立即提交。请求串行执行，保存结果不覆盖后续编辑，失败保留输入并显示安全错误提示。表单没有保存与取消按钮；重命名和模型编辑在确认后提交，取消或关闭不提交。服务开关独立控制 `enabled`，不改变模型自身开关。
+
+侧栏 Project 行以当前 Session cwd 的精确目录归属显示选中背景；会话数排除归档并包含置顶。悬停 300ms 或键盘聚焦打开受控 beUI 详情卡，卡片以行背景矩形右侧 4px、顶边对齐锚定，按视口夹取且逃逸滚动裁切；指针通道保留该间隙，离开行与卡片 150ms 后关闭。ArrowRight 从项目行进入卡片操作；图钉临时固定详情，其他项目的悬停或聚焦不替换它，再次切换图钉、Escape 或外部点击关闭。编辑入口复用 C29；新聊天、设置及其他弹窗暂停详情卡。App 拥有打开与固定状态，可由后续菜单互斥控制。完整目录路径只按已校验的 `sessions_changed.homeDir` 家目录身份及分隔符边界缩写为 `~`；未收到元数据或不属于家目录时保持完整路径。

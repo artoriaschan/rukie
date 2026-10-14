@@ -25,6 +25,7 @@ test("search lists every unarchived chat in updated order and matches title or P
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type: "sessions_changed",
+        homeDir: "/fixture-home",
         sessions: Array.from({ length: 12 }, (_, index) => ({
           id: `chat-${index}`,
           title: `Chat ${index}`,
@@ -167,6 +168,7 @@ test("search is centered, clamps narrow viewports and keeps shortcuts outside it
       method: "POST",
       body: JSON.stringify({
         type: "sessions_changed",
+        homeDir: "/fixture-home",
         sessions: Array.from({ length: 20 }, (_, index) => ({
           id: `chat-${index}`,
           title: `Chat ${index} ${"long title ".repeat(8)}`,

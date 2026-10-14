@@ -1,10 +1,30 @@
 import { expect, test } from "vitest";
 import { createDesktopStore, recentSessions } from "../../src/store";
 
+test("registry presentation accepts authoritative home and rejects malformed home metadata", () => {
+  const store = createDesktopStore();
+  const message = {
+    type: "sessions_changed",
+    homeDir: "/custom/canonical-home",
+    sessions: [],
+    projects: [],
+    pinned: [],
+    archived: [],
+    preferences: {},
+  };
+  store.receive(message);
+  expect(store.getState()).toMatchObject({ homeDir: "/custom/canonical-home" });
+  for (const homeDir of [undefined, null, 42, ""]) {
+    store.receive({ ...message, homeDir, preferences: { showPinned: false } });
+    expect(store.getState()).toMatchObject({ homeDir: "/custom/canonical-home", preferences: {} });
+  }
+});
+
 test("registry snapshots preserve pin membership and selected Session sort ordering", () => {
   const store = createDesktopStore();
   store.receive({
     type: "sessions_changed",
+    homeDir: "/fixture-home",
     sessions: [
       {
         id: "a",
@@ -148,7 +168,14 @@ test("model catalogs reject malformed capabilities at the wire boundary", () => 
 test("malformed wire envelopes do not alter usable registry or context state", () => {
   const store = createDesktopStore();
   for (const message of [
-    { type: "sessions_changed", sessions: null, projects: [], pinned: [], preferences: {} },
+    {
+      type: "sessions_changed",
+      homeDir: "/fixture-home",
+      sessions: null,
+      projects: [],
+      pinned: [],
+      preferences: {},
+    },
     {
       type: "session_state",
       sessionId: "a",
@@ -300,6 +327,7 @@ test("archive envelopes invalidate cached history and reject invalid archived id
   const store = createDesktopStore();
   const registry = {
     type: "sessions_changed",
+    homeDir: "/fixture-home",
     sessions: [],
     projects: [],
     pinned: [],
@@ -333,6 +361,7 @@ test("multi-directory Projects parse complete state and reject missing membershi
   };
   const message = {
     type: "sessions_changed",
+    homeDir: "/fixture-home",
     projects: [project],
     sessions: [],
     pinned: [],
@@ -373,6 +402,7 @@ test("Project edit and removal snapshots preserve Session membership facts, pin 
   };
   const message = {
     type: "sessions_changed",
+    homeDir: "/fixture-home",
     projects: [project],
     sessions: [session],
     pinned: ["s"],

@@ -108,6 +108,7 @@ test.each([false, true])(
         method: "POST",
         body: JSON.stringify({
           type: "sessions_changed",
+          homeDir: "/fixture-home",
           projects: [
             {
               id: "project",
@@ -192,6 +193,7 @@ test("any Project directory groups and names history, and switching primary affe
       method: "POST",
       body: JSON.stringify({
         type: "sessions_changed",
+        homeDir: "/fixture-home",
         projects: [
           {
             id: "project",

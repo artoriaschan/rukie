@@ -120,6 +120,8 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [pickingFolder, setPickingFolder] = useState(false);
   const [directories, setDirectories] = useState<string[]>([]);
   const [primary, setPrimary] = useState("");
+  const [detailEpoch, setDetailEpoch] = useState(0);
+  const [detailProject, setDetailProject] = useState<{ id: string; pinned: boolean } | null>(null);
   const [editingProject, setEditingProject] = useState<WireProject | null>(null);
   const [trust, setTrust] = useState<{
     project: Pick<WireProject, "directories" | "primary">;
@@ -152,6 +154,18 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [drafts, setDrafts] = useState<Record<string, InputDraft>>({});
   const newDraftSequence = useRef(0);
   const [newDraftKey, setNewDraftKey] = useState("new-0");
+  const detailsDisabled =
+    settingsOpen || search || !!deleting || !!renaming || pathOpen || !!editingProject || !!trust;
+  useEffect(() => {
+    setDetailProject(null);
+    // Invalidate pending hover intent even when no card has opened yet.
+    setDetailEpoch((previous) => previous + 1);
+  }, [detailsDisabled, state.selected, state.target, newDraftKey]);
+  useEffect(() => {
+    setDetailProject((previous) =>
+      previous && !state.projects.some((project) => project.id === previous.id) ? null : previous,
+    );
+  }, [state.projects]);
   const [navigation, setNavigation] = useState<{ entries: NavigationEntry[]; index: number }>({
     entries: [{ settings: false, session: null, target: null, draft: "new-0" }],
     index: 0,
@@ -959,6 +973,27 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               <div className="absolute inset-y-0 left-0 z-20 md:relative md:z-auto">
                 <Sidebar
                   recent={recent}
+                  homeDir={state.homeDir}
+                  detailProject={detailProject}
+                  detailEpoch={detailEpoch}
+                  detailsDisabled={detailsDisabled}
+                  onDetailProject={(id, open) =>
+                    setDetailProject((previous) =>
+                      open
+                        ? previous?.pinned
+                          ? previous
+                          : { id, pinned: false }
+                        : previous?.id === id
+                          ? null
+                          : previous,
+                    )
+                  }
+                  onDetailPin={(id, pinned) =>
+                    setDetailProject((previous) =>
+                      previous?.id === id ? { ...previous, pinned } : previous,
+                    )
+                  }
+                  onEditProject={setEditingProject}
                   projects={state.projects}
                   pinned={state.pinned}
                   archived={state.archived}

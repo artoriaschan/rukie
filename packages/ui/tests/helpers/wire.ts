@@ -11,7 +11,8 @@ let projects = [{id:"project",name:"Project",directories:["/project"],primary:"/
 const models = [{spec:"test/script",id:"script",name:"Script model",providerId:"test",providerName:"Test",input:["text","image"],reasoning:true,thinkingLevels:["off","low","high"],contextWindow:10000,custom:true,authenticated:true}];
 let mode="ask", thinking="off", busy=false, preferences={}, pinned=["one"], archived=[];
 const sessionState = id=>({type:"session_state",sessionId:id,permissionMode:mode,thinkingLevel:thinking,contextReport:{model:"test/script",window:10000,used:2500,categories:[{name:"system-prompt",tokens:500},{name:"system-tools",tokens:1000},{name:"messages",tokens:1000}],memoryFiles:[],mcpTools:[],skills:[],agentTypes:[]}});
-const changed = () => ({type:"sessions_changed",sessions,projects,pinned,archived,preferences});
+let homeDir="/fixture-home";
+const changed = () => ({type:"sessions_changed",homeDir,sessions,projects,pinned,archived,preferences});
 const snapshot = id => ({type:"snapshot",sessionId:id,messages:[],entries:[],tools:[],compactions:[],inbox:[],queuedInputs:[],agent:{},usage:{},background:[],toolStates:{},runSummaries:[],model:"test/script",planMode:false,permissionMode:"ask"});
 const server = Bun.serve({hostname:"127.0.0.1",port:0,fetch:async(req,server)=>{
 const url=new URL(req.url);
@@ -21,7 +22,7 @@ let value={};
 if(url.pathname==="/commands")value=commands;
 if(url.pathname==="/hold")hold=true;
 if(url.pathname==="/flush"){hold=false;for(const response of responses.reverse())response.ws.send(JSON.stringify(response.message));responses.length=0;}
-if(url.pathname==="/message"){const message=await req.json();if(message.type==="sessions_changed"){projects=message.projects;sessions=message.sessions;pinned=message.pinned;archived=message.archived;preferences=message.preferences;}for(const ws of sockets)ws.send(JSON.stringify(message));}
+if(url.pathname==="/message"){const message=await req.json();if(message.type==="sessions_changed"){homeDir=message.homeDir;projects=message.projects;sessions=message.sessions;pinned=message.pinned;archived=message.archived;preferences=message.preferences;}for(const ws of sockets)ws.send(JSON.stringify(message));}
 if(url.pathname==="/disconnect")for(const ws of sockets)ws.close(1000,"network");
 if(url.pathname==="/busy")busy=true;
 if(url.pathname==="/error")nextError=await req.json();

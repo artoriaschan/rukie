@@ -221,6 +221,8 @@ export type WireServerMessage<Event> =
   | { type: "interaction_settled"; sessionId: string; identity: WireInteractionIdentity }
   | {
       type: "sessions_changed";
+      /** Configured home identity (canonical when available), for frontend path presentation only. */
+      homeDir: string;
       /** Invalidate cached history; an archived selected Session also returns to new chat. */
       closedSessionId?: string;
       sessions: WireSessionSummary[];

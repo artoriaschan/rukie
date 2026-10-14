@@ -96,6 +96,7 @@ async function changeProjects(
     method: "POST",
     body: JSON.stringify({
       type: "sessions_changed",
+      homeDir: "/fixture-home",
       projects,
       sessions,
       pinned,

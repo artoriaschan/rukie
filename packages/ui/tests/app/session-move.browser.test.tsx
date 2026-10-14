@@ -106,6 +106,7 @@ const moveSession = {
 function changed(session = moveSession, projects = moveProjects) {
   return {
     type: "sessions_changed",
+    homeDir: "/fixture-home",
     sessions: [session],
     projects,
     pinned: [],
@@ -175,8 +176,7 @@ test("moving to an untrusted Project confirms first; cancel sends nothing and fa
           .length;
       })
       .toBe(2);
-    const targetGroup = screen.getByRole("button", { name: "Target", exact: true }).element()
-      .parentElement!.parentElement!;
+    const targetGroup = screen.getByRole("group", { name: "Target", exact: true }).element();
     expect(targetGroup.textContent).toContain("Fix compiler");
     // Trust succeeded even though moving failed; the retry now moves directly.
     await expect

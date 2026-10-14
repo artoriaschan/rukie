@@ -498,6 +498,7 @@ test("sidebar status follows fresh summaries across unselected permission waits 
     });
   const summary = (running: boolean, waitingPermission: boolean) => ({
     type: "sessions_changed",
+    homeDir: "/fixture-home",
     sessions: [
       {
         id: "one",
@@ -739,6 +740,7 @@ test("sidebar limits Projects and their Sessions independently and keeps categor
       .toBeVisible();
     const registry = {
       type: "sessions_changed",
+      homeDir: "/fixture-home",
       pinned: [],
       archived: [],
       preferences: {},
@@ -1008,6 +1010,7 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
       method: "POST",
       body: JSON.stringify({
         type: "sessions_changed",
+        homeDir: "/fixture-home",
         sessions: [
           {
             id: "one",
@@ -1358,6 +1361,7 @@ test("delete confirmation scrolls long titles while keeping title and actions vi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type: "sessions_changed",
+        homeDir: "/fixture-home",
         sessions: [
           {
             id: "long",

@@ -322,6 +322,7 @@ test.each([1280, 420])(
         method: "POST",
         body: JSON.stringify({
           type: "sessions_changed",
+          homeDir: "/fixture-home",
           projects: [],
           pinned: [],
           archived: [],
@@ -372,6 +373,7 @@ test.each([1280, 420])(
         method: "POST",
         body: JSON.stringify({
           type: "sessions_changed",
+          homeDir: "/fixture-home",
           projects: [],
           pinned: [],
           archived: [],

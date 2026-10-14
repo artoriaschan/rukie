@@ -123,6 +123,7 @@ export async function startServer(options: ServerOptions) {
     const registry = await localDatabase.registry();
     // Legacy registry paths and Session cwd retain their spelling; ownership uses filesystem identity.
     // An unavailable registered directory still owns its stored path until it becomes resolvable.
+    const presentationHomeDir = await realpath(options.homeDir).catch(() => options.homeDir);
     const directoryIdentity = (path: string) => realpath(path).catch(() => path);
     const projectIdentities = () =>
       Promise.all(
@@ -597,6 +598,7 @@ export async function startServer(options: ServerOptions) {
         if (active && !shuttingDown)
           send(active, {
             type: "sessions_changed",
+            homeDir: presentationHomeDir,
             ...(closedSessionId ? { closedSessionId } : {}),
             sessions: committed,
             projects: registry.projects,

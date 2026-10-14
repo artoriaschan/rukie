@@ -19,6 +19,34 @@ import { startServer as startServerImpl, AppDatabase, type ServerOptions } from 
 const startServer = (options: Omit<ServerOptions, "dataRoot">) =>
   startServerImpl({ ...options, dataRoot: join(options.homeDir, "desktop-data") });
 
+test("initial and reconnect registry metadata present the canonical configured home", async () => {
+  const owner = ownResources();
+  try {
+    const root = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-home-presentation-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const canonical = join(root, "actual-home");
+    const homeDir = join(root, "configured-home");
+    await mkdir(canonical);
+    await symlink(canonical, homeDir);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const first = await connect(server, "app://rukie", owner);
+    expect(await first.next((message) => message.type === "sessions_changed")).toMatchObject({
+      homeDir: await realpath(canonical),
+    });
+    const second = await connect(server, "app://rukie", owner);
+    expect(await second.next((message) => message.type === "sessions_changed")).toMatchObject({
+      homeDir: await realpath(canonical),
+    });
+  } finally {
+    await owner.close();
+  }
+});
+
 test("startup catalog and history never unlock encrypted execution configuration", async () => {
   const owner = ownResources();
   try {
