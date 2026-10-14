@@ -1,0 +1,19 @@
+.scratch/shell-palette-project-management/spec.md
+  s_0ed9cd8eba432e::t_3fe3f131c86048 1,201-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "e1677d33e4e59a8956ddb5439f58ba6d3b875774",
+  "prompts": {},
+  "sessions": {
+    "s_0ed9cd8eba432e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a138a9-fed3-7e92-bc38-1b2e53ed718c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
