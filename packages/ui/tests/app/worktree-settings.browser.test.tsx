@@ -99,6 +99,12 @@ test.each([
     expect(getComputedStyle(confirm.element()).backgroundColor).toBe(background);
     expect(getComputedStyle(confirm.element()).color).toBe(foreground);
     expect(confirm.element().getBoundingClientRect().height).toBe(36);
+    expect(
+      dialog
+        .getByRole("button", { name: labels.cancel, exact: true })
+        .element()
+        .getBoundingClientRect().height,
+    ).toBe(32);
     expect(getComputedStyle(confirm.element()).cursor).toBe("pointer");
     await confirm.hover();
     const hover = rgba(getComputedStyle(confirm.element()).backgroundColor);

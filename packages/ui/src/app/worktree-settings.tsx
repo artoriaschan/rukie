@@ -203,14 +203,7 @@ export function WorktreeSettings({
               </p>
             ) : null}
             <div className="worktree-settings-dialog-footer">
-              <Button
-                ref={cancel}
-                autoFocus
-                variant="secondary"
-                size="sm"
-                disabled={pending}
-                onClick={close}
-              >
+              <Button ref={cancel} autoFocus variant="secondary" disabled={pending} onClick={close}>
                 {t("app.cancel")}
               </Button>
               <Button
