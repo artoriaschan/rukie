@@ -11,6 +11,17 @@ async function fixture(port: number, action: string, value: unknown) {
     body: JSON.stringify(value),
   });
 }
+
+function rgba(color: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const paint = canvas.getContext("2d");
+  if (!paint) throw new Error("Canvas color conversion unavailable");
+  paint.fillStyle = color;
+  paint.fillRect(0, 0, 1, 1);
+  return [...paint.getImageData(0, 0, 1, 1).data];
+}
+
 test.each([
   { locale: "en", width: 1280, dark: false },
   { locale: "zh", width: 420, dark: true },
@@ -82,6 +93,22 @@ test.each([
     await screen.getByRole("button", { name: labels.remove, exact: true }).click();
     const dialog = screen.getByRole("dialog", { name: labels.title, exact: true });
     await expect.element(dialog).toBeVisible();
+    const confirm = dialog.getByRole("button", { name: labels.remove, exact: true });
+    const background = dark ? "rgba(255, 92, 92, 0.15)" : "rgb(253, 232, 232)";
+    const foreground = dark ? "rgb(255, 122, 122)" : "rgb(207, 34, 46)";
+    expect(getComputedStyle(confirm.element()).backgroundColor).toBe(background);
+    expect(getComputedStyle(confirm.element()).color).toBe(foreground);
+    expect(confirm.element().getBoundingClientRect().height).toBe(36);
+    expect(getComputedStyle(confirm.element()).cursor).toBe("pointer");
+    await confirm.hover();
+    const hover = rgba(getComputedStyle(confirm.element()).backgroundColor);
+    const expectedHover = dark ? [255, 92, 92, 30] : [253, 232, 232, 204];
+    // Canvas premultiplies translucent RGB channels; permit its byte-rounding error.
+    hover.forEach((channel, index) =>
+      expect(Math.abs(channel - expectedHover[index]!)).toBeLessThanOrEqual(2),
+    );
+    expect(getComputedStyle(confirm.element()).color).toBe(foreground);
+    await dialog.getByRole("heading", { name: labels.title, exact: true }).hover();
     const description =
       locale === "en"
         ? `Delete ${tree.path} (including uncommitted changes), keep branch ${tree.branch}; bound Sessions will return to the primary Project folder.`
@@ -97,7 +124,7 @@ test.each([
     await expect.element(dialog).not.toBeInTheDocument();
     await screen.getByRole("button", { name: labels.remove, exact: true }).click();
     await fixture(connection.port, "error", { type: "worktree.delete", code: "session_busy" });
-    await dialog.getByRole("button", { name: labels.remove, exact: true }).click();
+    await confirm.click();
     await expect.element(dialog.getByRole("alert")).toHaveTextContent(labels.busy);
     const bounds = dialog.element().getBoundingClientRect();
     expect(bounds.left).toBeGreaterThanOrEqual(0);
@@ -107,7 +134,7 @@ test.each([
       code: "worktree_failed",
       params: { message: "repository unavailable" },
     });
-    await dialog.getByRole("button", { name: labels.remove, exact: true }).click();
+    await confirm.click();
     await expect
       .element(dialog.getByRole("alert"))
       .toHaveTextContent(
@@ -115,7 +142,14 @@ test.each([
           ? "Could not delete this worktree: repository unavailable"
           : "无法删除工作树：repository unavailable",
       );
-    await dialog.getByRole("button", { name: labels.remove, exact: true }).click();
+    await fixture(connection.port, "hold", {});
+    await confirm.click();
+    await expect.element(confirm).toBeDisabled();
+    expect(getComputedStyle(confirm.element()).backgroundColor).toBe(background);
+    expect(getComputedStyle(confirm.element()).color).toBe(foreground);
+    expect(getComputedStyle(confirm.element()).cursor).toBe("not-allowed");
+    await userEvent.keyboard("{Enter}");
+    await fixture(connection.port, "flush", {});
     await expect.element(dialog).not.toBeInTheDocument();
     await expect.element(screen.getByText(labels.empty, { exact: true })).toBeVisible();
     const commands = await (await fetch(`http://127.0.0.1:${connection.port}/commands`)).json();

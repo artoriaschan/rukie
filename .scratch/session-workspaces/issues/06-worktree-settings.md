@@ -21,3 +21,5 @@ Blocked by: 05
 - Focused evidence: `/tmp/rukie-session-workspaces-evidence/06-verification.md`. Ticket stays claimed pending integration-wide review, final verification and joint spec closure. Root owns aggregate/static, final manual Chromium acceptance and cleanup.
 
 - Review 修正：`fix/session-workspaces-review` 补齐 Project 移动/删除串行边界、工作树删除期间实际 Core 写者租约与重启前自动修复，以及 canonical workspace 祖先 inode/dev 校验。公开 server/Core reproducer 先红后绿；详细命令、原始失败、增量验证与责任边界见 `/tmp/rukie-session-workspaces-evidence/review-fixes-verification.md`。保留 claimed，最终验收与关闭由集成负责人执行。
+
+- GUI 验收修正：删除确认 Button 复用现有 Project 移除确认的 36px soft-destructive 样式，修复 Light/Dark 实心危险色。公开 App Chromium 先复现颜色错误，最终两个现有参数用例均通过（2.95s），覆盖实际背景/前景、hover、pending disabled/键盘重复提交与原设置几何断言。变更文件格式与 lint 通过；详细原始失败、最小增量范围见 `/tmp/rukie-session-workspaces-evidence/gui-style-fix-verification.md`。仍为 claimed；集成负责人负责修正后弹窗 GUI 验收及统一关闭。
