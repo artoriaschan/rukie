@@ -1,0 +1,48 @@
+.scratch/shell-palette-project-management/issues/02-project-wire-edit-remove.md
+  s_5e6b8dd0491e42::t_1300ea6f818fa1 1-17
+.scratch/shell-palette-project-management/issues/03-project-create-trust.md
+  s_5e6b8dd0491e42::t_1300ea6f818fa1 1-19
+DESIGN.md
+  s_59f48390191d43::t_78b9b326ea3b38 346-347
+  s_59f48390191d43::t_5537c17ad08e9b 89,240-241,243-245,371-376,380-381,383
+  s_59f48390191d43::t_7dbb96d1f1e3c3 38
+  s_59f48390191d43::t_e06da3247d99b1 495
+  s_59f48390191d43::t_bace93bd4f2fe4 242,369-370,377-379,382,384-387
+.scratch/shell-palette-project-management/spec.md
+  s_5e6b8dd0491e42::t_962afe7580ab0d 144-182,190-200
+  s_5e6b8dd0491e42::t_4b1a09366e929e 1-73
+  s_5e6b8dd0491e42::t_23e20f609e0c99 74-143
+  s_5e6b8dd0491e42::t_0a37608d3c3b3f 183-189
+.scratch/shell-palette-project-management/issues/01-shell-surface-palette.md
+  s_5e6b8dd0491e42::t_1300ea6f818fa1 1-15
+.scratch/shell-palette-project-management/issues/05-project-hover-card-row.md
+  s_5e6b8dd0491e42::t_1300ea6f818fa1 1-18
+.scratch/shell-palette-project-management/issues/04-project-edit-remove.md
+  s_5e6b8dd0491e42::t_1300ea6f818fa1 1-18
+.scratch/shell-palette-project-management/issues/06-acceptance.md
+  s_5e6b8dd0491e42::t_1300ea6f818fa1 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "b0f50385c5913cb70f6f29acae303d1c9bf32831",
+  "prompts": {},
+  "sessions": {
+    "s_59f48390191d43": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13859-5ba5-7950-9947-939c8ed54fe9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    },
+    "s_5e6b8dd0491e42": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_ybrfo2w99nzw",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
