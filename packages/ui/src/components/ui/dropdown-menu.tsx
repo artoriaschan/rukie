@@ -90,7 +90,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex cursor-pointer items-center gap-2 rounded-md min-h-8 px-2 py-0 text-ui-base leading-[1.5] outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring select-none focus:bg-menu-hover focus:text-foreground not-data-[variant=destructive]:focus:**:text-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:cursor-not-allowed data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:cursor-inherit [&_span]:cursor-inherit [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item relative flex cursor-pointer items-center gap-2 rounded-md min-h-8 px-2 py-0 text-ui-base leading-[1.5] outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring select-none focus:bg-menu-hover focus:text-foreground not-data-[variant=destructive]:focus:**:text-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive-soft-foreground data-[variant=destructive]:focus:bg-destructive-soft data-[variant=destructive]:focus:text-destructive-soft-foreground data-disabled:cursor-not-allowed data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:cursor-inherit [&_span]:cursor-inherit [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive-soft-foreground",
         className,
       )}
       {...props}

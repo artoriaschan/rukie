@@ -605,7 +605,7 @@ function ContextMenuItemBase({
         "focus-visible:ring-2 focus-visible:ring-ring",
         "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:cursor-inherit [&_span]:cursor-inherit",
         inset && "pl-8",
-        tone === "destructive" ? "text-destructive" : "text-foreground",
+        tone === "destructive" ? "text-destructive-soft-foreground" : "text-foreground",
         className,
       )}
     >
@@ -613,7 +613,7 @@ function ContextMenuItemBase({
         <span
           className={cn(
             "absolute inset-0 -z-10 rounded-md",
-            tone === "destructive" ? "bg-destructive/10" : "bg-menu-hover",
+            tone === "destructive" ? "bg-destructive-soft" : "bg-menu-hover",
           )}
         />
       ) : null}

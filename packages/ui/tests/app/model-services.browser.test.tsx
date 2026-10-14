@@ -1254,9 +1254,16 @@ test("API Key reveals saved credentials only on request and toggles compact mask
       <ModelServices services={services} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
-  onTestFinished(() => {
-    vi.useRealTimers();
-  });
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup = () =>
+    (cleanupPromise ??= (async () => {
+      try {
+        await screen.unmount();
+      } finally {
+        vi.useRealTimers();
+      }
+    })());
+  onTestFinished(cleanup);
   try {
     const input = screen.getByLabelText("API Key");
     await expect.element(input).toBeVisible();
@@ -1286,8 +1293,7 @@ test("API Key reveals saved credentials only on request and toggles compact mask
     await expect.poll(() => saved.length).toBe(1);
     expect(saved[0]!.credential).toEqual({ type: "keep" });
   } finally {
-    await screen.unmount();
-    vi.useRealTimers();
+    await cleanup();
   }
 });
 
@@ -2316,3 +2322,84 @@ test("retrying a failed new model save replaces its draft without duplicating th
   expect(saved[1]!.provider.models.map((model) => model.id)).toEqual(["new-model"]);
   await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
 });
+
+function credentialMarkContrast(mark: Element) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d")!;
+  const ancestors: Element[] = [];
+  for (let current = mark.parentElement; current; current = current.parentElement)
+    ancestors.push(current);
+  for (const surface of ancestors.reverse()) {
+    context.fillStyle = getComputedStyle(surface).backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+  }
+  const background = [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+  context.clearRect(0, 0, 1, 1);
+  context.fillStyle = getComputedStyle(mark).fill;
+  context.fillRect(0, 0, 1, 1);
+  const foreground = [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+  const luminance = (channels: number[]) =>
+    channels.reduce((result, channel, index) => {
+      const value = channel / 255;
+      return (
+        result +
+        (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4) *
+          [0.2126, 0.7152, 0.0722][index]!
+      );
+    }, 0);
+  const first = luminance(foreground);
+  const second = luminance(background);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+for (const theme of ["light", "dark"] as const) {
+  test(`${theme} settings credential marks retain contrast on selected and unselected providers`, async () => {
+    const original = document.documentElement.className;
+    let screen: Awaited<ReturnType<typeof render>> | undefined;
+    let cleanupPromise: Promise<void> | undefined;
+    const cleanup = () =>
+      (cleanupPromise ??= (async () => {
+        try {
+          await screen?.unmount();
+        } finally {
+          document.documentElement.className = original;
+        }
+      })());
+    onTestFinished(cleanup);
+    document.documentElement.className = theme;
+    try {
+      screen = await render(
+        <UiLocaleProvider locale="en">
+          <ModelServices
+            services={{
+              ...modelServicesFixture,
+              list: async () =>
+                [true, false].map((hasCredential) => ({
+                  id: hasCredential ? "ready" : "missing",
+                  name: hasCredential ? "Ready provider" : "Missing provider",
+                  api: "openai-completions",
+                  baseUrl: "https://example.com",
+                  models: [],
+                  hasCredential,
+                })),
+            }}
+            onChanged={async () => {}}
+          />
+        </UiLocaleProvider>,
+      );
+      const ready = screen.getByLabelText("Credential configured", { exact: true });
+      const missing = screen.getByLabelText("Credential not configured", { exact: true });
+      await expect.element(ready).toBeVisible();
+      await expect.element(missing).toBeVisible();
+      for (const name of ["Ready provider", "Missing provider"]) {
+        const provider = screen.getByRole("button", { name, exact: true });
+        await provider.click();
+        await expect.element(provider).toHaveAttribute("aria-pressed", "true");
+        expect(credentialMarkContrast(ready.element())).toBeGreaterThanOrEqual(3);
+        expect(credentialMarkContrast(missing.element())).toBeGreaterThanOrEqual(3);
+      }
+    } finally {
+      await cleanup();
+    }
+  });
+}

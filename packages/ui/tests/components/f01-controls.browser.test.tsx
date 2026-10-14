@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { Button } from "../../src/components/motion/button/base";
@@ -7,6 +7,22 @@ import { Input } from "../../src/components/motion/input";
 import { Checkbox } from "../../src/components/motion/checkbox";
 import { RadioGroup, RadioGroupItem } from "../../src/components/motion/radio";
 import { Switch } from "../../src/components/motion/switch";
+import { UiLocaleProvider } from "../../src/lib/i18n";
+import {
+  SessionDropdownItems,
+  SessionContextItems,
+  sessionActions,
+} from "../../src/components/session-actions";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+} from "../../src/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+} from "../../src/components/motion/context-menu";
 import { AnimatedBadge } from "../../src/components/motion/animated-badge";
 import "../../src/theme.css";
 
@@ -129,9 +145,12 @@ for (const theme of ["light", "dark"] as const) {
 }
 
 function rgb(color: string) {
-  const values = color.match(/[\d.]+/g)?.map(Number);
-  if (!values || values.length < 3) throw new Error(`Unresolved color: ${color}`);
-  return values.slice(0, 3);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = color;
+  context.fillRect(0, 0, 1, 1);
+  return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
 }
 function luminance(color: number[]) {
   return color.reduce((result, channel, index) => {
@@ -189,4 +208,177 @@ for (const theme of ["light", "dark"] as const) {
       await screen.unmount();
     }
   });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  test(`${theme} F01 keyboard control focus survives pointer hover and disabled controls stay inert`, async () => {
+    const action = vi.fn();
+    const screen = await render(
+      <div className={theme}>
+        <Button>Start focus</Button>
+        <Checkbox label="Focused checkbox" checked={false} onCheckedChange={action} />
+        <Switch label="Focused switch" checked={false} onCheckedChange={action} />
+        <RadioGroup defaultValue="a" aria-label="Focused choice">
+          <RadioGroupItem value="a" label="Focused radio" />
+        </RadioGroup>
+        <Checkbox disabled label="Disabled checkbox" checked={false} onCheckedChange={action} />
+        <Switch disabled label="Disabled switch" checked={false} onCheckedChange={action} />
+        <RadioGroup defaultValue="a" aria-label="Disabled choice">
+          <RadioGroupItem disabled value="a" label="Disabled radio" />
+        </RadioGroup>
+      </div>,
+    );
+    try {
+      const start = screen.getByRole("button", { name: "Start focus" });
+      await start.click();
+      for (const [role, name] of [
+        ["checkbox", "Focused checkbox"],
+        ["switch", "Focused switch"],
+        ["radio", "Focused radio"],
+      ] as const) {
+        await start.hover();
+        await userEvent.keyboard("{Tab}");
+        const control = screen.getByRole(role, { name, exact: true });
+        await expect.element(control).toHaveFocus();
+        const focused = getComputedStyle(control.element()).boxShadow;
+        expect(focused).not.toBe("none");
+        await control.hover();
+        expect(getComputedStyle(control.element()).boxShadow).toBe(focused);
+      }
+      for (const [role, name] of [
+        ["checkbox", "Disabled checkbox"],
+        ["switch", "Disabled switch"],
+        ["radio", "Disabled radio"],
+      ] as const) {
+        const control = screen.getByRole(role, { name, exact: true });
+        const resting = getComputedStyle(control.element()).boxShadow;
+        await control.hover();
+        expect(getComputedStyle(control.element()).boxShadow).toBe(resting);
+        expect(getComputedStyle(control.element()).cursor).toBe("not-allowed");
+        await expect.element(control).toBeDisabled();
+      }
+      expect(action).not.toHaveBeenCalled();
+    } finally {
+      await screen.unmount();
+    }
+  });
+}
+
+function drawnMenuBackground(item: Element) {
+  const menu = item.closest<HTMLElement>('[role="menu"]')!;
+  const highlight = [...item.children].find(
+    (child) => getComputedStyle(child).position === "absolute",
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = getComputedStyle(menu).backgroundColor;
+  context.fillRect(0, 0, 1, 1);
+  context.fillStyle = getComputedStyle(highlight ?? item).backgroundColor;
+  context.fillRect(0, 0, 1, 1);
+  return `rgb(${[...context.getImageData(0, 0, 1, 1).data].slice(0, 3).join(", ")})`;
+}
+for (const theme of ["light", "dark"] as const) {
+  for (const kind of ["dropdown", "context"] as const) {
+    test(`${theme} F01 ${kind} Session Delete remains readable through highlighted states`, async () => {
+      const previous = document.documentElement.className;
+      let screen: Awaited<ReturnType<typeof render>> | undefined;
+      let cleanupPromise: Promise<void> | undefined;
+      const cleanup = () =>
+        (cleanupPromise ??= (async () => {
+          try {
+            await screen?.unmount();
+          } finally {
+            document.documentElement.className = previous;
+          }
+        })());
+      onTestFinished(cleanup);
+      document.documentElement.className = theme;
+      const remove = vi.fn();
+      const actions = sessionActions(
+        {
+          id: "one",
+          title: "History",
+          titleSource: "prompt",
+          cwd: "/project",
+          projectId: "project",
+          model: "test/script",
+          createdAt: 1,
+          updatedAt: 2,
+          messageCount: 1,
+        },
+        false,
+        () => {},
+        () => {},
+        () => {},
+        remove,
+        [],
+        () => {},
+      );
+      screen = await render(
+        <UiLocaleProvider locale="en">
+          {kind === "dropdown" ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button>Session actions</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <SessionDropdownItems actions={actions} />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <ContextMenu>
+              <ContextMenuTrigger>
+                <Button>Session actions</Button>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <SessionContextItems actions={actions} />
+              </ContextMenuContent>
+            </ContextMenu>
+          )}
+        </UiLocaleProvider>,
+      );
+      try {
+        const trigger = screen.getByRole("button", { name: "Session actions", exact: true });
+        await trigger.click(kind === "context" ? { button: "right" } : undefined);
+        const item = screen.getByRole("menuitem", { name: "Permanently delete", exact: true });
+        await expect.element(item).toBeVisible();
+        expect(
+          contrast(getComputedStyle(item.element()).color, drawnMenuBackground(item.element())),
+        ).toBeGreaterThanOrEqual(4.5);
+        await item.hover();
+        await expect.element(item).toHaveFocus();
+        expect(
+          contrast(getComputedStyle(item.element()).color, drawnMenuBackground(item.element())),
+        ).toBeGreaterThanOrEqual(4.5);
+        await userEvent.keyboard("{End}");
+        await expect.element(item).toHaveFocus();
+        expect(
+          contrast(getComputedStyle(item.element()).color, drawnMenuBackground(item.element())),
+        ).toBeGreaterThanOrEqual(4.5);
+        let pressedContrast = 0;
+        let pressed = false;
+        const observePress = (event: PointerEvent) => {
+          if (event.target instanceof Node && item.element().contains(event.target)) {
+            pressed = item.element().matches(":active");
+            pressedContrast = contrast(
+              getComputedStyle(item.element()).color,
+              drawnMenuBackground(item.element()),
+            );
+          }
+        };
+        document.addEventListener("pointerdown", observePress);
+        try {
+          await item.click();
+        } finally {
+          document.removeEventListener("pointerdown", observePress);
+        }
+        expect(pressed).toBe(true);
+        expect(pressedContrast).toBeGreaterThanOrEqual(4.5);
+        expect(remove).toHaveBeenCalledOnce();
+      } finally {
+        await cleanup();
+      }
+    });
+  }
 }

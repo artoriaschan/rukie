@@ -41,7 +41,7 @@ export function Switch({
           className={cn(
             "group peer relative before:absolute before:-inset-y-1 before:inset-x-0 before:content-[''] inline-flex h-5 w-9 shrink-0 cursor-pointer items-center px-0.5 rounded-full outline-none transition-colors duration-120 motion-reduce:transition-none",
             "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-            "not-disabled:hover:ring-1 not-disabled:hover:ring-inset not-disabled:hover:ring-ring not-disabled:active:ring-2 disabled:cursor-not-allowed disabled:opacity-50",
+            "not-disabled:not-focus-visible:hover:ring-1 not-disabled:not-focus-visible:hover:ring-inset not-disabled:not-focus-visible:hover:ring-ring not-disabled:active:ring-2 disabled:cursor-not-allowed disabled:opacity-50",
             checked ? "justify-end bg-primary" : "justify-start bg-secondary",
           )}
         >
