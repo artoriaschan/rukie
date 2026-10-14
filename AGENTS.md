@@ -91,6 +91,8 @@ Read [CONTEXT.md](CONTEXT.md) for Session, Run, Turn, Transcript, Tool State, an
 
 Read [docs/permission-rules.md](docs/permission-rules.md) before changing permission decisions or matching, and [docs/hooks.md](docs/hooks.md) before changing hook execution. Preserve project trust and credential ownership: provider definitions belong to user settings; project hooks, MCP configuration, and allow rules require a Trusted Project. Plan Mode and Permission Mode are independent.
 
+When adding or changing a model-visible capability (tool, mode, automatic event, platform or shell support, Frontend rendering), add its model guidance in the same change, placed per [ADR-0046](docs/adr/0046-system-prompt-sections-and-reminder-roles.md); check its [deferred guidance](.scratch/system-prompt-reminders/spec.md#deferred-guidance) first.
+
 Frontends supply Interaction callbacks. Headless CLI supplies none: dependent tools are hidden and Agent Core requests use their safe defaults. Test cancellation and missing-callback behavior whenever an interaction changes. Keep credentials and real user settings out of commits and test fixtures.
 
 ## Tests and verification

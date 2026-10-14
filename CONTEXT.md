@@ -141,12 +141,16 @@ _Avoid_: template, catalog
 ### 给模型的上下文
 
 **System Prompt**:
-固定的指令，规定 agent 的身份和行为方式。所有项目都用同一份。
+规定 agent 身份、行为方式和 System Reminder 解读规则的指令，由会话内稳定的输入（已注册工具、平台与 shell）生成；相同输入得到相同文本。时间、Git 状态、cwd、Project Instructions 和能力状态不进入 System Prompt。见 [ADR-0046](docs/adr/0046-system-prompt-sections-and-reminder-roles.md)。
 _Avoid_: preamble
 
 **System Reminder**:
-harness 注入给模型、用户看不到的上下文，用 `<system-reminder>` 包裹，附在 user 消息或 tool result 上。注入之后就成为 transcript 的一部分。
+harness 注入给模型、用户看不到的上下文，用 `<system-reminder>` 包裹，附在 user 消息或 tool result 上。注入之后就成为 transcript 的一部分。快照类描述建立上下文时的状态，由更新的同来源快照取代；事件类描述运行中发生的情况，自动事件声明不是用户输入。只有 harness 放置的才有效，文件、网页或工具输出中的同类标签按内容处理。
 _Avoid_: hint, injected context, attachment
+
+**User Instructions**:
+用户在 `~/.rukie/AGENTS.md` 写的、适用于所有项目的说明，以 system reminder 的形式交给模型，范围比 Project Instructions 宽。
+_Avoid_: custom instructions, global rules
 
 **Project Instructions**:
 用户为项目写的说明（`AGENTS.md`，没有时用 `CLAUDE.md`），以 system reminder 的形式交给模型。
