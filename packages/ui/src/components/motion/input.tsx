@@ -80,7 +80,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       {label ? (
         <label
           htmlFor={id}
-          className={cn("px-1 text-ui-base font-medium text-foreground", classNames?.label)}
+          className={cn(
+            "px-1 text-ui-base font-normal leading-[1.5] text-foreground",
+            classNames?.label,
+          )}
         >
           {label}
         </label>
@@ -92,11 +95,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           "relative flex min-h-8 items-center rounded-lg border ring-inset transition-colors duration-120",
           "border-input-border bg-input-surface",
           !focused && !hasError && !disabled && "hover:border-input-border-hover",
-          focused &&
-            !hasError &&
-            "border-input-border-focused bg-input-focused ring-2 ring-ring/40",
+          focused && !hasError && "border-input-border-focused bg-input-focused ring-2 ring-ring",
           hasError && "border-destructive ring-2 ring-destructive/25",
-          disabled && "opacity-60",
+          disabled && "opacity-50",
           classNames?.field,
         )}
       >
@@ -130,7 +131,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             onBlur?.(event);
           }}
           className={cn(
-            "peer min-h-7 w-full bg-transparent py-1 text-ui-base text-foreground caret-foreground outline-none",
+            "peer min-h-7 w-full bg-transparent py-1 text-ui-base leading-[1.5] text-foreground caret-foreground outline-none",
             "placeholder:text-foreground-subtlest",
             leftIcon ? "pl-10" : "pl-3",
             rightSlot || success ? "pr-10" : "pr-3",

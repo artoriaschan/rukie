@@ -1419,6 +1419,7 @@ export function ModelServices({
                 {t("services.cancel")}
               </Button>
               <Button
+                variant="destructive"
                 aria-label={t("services.confirm")}
                 data-confirm-delete
                 disabled={pending}

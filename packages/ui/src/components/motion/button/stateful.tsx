@@ -60,7 +60,7 @@ export const StatefulButton = forwardRef<HTMLButtonElement, StatefulButtonProps>
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.12 }}
-          className="inline-flex min-w-0 items-center justify-center gap-2"
+          className="inline-flex min-w-0 items-center justify-center gap-[inherit]"
         >
           {state === "loading" ? <Loader2 className="size-4 shrink-0 animate-spin" /> : null}
           {state === "success" ? <Check className="size-4 shrink-0" /> : null}

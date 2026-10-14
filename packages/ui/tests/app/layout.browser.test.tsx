@@ -74,11 +74,13 @@ test.each([
       expect(getComputedStyle(main).backgroundColor).toBe(
         dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)",
       );
-      expect(getComputedStyle(document.body).fontFamily.startsWith("system-ui")).toBe(true);
+      expect(
+        getComputedStyle(document.body).fontFamily.startsWith('"Noto Sans SC", system-ui'),
+      ).toBe(true);
       expect(
         getComputedStyle(
           screen.getByRole("button", { name: "Choose model" }).element(),
-        ).fontFamily.startsWith("system-ui"),
+        ).fontFamily.startsWith('"Noto Sans SC", system-ui'),
       ).toBe(true);
       expect(
         [...document.fonts].some((face) =>

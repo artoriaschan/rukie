@@ -154,7 +154,8 @@ test("Pencil model footer keeps cancel surface and primary save colors in both t
       cancel.element().focus();
       await userEvent.keyboard("{Tab}");
       await expect.element(save).toHaveFocus();
-      expect(getComputedStyle(save.element()).outlineStyle).not.toBe("none");
+      const focusStyle = getComputedStyle(save.element());
+      expect(focusStyle.outlineStyle !== "none" || focusStyle.boxShadow !== "none").toBe(true);
       for (const [button, width] of [
         [cancel, 68],
         [save, 128],
@@ -323,9 +324,9 @@ test("model services creates a provider and preserves input when encrypted save 
     await advanced.hover();
     await expect
       .poll(() => getComputedStyle(advanced.element()).backgroundColor)
-      .toBe("color(srgb 0.931373 0.931373 0.931373)");
+      .toBe("rgba(13, 13, 13, 0.05)");
     await expect.poll(() => getComputedStyle(advanced.element()).color).toBe("rgb(38, 38, 38)");
-    // Rendered Light title/background have 12.98:1 contrast (38 against 237.5).
+    // The neutral F01 hover remains readable against the scoped Light settings surface.
     advanced.element().focus();
     await expect.element(advanced).toHaveFocus();
     expect(getComputedStyle(advanced.element()).color).toBe("rgb(38, 38, 38)");
@@ -722,7 +723,9 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     await expect.element(screen.getByRole("heading", { name: "DeepSeek" })).toBeVisible();
     const workspace = document.querySelector<HTMLElement>(".model-services-workspace");
     expect(workspace).not.toBeNull();
-    expect(getComputedStyle(workspace!).fontFamily.startsWith("system-ui")).toBe(true);
+    expect(getComputedStyle(workspace!).fontFamily.startsWith('"Noto Sans SC", system-ui')).toBe(
+      true,
+    );
     const box = workspace!.getBoundingClientRect();
     expect(box.width).toBe(880);
     expect(box.top).toBe(100);
@@ -804,13 +807,13 @@ test.each([
   {
     theme: "Light",
     dark: false,
-    background: "color(srgb 0.931373 0.931373 0.931373)",
+    background: "rgb(240, 240, 240)",
     foreground: "rgb(38, 38, 38)",
   },
   {
     theme: "Dark",
     dark: true,
-    background: "color(srgb 0.123529 0.123529 0.123529)",
+    background: "rgb(54, 54, 54)",
     foreground: "rgb(212, 212, 212)",
   },
 ])(
@@ -1251,9 +1254,15 @@ test("API Key reveals saved credentials only on request and toggles compact mask
       <ModelServices services={services} onChanged={async () => {}} />
     </UiLocaleProvider>,
   );
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
   try {
     const input = screen.getByLabelText("API Key");
     await expect.element(input).toBeVisible();
+    // Visibility and credential coalescing are independent of the 500ms autosave contract.
+    // Hold that clock so browser interaction speed cannot persist the replacement mid-case.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     expect(reads).toBe(0);
     await screen.getByRole("button", { name: "Show API Key", exact: true }).click();
     await expect.element(input).toHaveValue("fixture-key-only");
@@ -1278,6 +1287,7 @@ test("API Key reveals saved credentials only on request and toggles compact mask
     expect(saved[0]!.credential).toEqual({ type: "keep" });
   } finally {
     await screen.unmount();
+    vi.useRealTimers();
   }
 });
 

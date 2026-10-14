@@ -142,7 +142,7 @@ export function RadioGroupItem({
     <label
       htmlFor={id}
       className={cn(
-        "inline-flex items-center gap-2",
+        "inline-flex min-h-6 items-center gap-2",
         disabled ? "cursor-not-allowed" : "cursor-pointer",
         className,
       )}
@@ -158,22 +158,24 @@ export function RadioGroupItem({
         transition={{ duration: reduce ? 0 : 0.12, ease: EASE_OUT }}
         data-state={selected ? "checked" : "unchecked"}
         className={cn(
-          "relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border outline-none transition-colors duration-120",
+          "relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border outline-none before:absolute before:-inset-1 before:content-[''] transition-colors duration-120",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          "disabled:cursor-not-allowed disabled:opacity-60",
-          selected ? "border-primary" : "border-muted-foreground/50 hover:border-muted-foreground",
+          "not-disabled:hover:ring-1 not-disabled:hover:ring-inset not-disabled:hover:ring-ring not-disabled:active:ring-2 disabled:cursor-not-allowed disabled:opacity-50",
+          selected
+            ? "border-primary"
+            : "border-input-border not-disabled:hover:border-input-border-hover",
         )}
       >
         {selected ? (
           <motion.span
             layoutId={layoutId}
-            className="absolute inset-1 rounded-full bg-primary"
+            className="absolute size-2 rounded-full bg-primary"
             transition={reduce ? { duration: 0 } : { duration: 0.12, ease: EASE_OUT }}
           />
         ) : null}
       </motion.button>
       {label ? (
-        <span className={cn("select-none text-ui-base text-foreground", disabled && "opacity-60")}>
+        <span className={cn("select-none text-ui-base text-foreground", disabled && "opacity-50")}>
           {label}
         </span>
       ) : null}

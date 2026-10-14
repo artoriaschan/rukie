@@ -5,8 +5,6 @@
   --foreground: #d4d4d4;
   --success: #46bf72;
   --warning: #ff8a30;
-  --muted-foreground: #d4d4d499;
-  --foreground-subtlest: #d4d4d499;
   --sidebar: #161616;
   --surface: #ffffff0d;
   --card: #2b2b2b;
@@ -14,17 +12,9 @@
   --popover-border: #ffffff1a;
   --danger: #ff5c5c;
   --border: #ffffff1a;
-  --input-border: #ffffff1a;
   --input-surface: #2b2b2b;
-  --primary: #fff;
-  --primary-foreground: #161616;
   --secondary: #ffffff1a;
   --secondary-foreground: #d4d4d4;
-  --accent: #ffffff1a;
-  --accent-foreground: #d4d4d4;
-  --hover: color-mix(in srgb, var(--foreground) 5%, var(--background));
-  --menu-hover: var(--hover);
-  --selected: color-mix(in srgb, var(--foreground) 8%, var(--background));
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
@@ -33,22 +23,15 @@
 :root:not(.dark) .model-services-menu {
   --background: #f8f8f8;
   --foreground: #262626;
-  --muted-foreground: #26262699;
-  --foreground-subtlest: #26262699;
   --sidebar: #f0f0f0;
   --surface: #0d0d0d0d;
   --card: #fff;
   --popover: #fff;
   --popover-border: #0d0d0d1a;
   --border: #0d0d0d1a;
-  --input-border: #0d0d0d1a;
   --input-surface: #fff;
-  --primary: #000;
-  --primary-foreground: #fff;
   --secondary: #0d0d0d0d;
   --secondary-foreground: #262626;
-  --accent: #0d0d0d0d;
-  --accent-foreground: #262626;
 }
 .model-services {
   background: var(--background);
@@ -737,8 +720,8 @@
 }
 .model-services-delete-footer > button:last-child {
   width: 128px;
-  color: #fff;
-  background: var(--danger);
+  color: var(--destructive-foreground);
+  background: var(--destructive);
 }
 .model-services-toolbar > button:first-child {
   width: 32px;
@@ -768,11 +751,7 @@
   width: 14px;
   height: 14px;
 }
-.model-services-chips [role="checkbox"][aria-checked="true"] {
-  background: transparent;
-  border-color: var(--foreground);
-  color: var(--foreground);
-}
+
 .model-services-levels > p {
   font-weight: 400;
   color: var(--muted-foreground);
@@ -1158,19 +1137,9 @@
 .model-services-modal-footer > .model-services-model-save {
   width: 128px;
   border-radius: 12px;
-  color: var(--model-save-foreground);
+  color: var(--primary-foreground);
   background: var(--primary);
   font-weight: 500;
-}
-.model-services-modal-footer {
-  --model-save-foreground: #ffffff;
-}
-.dark .model-services-modal-footer {
-  --model-save-foreground: #000000;
-}
-.model-services-modal-footer > button:disabled {
-  color: var(--muted-foreground);
-  background: var(--muted);
 }
 
 .model-services-option-card h3 {
@@ -1192,11 +1161,6 @@
   min-height: 32px;
   border-radius: 8px;
 }
-.model-services-reasoning-menu button[role="option"] {
-  min-height: 28px;
-  height: 28px;
-  padding-inline: 6px;
-}
 
 /* This field is near the dialog footer; open its options into the form body. */
 .model-services-default-reasoning > p {
@@ -1211,7 +1175,6 @@
 
 /* P01-E / C26: a single panel replaces the populated rail and details. */
 .model-services-provider-empty {
-  --provider-empty-action-foreground: #000;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -1252,11 +1215,8 @@
   min-height: 28px;
   border-radius: 8px;
   background: var(--primary);
-  color: var(--provider-empty-action-foreground);
+  color: var(--primary-foreground);
   font-weight: 400;
-}
-:root:not(.dark) .model-services-provider-empty {
-  --provider-empty-action-foreground: #fff;
 }
 .model-services-provider-empty-error {
   margin-top: 16px;

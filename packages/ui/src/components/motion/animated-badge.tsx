@@ -28,17 +28,17 @@ export interface AnimatedBadgeProps extends Omit<HTMLMotionProps<"span">, "child
 }
 
 const STATUS_CLASS: Record<AnimatedBadgeStatus, string> = {
-  neutral: "border-border bg-transparent text-muted-foreground",
-  info: "border-primary/30 bg-muted text-primary",
+  neutral: "border-transparent bg-secondary text-secondary-foreground",
+  info: "border-accent/30 bg-accent/10 text-accent",
   success: "border-success/30 bg-success/10 text-success",
   warning: "border-warning/30 bg-warning/10 text-warning",
-  danger: "border-destructive/30 bg-destructive/10 text-destructive",
-  loading: "border-primary/30 bg-muted text-primary",
+  danger: "border-danger/30 bg-danger/10 text-danger",
+  loading: "border-accent/30 bg-accent/10 text-accent",
 };
 
 const SIZE_CLASS: Record<AnimatedBadgeSize, string> = {
-  sm: "h-6 gap-1.5 px-2 text-ui-caption",
-  md: "h-8 gap-2 px-3 text-ui-base",
+  sm: "min-h-5 gap-1.5 px-2 text-ui-sm leading-[1.5]",
+  md: "min-h-5 gap-1.5 px-2 text-ui-sm leading-[1.5]",
 };
 
 const ICON_CLASS: Record<AnimatedBadgeSize, string> = {
@@ -129,7 +129,7 @@ export function AnimatedBadge({
       transition={{ duration: 0.12, ease: EASE_OUT }}
       style={style}
       className={cn(
-        "relative inline-flex shrink-0 items-center overflow-hidden whitespace-nowrap rounded-lg border font-normal tabular-nums",
+        "relative inline-flex shrink-0 items-center overflow-hidden whitespace-nowrap rounded-md border font-normal tabular-nums",
         "transition-colors duration-120",
         STATUS_CLASS[status],
         SIZE_CLASS[size],

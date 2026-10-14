@@ -84,7 +84,7 @@ export function DeleteSession({
             {t("app.cancel")}
           </Button>
           <Button
-            className="bg-destructive text-foreground-inverse not-disabled:hover:bg-destructive/90 not-disabled:active:bg-destructive"
+            variant="destructive"
             disabled={pending || session.running || session.waitingPermission}
             onClick={() => {
               void remove();

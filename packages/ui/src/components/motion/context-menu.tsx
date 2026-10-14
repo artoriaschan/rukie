@@ -492,7 +492,7 @@ export function ContextMenuContent({
       style={{ left: position.x, top: position.y }}
       className={cn(
         OVERLAY_LAYER.interactive,
-        "fixed drop-shadow-md",
+        "fixed",
         context.open ? "pointer-events-auto" : "pointer-events-none",
       )}
     >
@@ -530,7 +530,7 @@ export function ContextMenuContent({
         onKeyDown={onKeyDown}
         onContextMenu={(event) => event.preventDefault()}
         className={cn(
-          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground outline-none",
+          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-md outline-none",
           className,
         )}
       >
@@ -601,9 +601,9 @@ function ContextMenuItemBase({
         if (closeOnSelect) context.setOpen(false);
       }}
       className={cn(
-        "relative isolate flex w-full select-none items-center min-h-7 gap-2 rounded-md px-2 py-1 text-left text-ui-base outline-none",
-        "focus-visible:ring-2 focus-visible:ring-foreground/15",
-        "cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 [&_svg]:cursor-inherit [&_span]:cursor-inherit",
+        "relative isolate flex w-full select-none items-center min-h-8 gap-2 rounded-md px-2 py-0 text-left text-ui-base leading-[1.5] outline-none",
+        "focus-visible:ring-2 focus-visible:ring-ring",
+        "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:cursor-inherit [&_span]:cursor-inherit",
         inset && "pl-8",
         tone === "destructive" ? "text-destructive" : "text-foreground",
         className,

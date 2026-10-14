@@ -180,7 +180,6 @@ export function PromptInput({
       onSubmit={submit}
       className={cn(
         "relative w-full rounded-2xl border border-border/80 bg-background p-2 transition-colors focus-within:border-foreground/25",
-        disabled && "opacity-60",
         className,
       )}
     >
@@ -201,7 +200,7 @@ export function PromptInput({
         {...textareaProps}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
-        className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 pt-1 text-ui-base text-foreground outline-none placeholder:text-muted-foreground"
+        className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 pt-1 text-ui-base text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
       />
 
       <div className="mt-1 flex min-h-8 flex-wrap items-center gap-1">
@@ -242,7 +241,7 @@ export function PromptInput({
                     onAction?.(action.value);
                     setActionsOpen(false);
                   }}
-                  className="flex w-full items-start gap-2 rounded-md px-2 py-1 min-h-7 text-left outline-none transition-colors hover:bg-menu-hover focus-visible:bg-menu-hover disabled:pointer-events-none disabled:opacity-50"
+                  className="flex w-full items-start gap-2 rounded-md px-2 py-1 min-h-8 text-left outline-none not-disabled:hover:bg-menu-hover focus-visible:bg-menu-hover disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {action.icon ? (
                     <span className="mt-0.5 grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-4">

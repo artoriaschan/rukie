@@ -43,7 +43,8 @@ test("rename save keeps neutral inverse colors and geometry in both themes", asy
       cancel.element().focus();
       await userEvent.keyboard("{Tab}");
       await expect.element(save).toHaveFocus();
-      expect(getComputedStyle(save.element()).outlineStyle).not.toBe("none");
+      expect(save.element().matches(":focus-visible")).toBe(true);
+      expect(getComputedStyle(save.element()).boxShadow).toContain("2px");
       expect(save.element().getBoundingClientRect().width).toBe(bounds.width);
       expect(save.element().getBoundingClientRect().height).toBe(bounds.height);
       await input.fill("Explore ideas");

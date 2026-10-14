@@ -94,11 +94,7 @@ export function RenameSession({
           <Button variant="secondary" disabled={pending} onClick={close}>
             {t("app.cancel")}
           </Button>
-          <Button
-            type="submit"
-            className="[--primary:#000] [--primary-foreground:#fff] dark:[--primary:#fff] dark:[--primary-foreground:#000] not-disabled:hover:bg-primary not-disabled:active:bg-primary"
-            disabled={pending || !normalized || unchanged}
-          >
+          <Button type="submit" disabled={pending || !normalized || unchanged}>
             {t("app.save")}
           </Button>
         </div>

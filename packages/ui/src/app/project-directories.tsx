@@ -55,7 +55,11 @@ export function ProjectDirectories({
                   ) : null}
                 </span>
                 {directory === primary ? (
-                  <AnimatedBadge showIcon={false} size="sm">
+                  <AnimatedBadge
+                    showIcon={false}
+                    size="sm"
+                    className="h-6 border-border bg-transparent text-foreground"
+                  >
                     {t("app.primary")}
                   </AnimatedBadge>
                 ) : (

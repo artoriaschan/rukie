@@ -200,9 +200,9 @@ export function SelectTrigger({
       aria-controls={ctx.listId}
       onClick={() => ctx.setOpen(!ctx.open)}
       className={cn(
-        "relative z-10 flex w-full items-center justify-between gap-2 min-h-8 rounded-lg border border-input-border bg-input-surface px-3 py-1 text-ui-base text-foreground outline-none transition-colors",
-        "hover:border-input-border-hover focus-visible:border-input-border-focused focus-visible:bg-input-focused focus-visible:ring-2 focus-visible:ring-foreground/20",
-        "disabled:pointer-events-none disabled:opacity-50",
+        "relative z-10 flex w-full items-center justify-between gap-2 min-h-8 rounded-lg border border-input-border bg-input-surface px-3 py-1 text-ui-base leading-[1.5] text-foreground outline-none transition-colors",
+        "not-disabled:hover:border-input-border-hover focus-visible:border-input-border-focused focus-visible:bg-input-focused focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
     >
@@ -351,16 +351,16 @@ export function SelectItem({ value, disabled = false, className, children }: Sel
         disabled={disabled}
         onClick={() => ctx.select(value)}
         className={cn(
-          "flex w-full items-center justify-between min-h-7 gap-2 rounded-md px-2 py-1 text-left text-ui-base outline-none",
+          "flex w-full items-center justify-between min-h-8 gap-2 rounded-md px-2 py-0 text-left text-ui-base leading-[1.5] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           selected
             ? "bg-selected text-foreground"
-            : "text-muted-foreground hover:bg-menu-hover hover:text-foreground focus-visible:bg-menu-hover",
-          "disabled:pointer-events-none disabled:opacity-50",
+            : "text-foreground not-disabled:hover:bg-menu-hover focus-visible:bg-menu-hover",
+          "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
       >
         {children}
-        {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+        {selected ? <Check className="size-4 shrink-0" /> : null}
       </button>
     </li>
   );

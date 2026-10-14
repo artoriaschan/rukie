@@ -54,12 +54,12 @@ export function ProjectTrust({
               <Folder className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 break-all font-mono text-ui-sm">{directory}</span>
               {directory === project.primary ? (
-                <AnimatedBadge showIcon={false} size="sm">
+                <AnimatedBadge showIcon={false} size="sm" className="h-6">
                   {t("app.primary")}
                 </AnimatedBadge>
               ) : null}
               {addedDirectories.includes(directory) ? (
-                <AnimatedBadge showIcon={false} size="sm">
+                <AnimatedBadge showIcon={false} size="sm" className="h-6">
                   {t("app.new-folder")}
                 </AnimatedBadge>
               ) : null}

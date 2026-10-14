@@ -224,7 +224,8 @@ export function ProjectEdit({
         ) : null}
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
           <Button
-            className="h-8 bg-destructive text-foreground-inverse not-disabled:hover:bg-destructive/90 not-disabled:active:bg-destructive"
+            variant="destructive"
+            className="h-8"
             aria-describedby={busy ? "project-remove-busy" : undefined}
             disabled={busy || pending || picking || !connected}
             onClick={() => {
