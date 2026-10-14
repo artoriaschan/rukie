@@ -1330,7 +1330,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     {
                       role: "user",
                       content: [{ type: "text", text: automaticEventMessage(content) }],
-                      timestamp: Date.now(),
+                      timestamp: (options.now?.() ?? new Date()).getTime(),
                     },
                   ],
                 });

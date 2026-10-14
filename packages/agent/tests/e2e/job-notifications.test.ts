@@ -87,7 +87,13 @@ test("a Background Job finishing during a Run notifies the next model request on
     }),
     fauxAssistantMessage("completion handled"),
   ]);
-  session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  const now = new Date("2026-10-15T00:00:00Z");
+  session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "full-access",
+    now: () => now,
+  });
   let results = 0;
   const result = await session.run("start and release", {
     onEvent(event) {
@@ -105,6 +111,7 @@ test("a Background Job finishing during a Run notifies the next model request on
   );
   expect(session.messages.findLast((message) => message.role === "user")).toMatchObject({
     source: "job",
+    timestamp: now.getTime(),
     content: [{ type: "text", text: notification }],
   });
   expect(session.messages.filter((message) => message.role === "user")).toHaveLength(2);
