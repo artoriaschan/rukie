@@ -117,7 +117,8 @@ test.each([123456, 9_999_999_999_999])(
       }
       return original(model, context, options);
     });
-    const parent = await createSession({ ...dirs, ...fake });
+    // Session owns message timestamps; keep both child replies on the same injected clock.
+    const parent = await createSession({ ...dirs, ...fake, now: () => new Date(timestamp) });
     const childEvents: SessionEvent[] = [];
     const off = parent.subscribe((event) => {
       if (event.type === "subagent_event") childEvents.push(event.event);

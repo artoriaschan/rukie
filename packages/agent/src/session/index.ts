@@ -1,4 +1,7 @@
 import { inputArrivalContent, todoReminderSources } from "./input-todo-reminders.ts";
+import { planModeExitReminder } from "../tools/plan-mode/index.ts";
+import { automaticEventContent, automaticEventMessage } from "../reminders/index.ts";
+import { createRunCorrections } from "./run-corrections.ts";
 import { readTranscript, readRunSummaries } from "./history.ts";
 import { PendingInputFactsDoc, queuedInputProjection, type QueuedInput } from "./queued-inputs.ts";
 export type { QueuedInput } from "./queued-inputs.ts";
@@ -42,6 +45,7 @@ import {
   InboxDoc,
   type TaskId,
   type EntryDraft,
+  type EntryId,
   type Storage,
   type EntryRecord,
   ROOT_CONVERSATION_ID,
@@ -576,6 +580,132 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         cursor = page.next;
       } while (cursor !== undefined && count <= configured);
       return { count, limit: configured };
+    };
+    const corrections = new Map<number, ReturnType<typeof createRunCorrections>>();
+    const runCorrections = async (target: typeof conversation, ctx: Context) => {
+      const live = await harness.snapshot(LiveDoc, target.id, ctx);
+      const view = await target.context(ctx);
+      const epoch = Math.max(
+        0,
+        ...view.entries
+          .filter((entry) => entry.kind === "pi.compaction")
+          .map((entry) => Number(entry.id)),
+      );
+      const controller = corrections.get(Number(target.id)) ?? createRunCorrections();
+      corrections.set(Number(target.id), controller);
+      const todos = await harness.snapshot(todoState.document, target.id, ctx);
+      const completed = Array.isArray(todos?.value)
+        ? todos.value.filter(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              !Array.isArray(item) &&
+              item.status === "completed",
+          ).length
+        : 0;
+      controller.enter(`${live?.run?.inputs[0]}:${epoch}`, completed);
+      return controller;
+    };
+    const correctionTools = async (
+      target: typeof conversation,
+      assistant: EntryId,
+      results: readonly EntryId[],
+      ctx: Context,
+    ) => {
+      const controller = await runCorrections(target, ctx);
+      const committed = await lease.storage.entry(assistant, ctx);
+      const outputs = await Promise.all(results.map((id) => lease.storage.entry(id, ctx)));
+      for (const message of committed?.entry.model ?? []) {
+        if (message.role !== "assistant") continue;
+        for (const part of message.content) {
+          if (part.type !== "toolCall") continue;
+          const result = outputs
+            .flatMap((output) => output?.entry.model ?? [])
+            .find((output) => output.role === "toolResult" && output.toolCallId === part.id);
+          // A completed review or admitted delegation is progress even when its
+          // reply requests revision or the delegated child later reports failure.
+          const details = result?.role === "toolResult" ? result.details : undefined;
+          const actionCompleted =
+            result?.role === "toolResult" &&
+            (!result.isError ||
+              (details &&
+                typeof details === "object" &&
+                !Array.isArray(details) &&
+                ((part.name === "exit_plan_mode" &&
+                  "kind" in details &&
+                  ["approve", "revise", "takeover"].includes(String(details.kind))) ||
+                  (["subagent", "subagent_fork"].includes(part.name) &&
+                    "childSessionId" in details &&
+                    typeof details.childSessionId === "string"))));
+          for (const content of controller.tool(
+            part.name,
+            part.arguments,
+            Boolean(actionCompleted),
+          ))
+            await target.commit(
+              (tx) =>
+                tx.appendEntry(
+                  target.id,
+                  reminderEntry({
+                    role: "system-reminder",
+                    source: "run-correction",
+                    content,
+                    timestamp: options.now?.().getTime() ?? Date.now(),
+                  }),
+                ),
+              ctx,
+            );
+        }
+      }
+    };
+    const correctionLimit = async (target: typeof conversation, ctx: Context) => {
+      const rounds = await toolRounds(target.id, ctx);
+      const content = (await runCorrections(target, ctx)).limit(
+        Boolean(rounds && rounds.count >= rounds.limit),
+      );
+      if (content)
+        await target.commit(
+          (tx) =>
+            tx.appendEntry(
+              target.id,
+              reminderEntry({
+                role: "system-reminder",
+                source: "tool-limit",
+                content,
+                timestamp: options.now?.().getTime() ?? Date.now(),
+              }),
+            ),
+          ctx,
+        );
+    };
+    const lengthContinuation = async (
+      target: typeof conversation,
+      answer: Message,
+      taskId: TaskId,
+      ctx: Context,
+    ) => {
+      if (answer.role !== "assistant" || answer.stopReason !== "length") return undefined;
+      const content = (await runCorrections(target, ctx)).length(
+        answer.content.some((part) => part.type === "text" && part.text.trim().length > 0),
+      );
+      if (!content) return undefined;
+      await target.commit(
+        (tx) =>
+          tx.appendEntry(target.id, {
+            kind: "rukie.message-facts",
+            data: {
+              taskId: Number(taskId),
+              content,
+              reminderContent: content.slice(
+                "<system-reminder>\n".length,
+                -"\n</system-reminder>".length,
+              ),
+              source: "output-length",
+            },
+          }),
+        ctx,
+      );
+      return { continue: content };
     };
     const providerConversation = async (sessionId: string) => {
       const known = providerConversations.get(sessionId);
@@ -1192,14 +1322,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   model: [
                     {
                       role: "user",
-                      content: [{ type: "text", text: content }],
+                      content: [{ type: "text", text: automaticEventMessage(content) }],
                       timestamp: Date.now(),
                     },
                   ],
                 });
                 await tx.appendEntry(conversation.id, {
                   kind: "rukie.message-facts",
-                  data: { entryId: Number(entry.id), source: "job" },
+                  data: { entryId: Number(entry.id), source: "job", displayContent: content },
                 });
               }, context);
             } else {
@@ -1591,7 +1721,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                       reminderEntry({
                         role: "system-reminder",
                         source: `job:${job.id}`,
-                        content: `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
+                        content: automaticEventContent(
+                          `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
+                        ),
                         timestamp: Date.now(),
                       }),
                     ),
@@ -1790,6 +1922,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   pending.pending = [];
                 }, ctx);
                 await prepareAcceptedInputReminders(child, ctx);
+                await correctionLimit(child, ctx);
                 const view = await child.context(ctx);
                 const reminders = await collectReminders({
                   messages: transcriptMessages(
@@ -1853,6 +1986,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }
               },
               onYield: async (answer, api, ctx) => {
+                const length = await lengthContinuation(child, answer, api.taskId, ctx);
+                if (length) return length;
                 if (answer.stopReason !== "stop") return undefined;
                 const live = await harness.snapshot(LiveDoc, child.id, ctx);
                 const anchor = Number(live?.run?.inputs[0]);
@@ -1948,6 +2083,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return { continue: result.reason };
               },
               afterTools: async (_assistant, results, _api, ctx) => {
+                await correctionTools(child, _assistant, results, ctx);
                 const committed = await Promise.all(
                   results.map((id) => lease.storage.entry(id, ctx)),
                 );
@@ -2202,9 +2338,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             plan.getActive()
               ? planModeReminder(!!options.onPlanReview)
               : plan.hasEntered()
-                ? entryData(lastPlanReminder)?.content === "You have exited Plan Mode."
+                ? entryData(lastPlanReminder)?.content === planModeExitReminder
                   ? undefined
-                  : "You have exited Plan Mode."
+                  : planModeExitReminder
                 : undefined,
         },
         ...state.reminderSources.filter((source) => source.source !== "todo"),
@@ -2238,7 +2374,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const moveReminder = reminderEntry({
           role: "system-reminder",
           source: "session-move",
-          content: `Working directory changed from ${sessionMove.oldCwd} to ${sessionMove.newCwd}. Use the new working directory for subsequent work.`,
+          content: `Working directory changed from ${sessionMove.oldCwd} to ${sessionMove.newCwd}. Use the new working directory for subsequent work. Historical output tied to the old paths is stale; reread files and recheck relevant state in the new directory before relying on it. The old directory remains accessible by absolute path: ${sessionMove.oldCwd}.`,
           timestamp: (options.now?.() ?? new Date()).getTime(),
         });
         await conversation.commit(async (tx) => {
@@ -2560,6 +2696,27 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }
                 for (const id of live?.run?.inputs ?? []) {
                   const record = await lease.storage.submission(id, ctx);
+                  if (record?.entry && requestKind(record.requestId) === "subagent-report") {
+                    const presentation = (await fullHistory()).findLast(
+                      (entry) =>
+                        entry.kind === "rukie.message-facts" &&
+                        entryData(entry)?.requestId === record.requestId &&
+                        typeof entryData(entry)?.displayContent === "string",
+                    );
+                    if (presentation && entryData(presentation)?.entryId !== Number(record.entry))
+                      await conversation.commit(
+                        (tx) =>
+                          tx.appendEntry(conversation.id, {
+                            kind: "rukie.message-facts",
+                            data: {
+                              entryId: Number(record.entry),
+                              requestId: record.requestId!,
+                              displayContent: entryData(presentation)!.displayContent!,
+                            },
+                          }),
+                        ctx,
+                      );
+                  }
                   if (record?.entry)
                     await conversation.commit(async (tx) => {
                       const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
@@ -2586,6 +2743,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   }
                 }
                 await prepareAcceptedInputReminders(conversation, ctx);
+                await correctionLimit(conversation, ctx);
                 await goalRuntime.prepareWrapup(ctx);
                 await prepareReminders(ctx);
                 await toolLoadout.publish(ctx);
@@ -2649,6 +2807,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   );
               },
               afterTools: async (_assistant, results, _api, ctx) => {
+                await correctionTools(conversation, _assistant, results, ctx);
                 const committed = await Promise.all(
                   results.map((id) => lease.storage.entry(id, ctx)),
                 );
@@ -2699,6 +2858,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 // A caller may start steering before releasing an in-flight model.
                 // Complete host admission before the native final boundary selects its inbox.
                 await Promise.allSettled(steeringAdmissions);
+                const length = await lengthContinuation(conversation, _answer, api.taskId, ctx);
+                if (length) return length;
                 if (_answer.stopReason !== "stop") {
                   await goalRuntime.clearActivation(ctx);
                   return undefined;
@@ -3060,7 +3221,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           timestamp: Date.now(),
         });
       const content: UserMessage["content"] = [
-        { type: "text", text: prompt },
+        {
+          type: "text",
+          text: requestKind(requestId) === "job" ? automaticEventMessage(prompt) : prompt,
+        },
         ...images.map((image) => ({
           type: "image" as const,
           data: image.data,
@@ -3078,6 +3242,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const facts: Record<string, JsonValue> = {
           requestId,
           ...(arrivedDuringRun ? { arrivedDuringRun: true } : {}),
+          ...(requestKind(requestId) === "job" ? { displayContent: prompt } : {}),
           ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
           ...(invocation ? { skillInvocation: invocation } : {}),
           ...(!(requestKind(requestId) === "human")

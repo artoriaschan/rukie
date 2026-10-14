@@ -60,6 +60,15 @@ test("creating a Goal immediately runs rounds up to its cap without user prompt 
   for (const [index, context] of fake.contexts.entries()) {
     expect(JSON.stringify(context.messages)).toContain(`Round: ${index + 1}/2`);
     expect(JSON.stringify(context)).toContain(`round ${index + 1}/2`);
+    expect(JSON.stringify(context.messages)).toContain(
+      "Audit completion requirement by requirement",
+    );
+    expect(JSON.stringify(context.messages)).toContain(
+      "Tests passing or a finished plan alone do not establish completion",
+    );
+    expect(JSON.stringify(context.messages)).toContain(
+      "If any requirement is uncertain, the Goal is not complete",
+    );
   }
   expect(session.messages.filter((message) => message.role === "user")).toMatchObject([
     { source: "goal" },
@@ -119,7 +128,7 @@ test.each(["pause", "clear"] as const)(
 test("idle Goal edits preserve round count and resume continues a paused Goal", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage("first", { stopReason: "length" }),
+    fauxAssistantMessage("first", { stopReason: "aborted" }),
     fauxAssistantMessage("second"),
   ]);
   const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
@@ -158,10 +167,12 @@ test.each(["error", "aborted", "length"] as const)(
   async (stopReason) => {
     dirs = await tempDirs();
     const fake = fakeModel([
-      fauxAssistantMessage("stopped", {
-        stopReason,
-        ...(stopReason !== "length" && { errorMessage: "model failed" }),
-      }),
+      ...Array.from({ length: stopReason === "length" ? 4 : 1 }, () =>
+        fauxAssistantMessage("stopped", {
+          stopReason,
+          ...(stopReason !== "length" && { errorMessage: "model failed" }),
+        }),
+      ),
       fauxAssistantMessage("continued"),
     ]);
     const events: SessionEvent[] = [];
@@ -171,10 +182,17 @@ test.each(["error", "aborted", "length"] as const)(
     await session.waitForIdle();
     expect(session.goal).toMatchObject({ phase: "active", armed: false, roundsStarted: 1 });
     expect(events.filter((event) => event.type === "run_end")).toHaveLength(1);
+    if (stopReason === "length") {
+      expect(fake.contexts).toHaveLength(4);
+      for (const context of fake.contexts)
+        expect(JSON.stringify(context.messages)).not.toContain("Round: 2/2");
+    }
     await session.resumeGoal();
     await session.waitForIdle();
     expect(session.goal).toMatchObject({ phase: "blocked", roundsStarted: 2 });
-    expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("Round: 2/2");
+    expect(JSON.stringify(fake.contexts[stopReason === "length" ? 4 : 1]!.messages)).toContain(
+      "Round: 2/2",
+    );
   },
 );
 
@@ -195,7 +213,7 @@ test.each(["abort", "close"] as const)(
       armed: action === "close",
       roundsStarted: 1,
     });
-    const resumedFake = fakeModel([fauxAssistantMessage("resumed", { stopReason: "length" })]);
+    const resumedFake = fakeModel([fauxAssistantMessage("resumed", { stopReason: "aborted" })]);
     await session.close();
     const resumed = await createSession({ ...dirs, ...resumedFake, resumeId: session.id });
     await resumed.waitForIdle();
@@ -213,7 +231,7 @@ test("resume restores disarmed Goal facts without autorun, and conversation rewi
   dirs = await tempDirs();
   const fake = fakeModel([
     fauxAssistantMessage("before"),
-    fauxAssistantMessage("one", { stopReason: "length" }),
+    fauxAssistantMessage("one", { stopReason: "aborted" }),
     fauxAssistantMessage("after"),
   ]);
   const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
@@ -223,7 +241,7 @@ test("resume restores disarmed Goal facts without autorun, and conversation rewi
   await session.run("after Goal");
   await session.editGoal("edited");
   await session.pauseGoal();
-  const next = fakeModel([fauxAssistantMessage("resumed", { stopReason: "length" })]);
+  const next = fakeModel([fauxAssistantMessage("resumed", { stopReason: "aborted" })]);
   await session.close();
   const resumed = await createSession({
     ...dirs,
@@ -321,7 +339,7 @@ test("ask mode warns on create and resume without changing Permission Mode", asy
   dirs = await tempDirs();
   const warnings: string[] = [];
   const fake = fakeModel([
-    fauxAssistantMessage("pause", { stopReason: "length" }),
+    fauxAssistantMessage("pause", { stopReason: "aborted" }),
     fauxAssistantMessage("done"),
   ]);
   const session = await createSession({
@@ -359,7 +377,7 @@ test.each(["extra activation", "negative rounds", "missing objective", "blocked 
     dirs = await tempDirs();
     const session = await createSession({
       ...dirs,
-      ...fakeModel([fauxAssistantMessage("stopped", { stopReason: "length" })]),
+      ...fakeModel([fauxAssistantMessage("stopped", { stopReason: "aborted" })]),
       permissionMode: "full-access",
     });
     await session.createGoal("valid");
@@ -402,7 +420,7 @@ test("a complete restored Goal rejects resume, injects no reminder and edit crea
   await session.close();
   const next = fakeModel([
     fauxAssistantMessage("human answer"),
-    fauxAssistantMessage("new", { stopReason: "length" }),
+    fauxAssistantMessage("new", { stopReason: "aborted" }),
   ]);
   const events: SessionEvent[] = [];
   const resumed = await createSession({
@@ -430,7 +448,7 @@ test("a complete restored Goal rejects resume, injects no reminder and edit crea
 test("forked children do not inherit Goal reminders or register Goal tools", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage("first", { stopReason: "length" }),
+    fauxAssistantMessage("first", { stopReason: "aborted" }),
     fauxAssistantMessage(
       fauxToolCall("subagent_fork", {
         description: "Inspect",
@@ -510,7 +528,7 @@ test("manual Compaction immediately restores Goal reminder and unchanged followi
     fauxAssistantMessage(fauxToolCall("read", { path: "old-goal.txt" }), { stopReason: "toolUse" });
   const fake = fakeModel([
     read(),
-    fauxAssistantMessage("old Goal work", { stopReason: "length" }),
+    fauxAssistantMessage("old Goal work", { stopReason: "aborted" }),
     read(),
     fauxAssistantMessage("older buffer"),
     fauxAssistantMessage("protected recent buffer"),

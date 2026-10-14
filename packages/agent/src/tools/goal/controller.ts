@@ -1,6 +1,6 @@
 import { createUserVisibleError, type UserVisibleErrorCode } from "@rukie/shared";
 import { Value } from "typebox/value";
-import { goalSchema, type GoalSnapshot, type GoalView } from "./state.ts";
+import { goalSchema, goalCompletionAudit, type GoalSnapshot, type GoalView } from "./state.ts";
 
 /** DSH goal-round-driver/src/prompt.ts; removed "read the current goal" (no get_goal tool). */
 export function renderGoalRoundPrompt(goal: GoalView): string {
@@ -14,6 +14,7 @@ export function renderGoalRoundPrompt(goal: GoalView): string {
     "claiming completion, gather evidence that the whole objective is achieved, " +
     "and mark it complete. If work remains, leave the goal active for the next round. Follow " +
     "the configured goal-tool policy before reporting a blocker.\n" +
+    `${goalCompletionAudit}\n` +
     "</goal_round>"
   );
 }
