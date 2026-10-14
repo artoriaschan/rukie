@@ -22,13 +22,19 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 `models.list` 读取 `app.sqlite` 中已启用的模型及凭证存在状态，不解密密钥、刷新模型或启动 OAuth。实际模型请求通过选定加密后端按供应商身份取得凭证；认证不采用终端环境 API Key。配置变更在后续发送前刷新，已开始的请求保留其供应商配置；删除选中模型或供应商后发送返回 `model_unavailable`，不会改用另一个供应商。未在当前进程打开的 Session，订阅直接读取已提交历史并返回 `{ readonly: true, modelUnavailable }`；目录与历史阅读不解密执行配置或凭证。历史 snapshot 的 `agent.thinkingLevel` 是已提交的 Thinking Level；其 `permissionMode` 是当前非敏感配置的默认值，并非历史权限事实。只有明确发送或切换模型等执行命令才打开 Session，订阅随后转为实时事件；没有可用模型或凭证时 `modelUnavailable` 为 true。已打开 Session 的订阅和状态更新还提供 `session_state`（permissionMode、thinkingLevel、contextReport），不修改原始 SessionEvent。模型切换要求 Session 空闲，权限模式对下一次工具调用生效。置顶、归档与侧栏偏好写入注册表；首次连接、Run 开始/结束、权限创建/结算和这些修改发送 `sessions_changed`，携带 `sessions`、`projects`、`pinned`、`archived` 与 `preferences`。Session summary 的 running 和 waitingPermission 是侧栏状态的权威事实，覆盖未订阅的后台 Session；子代理权限回调归父 Session，等待状态同样归父会话。
 
+`project.create { directories, trusted: true }` 在调用方确认信任后创建 Project，返回 `{ id, name, directories, primary, trusted }`；目录必须存在且为绝对路径，保存时去重并取真实路径，首个目录是主目录。所有权按精确真实路径比较，包括旧登记表保留的路径别名：主目录已登记时返回原 Project，不创建副本；其余目录重叠返回带冲突 Project 名称的 `project_conflict`。互相嵌套的不同目录允许独立登记，应用数据根及其子目录（含共用 `workspace/`）返回 `project_reserved`。旧 `{ id, path, name }` 记录读取为 `directories: [path]`、`primary: path`、`trusted: false`，保留既有 Session 的 cwd 与分组。
+
+`project.trust { projectId }` 在补确认后授予信任；`project.setPrimary { projectId, directory }` 只接受已登记成员目录，影响后续新 Session，已有 Session 保留 cwd。打开 Session 时 server 将已信任 Project 的全部目录按精确路径加入执行 settings 的 `trustedProjects`，不写回用户 settings，并将所属 Project 中 cwd 以外的目录传为 `additionalDirectories`；主目录配置与附加目录指令的边界见 [Agent Core README](../agent/README.md) 与 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)。补信任不打断执行中的 Run，已打开的 Session 在下一次空闲执行边界重新加载配置。
+
+`session.move { sessionId, projectId }` 只移到另一个已登记 Project 的当前主目录；调用方先对未信任目标完成信任确认。当前 cwd 属于目标任一目录时返回 `invalid_command`；执行中、有挂起 Interaction、正在打开或被其他进程占用时返回 `session_busy`。已打开且空闲的 Session 先关闭再移动，未打开的 Session 仅取得存储租约修改 cwd 和 Transcript，不恢复任务、创建 Run、解析模型或解密凭据。成功返回 `{}`，保留 id、标题、置顶与归档状态，通过 `sessions_changed` 发布新 cwd；不复制或删除目录文件。下一次 Run 的移动 reminder、环境快照与跨移动回退由 [Agent Core](../agent/README.md) 拥有，见 [ADR-0040](../../docs/adr/0040-session-move-transcript-boundary.md)。
+
 `session.rename { sessionId, title }` 将 Session Title 固定为 user 来源，成功后返回 `{}` 并发送 `sessions_changed`。已在服务中打开的 Session 使用其 `rename`，订阅者还会收到 `session_title_changed`；未打开的 Session 只取得存储写入租约并提交标题，不打开 Session、恢复任务、解析模型或解密凭据。标题按 Core 的用户标题规则规范化；规范化后为空返回 `invalid_command`，不存在返回 `session_not_found`，其他宿主持有租约时返回 `session_busy` 且不写入。
 
 历史订阅通过 Agent Core 的只读快照显示已提交 Transcript，包括跨进程持有 lease 的 Session。展示快照后，通过独立 host mutex 的立即事务探测当前占用，随即回滚并关闭，不写数据或取得 Session 执行权；忙时仍返回 `session_busy`，客户端保留只读与 busy 提示。探测仅反映当时状态，明确执行命令仍重新取得执行 lease。只读访问不恢复任务、调用 Hooks 或解密 MCP 配置，不提供实时事件或别的进程的权限回复。快照保留消息、原生工具状态、排队输入、Run Summaries 与 Todo/Plan/Goal/子代理目录；不重建别的进程的 Background Job 或子代理活动。
 
 无订阅且没有 Run、挂起权限请求、Queued Input、运行中 Background Job 或子代理的 Session，在持续空闲 10 分钟后关闭并释放 lease。归档或删除的准入保护结束后，无论成功或失败，仍由服务持有的空闲 Session 重新开始计时；已删除的 Session 不重新打开。进程收到 SIGTERM/SIGINT，先等待全部 Session abort，再释放 Effect runtime 和 Session、Job 进程组；调用方应等待 close 完成。SIGKILL 无法执行这些清理，孤儿 Job 不回收。
 
-应用库位于 `dataRoot/app.sqlite`，默认工作区位于同级 `workspace/`。应用写入使用事务及 WAL/FULL；失败不报告保存成功。Session 索引从数据根内各 Session 库的已提交元数据核对，不依赖项目注册表，发现不取得执行 lease、不恢复任务。损坏元数据记录 warning，不读取旧目录。添加项目需要绝对目录。
+应用库位于 `dataRoot/app.sqlite`，默认工作区位于同级 `workspace/`。应用写入使用事务及 WAL/FULL；失败不报告保存成功。Session 索引从数据根内各 Session 库的已提交元数据核对，不依赖项目注册表，发现不取得执行 lease、不恢复任务。损坏元数据记录 warning，不读取旧目录。
 
 [AppDatabase](src/storage/app-database.ts) 提供配置和凭证的原子替换、删除，以及应用索引与能力缓存操作。敏感 MCP 配置（包括 headers、client_secret）及完整 OAuth state（包括 codeVerifier）通过[加密配置 adapter](src/storage/configuration.ts) 整体加密；终端文件来源保持原行为。模型服务写入通过独立鉴权的 `/private/model-services` 接口，仅供 main 调用；会话 WS 不接受凭证写入，也不返回密文或明文。私有通道能力从进程环境捕获后删除，不向工具子进程传递。
 

@@ -64,6 +64,29 @@ export const SessionMetadataDoc = defineDoc<Static<typeof metadataSchema>>({
   }),
 });
 
+const sessionMoveSchema = Type.Object(
+  {
+    entryId: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+    oldCwd: Type.String(),
+    newCwd: Type.String(),
+    notifiedEntryId: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+  },
+  { additionalProperties: false },
+);
+const emptySessionMove = () => ({ entryId: 0, oldCwd: "", newCwd: "", notifiedEntryId: 0 });
+export function parseSessionMove(value: unknown): Static<typeof sessionMoveSchema> {
+  if (value === undefined) return emptySessionMove();
+  if (!Value.Check(sessionMoveSchema, value)) throw new Error("Invalid Session Move document.");
+  return value;
+}
+/** Session scope survives conversation Rewind; entry identity orders code boundaries. */
+export const SessionMoveDoc = defineDoc<Static<typeof sessionMoveSchema>>({
+  kind: "rukie.session-move",
+  version: 1,
+  scope: "session",
+  initial: emptySessionMove,
+});
+
 export interface SessionSummary {
   id: string;
   title: string;
@@ -257,6 +280,78 @@ export async function renameSessionTitle(
       } finally {
         lease.close();
       }
+    }
+  }
+}
+
+/** Move a closed SQLite Session under its writer lease, without scheduling native work. */
+export async function moveSession(
+  options: UserDataOptions & { cwd: string; id: string; newCwd: string },
+): Promise<void> {
+  const { id } = options;
+  if (!options.dataRoot)
+    throw createUserVisibleError("Session Move requires SQLite storage.", {
+      code: "session-move-unsupported",
+      params: {},
+    });
+  const newCwd = resolve(options.newCwd);
+  const cwd = resolve(options.cwd);
+  const context = BACKGROUND_CONTEXT;
+  validId(id);
+
+  const directory = createSessionStore(options).key(id);
+  const path = join(directory, "session.sqlite");
+  if (!(await Bun.file(path).exists()))
+    throw createUserVisibleError(`Session not found: ${id}`, {
+      code: "session-not-found",
+      params: { id },
+    });
+  const lease = await acquireWriterLease(options, directory, id);
+  let database: SqliteDatabase | undefined;
+  let kernel: ReturnType<typeof createNativeSession> | undefined;
+  try {
+    await requireStorage(path, id);
+    // Reject mismatched identity before opening a mutable SQLite adapter.
+    await readSessionStorage(options, async (storage) => {
+      const reader = createNativeSession(storage);
+      try {
+        const metadata = parseSessionMetadata(await reader.snapshot(SessionMetadataDoc, context));
+        if (metadata.id !== id || metadata.cwd !== cwd)
+          throw createUserVisibleError(`Session not found: ${id}`, {
+            code: "session-not-found",
+            params: { id },
+          });
+      } finally {
+        await reader.close(BACKGROUND_CONTEXT);
+      }
+    });
+    database = await openBunSqliteDatabase(path);
+    const storage = await SqliteStorage.open(database);
+    kernel = createNativeSession(storage);
+    const metadata = parseSessionMetadata(await kernel.snapshot(SessionMetadataDoc, context));
+    const conversation = (
+      await storage.scanConversations({}, 100000, undefined, context)
+    ).items.find((row) => Number(row.id) === metadata.activeConversationId);
+    if (!conversation) throw new Error("Active conversation is missing.");
+    await kernel.commit(async (tx) => {
+      const doc = await tx.doc(SessionMetadataDoc);
+      const entry = await tx.appendEntry(conversation.id, {
+        kind: "rukie.session-move",
+        data: { oldCwd: cwd, newCwd, timestamp: Date.now() },
+      });
+      const moved = await tx.doc(SessionMoveDoc);
+      moved.entryId = Number(entry.id);
+      moved.oldCwd = cwd;
+      moved.newCwd = newCwd;
+      doc.cwd = newCwd;
+      doc.updatedAt = Date.now();
+    }, context);
+  } finally {
+    try {
+      if (kernel) await kernel.close(BACKGROUND_CONTEXT);
+      else await database?.close();
+    } finally {
+      lease.close();
     }
   }
 }

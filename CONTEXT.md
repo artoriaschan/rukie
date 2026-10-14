@@ -23,8 +23,12 @@ _Avoid_: CLI（会和 TUI 混淆）
 _Avoid_: CLI, REPL
 
 **Session**:
-用户与 agent 在同一个工作目录下的一段连续对话，可以凭 id 恢复。
+用户与 agent 的一段连续对话，可以凭 id 恢复。Session 只有一个当前工作目录，SQLite Session 可经 Session Move 改绑，身份与 Transcript 保持不变。Frontend 可在打开时提供附加目录；这些目录只贡献环境快照中的路径与各自 `AGENTS.md` 的 Project Instructions，不改变工具执行目录、权限路径解析或文件跟踪，也不合并 settings、hooks、MCP 与技能。
 _Avoid_: conversation, thread, chat
+
+**Session Move**:
+在写者租约内将 SQLite Session 的 cwd 改绑到新目录的组织操作。Transcript 追加旧、新 cwd 记录，并原子更新 Session 元数据；不创建 Session、不调度 Resume、不解析模型或凭据，不复制或删除工作目录文件。下一次 Run 从最近尚未告知的移动记录追加 system reminder 与新目录环境快照，恢复后不重复告知。最近移动之前的 Checkpoint 只允许对话 Rewind，不能恢复代码；见 [ADR-0040](docs/adr/0040-session-move-transcript-boundary.md)。
+_Avoid_: copy session, workspace migration
 
 **Transcript**:
 一个 Session 的有序追加事实，包括原始消息、工具结果、提醒与上下文边界。Tool State 由独立的 typed documents 持久化。Compaction 和上下文 reset 改变后续模型可见的投影，不删除原始事实；Rewind 保留原对话。`Session.messages` 呈现当前选中对话的完整消息序列，包括已压缩的旧消息，不等同于当前模型上下文，也不包含所有被回退的对话。
@@ -87,7 +91,7 @@ _Avoid_: task list, plan
 _Avoid_: snapshot, backup, undo point
 
 **Rewind**:
-回到某个 Checkpoint 的动作，可选只回代码、只回对话或两者都回。回对话在那条真实 prompt 之前创建原生 fork，按能力的历史策略恢复 documents，保留原对话与消息；不复制后来的任务活动。回代码还原 Checkpoint 文件内容，可能覆盖后续改动。父子均无活跃工作时才可用；两者同时恢复先执行文件恢复，失败不切换对话，已发生的文件写入不保证整体回滚。
+回到某个 Checkpoint 的动作，可选只回代码、只回对话或两者都回。回对话在那条真实 prompt 之前创建原生 fork，按能力的历史策略恢复 documents，保留原对话与消息；不复制后来的任务活动。回代码还原 Checkpoint 文件内容，可能覆盖后续改动。最近 Session Move 之前的 Checkpoint 不能恢复代码，对话恢复仍可用。父子均无活跃工作时才可用；两者同时恢复先执行文件恢复，失败不切换对话，已发生的文件写入不保证整体回滚。
 _Avoid_: undo, revert, rollback
 
 **Session Store**:
@@ -95,7 +99,7 @@ Transcript、documents、任务与父子 ownership 的持久化位置。Headless
 _Avoid_: database, history store
 
 **Project**:
-用户在桌面端登记的工作目录。工作目录等于某个 Project 路径的 Session 归属于该 Project；其余 Session 不属于任何 Project，桌面端将它们列在“对话”分类下，该分类只是导航呈现，不是领域概念。
+用户在桌面端登记的有序非空目录集合，具有一个主目录与显式信任状态。新 Session 使用当前主目录；已有 Session 保留 cwd，cwd 等于该 Project 任一目录时归属于它。其余 Session 列在“对话”分类下，共用应用数据根的 `workspace/`；该分类只是导航呈现，不是领域概念。Project 的真实目录不重叠且不包含应用数据根或其子目录。创建或补确认授予全部目录的精确信任；切换主目录不改变名称或重询信任。
 _Avoid_: workspace, folder
 
 **Archived Session**:

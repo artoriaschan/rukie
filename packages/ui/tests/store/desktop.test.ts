@@ -27,7 +27,9 @@ test("registry snapshots preserve pin membership and selected Session sort order
         updatedAt: 10,
       },
     ],
-    projects: [{ id: "p", name: "Project", path: "/project" }],
+    projects: [
+      { id: "p", name: "Project", directories: ["/project"], primary: "/project", trusted: true },
+    ],
     pinned: ["b"],
     archived: [],
     preferences: { sort: "created", showPinned: false, collapsedGroups: ["projects"] },
@@ -318,4 +320,34 @@ test("archive envelopes invalidate cached history and reject invalid archived id
     store.receive({ ...registry, archived, pinned: ["changed"] });
     expect(store.getState()).toMatchObject({ archived: ["a"], pinned: [] });
   }
+});
+
+test("multi-directory Projects parse complete state and reject missing membership or trust", () => {
+  const store = createDesktopStore();
+  const project = {
+    id: "p",
+    name: "Cross repo",
+    directories: ["/first", "/second"],
+    primary: "/second",
+    trusted: false,
+  };
+  const message = {
+    type: "sessions_changed",
+    projects: [project],
+    sessions: [],
+    pinned: [],
+    archived: [],
+    preferences: {},
+  };
+  store.receive(message);
+  expect(store.getState().projects).toEqual([project]);
+  for (const invalid of [
+    { ...project, directories: [] },
+    { ...project, directories: ["/first", "/first"] },
+    { ...project, primary: "/outside" },
+    { ...project, trusted: "true" },
+    { id: "old", name: "Old", path: "/legacy" },
+  ])
+    store.receive({ ...message, projects: [invalid] });
+  expect(store.getState().projects).toEqual([project]);
 });

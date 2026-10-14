@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { readdir } from "node:fs/promises";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import {
   createSession,
   type SessionEvent,
@@ -309,4 +309,124 @@ test("additional sources compare current content against the latest persisted va
       content: "Available: alpha",
     },
   ]);
+});
+
+test("additional directories appear once in the environment without changing cwd", async () => {
+  dirs = await tempDirs();
+  const extra = join(dirs.homeDir, "other-project");
+  await Bun.write(join(extra, ".keep"), "");
+  const fake = fakeModel([fauxAssistantMessage("done")]);
+  const session = await openSession({
+    ...dirs,
+    ...fake,
+    additionalDirectories: [extra, extra, dirs.cwd],
+  });
+  await session.run("inspect projects");
+  const environment = session.messages.find(
+    (message) => message.role === "system-reminder" && message.source === "environment",
+  );
+  expect(environment).toMatchObject({
+    content: expect.stringContaining(
+      `cwd: ${dirs.cwd}\nadditional directories:\n${extra}\nplatform:`,
+    ),
+  });
+});
+
+test("additional Project Instructions compare changes independently and rebuild after Resume", async () => {
+  dirs = await tempDirs();
+  const extra = join(dirs.homeDir, "other-project");
+  const another = join(dirs.homeDir, "third-project");
+  await Bun.write(join(extra, "AGENTS.md"), "Additional instructions version one");
+  await Bun.write(join(another, "AGENTS.md"), "Independent third-project instructions");
+  const fake = fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
+  const session = await openSession({ ...dirs, ...fake, additionalDirectories: [extra, another] });
+  await session.run("first");
+  expect(JSON.stringify(fake.contexts[0]!.messages)).toContain(
+    "Additional instructions version one",
+  );
+  expect(JSON.stringify(fake.contexts[0]!.messages)).toContain(
+    "Independent third-project instructions",
+  );
+  await Bun.write(join(extra, "AGENTS.md"), "Additional instructions version two");
+  const events: SessionEvent[] = [];
+  await session.run("second", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(publishedReminders(events)).toEqual([
+    {
+      source: `project-instructions:${extra}`,
+      content: `Project Instructions (${join(extra, "AGENTS.md")}):\nAdditional instructions version two`,
+    },
+  ]);
+  const prefix = structuredClone(fake.contexts[1]!.messages);
+  await session.close();
+  const next = fakeModel([fauxAssistantMessage("third")]);
+  const resumed = await openSession({
+    ...dirs,
+    ...next,
+    resumeId: session.id,
+    additionalDirectories: [extra, another],
+  });
+  events.length = 0;
+  await resumed.run("third", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(next.contexts[0]!.messages.slice(0, prefix.length)).toEqual(prefix);
+  expect(publishedReminders(events)).toEqual([]);
+});
+
+test("additional directories supply no configuration, hooks, MCP or skills and tools keep cwd", async () => {
+  dirs = await tempDirs();
+  const extra = join(dirs.homeDir, "other-project");
+  const marker = join(extra, "hook-ran");
+  await Bun.write(
+    join(extra, ".rukie/settings.json"),
+    JSON.stringify({
+      model: "missing/model",
+      hooks: { SessionStart: [{ hooks: [{ type: "command", command: `touch '${marker}'` }] }] },
+    }),
+  );
+  await Bun.write(join(extra, ".mcp.json"), "invalid additional MCP config");
+  await Bun.write(
+    join(extra, ".rukie/skills/additional-only/SKILL.md"),
+    "---\nname: additional-only\ndescription: Additional-only skill\n---\nAdditional-only skill body",
+  );
+  await Bun.write(join(extra, "CLAUDE.md"), "Additional CLAUDE fallback must not load");
+  await Bun.write(join(dirs.cwd, "same-name.txt"), "Primary file content");
+  await Bun.write(join(extra, "same-name.txt"), "Additional file content");
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("read", { path: "same-name.txt" }), {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage("done"),
+  ]);
+  const warnings: string[] = [];
+  const session = await openSession({
+    ...dirs,
+    ...fake,
+    additionalDirectories: [extra],
+    settings: { trustedProjects: [dirs.cwd, extra] },
+    onWarning: (warning) => {
+      warnings.push(warning);
+    },
+  });
+  await session.run("read same-name.txt");
+  const context = JSON.stringify(fake.contexts[1]!.messages);
+  expect(context).toContain("Primary file content");
+  expect(context).not.toContain("Additional file content");
+  expect(context).not.toContain("Additional-only skill");
+  expect(context).not.toContain("Additional CLAUDE fallback must not load");
+  expect(await Bun.file(marker).exists()).toBe(false);
+  expect(warnings).toEqual([]);
+});
+
+test("additional directory options reject relative paths before opening a Session", async () => {
+  dirs = await tempDirs();
+  await expect(
+    createSession({ ...dirs, ...fakeModel([]), additionalDirectories: ["relative-project"] }),
+  ).rejects.toThrow("Additional directories must be absolute paths.");
 });

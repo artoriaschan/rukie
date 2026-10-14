@@ -260,14 +260,15 @@ test("narrow layout retains new-chat shortcuts, manual project entry and final-d
       .toBeVisible();
     await screen.getByRole("button", { name: "Add project", exact: true }).click();
     await screen.getByRole("textbox", { name: "Project folder path" }).fill("/manual/project");
-    await screen.getByRole("button", { name: "Add", exact: true }).click();
+    await screen.getByRole("button", { name: "Create project", exact: true }).click();
+    await screen.getByRole("button", { name: "Trust and create", exact: true }).click();
     await expect
       .poll(async () =>
         (await (await fetch(`http://127.0.0.1:${connection.port}/commands`)).json()).find(
-          (c: { type: string }) => c.type === "project.add",
+          (c: { type: string }) => c.type === "project.create",
         ),
       )
-      .toMatchObject({ path: "/manual/project" });
+      .toMatchObject({ directories: ["/manual/project"], trusted: true });
     await userEvent.keyboard("{Control>}1{/Control}");
     await expect
       .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
@@ -443,20 +444,19 @@ test("Chinese project errors and disconnected pending sends present localized ac
     await screen.getByRole("textbox", { name: "项目文件夹路径" }).fill("/missing");
     await fetch(`${url}/error`, {
       method: "POST",
-      body: JSON.stringify({ type: "project.add", code: "project_not_found" }),
+      body: JSON.stringify({ type: "project.create", code: "project_not_found" }),
     });
-    await screen.getByRole("button", { name: "添加", exact: true }).click();
+    await screen.getByRole("button", { name: "创建项目", exact: true }).click();
+    await screen.getByRole("button", { name: "信任并创建", exact: true }).click();
     await expect
       .element(screen.getByRole("alert"))
-      .toHaveTextContent("操作失败：项目文件夹不存在，请重新选择。");
+      .toHaveTextContent("项目文件夹不存在，请重新选择。");
     await fetch(`${url}/error`, {
       method: "POST",
-      body: JSON.stringify({ type: "project.add", code: "unsafe-code-secret" }),
+      body: JSON.stringify({ type: "project.create", code: "unsafe-code-secret" }),
     });
-    await screen.getByRole("button", { name: "添加", exact: true }).click();
-    await expect
-      .element(screen.getByRole("alert"))
-      .toHaveTextContent("操作失败：无法处理此操作，请重试。");
+    await screen.getByRole("button", { name: "信任并创建", exact: true }).click();
+    await expect.element(screen.getByRole("alert")).toHaveTextContent("无法处理此操作，请重试。");
     await screen.getByRole("button", { name: "取消", exact: true }).click();
     await fetch(`${url}/hold`);
     await screen.getByRole("textbox", { name: "输入消息", exact: true }).fill("等待回复");
@@ -507,7 +507,13 @@ test("sidebar status follows fresh summaries across unselected permission waits 
       },
     ],
     projects: [
-      { id: "long", path: "/project", name: "Project with a long folder name ".repeat(8) },
+      {
+        id: "long",
+        directories: ["/project"],
+        primary: "/project",
+        trusted: true,
+        name: "Project with a long folder name ".repeat(8),
+      },
     ],
     pinned: [],
     archived: [],
@@ -733,7 +739,9 @@ test("sidebar limits Projects and their Sessions independently and keeps categor
       projects: Array.from({ length: 6 }, (_, index) => ({
         id: `p${index}`,
         name: `Project ${index}`,
-        path: `/project${index}`,
+        directories: [`/project${index}`],
+        primary: `/project${index}`,
+        trusted: true,
       })),
       sessions: Array.from({ length: 7 }, (_, index) => ({
         id: `s${index}`,
@@ -856,10 +864,12 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(4);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(5);
     for (const item of screen.getByRole("menuitem").all()) {
-      expect(getComputedStyle(item.element()).cursor).toBe("pointer");
-      expect(getComputedStyle(item.element().querySelector("svg")!).cursor).toBe("pointer");
+      const cursor =
+        item.element().getAttribute("aria-disabled") === "true" ? "not-allowed" : "pointer";
+      expect(getComputedStyle(item.element()).cursor).toBe(cursor);
+      expect(getComputedStyle(item.element().querySelector("svg")!).cursor).toBe(cursor);
     }
     expect(
       screen
@@ -892,11 +902,13 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
     await expect
       .element(screen.getByRole("menuitem", { name: "Unpin", exact: true }))
       .toBeVisible();
-    expect(screen.getByRole("menuitem").all()).toHaveLength(4);
+    expect(screen.getByRole("menuitem").all()).toHaveLength(5);
     const menu = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
     expect(menu.querySelector('span[style*="transform"]')).toBeNull();
-    for (const item of screen.getByRole("menuitem").all())
-      expect(getComputedStyle(item.element()).cursor).toBe("pointer");
+    for (const item of screen.getByRole("menuitem").all()) {
+      const cursor = item.element().hasAttribute("disabled") ? "not-allowed" : "pointer";
+      expect(getComputedStyle(item.element()).cursor).toBe(cursor);
+    }
     const point = session.element().getBoundingClientRect();
     await expect
       .poll(() => Math.abs(menu.getBoundingClientRect().left - (point.left + 24)))
@@ -1014,7 +1026,15 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
             waitingPermission: true,
           },
         ],
-        projects: [{ id: "project", name: "Project", path: "/project" }],
+        projects: [
+          {
+            id: "project",
+            name: "Project",
+            directories: ["/project"],
+            primary: "/project",
+            trusted: true,
+          },
+        ],
         pinned: ["one"],
         archived: [],
         preferences: {},
@@ -1056,15 +1076,18 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
       .toBeDisabled();
     const disabledContextArchive = screen.getByRole("menuitem", { name: "Archive", exact: true });
     expect(getComputedStyle(disabledContextArchive.element()).cursor).toBe("not-allowed");
-    const contextBounds = disabledContextArchive.element().getBoundingClientRect();
-    expect(
-      document
-        .elementFromPoint(
-          contextBounds.x + contextBounds.width / 2,
-          contextBounds.y + contextBounds.height / 2,
-        )
-        ?.closest("button"),
-    ).toBe(disabledContextArchive.element());
+    // The opening morph and ResizeObserver placement complete after the initial render.
+    await expect
+      .poll(() => {
+        const contextBounds = disabledContextArchive.element().getBoundingClientRect();
+        return document
+          .elementFromPoint(
+            contextBounds.x + contextBounds.width / 2,
+            contextBounds.y + contextBounds.height / 2,
+          )
+          ?.closest("button");
+      })
+      .toBe(disabledContextArchive.element());
     await disabledContextArchive.click({ force: true });
     await expect.element(disabledContextArchive).toBeVisible();
     await userEvent.keyboard("{Escape}");

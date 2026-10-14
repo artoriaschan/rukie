@@ -586,6 +586,15 @@ test("two settled jobs stay open and group folding leaves a separate job unchang
     await app.waitFor(
       () => screen().includes("✓ job: bash-1") && screen().includes("✗ job: bash-2"),
     );
+    // Both Reporter inputs share a controlled model request; finish it before deriving click cells.
+    await app.waitFor(
+      () =>
+        screen().includes("background job bash-1") &&
+        screen().includes("background job bash-2") &&
+        app.calls.length === 5,
+    );
+    app.calls[4]!.finish();
+    await app.waitFor(() => !app.isWorking());
     expect(screen()).not.toContain("background jobs folded");
     expect(screen()).toContain("╭");
     expect(screen()).toContain("╰");

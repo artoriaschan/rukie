@@ -798,17 +798,24 @@ function Chat({
     return [...files.values()];
   };
   const rewindModes = (picker: Rewind): readonly RewindMode[] =>
-    rewindFiles(picker).length
+    picker.entries[picker.focus]?.codeRestoreBlocked
       ? [
-          { code: true, conversation: true },
           { code: false, conversation: true },
-          { code: true, conversation: false },
+          { code: true, conversation: true, disabled: true },
+          { code: true, conversation: false, disabled: true },
         ]
-      : [{ code: false, conversation: true }];
+      : rewindFiles(picker).length
+        ? [
+            { code: true, conversation: true },
+            { code: false, conversation: true },
+            { code: true, conversation: false },
+          ]
+        : [{ code: false, conversation: true }];
   const executeRewind = async (picker: Rewind) => {
+    const choice = rewindModes(picker)[picker.mode]!;
+    if (choice.disabled) return;
     showRewind({ ...picker, busy: true });
     try {
-      const choice = rewindModes(picker)[picker.mode]!;
       const result = await session.rewind(picker.entries[picker.focus]!.promptEntryId, choice);
       composer.reset();
       pasteEpoch.current++;
@@ -2148,6 +2155,7 @@ function Chat({
         if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c")) {
           showRewind(picker.confirm && !key.ctrl ? { ...picker, confirm: false } : undefined);
         } else if (event.keypress.name === "up" || event.keypress.name === "down") {
+          if (picker.confirm && picker.entries[picker.focus]?.codeRestoreBlocked) return;
           const count = picker.confirm ? rewindModes(picker).length : picker.entries.length;
           const field = picker.confirm ? "mode" : "focus";
           showRewind({

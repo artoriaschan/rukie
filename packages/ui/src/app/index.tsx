@@ -23,7 +23,12 @@ import {
   ArrowRight,
 } from "lucide-react";
 import type { Locale } from "@rukie/i18n";
-import type { PermissionMode, WirePreferences, WireSessionSummary } from "@rukie/shared";
+import type {
+  PermissionMode,
+  WirePreferences,
+  WireSessionSummary,
+  WireProject,
+} from "@rukie/shared";
 import { createWireClient, WireError, type ClientCommand } from "../client";
 import { createDesktopStore, recentSessions, type SessionViewState } from "../store";
 import type { DesktopHost } from "../host";
@@ -41,6 +46,8 @@ import { cn } from "../lib/utils";
 import type { PermissionDecision } from "../lib/transcript";
 import { ModelServices } from "./model-services";
 import { AppConversation } from "./conversation";
+import { ProjectTrust, ProjectDirectories } from "./project-trust";
+import { ScrollArea } from "../components/ui/scroll-area";
 import { DeleteSession } from "./delete-session";
 import { RenameSession } from "./rename-session";
 import { useErrorText } from "./error";
@@ -109,6 +116,36 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [renaming, setRenaming] = useState<WireSessionSummary | null>(null);
   const [pathOpen, setPathOpen] = useState(false);
   const [path, setPath] = useState("");
+  const [directories, setDirectories] = useState<string[]>([]);
+  const [primary, setPrimary] = useState("");
+  const [directoryProject, setDirectoryProject] = useState<string | null>(null);
+  const [trust, setTrust] = useState<{
+    project: Pick<WireProject, "directories" | "primary">;
+    creating: boolean;
+    confirm: () => Promise<unknown>;
+    cancel: () => void;
+  } | null>(null);
+  const declinedTrust = useRef(new Set<string>());
+  const ensureTrust = (project: WireProject | undefined, reuseDecline = false): Promise<void> => {
+    if (!project || project.trusted || (reuseDecline && declinedTrust.current.has(project.id)))
+      return Promise.resolve();
+    return new Promise((resolve) =>
+      setTrust({
+        project,
+        creating: false,
+        confirm: async () => {
+          await client.request({ type: "project.trust", projectId: project.id });
+          setTrust(null);
+          resolve();
+        },
+        cancel: () => {
+          declinedTrust.current.add(project.id);
+          setTrust(null);
+          resolve();
+        },
+      }),
+    );
+  };
   const [error, setError] = useState("");
   const [drafts, setDrafts] = useState<Record<string, InputDraft>>({});
   const newDraftSequence = useRef(0);
@@ -184,8 +221,8 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   useEffect(() => {
     // Modal cleanup runs before this effect. Restoring inside closePath would
     // still be intercepted by the folder dialog's focus trap.
-    if (!pathOpen) pathOpener.current?.focus();
-  }, [pathOpen]);
+    if (!pathOpen && !trust) pathOpener.current?.focus();
+  }, [pathOpen, trust]);
   const recent = useMemo(
     () => recentSessions(state).filter((session) => !state.archived.includes(session.id)),
     [state.sessions, state.preferences, state.archived],
@@ -200,12 +237,24 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   );
   const view = state.selected ? (state.views[state.selected] ?? emptyView) : emptyView;
   const targetProject = state.projects.find((project) => project.id === state.target);
-  const currentProject = state.projects.find((project) => project.path === current?.cwd);
+  const currentProject = state.projects.find((project) =>
+    project.directories.includes(current?.cwd ?? ""),
+  );
   const connected = state.connection === "connected";
   const safe = (action: () => Promise<unknown>) => {
     void action().catch((reason) => setError(t("app.error", { message: errorText(reason) })));
   };
-  const select = async (sessionId: string) => {
+  const select = async (sessionId: string, reuseDecline = false) => {
+    await ensureTrust(
+      store
+        .getState()
+        .projects.find((project) =>
+          project.directories.includes(
+            store.getState().sessions.find((session) => session.id === sessionId)?.cwd ?? "",
+          ),
+        ),
+      reuseDecline,
+    );
     const previous = store.getState().selected;
     store.select(sessionId);
     setError("");
@@ -221,7 +270,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       else throw reason;
     }
   };
-  const newChat = (project: string | null) => {
+  const enterNewChat = (project: string | null) => {
     const previous = store.getState().selected;
     if (previous) safe(() => client.unsubscribe(previous));
     store.select(null, project);
@@ -230,6 +279,12 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     setError("");
     setSummary(false);
     if (!matchMedia("(min-width: 768px)").matches) setSidebar(false);
+  };
+  const newChat = (project: string | null) => {
+    safe(async () => {
+      await ensureTrust(store.getState().projects.find((p) => p.id === project));
+      enterNewChat(project);
+    });
   };
   const navigate = (offset: number) => {
     const index = navigation.index + offset;
@@ -259,6 +314,24 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     safe(() => client.request({ type: pinned ? "session.pin" : "session.unpin", sessionId: id }));
   const archive = (sessionId: string) =>
     safe(() => client.request({ type: "session.archive", sessionId }));
+  const move = (session: WireSessionSummary, project: WireProject) => {
+    const perform = async () => {
+      await client.request({ type: "session.move", sessionId: session.id, projectId: project.id });
+      if (store.getState().selected === session.id) await client.subscribe(session.id);
+    };
+    if (project.trusted) safe(perform);
+    else
+      setTrust({
+        project,
+        creating: false,
+        confirm: async () => {
+          await client.request({ type: "project.trust", projectId: project.id });
+          await perform();
+          setTrust(null);
+        },
+        cancel: () => setTrust(null),
+      });
+  };
   const preferences = (preferences: WirePreferences) =>
     safe(() => client.request({ type: "preferences.set", preferences }));
   const openSearch = () => {
@@ -356,6 +429,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     const text = draft.trim();
     const attachments = images;
     try {
+      await ensureTrust(state.selected ? currentProject : targetProject, true);
       let createdSessionId: string | undefined;
       if (state.selected)
         await client.request({
@@ -399,7 +473,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         store.getState().selected === null &&
         draftKey === `new-${newDraftSequence.current}`
       )
-        await select(createdSessionId);
+        await select(createdSessionId, true);
     } finally {
       setSending(false);
     }
@@ -464,19 +538,73 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       });
     else setModel(selection);
   };
-  const addProject = async () => {
-    if (host.pickProjectFolder) {
-      const folder = await host.pickProjectFolder();
-      if (folder) {
-        await client.request({ type: "project.add", path: folder });
-        return;
-      }
+  const prepareProject = async (selected: string[]) => {
+    const existing = state.projects.find((project) => project.primary === selected[0]);
+    if (existing) {
+      setPathOpen(false);
+      await ensureTrust(existing);
+      enterNewChat(existing.id);
+      return;
     }
-    pathOpener.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDirectories([...new Set(selected)]);
+    setPrimary(selected[0] ?? "");
+    setDirectoryProject(null);
     setPathOpen(true);
   };
+  const addProject = async () => {
+    const selected = await host.pickProjectFolder?.();
+    pathOpener.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    await prepareProject(selected ?? []);
+  };
   const closePath = () => {
+    setPathOpen(false);
+    setDirectoryProject(null);
+    setPath("");
+  };
+  const confirmProject = () => {
+    const chosen = path.trim()
+      ? [...directories, ...(directories.includes(path.trim()) ? [] : [path.trim()])]
+      : directories;
+    const selectedPrimary = primary || chosen[0];
+    if (!selectedPrimary) return;
+    const ordered = [
+      selectedPrimary,
+      ...chosen.filter((directory) => directory !== selectedPrimary),
+    ];
+    const existing = state.projects.find((project) => project.primary === selectedPrimary);
+    if (existing) {
+      closePath();
+      safe(async () => {
+        await ensureTrust(existing);
+        enterNewChat(existing.id);
+      });
+      return;
+    }
+    setTrust({
+      project: { directories: ordered, primary: selectedPrimary },
+      creating: true,
+      cancel: () => {
+        setTrust(null);
+      },
+      confirm: async () => {
+        const result = await client.request({
+          type: "project.create",
+          directories: ordered,
+          trusted: true,
+        });
+        if (
+          typeof result !== "object" ||
+          result === null ||
+          !("id" in result) ||
+          typeof result.id !== "string"
+        )
+          throw new WireError("invalid_command");
+        setTrust(null);
+        closePath();
+        enterNewChat(result.id);
+      },
+    });
     setPathOpen(false);
   };
   const markdown = () =>
@@ -521,13 +649,20 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 {t("app.workspace")}
               </Menu.DropdownMenuItem>
               {state.projects.map((project) => (
-                <Menu.DropdownMenuItem
-                  key={project.id}
-                  onSelect={() => store.select(null, project.id)}
-                >
+                <Menu.DropdownMenuItem key={project.id} onSelect={() => newChat(project.id)}>
                   {project.name}
                 </Menu.DropdownMenuItem>
               ))}
+              {targetProject ? (
+                <Menu.DropdownMenuItem
+                  onSelect={() => {
+                    setDirectoryProject(targetProject.id);
+                    setPathOpen(true);
+                  }}
+                >
+                  {t("app.project-directories")}
+                </Menu.DropdownMenuItem>
+              ) : null}
               <Menu.DropdownMenuItem onSelect={() => safe(addProject)}>
                 {t("app.add-project")}
               </Menu.DropdownMenuItem>
@@ -692,6 +827,8 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                         setRenaming,
                         archive,
                         setDeleting,
+                        state.projects,
+                        move,
                       )}
                     />
                     <Menu.DropdownMenuSub>
@@ -809,6 +946,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   onRename={setRenaming}
                   onArchive={archive}
                   onDelete={setDeleting}
+                  onMove={move}
                   onPreferences={preferences}
                 />
               </div>
@@ -857,7 +995,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                           {state.projects.map((project) => (
                             <Menu.DropdownMenuItem
                               key={project.id}
-                              onSelect={() => store.select(null, project.id)}
+                              onSelect={() => newChat(project.id)}
                             >
                               {project.name}
                             </Menu.DropdownMenuItem>
@@ -908,14 +1046,18 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             id: session.id,
             label: session.title,
             group: t("app.chats"),
-            keywords: [state.projects.find((project) => project.path === session.cwd)?.name ?? ""],
+            keywords: [
+              state.projects.find((project) => project.directories.includes(session.cwd))?.name ??
+                "",
+            ],
             status: session.running ? (
               <LoaderCircle
                 aria-label={t("app.running")}
                 className="size-3 animate-spin motion-reduce:animate-none"
               />
             ) : undefined,
-            badge: state.projects.find((project) => project.path === session.cwd)?.name,
+            badge: state.projects.find((project) => project.directories.includes(session.cwd))
+              ?.name,
             onSelect: () => safe(() => select(session.id)),
           })),
           {
@@ -936,43 +1078,100 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           },
         ]}
       />
-      <MorphingModal
-        label={t("app.add-project")}
-        viewId={pathOpen ? "path" : null}
-        onClose={closePath}
-        placement="center"
-      >
-        <form
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              closePath();
-            }
-          }}
-          onSubmit={(event) => {
-            event.preventDefault();
-            safe(async () => {
-              await client.request({ type: "project.add", path });
-              setPath("");
-              closePath();
-            });
-          }}
-          className="flex min-h-0 flex-col gap-3"
+      {trust ? (
+        <ProjectTrust
+          project={trust.project}
+          creating={trust.creating}
+          onConfirm={trust.confirm}
+          onCancel={trust.cancel}
+        />
+      ) : null}
+      {!trust ? (
+        <MorphingModal
+          label={t(directoryProject ? "app.project-directories" : "app.add-project")}
+          viewId={pathOpen ? "path" : null}
+          onClose={closePath}
+          placement="center"
         >
-          <h2 className="shrink-0 text-ui-base font-medium">{t("app.add-project")}</h2>
-          <div className="min-h-0 overflow-y-auto">
-            <Input autoFocus label={t("app.project-path")} value={path} onChange={setPath} />
-          </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <Button variant="ghost" onClick={closePath}>
-              {t("app.cancel")}
-            </Button>
-            <Button type="submit" disabled={!path.trim() || !connected}>
-              {t("app.add")}
-            </Button>
-          </div>
-        </form>
-      </MorphingModal>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              confirmProject();
+            }}
+            className="flex min-h-0 flex-col gap-3"
+          >
+            <h2 className="shrink-0 text-ui-base font-medium">
+              {t(directoryProject ? "app.project-directories" : "app.add-project")}
+            </h2>
+            <ScrollArea
+              className="min-h-0 flex-1"
+              viewportLabel={t("app.project-directories")}
+              viewportClassName="space-y-3 [contain:inline-size]"
+            >
+              <ProjectDirectories
+                directories={
+                  directoryProject
+                    ? (state.projects.find((p) => p.id === directoryProject)?.directories ?? [])
+                    : directories
+                }
+                primary={
+                  directoryProject
+                    ? (state.projects.find((p) => p.id === directoryProject)?.primary ?? "")
+                    : primary
+                }
+                onPrimary={(directory) => {
+                  if (directoryProject)
+                    safe(() =>
+                      client.request({
+                        type: "project.setPrimary",
+                        projectId: directoryProject,
+                        directory,
+                      }),
+                    );
+                  else setPrimary(directory);
+                }}
+              />
+              {!directoryProject ? (
+                <Input autoFocus label={t("app.project-path")} value={path} onChange={setPath} />
+              ) : null}
+            </ScrollArea>
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+              {!directoryProject ? (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    if (path.trim()) {
+                      setDirectories((previous) => [...new Set([...previous, path.trim()])]);
+                      setPrimary((previous) => previous || path.trim());
+                      setPath("");
+                    } else
+                      safe(async () => {
+                        const selected = await host.pickProjectFolder?.();
+                        if (selected) {
+                          setDirectories((previous) => [...new Set([...previous, ...selected])]);
+                          setPrimary((previous) => previous || selected[0] || "");
+                        }
+                      });
+                  }}
+                >
+                  {t(path.trim() ? "app.add" : "app.choose-directories")}
+                </Button>
+              ) : null}
+              <Button variant="ghost" onClick={closePath}>
+                {t("app.cancel")}
+              </Button>
+              {!directoryProject ? (
+                <Button
+                  type="submit"
+                  disabled={(!path.trim() && !directories.length) || !connected}
+                >
+                  {t("app.create-project")}
+                </Button>
+              ) : null}
+            </div>
+          </form>
+        </MorphingModal>
+      ) : null}
     </div>
   );
 }

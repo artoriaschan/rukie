@@ -1,13 +1,14 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { getCurrentTools } from "@earendil-works/pi-ai";
-import { start } from "../helpers/app";
+import { startWithClock } from "../helpers/clock-app";
 import { committedJobNotifications } from "../helpers/job-notifications";
 
 test("mixed parent, two Jobs and two Subagents preserve reading, copy and Interaction ownership across microtasks", async () => {
   const copied: string[] = [];
   const commits = committedJobNotifications();
-  const app = await start(["--yolo", "历史 parent"], {
+  // Drive renderer deadlines while subprocess gates and terminal parsing remain real IO.
+  const app = await startWithClock(["--yolo", "历史 parent"], {
     columns: 80,
     rows: 60,
     env: { LANG: "en" },

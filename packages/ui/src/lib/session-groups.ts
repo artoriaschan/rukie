@@ -11,12 +11,12 @@ export function sessionGroups(
   const pins = new Set(pinned);
   const visible = sessions.filter((session) => !hidden.has(session.id));
   const remaining = visible.filter((session) => !pins.has(session.id));
-  const paths = new Set(projects.map((project) => project.path));
+  const paths = new Set(projects.flatMap((project) => project.directories));
   return {
     pinned: visible.filter((session) => pins.has(session.id)),
     projects: projects.map((project) => ({
       project,
-      sessions: remaining.filter((session) => session.cwd === project.path),
+      sessions: remaining.filter((session) => project.directories.includes(session.cwd)),
     })),
     conversations: remaining.filter((session) => !paths.has(session.cwd)),
   };

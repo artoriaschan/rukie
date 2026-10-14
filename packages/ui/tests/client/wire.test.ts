@@ -15,7 +15,15 @@ test("correlates commands and resubscribes with fresh connection credentials", a
     await client.connect();
     await client.subscribe("one");
     const projects = await client.request({ type: "projects.list" });
-    expect(projects).toEqual([{ id: "project", name: "Project", path: "/project" }]);
+    expect(projects).toEqual([
+      {
+        id: "project",
+        name: "Project",
+        directories: ["/project"],
+        primary: "/project",
+        trusted: true,
+      },
+    ]);
     await server.disconnect();
     await expect.poll(() => client.getState()).toBe("connected");
     await expect.poll(() => connectionReads).toBe(2);
@@ -63,7 +71,15 @@ test("concurrent response IDs survive reversed arrival; disconnected requests re
     const models = client.request({ type: "models.list" });
     await expect.poll(async () => (await server.commands()).length).toBe(2);
     await fetch(`http://127.0.0.1:${server.connection.port}/flush`);
-    expect(await projects).toEqual([{ id: "project", name: "Project", path: "/project" }]);
+    expect(await projects).toEqual([
+      {
+        id: "project",
+        name: "Project",
+        directories: ["/project"],
+        primary: "/project",
+        trusted: true,
+      },
+    ]);
     expect(await models).toEqual([
       expect.objectContaining({ spec: "test/script", thinkingLevels: ["off", "low", "high"] }),
     ]);

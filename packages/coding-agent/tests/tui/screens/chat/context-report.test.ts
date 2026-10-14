@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { expect, test } from "bun:test";
+import { expect, onTestFinished, test } from "bun:test";
 import { fauxProvider } from "@earendil-works/pi-ai";
 import { listSessions } from "@rukie/agent";
 import { start } from "../../helpers/app";
@@ -82,43 +82,59 @@ for (const [columns, window, gridColumns, gridRows] of [
 }
 
 test("context reports during a Run stay local and keep their original provider totals after later responses", async () => {
-  const stopping = Promise.withResolvers<void>();
   const release = Promise.withResolvers<Response>();
-  let held = true;
-  const server = Bun.serve({
-    port: 0,
-    fetch: () => {
-      if (!held) return Response.json({});
-      held = false;
-      stopping.resolve();
-      return release.promise;
-    },
-  });
-  const app = await start([], {
-    rows: 60,
-    env: { LANG: "en_US.UTF-8" },
-    session: {
-      settings: { hooks: { Stop: [{ hooks: [{ type: "http", url: server.url.href }] }] } },
-    },
-  });
+  const secondRelease = Promise.withResolvers<Response>();
+  let stopRequests = 0;
+  let server: Bun.Server<undefined> | undefined;
+  let acquiredApp: Awaited<ReturnType<typeof start>> | undefined;
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup = () =>
+    (cleanupPromise ??= (async () => {
+      release.resolve(Response.json({}));
+      secondRelease.resolve(Response.json({}));
+      try {
+        await acquiredApp?.cleanup();
+      } finally {
+        await server?.stop(true);
+      }
+    })());
+  onTestFinished(cleanup);
   try {
+    server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        stopRequests++;
+        if (stopRequests === 1) return release.promise;
+        if (stopRequests === 2) return secondRelease.promise;
+        return Response.json({});
+      },
+    });
+    const app = await start([], {
+      rows: 60,
+      env: { LANG: "en_US.UTF-8" },
+      session: {
+        settings: { hooks: { Stop: [{ hooks: [{ type: "http", url: server.url.href }] }] } },
+      },
+    });
+    acquiredApp = app;
     await app.waitFor(() => screen(app).includes("╭"));
     app.stdin.write("first question\r");
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.finish(700, 2, { read: 30, write: 20 });
-    await stopping.promise;
+    await app.waitFor(() => stopRequests === 1);
     await app.waitFor(() => screen(app).includes("0.6%"));
     // Provider totals are already visible while Stop still owns the Run.
     expect(app.isWorking()).toBe(true);
     release.resolve(Response.json({}));
-    await app.waitFor(() => !app.isWorking());
+    await app.waitFor(() => !app.isWorking() && screen(app).includes("✻ Baked for"));
     app.stdin.write("second question\r");
     await app.waitFor(() => app.calls.length === 2);
     app.stdin.write("/context\r");
     await app.waitFor(() => screen(app).includes("750/128k tokens"));
     expect(app.calls).toHaveLength(2);
     app.calls[1]!.finish(1200, 2);
-    await app.waitFor(() => !app.isWorking());
+    await app.waitFor(() => stopRequests === 2);
     expect(screen(app)).toContain("750/128k tokens");
     app.stdin.write("\x1b");
     await app.waitFor(() => screen(app).includes("╭"));
@@ -126,16 +142,24 @@ test("context reports during a Run stay local and keep their original provider t
     await app.waitFor(() => screen(app).includes("1.2k/128k tokens"));
     expect(screen(app)).not.toContain("750/128k tokens");
     app.stdin.write("\x03");
-    await app.waitFor(() => screen(app).includes("╭"));
+    // Context hides the working indicator. Observe Stop ownership in chat, then
+    // wait for both completed Runs before submitting the next question.
+    await app.waitFor(() => screen(app).includes("╭") && app.isWorking());
+    expect(app.isWorking()).toBe(true);
+    secondRelease.resolve(Response.json({}));
+    await app.waitFor(
+      () =>
+        !app.isWorking() &&
+        !screen(app).includes("esc interrupt") &&
+        screen(app).split("✻ Baked for").length === 3,
+    );
     app.stdin.write("third question\r");
     await app.waitFor(() => app.calls.length === 3);
     expect(JSON.stringify(app.calls[2]!.context)).not.toContain("Estimated usage by category");
     expect(JSON.stringify(app.calls[2]!.context)).not.toContain("750/128k");
     app.calls[2]!.finish();
   } finally {
-    release.resolve(Response.json({}));
-    await app.cleanup();
-    await server.stop(true);
+    await cleanup();
   }
 });
 

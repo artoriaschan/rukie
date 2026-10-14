@@ -1,6 +1,20 @@
 import { modelServiceCopy } from "./model-service-copy";
 export const appCopy = {
   en: {
+    "app.project-directories": "Project directories",
+    "app.primary": "Primary",
+    "app.set-primary": "Set as primary",
+    "app.create-project": "Create project",
+    "app.choose-directories": "Choose folders",
+    "app.trust-title": "Trust these folders?",
+    "app.trust-primary":
+      "The primary folder's project instructions, hooks, MCP configuration and allow rules will take effect.",
+    "app.trust-additional": "Additional folders' project instructions will be loaded.",
+    "app.trust-create": "Trust and create",
+    "app.trust": "Trust",
+    "app.error-project_conflict": "This folder already belongs to {{project}}.",
+    "app.error-project_reserved": "Application data folders cannot be added as a Project.",
+
     ...modelServiceCopy.en,
     "app.error-model_services_unavailable":
       "Model service management requires the browser sidecar encryption backend.",
@@ -122,6 +136,7 @@ export const appCopy = {
     "app.updated": "By updated time",
     "app.created": "By created time",
     "app.show": "Show",
+    "app.move-project": "Move to Project",
     "app.rename": "Rename",
     "app.rename-title": "Rename chat",
     "app.rename-description": "Keep it short and recognizable",
@@ -199,6 +214,19 @@ export const appCopy = {
     "app.max": "Maximum",
   },
   zh: {
+    "app.project-directories": "项目目录",
+    "app.primary": "主要",
+    "app.set-primary": "设为主要",
+    "app.create-project": "创建项目",
+    "app.choose-directories": "选择文件夹",
+    "app.trust-title": "是否信任这些文件夹？",
+    "app.trust-primary": "主目录的项目指令、hooks、MCP 配置和 allow 规则将生效。",
+    "app.trust-additional": "附加目录的项目指令将被加载。",
+    "app.trust-create": "信任并创建",
+    "app.trust": "信任",
+    "app.error-project_conflict": "此文件夹已属于项目 {{project}}。",
+    "app.error-project_reserved": "应用数据目录不能添加为项目。",
+
     ...modelServiceCopy.zh,
     "app.error-model_services_unavailable": "模型服务管理需要浏览器 sidecar 加密后端。",
     "app.error-model_unavailable": "发送前请选择可用的模型服务。",
@@ -318,6 +346,7 @@ export const appCopy = {
     "app.updated": "按更新时间",
     "app.created": "按创建时间",
     "app.show": "显示",
+    "app.move-project": "移动到项目",
     "app.rename": "重命名",
     "app.rename-title": "重命名聊天",
     "app.rename-description": "保持简短且易于识别",

@@ -4,6 +4,8 @@ status: accepted
 
 # 采用 pi-durable 原生执行与恢复，移除旧 harness 和数据兼容
 
+Session Move 的移动事实与告知进度不随 Conversation Rewind 撤销；跨越最近移动的代码恢复范围由 [ADR-0040](0040-session-move-transcript-boundary.md) 部分替代。其他原生 fork、恢复、任务所有权和备份规则继续有效。
+
 ## 问题
 
 Rukie 使用 pi-agent-core 的旧 harness 能力，而 pi 1.0.4 已移除这些入口。只保留新版 Agent loop 再自研存储、压缩与工具基础设施，会扩大 Rukie 的执行职责；在新 harness 外维持原有调度与恢复语义，又会形成两套生命周期。

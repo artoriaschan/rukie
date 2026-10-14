@@ -60,7 +60,12 @@ export const WireCommandSchema = Type.Union([
   command("host.revealPath", { path: id }),
   command("host.openInTerminal", { path: id }),
   command("projects.list", {}),
-  command("project.add", { path: id }),
+  command("project.create", {
+    directories: Type.Array(id, { minItems: 1, uniqueItems: true }),
+    trusted: Type.Literal(true),
+  }),
+  command("project.trust", { projectId: id }),
+  command("project.setPrimary", { projectId: id, directory: id }),
   command("sessions.list", {}),
   command("session.create", {
     project: Type.Union([id, Type.Null()]),
@@ -92,6 +97,7 @@ export const WireCommandSchema = Type.Union([
   command("session.rename", { ...session, title: Type.String({ minLength: 1 }) }),
   command("session.pin", session),
   command("session.unpin", session),
+  command("session.move", { ...session, projectId: id }),
   command("session.archive", session),
   command("session.delete", session),
   command("models.list", {}),
@@ -122,6 +128,8 @@ export type WireErrorCode =
   | "session_archived"
   | "session_not_found"
   | "project_not_found"
+  | "project_conflict"
+  | "project_reserved"
   | "invalid_command"
   | "not_queued"
   | "interaction_stale"
@@ -133,8 +141,10 @@ export type WireResponse<Result = unknown> = { type: "response"; id: string } & 
 );
 export interface WireProject {
   id: string;
-  path: string;
   name: string;
+  directories: string[];
+  primary: string;
+  trusted: boolean;
 }
 export interface WireSessionSummary {
   id: string;

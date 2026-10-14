@@ -195,6 +195,8 @@ function isErrorCode(code: string): code is WireErrorCode {
     code === "session_archived" ||
     code === "session_not_found" ||
     code === "project_not_found" ||
+    code === "project_conflict" ||
+    code === "project_reserved" ||
     code === "invalid_command" ||
     code === "not_queued" ||
     code === "interaction_stale" ||

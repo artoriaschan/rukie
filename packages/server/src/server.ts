@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, stat } from "node:fs/promises";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { mkdir, stat, realpath } from "node:fs/promises";
+import { basename, isAbsolute, join, relative, sep } from "node:path";
 import { Hono } from "hono";
 import { upgradeWebSocket, websocket } from "@hono/bun";
 import type { WSContext } from "hono/ws";
@@ -11,6 +11,7 @@ import {
   listSessions,
   renameSessionTitle,
   deleteSession,
+  moveSession,
   discoverSqliteSessions,
   isSqliteSessionBusy,
   readSessionSnapshot,
@@ -63,7 +64,10 @@ export interface ServerOptions {
   onHandshake?: (connection: { port: number; token: string }) => void;
 }
 class CommandError extends Error {
-  constructor(readonly code: WireErrorCode) {
+  constructor(
+    readonly code: WireErrorCode,
+    readonly params?: Record<string, string | number>,
+  ) {
     super(code);
   }
 }
@@ -117,6 +121,22 @@ export async function startServer(options: ServerOptions) {
         })
       ).settings;
     const registry = await localDatabase.registry();
+    // Legacy registry paths and Session cwd retain their spelling; ownership uses filesystem identity.
+    // An unavailable registered directory still owns its stored path until it becomes resolvable.
+    const directoryIdentity = (path: string) => realpath(path).catch(() => path);
+    const projectIdentities = () =>
+      Promise.all(
+        registry.projects.map(async (project) => ({
+          project,
+          primary: await directoryIdentity(project.primary),
+          directories: await Promise.all(project.directories.map(directoryIdentity)),
+        })),
+      );
+    const projectForCwd = async (cwd: string) => {
+      const identity = await directoryIdentity(cwd);
+      return (await projectIdentities()).find((item) => item.directories.includes(identity));
+    };
+
     if (sharedConfiguration) registry.preferences = await database.preferences();
     const configuredModels = async () =>
       createApplicationModels({
@@ -246,7 +266,18 @@ export async function startServer(options: ServerOptions) {
         throw error;
       }
     };
+    // Keep canonical ownership checks and all Project writes in one queue through persistence.
+    let projectMutationTail: Promise<unknown> = Promise.resolve();
+    const mutateProjects = <T>(operation: () => Promise<T>): Promise<T> => {
+      const result = projectMutationTail.then(operation);
+      projectMutationTail = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    };
     const sessions = new Map<string, Session>();
+    const openedTrust = new Map<string, { cwd: string; trusted: boolean }>();
     const pending = new Map<
       string,
       {
@@ -292,6 +323,7 @@ export async function startServer(options: ServerOptions) {
             observations.get(session.id)?.();
             observations.delete(session.id);
             sessions.delete(session.id);
+            openedTrust.delete(session.id);
             children.delete(session.id);
             const retirement = session.close().then(() => changed(session.id));
             retirements.add(retirement);
@@ -322,17 +354,33 @@ export async function startServer(options: ServerOptions) {
       const existing = openings.get(key);
       if (existing) return existing;
       let owner: Session | undefined;
+      let trustedAtOpen = false;
       const opening = (async () => {
-        const settings =
-          options.sessionOptions?.settings ??
-          (
-            await loadSettings({
-              cwd,
-              homeDir: options.homeDir,
-              dataRoot: options.dataRoot,
-              userSettings: await configuration.settings(),
-            })
-          ).settings;
+        const owningProject = await projectForCwd(cwd);
+        const cwdIdentity = await directoryIdentity(cwd);
+        trustedAtOpen = owningProject?.project.trusted ?? false;
+        const configuredSettings =
+          options.sessionOptions?.settings ?? (await configuration.settings());
+        const userSettings = {
+          ...configuredSettings,
+          trustedProjects: [
+            ...new Set([
+              ...(configuredSettings.trustedProjects ?? []),
+              ...registry.projects.filter((p) => p.trusted).flatMap((p) => p.directories),
+              ...(await projectIdentities())
+                .filter((item) => item.project.trusted)
+                .flatMap((item) => item.directories),
+            ]),
+          ],
+        };
+        const settings = (
+          await loadSettings({
+            cwd,
+            homeDir: options.homeDir,
+            dataRoot: options.dataRoot,
+            userSettings,
+          })
+        ).settings;
         await refreshModels();
         const models = options.sessionOptions?.models ?? applicationModels;
         const spec = initial?.modelSelection
@@ -376,6 +424,9 @@ export async function startServer(options: ServerOptions) {
           model: selected ?? options.sessionOptions?.model,
           permissionMode: initial?.permissionMode,
           cwd,
+          additionalDirectories: owningProject?.project.directories.filter(
+            (_, index) => owningProject.directories[index] !== cwdIdentity,
+          ),
           homeDir: options.homeDir,
           dataRoot: options.dataRoot,
           mcpPersistence: applicationMcpPersistence(vault),
@@ -416,6 +467,7 @@ export async function startServer(options: ServerOptions) {
         .then((session) => {
           owner = session;
           sessions.set(session.id, session);
+          openedTrust.set(session.id, { cwd, trusted: trustedAtOpen });
           observations.set(
             session.id,
             session.subscribe((event) => {
@@ -459,7 +511,27 @@ export async function startServer(options: ServerOptions) {
     };
     const find = async (id: string, selection?: SessionOptions["resumeModelSelection"]) => {
       const current = sessions.get(id);
-      if (current) return current;
+      if (current) {
+        const opened = openedTrust.get(id);
+        const trusted = (await projectForCwd(opened?.cwd ?? ""))?.project.trusted ?? false;
+        if (opened?.trusted === trusted || executing(current)) return current;
+        // Applying newly granted trust waits for the next idle execution boundary.
+        // Closing here reloads cwd configuration without interrupting an active Run.
+        await current.close();
+        if (sessions.get(id) === current) {
+          clearTimeout(idleTimers.get(id));
+          idleTimers.delete(id);
+          observations.get(id)?.();
+          observations.delete(id);
+          sessions.delete(id);
+          children.delete(id);
+          openedTrust.delete(id);
+          for (const subscribed of subscriptions.values()) {
+            subscribed.get(id)?.();
+            subscribed.delete(id);
+          }
+        }
+      }
       const summary = (await summaries()).find((s) => s.id === id);
       if (!summary) throw new CommandError("session_not_found");
       return open(summary.cwd, id, undefined, selection);
@@ -640,7 +712,7 @@ export async function startServer(options: ServerOptions) {
           return hostOperation(command, {
             platform: options.hostPlatform ?? process.platform,
             execute: options.executeHost ?? executeHost,
-            roots: [...registry.projects.map((project) => project.path), workspace],
+            roots: [...registry.projects.flatMap((project) => project.directories), workspace],
           });
         case "projects.list":
           return runtime.runPromise(
@@ -648,21 +720,63 @@ export async function startServer(options: ServerOptions) {
               return (yield* DesktopRegistry).value.projects;
             }),
           );
-        case "project.add": {
+        case "project.create": {
+          const directories: string[] = [];
+          for (const input of command.directories) {
+            if (!isAbsolute(input) || !(await stat(input).catch(() => undefined))?.isDirectory())
+              throw new CommandError("project_not_found");
+            const path = await realpath(input);
+            if (!directories.includes(path)) directories.push(path);
+          }
+          const root = await realpath(directory);
           if (
-            !isAbsolute(command.path) ||
-            !(await stat(command.path).catch(() => undefined))?.isDirectory()
+            directories.some((path) => {
+              const child = relative(root, path);
+              return (
+                child === "" ||
+                (!isAbsolute(child) && child !== ".." && !child.startsWith(`..${sep}`))
+              );
+            })
           )
-            throw new CommandError("project_not_found");
-          const path = resolve(command.path);
-          let project: WireProject | undefined = registry.projects.find((p) => p.path === path);
-          if (!project) {
-            project = { id: crypto.randomUUID(), path, name: basename(path) };
+            throw new CommandError("project_reserved");
+          return mutateProjects(async () => {
+            const primary = directories[0]!;
+            const identities = await projectIdentities();
+            const existing = identities.find((item) => item.primary === primary);
+            if (existing) return existing.project;
+            const conflict = identities.find((item) =>
+              item.directories.some((path) => directories.includes(path)),
+            );
+            if (conflict)
+              throw new CommandError("project_conflict", { project: conflict.project.name });
+            const project: WireProject = {
+              id: crypto.randomUUID(),
+              name: basename(primary),
+              directories,
+              primary,
+              trusted: true,
+            };
             registry.projects.push(project);
             await save();
-          }
-          await changed();
-          return project;
+            await changed();
+            return project;
+          });
+        }
+        case "project.trust":
+        case "project.setPrimary": {
+          return mutateProjects(async () => {
+            const project = registry.projects.find((p) => p.id === command.projectId);
+            if (!project) throw new CommandError("project_not_found");
+            if (command.type === "project.trust") project.trusted = true;
+            else {
+              if (!project.directories.includes(command.directory))
+                throw new CommandError("invalid_command");
+              project.primary = command.directory;
+            }
+            await save();
+            await changed();
+            return project;
+          });
         }
         case "sessions.list":
           return summaries();
@@ -670,7 +784,7 @@ export async function startServer(options: ServerOptions) {
           const cwd =
             command.project === null
               ? workspace
-              : registry.projects.find((p) => p.id === command.project)?.path;
+              : registry.projects.find((p) => p.id === command.project)?.primary;
           if (!cwd) throw new CommandError("project_not_found");
           const session = await runtime.runPromise(
             Effect.gen(function* () {
@@ -827,6 +941,45 @@ export async function startServer(options: ServerOptions) {
           await changed();
           return { mode: command.mode };
         }
+        case "session.move": {
+          const project = registry.projects.find((item) => item.id === command.projectId);
+          if (!project) throw new CommandError("project_not_found");
+          const summary = (await summaries()).find((item) => item.id === command.sessionId);
+          if (!summary) throw new CommandError("session_not_found");
+          if ((await projectForCwd(summary.cwd))?.project.id === project.id)
+            throw new CommandError("invalid_command");
+          const current = sessions.get(command.sessionId);
+          if (
+            openings.has(command.sessionId) ||
+            (current && executing(current)) ||
+            [...pending.values()].some((item) => item.sessionId === command.sessionId)
+          )
+            throw new CommandError("session_busy");
+          if (current) {
+            clearTimeout(idleTimers.get(current.id));
+            idleTimers.delete(current.id);
+            await current.close();
+            observations.get(current.id)?.();
+            observations.delete(current.id);
+            sessions.delete(current.id);
+            openedTrust.delete(current.id);
+            children.delete(current.id);
+            admissions.delete(current.id);
+            for (const subscribed of subscriptions.values()) {
+              subscribed.get(current.id)?.();
+              subscribed.delete(current.id);
+            }
+          }
+          await moveSession({
+            cwd: summary.cwd,
+            homeDir: options.homeDir,
+            dataRoot: options.dataRoot,
+            id: summary.id,
+            newCwd: project.primary,
+          });
+          await changed();
+          return {};
+        }
         case "session.delete": {
           const summary = (await summaries()).find((session) => session.id === command.sessionId);
           if (!summary) throw new CommandError("session_not_found");
@@ -844,6 +997,7 @@ export async function startServer(options: ServerOptions) {
             observations.get(current.id)?.();
             observations.delete(current.id);
             sessions.delete(current.id);
+            openedTrust.delete(current.id);
             children.delete(current.id);
             admissions.delete(current.id);
             for (const subscribed of subscriptions.values()) {
@@ -936,7 +1090,11 @@ export async function startServer(options: ServerOptions) {
       if (!("sessionId" in command)) return executeCommand(command, socket);
       const id = command.sessionId;
       if (organizing.has(id)) throw new CommandError("session_busy");
-      if (command.type === "session.delete" || command.type === "session.archive") {
+      if (
+        command.type === "session.delete" ||
+        command.type === "session.archive" ||
+        command.type === "session.move"
+      ) {
         if ((sessionCommands.get(id) ?? 0) > 0) throw new CommandError("session_busy");
         organizing.add(id);
         try {
@@ -1079,7 +1237,16 @@ export async function startServer(options: ServerOptions) {
                           ? "invalid_command"
                           : "internal";
                 if (code === "internal") warning(String(error));
-                send(socket, { type: "response", id: command.id, error: { code } });
+                send(socket, {
+                  type: "response",
+                  id: command.id,
+                  error: {
+                    code,
+                    ...(error instanceof CommandError && error.params
+                      ? { params: error.params }
+                      : {}),
+                  },
+                });
               },
             )
             .finally(() => commands.delete(task));

@@ -16,7 +16,7 @@ export class HostError extends Error {
   }
 }
 const folderScript =
-  'try\nreturn POSIX path of (choose folder)\non error number -128\nreturn ""\nend try';
+  'try\nset folders to choose folder with multiple selections allowed\nset paths to {}\nrepeat with folder in folders\nset end of paths to POSIX path of folder\nend repeat\nset AppleScript\'s text item delimiters to ASCII character 10\nreturn paths as text\non error number -128\nreturn ""\nend try';
 /** Only canonical descendants may launch native applications; symlink escapes are rejected. */
 export async function hostOperation(
   command: Extract<WireCommand, { type: `host.${string}` }>,
@@ -28,9 +28,11 @@ export async function hostOperation(
     if (result.exitCode !== 0) throw new Error("Host operation failed");
     const path = result.stdout.replace(/\r?\n$/, "");
     if (!path) return null;
-    if (!isAbsolute(path) || path.includes("\0") || !(await stat(path)).isDirectory())
-      throw new HostError("invalid_command");
-    return path;
+    const paths = path.split(/\r?\n/);
+    for (const selected of paths)
+      if (!isAbsolute(selected) || selected.includes("\0") || !(await stat(selected)).isDirectory())
+        throw new HostError("invalid_command");
+    return Promise.all(paths.map((selected) => realpath(selected)));
   }
   if (!isAbsolute(command.path) || command.path.includes("\0"))
     throw new HostError("invalid_command");

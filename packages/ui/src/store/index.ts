@@ -310,7 +310,13 @@ function validEnvelope(input: unknown): boolean {
       !input.projects.every(
         (item) =>
           record(item) &&
-          [item.id, item.path, item.name].every((value) => typeof value === "string"),
+          [item.id, item.primary, item.name].every((value) => typeof value === "string") &&
+          typeof item.primary === "string" &&
+          strings(item.directories) &&
+          item.directories.length > 0 &&
+          new Set(item.directories).size === item.directories.length &&
+          item.directories.includes(item.primary) &&
+          typeof item.trusted === "boolean",
       ) ||
       !strings(input.pinned) ||
       !strings(input.archived) ||

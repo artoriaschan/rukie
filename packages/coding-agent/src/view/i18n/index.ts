@@ -73,6 +73,10 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.model-switch-busy", data.params);
     case "session-run-active":
       return t("error.session-run-active", data.params);
+    case "session-move-unsupported":
+      return t("error.session-move-unsupported", data.params);
+    case "rewind-cross-session-move":
+      return t("error.rewind-cross-session-move", data.params);
     case "session-rewinding":
       return t("error.session-rewinding", data.params);
     case "session-compacting":

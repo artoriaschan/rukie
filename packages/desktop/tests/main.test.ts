@@ -221,6 +221,17 @@ test("Electron installs app scheme before load and authenticates every native IP
       token: "test-token",
     });
     expect(await electron.handlers.get("rukie:pickProjectFolder")!(event)).toBeNull();
+    electron.dialog.showOpenDialog.mockResolvedValueOnce({
+      canceled: false,
+      filePaths: ["/first", "/second"],
+    });
+    expect(await electron.handlers.get("rukie:pickProjectFolder")!(event)).toEqual([
+      "/first",
+      "/second",
+    ]);
+    expect(electron.dialog.showOpenDialog).toHaveBeenLastCalledWith(electron.window, {
+      properties: ["openDirectory", "createDirectory", "multiSelections"],
+    });
     expect(electron.handlers.has("rukie:revealPath")).toBe(false);
     expect(electron.handlers.has("rukie:openInTerminal")).toBe(false);
   } finally {

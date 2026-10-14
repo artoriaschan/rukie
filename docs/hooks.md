@@ -59,6 +59,8 @@ PreToolUse 的退出码 2 始终拒绝，原因取 stdout JSON 的 `reason`，�
 
 PreToolUse 的 `additionalContext` 附在本次工具结果的 `<system-reminder>` 中，包括失败和权限拒绝。单条上下文、纯文本 stdout 及 `systemMessage` 限 10,000 字符，超出部分截断并标记。`systemMessage` 显示给用户；通用 `continue: false` 优先结束整个 run，`stopReason` 在 CLI stderr 或 TUI 结束处呈现。Notification 只接受显示消息，SessionEnd 丢弃输出，后台 command 不参与决定。`suppressOutput` 可提供，但不改变呈现。
 
+桌面端 Trusted Project 来自创建 Project 或首次使用旧 Project 时的显式信任确认。服务端把已信任 Project 的全部真实目录派生为 `trustedProjects`，不写回用户 settings；匹配要求路径精确相等，不继承父目录信任。拒绝旧 Project 的确认不阻止 Session 运行，但不加载项目 hooks、MCP 配置与 allow 规则。附加目录仅贡献项目指令，其可执行配置不合并。见 [ADR-0041](adr/0041-desktop-project-explicit-trust.md)。
+
 ## 事件与匹配
 
 | 事件               | matcher 匹配字段    | 主要输入与行为                                                                                            |

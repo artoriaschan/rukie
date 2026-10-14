@@ -394,6 +394,28 @@ export function ContextMenuContent({
     context.reduce,
   ]);
 
+  // Nested target groups may grow after opening; keep the existing overlay in the viewport.
+  useEffect(() => {
+    if (!context.open || !mounted) return;
+    const content = context.contentRef.current;
+    if (!content) return;
+    const resize = new ResizeObserver(() => {
+      const x = clamp(
+        context.point.x,
+        VIEWPORT_PADDING,
+        Math.max(VIEWPORT_PADDING, window.innerWidth - content.offsetWidth - VIEWPORT_PADDING),
+      );
+      const y = clamp(
+        context.point.y,
+        VIEWPORT_PADDING,
+        Math.max(VIEWPORT_PADDING, window.innerHeight - content.offsetHeight - VIEWPORT_PADDING),
+      );
+      setPosition((current) => (current.x === x && current.y === y ? current : { x, y }));
+    });
+    resize.observe(content);
+    return () => resize.disconnect();
+  }, [context.open, context.point, context.contentRef, mounted]);
+
   useEffect(() => {
     if (!context.open) return;
     const frame = requestAnimationFrame(() => {
@@ -530,6 +552,8 @@ export interface ContextMenuItemProps {
   inset?: boolean;
   className?: string;
   textValue?: string;
+  ariaHasPopup?: "menu";
+  ariaExpanded?: boolean;
 }
 
 function ContextMenuItemBase({
@@ -541,6 +565,8 @@ function ContextMenuItemBase({
   inset = false,
   className,
   textValue,
+  ariaHasPopup,
+  ariaExpanded,
   role = "menuitem",
   ariaChecked,
 }: ContextMenuItemProps & {
@@ -557,6 +583,8 @@ function ContextMenuItemBase({
       type="button"
       id={id}
       role={role}
+      aria-haspopup={ariaHasPopup}
+      aria-expanded={ariaExpanded}
       {...checkedProps}
       disabled={disabled}
       data-context-menu-item="true"

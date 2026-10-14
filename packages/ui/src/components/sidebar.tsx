@@ -37,6 +37,7 @@ export interface SidebarProps {
   onRename: (session: WireSessionSummary) => void;
   onArchive: (id: string) => void;
   onDelete: (session: WireSessionSummary) => void;
+  onMove: (session: WireSessionSummary, project: WireProject) => void;
   onPreferences: (preferences: WirePreferences) => void;
 }
 export function Sidebar(props: SidebarProps) {
@@ -81,6 +82,8 @@ export function Sidebar(props: SidebarProps) {
       props.onRename,
       props.onArchive,
       props.onDelete,
+      props.projects,
+      props.onMove,
     );
     return (
       <ContextMenu key={session.id}>
