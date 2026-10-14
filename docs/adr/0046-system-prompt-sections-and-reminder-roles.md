@@ -12,7 +12,7 @@ System Prompt 原为一份跨项目、跨 Session 字节一致的常量，只有
 
 ## 决定
 
-**System Prompt 由会话内稳定的输入生成。** 根 Session 使用 pi-durable `section()` 组装 System Prompt；各节只读取会话内不变或极少变化的输入，例如已注册工具、平台与 shell。相同输入产生字节一致的文本，变化的节由 pi-durable 作为新的 system 条目追加，不改写已有前缀。当前时间、Git 状态、cwd、Project Instructions 与能力状态不进入 System Prompt。子代理沿用基础 System Prompt、子代理通用规则与子代理类型 prompt 的拼接，子代理通用规则说明它无法询问用户、最终回复交付给父 Session、阻塞上报父 Session。
+**System Prompt 由会话内稳定的输入生成。** 根 Session 使用 pi-durable `section()` 组装 System Prompt；各节只读取会话内不变或极少变化的输入，例如已注册工具、平台与 shell。相同输入产生字节一致的文本，变化的节由 pi-durable 作为新的 system 条目追加，不改写已有前缀。环境节给出 cwd、附加目录与平台，Compaction 后仍在模型上下文中；Session Move 后 pi-durable 追加变更后的环境节，迁移说明仍由 System Reminder 提供。当前时间、Git 分支与状态、Project Instructions 与能力状态不进入 System Prompt；Git 分支与状态作为 `environment` 快照提醒，Compaction 后不重发。子代理沿用基础 System Prompt、子代理通用规则与子代理类型 prompt 的拼接，子代理通用规则说明它无法询问用户、最终回复交付给父 Session、阻塞上报父 Session。
 
 **System Prompt 规定行为与提醒的解读方式。** 它包含指令优先级（平台安全、权限与执行模式约束优先；当前任务的明确指令优先于项目、skill 默认与保存的偏好；已给的授权在同一动作、目标与范围内有效）、System Reminder 可信度、工程判断、执行责任、沟通、协作、评审、用户中途引导与 Compaction 说明，以及与已注册工具对应的工具指引。回复使用用户书写的语言，技术术语、代码和标识符保持英文；Agent Core 不设默认语言。Rukie 用户数据目录中的凭据与 Session 数据禁止模型读取。
 
@@ -31,6 +31,8 @@ System Prompt 原为一份跨项目、跨 Session 字节一致的常量，只有
 ## 备选方案
 
 - System Prompt 保持完全静态，环境相关指引全部放工具描述或 System Reminder：只与工具集或平台有关的跨工具规则没有合适位置；会话内稳定的输入不破坏缓存，静态常量没有额外收益。
+- cwd 留在一次性 `environment` 提醒：Compaction 后模型能否知道工作目录取决于摘要质量；cwd 只随 Session Move 变化，属于会话内稳定输入。
+- `environment` 提醒在 Compaction 后重发：cwd 已由环境节覆盖，重发 Git 状态会以旧快照替换模型对工作树的实际认知，收益不足。
 - 子代理同时改用 `section()` 组装：现有拼接已经满足子代理规则需要，扩大改动范围而没有新的行为收益。
 - 逐字照搬外部参考提示词，只替换产品名与工具名：会引用 Rukie 没有的工具与概念，偏离术语表。
 - 只改写既有触发点的文案，不新增运行纠偏机制：循环、截断与插入消息的失败方式仍无说明。
@@ -38,6 +40,6 @@ System Prompt 原为一份跨项目、跨 Session 字节一致的常量，只有
 
 ## 影响
 
-System Prompt 不再在所有项目间共用同一前缀；单个 Session 内仍命中缓存。上下文占用统计与 Side Question 需要使用该 Session 实际渲染的 System Prompt。原来断言跨项目字节一致的测试改为断言相同输入字节一致、时间与 cwd 不进入 System Prompt。
+System Prompt 不再在所有项目间共用同一前缀；单个 Session 内仍命中缓存。上下文占用统计与 Side Question 需要使用该 Session 实际渲染的 System Prompt。原来断言跨项目字节一致的测试改为断言相同输入字节一致、时间与 Git 状态不进入 System Prompt，cwd 变化只改变环境节。[ADR-0016](0016-tool-state-and-context-projection.md) 的 `environment` 一次性快照只保留 Git 分支与状态。
 
 `date` 来源改名为 `time`；已有 Session 恢复后会收到一次新格式快照。空闲判断依赖消息时间戳与提醒使用同一时钟。自动事件包裹后，Frontend 仍通过消息事实识别来源，不解析提醒文本。运行纠偏的阈值与触发条件归 Session 运行层，需要覆盖 Compaction、Resume 与 Rewind 后的计数边界。

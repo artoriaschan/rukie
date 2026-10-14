@@ -31,8 +31,9 @@ System Prompt 只有身份和几条概括规则，缺少指令优先级、提醒
 ### System Prompt（工单 01）
 
 - `session/prompt.ts` 改为导出 section 定义；根 Session 通过 Session extension 注册各节，`instructions` 保留身份段。
-- 节的划分：身份与安全、指令优先级、运行约定（含 System Reminder 可信度）、工具指引（按已注册工具输出）、工程判断、执行责任、沟通（含回复语言）、渲染约定、协作、评审、用户中途引导、上下文管理、环境（平台、shell、用户数据目录禁读）。
-- 时间、Git 状态、cwd 不进入任何节。
+- 节的划分：身份与安全、指令优先级、运行约定（含 System Reminder 可信度）、工具指引（按已注册工具输出）、工程判断、执行责任、沟通（含回复语言）、渲染约定、协作、评审、用户中途引导、上下文管理、环境（cwd、附加目录、平台、shell、用户数据目录禁读）。
+- Session Move 后由 pi-durable 追加变更后的环境节，迁移 System Reminder 保留；`environment` 快照只保留 Git 分支与状态，Compaction 后不重发。
+- 时间、Git 分支与状态不进入任何节。
 - `SUBAGENT_PROMPT` 加入：无法与用户对话、非关键歧义按最合理理解处理、关键阻塞上报父 Session、最终回复自包含且交付给父 Session、工程判断与协作约束。
 - `contextUsage`、`contextReport` 与 Side Question 改为使用当前 Session 实际渲染的 System Prompt。
 - 工具名、术语遵循 CONTEXT.md；所有文本为英文。
@@ -75,7 +76,7 @@ System Prompt 只有身份和几条概括规则，缺少指令优先级、提醒
 ## Testing Decisions
 
 - 遵循 [docs/testing.md](../../docs/testing.md)；每个工单在 Comments 维护验证记录。
-- System Prompt：相同输入字节一致；不同日期、cwd 不改变文本；工具集不同时对应节出现或缺失；子代理与 Side Question 使用正确文本。
+- System Prompt：相同输入字节一致；不同日期不改变文本；cwd 只改变环境节，Compaction 后环境节仍在上下文，Session Move 后追加新环境节且 Resume、Rewind 投影一致；工具集不同时对应节出现或缺失；子代理与 Side Question 使用正确文本。
 - 时间提醒：使用注入时钟覆盖开场、阈值前与阈值时的空闲刷新、跨日刷新、同日不刷新、Compaction 后重发、Resume 后按历史判断；时区通过 `TZ` 固定。
 - 通知包裹：根、子 Session 与子代理通知均带 System Reminder 包裹和声明；Frontend 呈现与 `source` 不变。
 - 运行纠偏：fake model 驱动阈值前后、计数重置、截断续写上限、上限总结；Compaction 与 Resume 后计数清零。

@@ -16,7 +16,7 @@ Transcript 追加按名称与版本校验的完整 Tool State 快照。恢复当
 
 只持久化恢复后仍有意义的事实。Todo 属于单个 Session，子代理独立维护；当前运行活动、Goal 自动续跑开关与临时会话授权不从历史恢复。活动和 Run Outcome 的区别见 [ADR-0009](0009-subagent-resume-outcomes.md)。
 
-模型上下文由当前分支的消息、Compaction 摘要和有效状态投影构造，`Session.messages` 不等于完整 Transcript。Compaction 保留原始记录，并在摘要与保留尾部之间重新建立当前 reminder 来源；environment 是一次性快照，不重发。后续去重以最近一次压缩后的上下文为边界。状态变化通过能力提供的 reminder 向模型说明，不能指望摘要保存完整状态。
+模型上下文由当前分支的消息、Compaction 摘要和有效状态投影构造，`Session.messages` 不等于完整 Transcript。Compaction 保留原始记录，并在摘要与保留尾部之间重新建立当前 reminder 来源；environment 是一次性快照，不重发；其中的 cwd、附加目录与平台已移入 System Prompt 环境节，快照只保留 Git 分支与状态，见 [ADR-0046](0046-system-prompt-sections-and-reminder-roles.md)。后续去重以最近一次压缩后的上下文为边界。状态变化通过能力提供的 reminder 向模型说明，不能指望摘要保存完整状态。
 
 依据：[Todo](../../.scratch/todo/spec.md)、[压缩后的 reminder 重发](../../.scratch/permission-rules/spec.md)、[Goal](../../.scratch/goal/spec.md)。存储选型仍遵循 [ADR-0003](0003-dual-session-store.md)。
 
