@@ -24,11 +24,16 @@ export async function hostOperation(
 ) {
   if (command.type === "host.pickFolder") {
     if (options.platform !== "darwin") throw new HostError("unsupported");
-    const result = await options.execute(["/usr/bin/osascript", "-e", folderScript]);
+    const script =
+      command.multiple === false
+        ? folderScript.replace("choose folder with multiple selections allowed", "{choose folder}")
+        : folderScript;
+    const result = await options.execute(["/usr/bin/osascript", "-e", script]);
     if (result.exitCode !== 0) throw new Error("Host operation failed");
     const path = result.stdout.replace(/\r?\n$/, "");
     if (!path) return null;
     const paths = path.split(/\r?\n/);
+    if (command.multiple === false && paths.length !== 1) throw new HostError("invalid_command");
     for (const selected of paths)
       if (!isAbsolute(selected) || selected.includes("\0") || !(await stat(selected)).isDirectory())
         throw new HostError("invalid_command");

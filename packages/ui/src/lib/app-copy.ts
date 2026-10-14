@@ -1,12 +1,18 @@
 import { modelServiceCopy } from "./model-service-copy";
 export const appCopy = {
   en: {
+    "app.current-branch": "Current branch: {{branch}}",
+    "app.use-worktree": "Use an independent worktree",
+    "app.worktree-hint":
+      "The next new Session will create an independent worktree from {{branch}} without changing the primary folder.",
+    "app.error-worktree_failed": "Could not create an independent worktree: {{message}}",
+    "app.error-worktree_session": "Worktree Sessions cannot move to another Project.",
     "app.edit-project": "Edit project",
     "app.remove-local-project": "Remove local project",
     "app.remove-project": "Remove project",
     "app.remove-project-title": "Remove {{name}}?",
     "app.remove-project-description":
-      "This only removes the project from the app. Files on your computer and existing chats will not be deleted.",
+      "Delete this project and all of its chats? Files in the project directories will not be deleted.",
     "app.remove-project-busy":
       "A Session in this Project is running, waiting for interaction or open elsewhere. Close or finish it before removing the Project.",
     "app.primary": "Primary",
@@ -149,6 +155,8 @@ export const appCopy = {
     "app.created": "By created time",
     "app.show": "Show",
     "app.move-project": "Move to Project",
+    "app.move-out": "Move out of Project",
+    "app.choose-folder": "Choose folder…",
     "app.rename": "Rename",
     "app.rename-title": "Rename chat",
     "app.rename-description": "Keep it short and recognizable",
@@ -162,6 +170,8 @@ export const appCopy = {
     "app.delete-title": "Permanently delete chat?",
     "app.delete-description":
       "This cannot be undone. The chat, subagents, attachments and file history will be permanently removed.",
+    "app.delete-conversation-description":
+      "This cannot be undone. The chat, subagents, attachments and file history will be permanently removed. The chat’s working directory will also be deleted.",
     "app.delete-close": "Close delete chat",
     "app.delete-busy": "This chat is in use. Try again when it is idle.",
     "app.error-session_archived": "Archived chats cannot be pinned.",
@@ -230,12 +240,16 @@ export const appCopy = {
     "app.max": "Maximum",
   },
   zh: {
+    "app.current-branch": "当前分支：{{branch}}",
+    "app.use-worktree": "使用独立工作树",
+    "app.worktree-hint": "下一个新会话将从 {{branch}} 创建独立工作树，不影响主目录。",
+    "app.error-worktree_failed": "无法创建独立工作树：{{message}}",
+    "app.error-worktree_session": "独立工作树会话不能移动到其他项目。",
     "app.edit-project": "编辑项目",
     "app.remove-local-project": "移除本地项目",
     "app.remove-project": "移除项目",
     "app.remove-project-title": "移除 {{name}}？",
-    "app.remove-project-description":
-      "这只会从应用中移除该项目。你电脑上的文件和现有聊天不会被删除。",
+    "app.remove-project-description": "确定删除该项目及其全部对话？项目目录中的文件不会被删除。",
     "app.remove-project-busy":
       "项目下有 Session 正在执行、等待交互或在别处打开，结束或关闭后才能移除项目。",
     "app.primary": "主要",
@@ -376,6 +390,8 @@ export const appCopy = {
     "app.created": "按创建时间",
     "app.show": "显示",
     "app.move-project": "移动到项目",
+    "app.move-out": "移出项目",
+    "app.choose-folder": "选择文件夹…",
     "app.rename": "重命名",
     "app.rename-title": "重命名聊天",
     "app.rename-description": "保持简短且易于识别",
@@ -388,6 +404,8 @@ export const appCopy = {
     "app.delete": "永久删除",
     "app.delete-title": "永久删除聊天？",
     "app.delete-description": "此操作不可撤销。聊天、子代理、附件和文件历史将被永久删除。",
+    "app.delete-conversation-description":
+      "此操作不可撤销。聊天、子代理、附件和文件历史将被永久删除。对话的工作目录也会被删除。",
     "app.delete-close": "关闭删除聊天",
     "app.delete-busy": "会话被占用，请在空闲后重试。",
     "app.error-session_archived": "已归档的聊天不能置顶。",

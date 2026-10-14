@@ -719,7 +719,11 @@ test("missing backup closes the picker with an error and preserves files and con
 test.each(["permission", "question", "plan"] as const)(
   "%s pending at 40×12 takes Escape priority with Todo visible",
   async (kind) => {
-    const app = await ready({ columns: 40, rows: 12 });
+    const app = await ready({
+      columns: 40,
+      rows: 12,
+      session: { settings: { permissions: { ask: ["write"] } } },
+    });
     try {
       await toolsPrompt(app, "keep todo", [
         { name: "todo_write", args: { todos: [{ content: "parent task", status: "pending" }] } },

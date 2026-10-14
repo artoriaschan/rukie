@@ -18,6 +18,7 @@ import type { CustomSessionEvent, PermissionMode, ToolCallView } from "@rukie/sh
 import { evaluatePermissionRules, parsePermissionRules, type PermissionRule } from "./rules.ts";
 export { parsePermissionRules, evaluatePermissionRules } from "./rules.ts";
 export { resolvePermissionPath } from "./path.ts";
+import { isWithinAccessScope, type SessionAccessScope } from "./scope.ts";
 import { sessionAllowRule, type SessionAllow, type SessionAllowRule } from "./session-rules.ts";
 export type { SessionAllowRule } from "./session-rules.ts";
 import {
@@ -62,17 +63,20 @@ type PermissionDecision = "allow" | "deny" | "ask";
 interface PermissionOptions {
   mode: PermissionMode;
   toolName: string;
+  inScope: boolean;
 }
 
 /** Pure policy; frontends decide how to handle `ask`. */
-function decidePermission({ mode, toolName }: PermissionOptions): PermissionDecision | "review" {
+function decidePermission({
+  mode,
+  toolName,
+  inScope,
+}: PermissionOptions): PermissionDecision | "review" {
   if (
     mode === "full-access" ||
+    inScope ||
     [
       "ToolSearch",
-      "read",
-      "glob",
-      "grep",
       "skill",
       "ask_user_question",
       "exit_plan_mode",
@@ -117,6 +121,7 @@ interface PermissionGateOptions {
   rules: readonly PermissionRule[];
   sessionAllowRules?: SessionAllowRule[];
   sessionGrantListeners?: Set<() => void>;
+  getAccessScope(): SessionAccessScope;
   getMode(): PermissionMode;
   getTools(): readonly ToolRegistration[];
   getMessages(): Promise<readonly Message[]>;
@@ -217,7 +222,17 @@ export function createPermissionGate(options: PermissionGateOptions) {
     const { toolCall, args, mode, signal } = context;
     const decision = options.isMcpAuthTool?.(toolCall.name)
       ? "allow"
-      : decidePermission({ toolName: toolCall.name, mode });
+      : decidePermission({
+          toolName: toolCall.name,
+          mode,
+          inScope: isWithinAccessScope(
+            toolCall.name,
+            args,
+            options.cwd,
+            options.homeDir,
+            options.getAccessScope(),
+          ),
+        });
     if (decision !== "review") {
       if (decision === "deny") return { decision, reason: denialReason(context), by: "user" };
       return { decision };

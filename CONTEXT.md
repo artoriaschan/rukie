@@ -23,7 +23,7 @@ _Avoid_: CLI（会和 TUI 混淆）
 _Avoid_: CLI, REPL
 
 **Session**:
-用户与 agent 的一段连续对话，可以凭 id 恢复。Session 只有一个当前工作目录，SQLite Session 可经 Session Move 改绑，身份与 Transcript 保持不变。Frontend 可在打开时提供附加目录；这些目录只贡献环境快照中的路径与各自 `AGENTS.md` 的 Project Instructions，不改变工具执行目录、权限路径解析或文件跟踪，也不合并 settings、hooks、MCP 与技能。
+用户与 agent 的一段连续对话，可以凭 id 恢复。Session 只有一个当前工作目录，SQLite Session 可经 Session Move 改绑，身份与 Transcript 保持不变。桌面端 Session 持久绑定 Project；主目录变化在下一次空闲打开执行前同步，只读订阅历史不移动，活跃 Run 不被中断。Frontend 可在打开时提供附加目录；这些目录贡献环境快照中的路径、各自 `AGENTS.md` 的 Project Instructions 与 Session 访问范围中的可读写根，不改变工具执行目录、相对权限路径解析或文件跟踪，也不合并 settings、hooks、MCP 与技能。
 _Avoid_: conversation, thread, chat
 
 **Session Move**:
@@ -99,7 +99,7 @@ Transcript、documents、任务与父子 ownership 的持久化位置。Headless
 _Avoid_: database, history store
 
 **Project**:
-用户在桌面端登记的有序非空目录集合，具有可编辑的名称、一个主目录与显式信任状态。新 Session 使用当前主目录；已有 Session 保留 cwd，cwd 与该 Project 任一目录的真实身份相等时归属于它；server 在 wire Session 摘要中提供该展示归属，Frontend 不改写 cwd 或自行推测路径身份。其余 Session 列在“对话”分类下，共用应用数据根的 `workspace/`；该分类只是导航呈现，不是领域概念。Project 的真实目录不重叠且不包含应用数据根或其子目录。创建或补确认授予全部目录的精确信任；已信任 Project 新增目录必须再次确认，未信任 Project 编辑后保持未信任。切换主目录不改变名称或重询信任。编辑或移除只改变组织归属与后续打开配置，保留 Session cwd、Transcript、置顶、归档和目录文件；其任一目录下有执行中或等待 Interaction 的 Session 时不能移除。
+用户在桌面端登记的有序非空目录集合，具有可编辑的名称、一个主目录与显式信任状态。新 Session 使用当前主目录；server 在应用数据根中持久保存 Session 绑定，wire 摘要 `projectId` 读取该绑定，Frontend 不按 cwd 推测归属。编辑目录或切换主目录保持绑定；主目录在后续空闲打开执行前经 Session Move 同步。没有绑定的 Session 列在“对话”分类下，每个新对话独占应用数据根的 `workspace/<id>/`，删除对话时一并删除该目录；既有 cwd 为 `workspace/` 根的 Session 不迁移，删除时保留根目录；该分类只是导航呈现，不是领域概念。Project 的真实目录不重叠且不包含应用数据根或其子目录。创建或补确认授予全部目录的精确信任；已信任 Project 新增目录必须再次确认，未信任 Project 编辑后保持未信任。切换主目录不改变名称或重询信任。移除 Project 先删除全部绑定 Session（含置顶与归档），全部成功后移除登记，目录文件保留；任一绑定 Session 忙碌时整体拒绝，中途删除失败保留 Project 供重试。既有 Session 不补写绑定。
 _Avoid_: workspace, folder
 
 **Archived Session**:
@@ -223,9 +223,16 @@ _Avoid_: plan permission mode, read-only mode
 _Avoid_: policy, whitelist, allowTools
 
 **Permission Mode**:
-决定 permission decision 如何得出的 session 级开关，三选一：`ask`（只读工具 allow，其余 ask）、`auto-review`（由 permission review 判定，安全的 allow，有风险的 ask）、`full-access`（模式本身不再询问：本该由模式 ask 的都 allow，但用户显式写下的 deny / ask 规则与 hooks 照常生效）。默认 `ask`；运行中可切换，只对当前 session 生效，resume 时回到默认值。
+决定 permission decision 如何得出的 session 级开关，三选一：`ask`（文件工具在 Session 访问范围内 allow，范围外 ask；其他工具沿用各自默认值）、`auto-review`（文件工具在范围内 allow，其余需授权调用由 permission review 判定，安全的 allow，有风险的 ask）、`full-access`（模式本身不再询问：本该由模式 ask 的都 allow，但用户显式写下的 deny / ask 规则与 hooks 照常生效）。默认 `ask`；运行中可切换，只对当前 session 生效，resume 时回到默认值。
 _Avoid_: yolo（仅作 CLI 别名 `--yolo`）, approval mode, trust level
 
 **Permission Review**:
 `auto-review` 模式下，对单次工具调用发起的一次独立模型调用，判断风险等级（low / medium / high）并给出 allow 或 deny。它看用户指令和历史工具调用，不看 assistant 文本和工具结果。deny 或评审失败都转为向用户 ask。
 _Avoid_: classifier, auto approval, safety check
+
+**Session 访问范围（Session Access Scope）**:
+Agent Core 用于文件工具 Permission Mode 默认值的真实路径范围。cwd 与附加目录可读写，已发现技能根目录与本 Session 的 Background Job 输出目录只读；子 Session 共享父范围。范围内默认放行，范围外或只读范围内写入按 Permission Mode 询问、评审或放行。显式权限规则与 hooks 保持优先，范围不限制 bash 或 MCP，也不是操作系统 sandbox。见 [ADR-0044](docs/adr/0044-session-access-scope.md) 与[权限参考](docs/permission-rules.md#session-访问范围)。
+
+## 独立工作树
+
+独立工作树是 Git Project 新建 Session 时从当前分支（detached HEAD 时为当前提交）派生的隔离 Git 工作目录。每棵工作树绑定一个 Session，应用数据库保存源仓库、派生分支、目录与创建时间，Session 绑定保存 `worktreeId`。其 cwd 为工作树目录，附加目录排除 Project 主目录，信任从所属 Project 派生。工作树 Session 不随主目录变更同步且不能 Session Move；删除 Session 或移除 Project 保留工作树与分支。创建、信任与生命周期见 [ADR-0045](docs/adr/0045-git-worktree-sessions.md)。

@@ -189,6 +189,8 @@ export function createWireClient(host: Pick<DesktopHost, "getConnection">) {
 
 function isErrorCode(code: string): code is WireErrorCode {
   return (
+    code === "worktree_failed" ||
+    code === "worktree_session" ||
     code === "model_services_unavailable" ||
     code === "model_unavailable" ||
     code === "session_busy" ||

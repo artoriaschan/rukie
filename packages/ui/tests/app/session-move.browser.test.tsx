@@ -1,6 +1,7 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
+import type { WireSessionSummary } from "@rukie/shared";
 import { App } from "../../src/app";
 import { modelServicesFixture } from "../helpers/model-services";
 import "../../src/theme.css";
@@ -37,6 +38,12 @@ test("all three Session menus share move targets and moving changes the sidebar 
       else await move.hover();
       const target = screen.getByRole("menuitem", { name: "Project", exact: true });
       await expect.element(target).toBeVisible();
+      await expect
+        .element(screen.getByRole("menuitem", { name: "Choose folder…", exact: true }))
+        .toBeVisible();
+      await expect
+        .element(screen.getByRole("menuitem", { name: "Move out of Project", exact: true }))
+        .not.toBeInTheDocument();
       expect(getComputedStyle(target.element()).cursor).toBe("pointer");
       regions.forEach((element, index) => {
         const box = element.getBoundingClientRect(),
@@ -63,7 +70,37 @@ test("all three Session menus share move targets and moving changes the sidebar 
     await screen.getByRole("button", { name: "Session actions", exact: true }).click();
     await expect
       .element(screen.getByRole("menuitem", { name: "Move to Project", exact: true }))
-      .toHaveAttribute("aria-disabled", "true");
+      .not.toHaveAttribute("aria-disabled", "true");
+    await userEvent.keyboard("{Escape}");
+    for (const entry of ["context", "row", "title"]) {
+      if (entry === "context") await row.click({ button: "right" });
+      if (entry === "row")
+        await screen
+          .getByRole("button", { name: "Session actions Explore ideas", exact: true })
+          .click();
+      if (entry === "title")
+        await screen.getByRole("button", { name: "Session actions", exact: true }).click();
+      const move = screen.getByRole("menuitem", { name: "Move to Project", exact: true });
+      if (entry === "context") await move.click();
+      else await move.hover();
+      await expect
+        .element(screen.getByRole("menuitem", { name: "Choose folder…", exact: true }))
+        .toBeVisible();
+      const out = screen.getByRole("menuitem", { name: "Move out of Project", exact: true });
+      await expect.element(out).toBeVisible();
+      if (entry === "title") await out.click();
+      else {
+        await userEvent.keyboard("{Escape}");
+        await userEvent.keyboard("{Escape}");
+      }
+    }
+    await expect
+      .element(
+        screen
+          .getByRole("region", { name: "Conversations", exact: true })
+          .getByRole("button", { name: "Explore ideas", exact: true }),
+      )
+      .toBeVisible();
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
@@ -93,12 +130,13 @@ const moveProjects = [
     trusted: false,
   },
 ];
-const moveSession = {
+const moveSession: WireSessionSummary = {
   id: "one",
   title: "Fix compiler",
   titleSource: "prompt",
   cwd: "/project/docs",
   projectId: "project",
+  worktree: null,
   updatedAt: 20,
   createdAt: 10,
   messageCount: 1,
@@ -196,7 +234,7 @@ test("moving to an untrusted Project confirms first; cancel sends nothing and fa
   }
 });
 
-test.each(["running", "waitingPermission"] as const)(
+test.each(["running", "waitingPermission", "worktree"] as const)(
   "%s Sessions disable moving from all three menus",
   async (status) => {
     await page.viewport(1280, 900);
@@ -208,7 +246,13 @@ test.each(["running", "waitingPermission"] as const)(
       />,
     );
     try {
-      await publish(connection.port, changed({ ...moveSession, [status]: true }));
+      await publish(
+        connection.port,
+        changed({
+          ...moveSession,
+          [status]: status === "worktree" ? { id: "w", branch: "rukie/worktree-test" } : true,
+        }),
+      );
       const row = screen.getByRole("button", {
         name: /^(?:Running |Waiting for confirmation )?Fix compiler$/,
       });
@@ -236,7 +280,13 @@ test.each(["running", "waitingPermission"] as const)(
         .getByRole("button", { name: "Fix compiler", exact: true })
         .click({ button: "right" });
       await screen.getByRole("menuitem", { name: "Move to Project", exact: true }).click();
-      await publish(connection.port, changed({ ...moveSession, [status]: true }));
+      await publish(
+        connection.port,
+        changed({
+          ...moveSession,
+          [status]: status === "worktree" ? { id: "w", branch: "rukie/worktree-test" } : true,
+        }),
+      );
       await expect
         .element(screen.getByRole("menuitem", { name: "Target", exact: true }))
         .toBeDisabled();
@@ -291,5 +341,129 @@ test("keyboard opens nested move targets, preserves narrow geometry and reports 
     await screen.unmount();
     await commands.stopWire(connection.port);
     document.documentElement.className = previous;
+  }
+});
+
+test.each([
+  "new",
+  "existing",
+  "conflict",
+  "move-failure",
+  "cancel-picker",
+  "cancel-trust",
+] as const)("choose folder %s confirms trust before creating and moving", async (outcome) => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const folder = outcome === "existing" ? "/project" : "/chosen/new";
+  const pick = vi.fn(async () => (outcome === "cancel-picker" ? null : [folder]));
+  const screen = await render(
+    <App
+      host={{
+        getConnection: async () => connection,
+        modelServices: modelServicesFixture,
+        pickProjectFolder: pick,
+      }}
+      locale="en"
+    />,
+  );
+  const sent = async () =>
+    (await fetch(`http://127.0.0.1:${connection.port}/commands`).then((response) =>
+      response.json(),
+    )) as { type: string; projectId?: string }[];
+  try {
+    await screen
+      .getByRole("button", { name: "Session actions Explore ideas", exact: true })
+      .click();
+    await screen.getByRole("menuitem", { name: "Move to Project", exact: true }).hover();
+    await screen.getByRole("menuitem", { name: "Choose folder…", exact: true }).click();
+    expect(pick).toHaveBeenCalledWith(false);
+    if (outcome === "cancel-picker") {
+      expect(
+        (await sent()).filter((command) =>
+          ["project.create", "session.move"].includes(command.type),
+        ),
+      ).toEqual([]);
+      await expect
+        .element(screen.getByRole("dialog", { name: "Trust these folders?", exact: true }))
+        .not.toBeInTheDocument();
+      return;
+    }
+    const dialog = screen.getByRole("dialog", { name: "Trust these folders?", exact: true });
+    await expect.element(dialog.getByText(folder, { exact: true })).toBeVisible();
+    expect(
+      (await sent()).filter((command) => ["project.create", "session.move"].includes(command.type)),
+    ).toEqual([]);
+    if (outcome === "cancel-trust") {
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+      expect(
+        (await sent()).filter((command) =>
+          ["project.create", "session.move"].includes(command.type),
+        ),
+      ).toEqual([]);
+      return;
+    }
+    if (outcome === "conflict" || outcome === "move-failure")
+      await fetch(`http://127.0.0.1:${connection.port}/error`, {
+        method: "POST",
+        body: JSON.stringify(
+          outcome === "conflict"
+            ? {
+                type: "project.create",
+                code: "project_conflict",
+                params: { project: "Other", directory: folder },
+              }
+            : { type: "session.move", code: "session_busy" },
+        ),
+      });
+    await dialog.getByRole("button", { name: "Trust and create", exact: true }).click();
+    if (outcome === "conflict" || outcome === "move-failure") {
+      await expect
+        .element(dialog.getByRole("alert"))
+        .toHaveTextContent(
+          outcome === "conflict"
+            ? "This folder already belongs to Other."
+            : "This Session is open elsewhere. Close it there, then retry.",
+        );
+      const calls = (await sent()).filter((command) =>
+        ["project.create", "session.move"].includes(command.type),
+      );
+      expect(calls.map((command) => command.type)).toEqual(
+        outcome === "conflict" ? ["project.create"] : ["project.create", "session.move"],
+      );
+      if (outcome === "move-failure")
+        await expect
+          .element(screen.getByRole("button", { name: "new", exact: true }))
+          .toBeVisible();
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    } else {
+      await expect.element(dialog).not.toBeInTheDocument();
+      expect(
+        (await sent()).filter((command) =>
+          ["project.create", "session.move"].includes(command.type),
+        ),
+      ).toMatchObject([
+        {
+          type: "project.create",
+          name: outcome === "existing" ? "project" : "new",
+          directories: [folder],
+          trusted: true,
+        },
+        {
+          type: "session.move",
+          sessionId: "two",
+          projectId: outcome === "existing" ? "project" : "added",
+        },
+      ]);
+      await expect
+        .element(
+          screen
+            .getByRole("group", { name: outcome === "existing" ? "Project" : "new", exact: true })
+            .getByRole("button", { name: "Explore ideas", exact: true }),
+        )
+        .toBeVisible();
+    }
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
   }
 });

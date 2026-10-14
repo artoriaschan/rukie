@@ -9,7 +9,7 @@ import { deferredToolsReminder } from "../tools/tool-search/index.ts";
 import { stopHookContinuation } from "../hooks/index.ts";
 import { validateSessionDocument, validateSessionDocuments } from "./documents.ts";
 import { writeHookTranscript } from "../hooks/transcript.ts";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import {
   BACKGROUND_CONTEXT,
   awaitWithContext,
@@ -1151,6 +1151,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       return discovered.skills;
     };
     let skills = await loadSkills();
+    const scopedJobs = [jobs];
+    const getAccessScope = () => ({
+      readWrite: [cwd, ...additionalDirectories],
+      readOnly: [
+        ...[...skills.values()].map((skill) => dirname(skill.filePath)),
+        ...scopedJobs.flatMap((registry) =>
+          registry.outputDirectory ? [registry.outputDirectory] : [],
+        ),
+      ],
+    });
     let toolLoadout: ReturnType<typeof createToolLoadout>;
     async function persistDenial(
       owner: typeof conversation,
@@ -1180,6 +1190,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         rules: permissionRules,
         sessionAllowRules,
         sessionGrantListeners,
+        getAccessScope,
         getMode: () => permissionMode,
         getTools: () => toolLoadout?.registrations ?? [],
         getMessages: async () => {
@@ -1516,6 +1527,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             );
           },
         });
+        scopedJobs.push(childJobs);
         await childTracking.restoreCommitted(await fullHistory(child.id));
         let childLoadout: ReturnType<typeof createToolLoadout>;
         childRuntime.configurePolicy({
@@ -1532,6 +1544,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }),
             sessionAllowRules,
             sessionGrantListeners,
+            getAccessScope,
             getMode: () => permissionMode,
             getTools: () => childLoadout.registrations,
             getMessages: async () => {

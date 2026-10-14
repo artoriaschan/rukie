@@ -29,7 +29,10 @@ async function scriptedHook(output: unknown, name = "hook.sh") {
 }
 
 function writeModel(
-  args: Parameters<typeof fauxToolCall>[1] = { path: "allowed.txt", content: "original" },
+  args: Parameters<typeof fauxToolCall>[1] = {
+    path: join(dirs.homeDir, "allowed.txt"),
+    content: "original",
+  },
 ) {
   return fakeModel([
     fauxAssistantMessage(fauxToolCall("write", args), { stopReason: "toolUse" }),
@@ -68,9 +71,12 @@ test("allowed tools wait for the read-only stage after frontend permission", asy
   dirs = await tempDirs();
   const order: string[] = [];
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("write", { path: "allowed.txt", content: "approved" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: join(dirs.homeDir, "allowed.txt"), content: "approved" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const session = await createSession({
@@ -82,8 +88,8 @@ test("allowed tools wait for the read-only stage after frontend permission", asy
     },
     async onToolCallAllowed({ toolName, args }) {
       expect(toolName).toBe("write");
-      expect(args).toEqual({ path: join(dirs.cwd, "allowed.txt"), content: "approved" });
-      expect(await Bun.file(join(dirs.cwd, "allowed.txt")).exists()).toBe(false);
+      expect(args).toEqual({ path: join(dirs.homeDir, "allowed.txt"), content: "approved" });
+      expect(await Bun.file(join(dirs.homeDir, "allowed.txt")).exists()).toBe(false);
       order.push("allowed");
       // Even an untyped callback cannot change the executed input.
       Object.assign(args, { content: "tampered" });
@@ -95,7 +101,7 @@ test("allowed tools wait for the read-only stage after frontend permission", asy
     },
   });
   expect(order).toEqual(["permission", "allowed", "executed"]);
-  expect(await Bun.file(join(dirs.cwd, "allowed.txt")).text()).toBe("approved");
+  expect(await Bun.file(join(dirs.homeDir, "allowed.txt")).text()).toBe("approved");
 });
 
 test("cancellation during PreToolUse skips the allowed stage and execution", async () => {
@@ -122,14 +128,14 @@ test("cancellation during PreToolUse skips the allowed stage and execution", asy
     }),
   ).rejects.toThrow("cancel before allowed stage");
   expect(called).toBe(false);
-  expect(await Bun.file(join(dirs.cwd, "allowed.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "allowed.txt")).exists()).toBe(false);
 });
 
 test.each(["PreToolUse", "PermissionRequest"] as const)(
   "the stage observes validated final input after %s rewrites",
   async (event) => {
     dirs = await tempDirs();
-    const updatedInput = { path: "rewritten.txt", content: "changed" };
+    const updatedInput = { path: join(dirs.homeDir, "rewritten.txt"), content: "changed" };
     const handler = await scriptedHook({
       hookSpecificOutput:
         event === "PreToolUse"
@@ -143,16 +149,19 @@ test.each(["PreToolUse", "PermissionRequest"] as const)(
       settings: { hooks: { [event]: [{ hooks: [handler] }] } },
       async onToolCallAllowed(call) {
         expect(await Bun.file(join(dirs.cwd, "hook.sh.input")).exists()).toBe(true);
-        expect(await Bun.file(join(dirs.cwd, "rewritten.txt")).exists()).toBe(false);
+        expect(await Bun.file(join(dirs.homeDir, "rewritten.txt")).exists()).toBe(false);
         seen.push(call);
       },
     });
     await session.run("write");
     expect(seen).toEqual([
-      { toolName: "write", args: { path: join(dirs.cwd, "rewritten.txt"), content: "changed" } },
+      {
+        toolName: "write",
+        args: { path: join(dirs.homeDir, "rewritten.txt"), content: "changed" },
+      },
     ]);
-    expect(await Bun.file(join(dirs.cwd, "rewritten.txt")).text()).toBe("changed");
-    expect(await Bun.file(join(dirs.cwd, "allowed.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.homeDir, "rewritten.txt")).text()).toBe("changed");
+    expect(await Bun.file(join(dirs.homeDir, "allowed.txt")).exists()).toBe(false);
   },
 );
 
@@ -183,7 +192,7 @@ test("a failed allowed stage becomes a tool error without executing or denying p
     content: [{ type: "text", text: expect.stringContaining("snapshot unavailable") }],
   });
   expect(denied).toBe(false);
-  expect(await Bun.file(join(dirs.cwd, "allowed.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "allowed.txt")).exists()).toBe(false);
 });
 
 test.each([
@@ -199,7 +208,9 @@ test.each([
   "invalid PermissionRequest input",
 ] as const)("%s never reaches the allowed stage", async (denial) => {
   dirs = await tempDirs();
-  const fake = writeModel(denial === "invalid input" ? { path: "allowed.txt" } : undefined);
+  const fake = writeModel(
+    denial === "invalid input" ? { path: join(dirs.homeDir, "allowed.txt") } : undefined,
+  );
   let reviewed = 0;
   routePermissionReviews(fake, '{"risk":"high","decision":"deny"}', () => reviewed++);
   const hooks: HooksSettings = {};
@@ -211,11 +222,14 @@ test.each([
           hookSpecificOutput:
             event === "PreToolUse"
               ? denial.startsWith("invalid")
-                ? { updatedInput: { path: "allowed.txt", content: 1 } }
+                ? { updatedInput: { path: join(dirs.homeDir, "allowed.txt"), content: 1 } }
                 : { permissionDecision: "deny" }
               : {
                   decision: denial.startsWith("invalid")
-                    ? { behavior: "allow", updatedInput: { path: "allowed.txt", content: 1 } }
+                    ? {
+                        behavior: "allow",
+                        updatedInput: { path: join(dirs.homeDir, "allowed.txt"), content: 1 },
+                      }
                     : { behavior: "deny" },
                 },
         };
@@ -238,7 +252,7 @@ test.each([
   expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
     isError: true,
   });
-  expect(await Bun.file(join(dirs.cwd, "allowed.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "allowed.txt")).exists()).toBe(false);
 });
 
 test.each(["rule", "full-access", "review"] as const)(
@@ -262,7 +276,7 @@ test.each(["rule", "full-access", "review"] as const)(
     });
     await session.run("write");
     expect(order).toEqual(source === "review" ? ["review", "allowed"] : ["allowed"]);
-    expect(await Bun.file(join(dirs.cwd, "allowed.txt")).text()).toBe("original");
+    expect(await Bun.file(join(dirs.homeDir, "allowed.txt")).text()).toBe("original");
   },
 );
 
@@ -280,13 +294,19 @@ test.each(["subagent", "subagent_fork"])(
         }),
         { stopReason: "toolUse" },
       ),
-      fauxAssistantMessage(fauxToolCall("write", { path: "child.txt", content: "child" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: join(dirs.homeDir, "child.txt"), content: "child" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("child done"),
-      fauxAssistantMessage(fauxToolCall("write", { path: "parent.txt", content: "parent" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: join(dirs.homeDir, "parent.txt"), content: "parent" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("parent done"),
     ]);
     const session = await createSession({
@@ -300,8 +320,8 @@ test.each(["subagent", "subagent_fork"])(
     });
     await session.run("delegate");
     expect(calls).toEqual([toolName, "write", "child", "write", "parent"]);
-    expect(await Bun.file(join(dirs.cwd, "child.txt")).text()).toBe("child");
-    expect(await Bun.file(join(dirs.cwd, "parent.txt")).text()).toBe("parent");
+    expect(await Bun.file(join(dirs.homeDir, "child.txt")).text()).toBe("child");
+    expect(await Bun.file(join(dirs.homeDir, "parent.txt")).text()).toBe("parent");
   },
 );
 
@@ -325,5 +345,5 @@ test("cancellation while the allowed stage waits prevents execution", async () =
   controller.abort(new Error("cancel allowed stage"));
   release.resolve();
   await expect(run).rejects.toThrow("cancel allowed stage");
-  expect(await Bun.file(join(dirs.cwd, "allowed.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "allowed.txt")).exists()).toBe(false);
 });

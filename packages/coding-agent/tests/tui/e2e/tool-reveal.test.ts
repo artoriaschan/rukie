@@ -15,7 +15,10 @@ test("pending edit call rows reveal in frames and completing the result snaps ev
     prepare: async (root) => {
       await Bun.write(join(root, "code.txt"), oldText);
     },
-    session: { onPermissionAsk: () => permission.promise },
+    session: {
+      settings: { permissions: { ask: ["write", "edit"] } },
+      onPermissionAsk: () => permission.promise,
+    },
   });
   try {
     await app.waitFor(() => app.calls.length === 1);
@@ -47,7 +50,10 @@ test.each(["card", "transcript"] as const)(
       prepare: async (root) => {
         await Bun.write(join(root, "code.txt"), oldText);
       },
-      session: { onPermissionAsk: () => permission.promise },
+      session: {
+        settings: { permissions: { ask: ["write", "edit"] } },
+        onPermissionAsk: () => permission.promise,
+      },
     });
     try {
       await app.waitFor(() => app.calls.length === 1);
@@ -88,7 +94,10 @@ test("independent pending cards complete across apps and a denied result appears
     rows: 40,
     env: { LANG: "en_US.UTF-8" },
     prepare,
-    session: { onPermissionAsk: () => first.promise },
+    session: {
+      settings: { permissions: { ask: ["write", "edit"] } },
+      onPermissionAsk: () => first.promise,
+    },
   });
   let b: Awaited<ReturnType<typeof start>> | undefined;
   try {
@@ -96,7 +105,10 @@ test("independent pending cards complete across apps and a denied result appears
       rows: 40,
       env: { LANG: "en_US.UTF-8" },
       prepare,
-      session: { onPermissionAsk: () => second.promise },
+      session: {
+        settings: { permissions: { ask: ["write", "edit"] } },
+        onPermissionAsk: () => second.promise,
+      },
       advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     await a.waitFor(() => a.calls.length === 1);
@@ -138,7 +150,10 @@ test("split pending rows reveal together and resize never restarts a caught-up c
     prepare: async (root) => {
       await Bun.write(join(root, "code.txt"), oldText);
     },
-    session: { onPermissionAsk: () => permission.promise },
+    session: {
+      settings: { permissions: { ask: ["write", "edit"] } },
+      onPermissionAsk: () => permission.promise,
+    },
   });
   try {
     await app.waitFor(() => app.calls.length === 1);

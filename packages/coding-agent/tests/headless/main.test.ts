@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { watch } from "node:fs";
+import { realpathSync, watch } from "node:fs";
 import { join } from "node:path";
 import { createSession } from "@rukie/agent";
 import { main as entryMain, type PrintIo } from "../../src/index.ts";
@@ -986,3 +986,47 @@ test("Headless calls real MCP tools using credentials written by an earlier Sess
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each([false, true])(
+  "headless external read needs explicit --allow-tools: %s",
+  async (allow) => {
+    const root = await mkdtemp(join(tmpdir(), "rukie-cli-scope-"));
+    const cwd = join(root, "project");
+    const homeDir = join(root, "home");
+    const external = join(homeDir, "secret.txt");
+    await mkdir(cwd, { recursive: true });
+    await mkdir(join(homeDir, ".rukie/file-history"), { recursive: true });
+    await Bun.write(external, "external-content");
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("read", { path: external }), { stopReason: "toolUse" }),
+      (context) => {
+        expect(context.messages.findLast((message) => message.role === "toolResult")).toMatchObject(
+          { isError: !allow },
+        );
+        expect(JSON.stringify(context.messages).includes("external-content")).toBe(allow);
+        return fauxAssistantMessage("done");
+      },
+    ]);
+    try {
+      expect(
+        await main(
+          [...(allow ? ["--allow-tools", `read(${realpathSync(external)})`] : []), "-p", "read"],
+          {
+            readStdin: async () => "",
+            stdout: () => {},
+            stderr: () => {},
+            session: {
+              cwd,
+              homeDir,
+              model: faux.getModel(),
+              models: auxiliaryModels(faux.provider.streamSimple),
+            },
+          },
+        ),
+      ).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

@@ -36,6 +36,7 @@ test("search lists every unarchived chat in updated order and matches title or P
           model: "test/script",
           cwd: index % 2 ? "/project" : "/workspace",
           projectId: index % 2 ? "project" : null,
+          worktree: null,
           running: index === 11,
         })),
         projects: [
@@ -180,6 +181,7 @@ test("search is centered, clamps narrow viewports and keeps shortcuts outside it
           model: "test/script",
           cwd: "/workspace",
           projectId: null,
+          worktree: null,
         })),
         projects: [],
         pinned: [],

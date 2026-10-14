@@ -10,6 +10,7 @@ export {
   listSessions,
   renameSessionTitle,
   moveSession,
+  withSessionMove,
   type SessionStore,
   type SessionSummary,
 } from "./store/index.ts";

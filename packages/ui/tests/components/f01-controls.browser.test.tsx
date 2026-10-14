@@ -302,6 +302,7 @@ for (const theme of ["light", "dark"] as const) {
           titleSource: "prompt",
           cwd: "/project",
           projectId: "project",
+          worktree: null,
           model: "test/script",
           createdAt: 1,
           updatedAt: 2,
@@ -313,6 +314,7 @@ for (const theme of ["light", "dark"] as const) {
         () => {},
         remove,
         [],
+        () => {},
         () => {},
       );
       screen = await render(

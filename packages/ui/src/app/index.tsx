@@ -21,12 +21,14 @@ import {
   Settings,
   ArrowLeft,
   ArrowRight,
+  GitBranch,
 } from "lucide-react";
 import type { Locale } from "@rukie/i18n";
 import type {
   PermissionMode,
   WirePreferences,
   WireSessionSummary,
+  WireProjectGit,
   WireProject,
 } from "@rukie/shared";
 import { createWireClient, WireError, type ClientCommand } from "../client";
@@ -253,6 +255,49 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   );
   const view = state.selected ? (state.views[state.selected] ?? emptyView) : emptyView;
   const targetProject = state.projects.find((project) => project.id === state.target);
+  const [projectGit, setProjectGit] = useState<WireProjectGit | null>(null);
+  const [useWorktree, setUseWorktree] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setProjectGit(null);
+    setUseWorktree(false);
+    if (!state.selected && targetProject && state.connection === "connected") {
+      void client
+        .request({ type: "project.git", projectId: targetProject.id })
+        .then((result) => {
+          if (
+            active &&
+            typeof result === "object" &&
+            result !== null &&
+            "repository" in result &&
+            typeof result.repository === "boolean" &&
+            "branch" in result &&
+            (result.branch === null || typeof result.branch === "string") &&
+            "head" in result &&
+            typeof result.head === "string"
+          )
+            setProjectGit({
+              repository: result.repository,
+              branch: result.branch,
+              head: result.head,
+            });
+        })
+        .catch(() => {
+          if (active) setProjectGit(null);
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [
+    client,
+    state.connection,
+    state.selected,
+    targetProject?.id,
+    targetProject?.primary,
+    newDraftKey,
+  ]);
+  const gitSource = projectGit?.branch ?? projectGit?.head.slice(0, 8) ?? "";
   const currentProject = state.projects.find((project) => project.id === current?.projectId);
   const connected = state.connection === "connected";
   const safe = (action: () => Promise<unknown>) => {
@@ -328,12 +373,16 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     safe(() => client.request({ type: pinned ? "session.pin" : "session.unpin", sessionId: id }));
   const archive = (sessionId: string) =>
     safe(() => client.request({ type: "session.archive", sessionId }));
-  const move = (session: WireSessionSummary, project: WireProject) => {
+  const move = (session: WireSessionSummary, project: WireProject | null) => {
     const perform = async () => {
-      await client.request({ type: "session.move", sessionId: session.id, projectId: project.id });
+      await client.request({
+        type: "session.move",
+        sessionId: session.id,
+        projectId: project?.id ?? null,
+      });
       if (store.getState().selected === session.id) await client.subscribe(session.id);
     };
-    if (project.trusted) safe(perform);
+    if (!project || project.trusted) safe(perform);
     else
       setTrust({
         project,
@@ -345,6 +394,41 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         },
         cancel: () => setTrust(null),
       });
+  };
+  const chooseMoveFolder = (session: WireSessionSummary) => {
+    safe(async () => {
+      if (!host.pickProjectFolder) throw new WireError("unsupported");
+      const selected = await host.pickProjectFolder(false);
+      const directory = selected?.[0];
+      if (!directory) return;
+      setTrust({
+        project: { directories: [directory], primary: directory },
+        creating: true,
+        cancel: () => setTrust(null),
+        confirm: async () => {
+          const result = await client.request({
+            type: "project.create",
+            name: directoryName(directory),
+            directories: [directory],
+            trusted: true,
+          });
+          if (
+            typeof result !== "object" ||
+            result === null ||
+            !("id" in result) ||
+            typeof result.id !== "string"
+          )
+            throw new WireError("invalid_command");
+          await client.request({
+            type: "session.move",
+            sessionId: session.id,
+            projectId: result.id,
+          });
+          if (store.getState().selected === session.id) await client.subscribe(session.id);
+          setTrust(null);
+        },
+      });
+    });
   };
   const preferences = (preferences: WirePreferences) =>
     safe(() => client.request({ type: "preferences.set", preferences }));
@@ -460,6 +544,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           images: attachments,
           modelSelection: newSessionModel,
           permissionMode: permission,
+          ...(projectGit?.repository && useWorktree ? { worktree: true } : {}),
         });
         if (
           typeof result === "object" &&
@@ -674,38 +759,71 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       )}
     >
       {!state.selected ? (
-        <Menu.DropdownMenu>
-          <Menu.DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="self-start">
-              <Folder className="size-4" />
-              {targetProject?.name ?? t("app.workspace")}
-            </Button>
-          </Menu.DropdownMenuTrigger>
-          <Menu.DropdownMenuContent>
-            <Menu.DropdownMenuGroup>
-              <Menu.DropdownMenuItem onSelect={() => store.select(null, null)}>
-                {t("app.workspace")}
-              </Menu.DropdownMenuItem>
-              {state.projects.map((project) => (
-                <Menu.DropdownMenuItem key={project.id} onSelect={() => newChat(project.id)}>
-                  {project.name}
+        <div className="flex min-h-8 items-center gap-2">
+          <Menu.DropdownMenu>
+            <Menu.DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="self-start">
+                <Folder className="size-4" />
+                {targetProject?.name ?? t("app.workspace")}
+              </Button>
+            </Menu.DropdownMenuTrigger>
+            <Menu.DropdownMenuContent>
+              <Menu.DropdownMenuGroup>
+                <Menu.DropdownMenuItem onSelect={() => store.select(null, null)}>
+                  {t("app.workspace")}
                 </Menu.DropdownMenuItem>
-              ))}
-              {targetProject ? (
-                <Menu.DropdownMenuItem
-                  onSelect={() => {
-                    setEditingProject(targetProject);
-                  }}
+                {state.projects.map((project) => (
+                  <Menu.DropdownMenuItem key={project.id} onSelect={() => newChat(project.id)}>
+                    {project.name}
+                  </Menu.DropdownMenuItem>
+                ))}
+                {targetProject ? (
+                  <Menu.DropdownMenuItem
+                    onSelect={() => {
+                      setEditingProject(targetProject);
+                    }}
+                  >
+                    {t("app.edit-project")}
+                  </Menu.DropdownMenuItem>
+                ) : null}
+                <Menu.DropdownMenuItem onSelect={() => safe(addProject)}>
+                  {t("app.add-project")}
+                </Menu.DropdownMenuItem>
+              </Menu.DropdownMenuGroup>
+            </Menu.DropdownMenuContent>
+          </Menu.DropdownMenu>
+          {projectGit?.repository ? (
+            <Menu.DropdownMenu>
+              <Menu.DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t("app.current-branch", { branch: gitSource })}
+                  className="min-w-0 max-w-48"
                 >
-                  {t("app.edit-project")}
-                </Menu.DropdownMenuItem>
-              ) : null}
-              <Menu.DropdownMenuItem onSelect={() => safe(addProject)}>
-                {t("app.add-project")}
-              </Menu.DropdownMenuItem>
-            </Menu.DropdownMenuGroup>
-          </Menu.DropdownMenuContent>
-        </Menu.DropdownMenu>
+                  <GitBranch className="size-4 shrink-0" />
+                  <span className="truncate">{gitSource}</span>
+                </Button>
+              </Menu.DropdownMenuTrigger>
+              <Menu.DropdownMenuContent className="w-80">
+                <Menu.DropdownMenuCheckboxItem
+                  checked={useWorktree}
+                  onCheckedChange={setUseWorktree}
+                  onSelect={(event) => event.preventDefault()}
+                  disabled={sending}
+                >
+                  <GitBranch className="size-4" />
+                  {t("app.use-worktree")}
+                </Menu.DropdownMenuCheckboxItem>
+                {useWorktree ? (
+                  <p className="px-2 py-1 text-ui-sm leading-[1.5] text-muted-foreground">
+                    {t("app.worktree-hint", { branch: gitSource })}
+                  </p>
+                ) : null}
+              </Menu.DropdownMenuContent>
+            </Menu.DropdownMenu>
+          ) : null}
+        </div>
       ) : null}
       {!connected ? (
         <div role="status" className="rounded-xl border border-border bg-card px-4 py-3">
@@ -866,6 +984,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                         setDeleting,
                         state.projects,
                         move,
+                        chooseMoveFolder,
                       )}
                     />
                     <Menu.DropdownMenuSub>
@@ -1005,6 +1124,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   onArchive={archive}
                   onDelete={setDeleting}
                   onMove={move}
+                  onChooseFolder={chooseMoveFolder}
                   onPreferences={preferences}
                 />
               </div>
@@ -1074,6 +1194,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       {settingsOpen ? (
         <ModelServices
           services={host.modelServices}
+          request={client.request}
           onChanged={async () => {
             store.setModels(await client.request({ type: "models.list" }));
           }}

@@ -56,7 +56,7 @@ export const WireCommandSchema = Type.Union([
     modelId: Type.String({ minLength: 1, maxLength: 256 }),
   }),
   command("modelServices.prices", ModelPriceRequestSchema.properties),
-  command("host.pickFolder", {}),
+  command("host.pickFolder", { multiple: Type.Optional(Type.Boolean()) }),
   command("host.revealPath", { path: id }),
   command("host.openInTerminal", { path: id }),
   command("projects.list", {}),
@@ -74,6 +74,10 @@ export const WireCommandSchema = Type.Union([
   }),
   command("project.remove", { projectId: id }),
   command("project.trust", { projectId: id }),
+  command("project.git", { projectId: id }),
+  command("worktrees.list", {}),
+  command("worktrees.refresh", {}),
+  command("worktree.delete", { worktreeId: id }),
   command("sessions.list", {}),
   command("session.create", {
     project: Type.Union([id, Type.Null()]),
@@ -89,6 +93,7 @@ export const WireCommandSchema = Type.Union([
       ),
     ),
     permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
+    worktree: Type.Optional(Type.Boolean()),
   }),
   command("session.subscribe", session),
   command("session.unsubscribe", session),
@@ -105,7 +110,7 @@ export const WireCommandSchema = Type.Union([
   command("session.rename", { ...session, title: Type.String({ minLength: 1 }) }),
   command("session.pin", session),
   command("session.unpin", session),
-  command("session.move", { ...session, projectId: id }),
+  command("session.move", { ...session, projectId: Type.Union([id, Type.Null()]) }),
   command("session.archive", session),
   command("session.delete", session),
   command("models.list", {}),
@@ -130,6 +135,8 @@ export const WireCommandSchema = Type.Union([
 export type WireCommand = Static<typeof WireCommandSchema>;
 
 export type WireErrorCode =
+  | "worktree_failed"
+  | "worktree_session"
   | "model_services_unavailable"
   | "model_unavailable"
   | "session_busy"
@@ -155,6 +162,19 @@ export interface WireProject {
   primary: string;
   trusted: boolean;
 }
+export interface WireProjectGit {
+  repository: boolean;
+  branch: string | null;
+  head: string;
+}
+export interface WireWorktree {
+  id: string;
+  projectId: string;
+  repository: string;
+  branch: string;
+  path: string;
+  createdAt: number;
+}
 export interface WireSessionSummary {
   id: string;
   title: string;
@@ -164,8 +184,9 @@ export interface WireSessionSummary {
   messageCount: number;
   model: string;
   cwd: string;
-  /** Presentation ownership by filesystem identity; cwd keeps its persisted spelling. */
+  /** Persistent Project ownership; cwd keeps its persisted spelling. */
   projectId: string | null;
+  worktree: { id: string; branch: string } | null;
   running?: boolean;
   waitingPermission?: boolean;
 }

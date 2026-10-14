@@ -135,6 +135,15 @@ for (const outcome of ["selected", "cancelled", "unsupported"] as const) {
           },
         ]);
       if (outcome === "selected") {
+        expect(await host.pickProjectFolder(false)).toEqual(["/chosen/project"]);
+        expect(
+          (await fetch(`${url}/commands`).then((response) => response.json())).filter(
+            (command: { type: string; multiple?: boolean }) => command.type === "host.pickFolder",
+          ),
+        ).toMatchObject([
+          { type: "host.pickFolder" },
+          { type: "host.pickFolder", multiple: false },
+        ]);
         await userEvent.keyboard("{Control>}1{/Control}");
         await screen.getByRole("button", { name: "Session actions" }).click();
         const open = screen.getByRole("menuitem", { name: "Open with", exact: true });

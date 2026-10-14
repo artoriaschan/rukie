@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 对话独立目录、Project 绑定、访问范围与独立工作树
 
@@ -112,15 +112,24 @@ Status: ready-for-agent
 
 ## ADR Coverage
 
-| 决定或修改                                                        | 归属                                                                                                                                                                                                                 | 理由                                                                   |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| 对话独占 `workspace/<id>`，删除对话删除目录，移入保留旧目录       | 新增 [ADR-0042](../../docs/adr/0042-conversation-owned-workspace.md)，部分替代 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)                                                                     | 改变应用文件生命周期与删除语义                                         |
-| Session 持久绑定 Project，懒同步主目录，移除 Project 删除 Session | 新增 [ADR-0043](../../docs/adr/0043-session-project-binding.md)，部分替代 ADR-0041；沿用 [ADR-0040](../../docs/adr/0040-session-move-transcript-boundary.md)                                                         | 改变归属来源与 Project 移除语义；目录变更经既有 Session Move           |
-| Session 访问范围决定文件工具的模式默认值                          | 新增 [ADR-0044](../../docs/adr/0044-session-access-scope.md)，部分替代 [ADR-0039](../../docs/adr/0039-session-additional-directories.md)；沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md) | 改变授权默认值，规则阶段不变                                           |
-| 独立工作树的创建、记录、信任、删除与刷新                          | 新增 [ADR-0045](../../docs/adr/0045-git-worktree-sessions.md)；更新 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md) 的允许根                                                                    | 新的外部进程资源与生命周期                                             |
-| 移到项目菜单、选择文件夹流程、确认文案、工作树设置页 UI           | 无需 ADR                                                                                                                                                                                                             | 局部交互与文案，由 DESIGN.md 与 rukie.pen 维护，不改变持久化或执行合同 |
+| 决定或修改                                                        | 归属                                                                                                                                                                                                                 | 理由                                                                                                  |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 对话独占 `workspace/<id>`，删除对话删除目录，移入保留旧目录       | 新增 [ADR-0042](../../docs/adr/0042-conversation-owned-workspace.md)，部分替代 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)                                                                     | 改变应用文件生命周期与删除语义；canonical workspace 及祖先身份检查落实安全删除边界                    |
+| Session 持久绑定 Project，懒同步主目录，移除 Project 删除 Session | 新增 [ADR-0043](../../docs/adr/0043-session-project-binding.md)，部分替代 ADR-0041；沿用 [ADR-0040](../../docs/adr/0040-session-move-transcript-boundary.md)                                                         | 改变归属来源与 Project 移除语义；Project 变更串行化，目录变更经既有 Session Move 与实际写者租约       |
+| Session 访问范围决定文件工具的模式默认值                          | 新增 [ADR-0044](../../docs/adr/0044-session-access-scope.md)，部分替代 [ADR-0039](../../docs/adr/0039-session-additional-directories.md)；沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md) | 改变授权默认值，规则阶段不变                                                                          |
+| 独立工作树的创建、记录、信任、删除与刷新                          | 新增 [ADR-0045](../../docs/adr/0045-git-worktree-sessions.md)；沿用 [ADR-0037](../../docs/adr/0037-browser-host-sidecar-capabilities.md)，由 ADR-0045 扩展允许根                                                     | 工作树记录由应用库持有，Git 参数向量创建/删除；ADR-0045 定义允许根扩展，ADR-0037 已通过链接承接该扩展 |
+| 移到项目菜单、选择文件夹流程、确认文案、工作树设置页 UI           | 无需 ADR                                                                                                                                                                                                             | 局部交互与文案，由 DESIGN.md 与 rukie.pen 维护，不改变持久化或执行合同                                |
 
 ## Further Notes
 
 - 决策来源：2026-10-14 设计访谈（对照程小帮的会话目录与工作树实现）。
 - 依赖顺序：01 → 02 → {03, 05}；04 独立；05 → 06。03 的工作树禁用在 05 合入后生效。
+
+## Comments
+
+- 2026-10-15 最终交付：六个实施工单与本 spec 在同一变更关闭。独立目录与安全删除、Project 持久绑定与级联删除、三入口移动/选目录、Session 文件工具访问范围、Git 工作树创建与设置管理均已完成，受影响使用文档同步。每次实施、合并、评审修正和验收任务均使用新的代理。
+- ADR Coverage 最终审阅：对照 Implementation Decisions、六工单与最终 diff，0042–0045 的 accepted 决定覆盖应用目录生命周期、持久化绑定/懒同步、授权默认值与 Git 工作树资源。沿用 0040 Session Move、0014 授权/信任与 0037 host 边界；0037 已链接 0045 的工作树允许根扩展，修正表中不准确的更新要求。Project 串行队列、实际 Core 写者租约、删除中断恢复和 canonical workspace 祖先保护落实原决定，没有新增未确认的架构取舍。局部菜单/文案/弹窗尺寸颜色由 DESIGN 与 Pencil 维护，无需新增 ADR。
+- Standards / Spec 三个 P1 均修正，公开 Core 7 / 0、server 生命周期 21 / 0 与绑定存储失败增量 1 / 0；新 targeted reviewer 确认没有剩余 actionable finding。文档审阅修复 UI README 与 DESIGN C31 的旧归属/保留对话说明，并明确附加目录访问范围；见 `/tmp/rukie-session-workspaces-evidence/delivery-verification.md`。
+- 本地结果按原始与增量证据报告：Bun 514 / 0、Agent e2e 1470 / 0，coding-agent 原全量 1528 / 16；全部 16 例在 fixture 修正后由 focused 212 / 1 + 最后一例 1 / 0 覆盖。Release 113 / 0；Desktop Node 70 通过，Chromium 原包 200 / 5 + 修正五例 5 / 0；弹窗颜色与取消尺寸修正各 2 / 0。全量原失败记录保留，不声称重新全量通过；static 类型/Knip 初始失败经最小修正与对应复验通过，其他本地 static gates 复用有效证据。
+- isolated Chromium GUI 原功能/布局/交互验收与最终 `20b6e9aa` 弹窗增量验收通过（Light/Dark、1280/420px、软危险色及 hover、Delete 36px / Cancel 32px、448/388px 弹窗无溢出、初始焦点与 Enter 取消、console/network 检查及进程/临时数据清理）。记录：`gui-verification.md`、`gui-dialog-final.md`。真实 Electron、系统钥匙串与文件夹选择器未视觉验收，授权范围由 wire/Chromium 与 Electron mock 证据覆盖。
+- 交付分支 `feat/session-workspaces`，PR #25 待最终推送、CI 与用户 review，尚未合并；resolved 仅表示实现、文档、评审与适用本地验证完成。最终文档/格式/tracker/whitespace 命令与日志见 `delivery-verification.md`，行为/static/GUI 证据按增量复验规则复用。

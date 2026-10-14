@@ -2,6 +2,7 @@ import { ownResources } from "./helpers/owned-resources.ts";
 import FakeTimers from "@sinonjs/fake-timers";
 import { expect, test, spyOn } from "bun:test";
 import * as filesystem from "node:fs/promises";
+import type { MakeDirectoryOptions, Mode, PathLike } from "node:fs";
 import { mkdtemp, rm, realpath, mkdir, writeFile, symlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { waitForPidFile } from "../../agent/tests/helpers/wait-for-file.ts";
@@ -18,6 +19,332 @@ import { startServer as startServerImpl, AppDatabase, type ServerOptions } from 
 
 const startServer = (options: Omit<ServerOptions, "dataRoot">) =>
   startServerImpl({ ...options, dataRoot: join(options.homeDir, "desktop-data") });
+
+test("conversation workspaces are independent and deletion removes their files", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-conversation-workspace-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const first = (await client.command("session.create", { project: null, text: "first" }))
+      .result as { sessionId: string };
+    await client.next(
+      (message) => message.type === "result" && message.sessionId === first.sessionId,
+    );
+    const second = (await client.command("session.create", { project: null, text: "second" }))
+      .result as { sessionId: string };
+    await client.next(
+      (message) => message.type === "result" && message.sessionId === second.sessionId,
+    );
+    const summaries = (await client.command("sessions.list")).result as {
+      id: string;
+      cwd: string;
+    }[];
+    const firstCwd = summaries.find((session) => session.id === first.sessionId)!.cwd;
+    const secondCwd = summaries.find((session) => session.id === second.sessionId)!.cwd;
+    expect(firstCwd).not.toBe(secondCwd);
+    for (const cwd of [firstCwd, secondCwd]) {
+      expect(cwd.slice(0, cwd.lastIndexOf("/"))).toBe(join(homeDir, "desktop-data", "workspace"));
+      expect((await stat(cwd)).isDirectory()).toBe(true);
+    }
+    await writeFile(join(firstCwd, "owned.txt"), "owned");
+    expect(
+      (await client.command("session.delete", { sessionId: first.sessionId })).error,
+    ).toBeUndefined();
+    expect(await Bun.file(join(firstCwd, "owned.txt")).exists()).toBe(false);
+    expect(
+      await filesystem.access(firstCwd).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
+    expect((await stat(secondCwd)).isDirectory()).toBe(true);
+  } finally {
+    await owner.close();
+  }
+});
+
+test("moving out of a Project creates an empty owned workspace, rejects repeating and deletes its files", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-move-out-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const primary = await realpath(await mkdtemp(join(homeDir, "project-")));
+    await writeFile(join(primary, "project.txt"), "keep");
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Project",
+        directories: [primary],
+        trusted: true,
+      })
+    ).result as { id: string };
+    const { sessionId } = (
+      await client.command("session.create", { project: project.id, text: "start" })
+    ).result as { sessionId: string };
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    expect(
+      (await client.command("session.move", { sessionId, projectId: null })).error,
+    ).toBeUndefined();
+    const summary = (
+      (await client.command("sessions.list")).result as {
+        id: string;
+        cwd: string;
+        projectId: string | null;
+      }[]
+    ).find((item) => item.id === sessionId)!;
+    expect(summary.projectId).toBeNull();
+    expect(summary.cwd.slice(0, summary.cwd.lastIndexOf("/"))).toBe(
+      join(homeDir, "desktop-data", "workspace"),
+    );
+    expect(await filesystem.readdir(summary.cwd)).toEqual([]);
+    expect((await client.command("session.move", { sessionId, projectId: null })).error).toEqual({
+      code: "invalid_command",
+    });
+    await writeFile(join(summary.cwd, "owned.txt"), "owned");
+    expect((await client.command("session.delete", { sessionId })).error).toBeUndefined();
+    expect(await Bun.file(join(summary.cwd, "owned.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(primary, "project.txt")).text()).toBe("keep");
+  } finally {
+    await owner.close();
+  }
+});
+
+test("Project binding survives directory removal, read-only subscription and restart; execution synchronizes cwd", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-binding-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const first = await realpath(await mkdtemp(join(homeDir, "first-")));
+    const second = await realpath(await mkdtemp(join(homeDir, "second-")));
+    const fake = fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {}, sessionOptions: fake }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Project",
+        directories: [first, second],
+        trusted: true,
+      })
+    ).result as { id: string };
+    const { sessionId } = (
+      await client.command("session.create", { project: project.id, text: "start" })
+    ).result as { sessionId: string };
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    await client.command("project.update", {
+      projectId: project.id,
+      name: "Project",
+      directories: [second],
+      primary: second,
+    });
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, projectId: project.id, worktree: null, cwd: first }),
+    );
+    await server.close();
+    const next = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {}, sessionOptions: fake }),
+      (server) => server.close(),
+    );
+    const reconnected = await connect(next, "app://rukie", owner);
+    await reconnected.command("session.subscribe", { sessionId });
+    expect((await reconnected.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, projectId: project.id, worktree: null, cwd: first }),
+    );
+    expect(
+      (await reconnected.command("prompt", { sessionId, text: "continue" })).error,
+    ).toBeUndefined();
+    await reconnected.next(
+      (message) => message.type === "result" && message.sessionId === sessionId,
+    );
+    expect((await reconnected.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({
+        id: sessionId,
+        projectId: project.id,
+        worktree: null,
+        cwd: second,
+      }),
+    );
+    const snapshot = await readSessionSnapshot({
+      homeDir,
+      dataRoot: join(homeDir, "desktop-data"),
+      cwd: second,
+      id: sessionId,
+    });
+    expect(JSON.stringify(snapshot)).toContain(first);
+    expect(JSON.stringify(snapshot)).toContain(second);
+    expect(JSON.stringify(fake.contexts.at(-1))).toContain(first);
+    expect(JSON.stringify(fake.contexts.at(-1))).toContain(second);
+    await reconnected.command("session.delete", { sessionId });
+    expect((await reconnected.command("sessions.list")).result).toEqual([]);
+  } finally {
+    await owner.close();
+  }
+});
+
+test.each([
+  "project",
+  "root",
+  "symlink",
+  "outside",
+  "ancestor-symlink",
+  "data-root-symlink",
+  "parent-symlink",
+] as const)("conversation deletion preserves %s directories", async (kind) => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-workspace-delete-boundary-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const workspace = join(homeDir, "desktop-data", "workspace");
+    await mkdir(workspace, { recursive: true });
+    const outside = join(homeDir, "project");
+    await mkdir(outside);
+    const link = join(workspace, "link");
+    if (kind === "symlink") await symlink(outside, link);
+    const cwd =
+      kind === "root"
+        ? workspace
+        : kind === "symlink"
+          ? link
+          : ["ancestor-symlink", "data-root-symlink", "parent-symlink"].includes(kind)
+            ? join(workspace, "child")
+            : outside;
+    await mkdir(cwd, { recursive: true });
+    await writeFile(join(cwd, "keep.txt"), "keep");
+    const history = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd,
+          ...fakeModel([fauxAssistantMessage("done")]),
+        }),
+      (session) => session.close(),
+    );
+    await history.run("history");
+    await history.close();
+    if (kind === "ancestor-symlink") {
+      const actual = join(homeDir, "actual-workspace");
+      await filesystem.rename(workspace, actual);
+      await symlink(actual, workspace);
+    }
+    if (kind === "project") {
+      const database = await owner.acquire(
+        () => AppDatabase.open(join(homeDir, "desktop-data")),
+        (database) => database.close(),
+      );
+      await database.saveRegistry({
+        ...(await database.registry()),
+        projects: [
+          {
+            id: "project",
+            name: "Project",
+            directories: [outside],
+            primary: outside,
+            trusted: true,
+          },
+        ],
+        pinned: [],
+        archived: [],
+      });
+      await database.close();
+    }
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    if (kind === "data-root-symlink" || kind === "parent-symlink") {
+      const replaced = kind === "data-root-symlink" ? join(homeDir, "desktop-data") : homeDir;
+      const actual = `${replaced}-relocated`;
+      owner.add(() => rm(actual, { recursive: true, force: true }));
+      await filesystem.rename(replaced, actual);
+      await symlink(actual, replaced);
+    }
+    expect(
+      (await client.command("session.delete", { sessionId: history.id })).error,
+    ).toBeUndefined();
+    expect((await client.command("sessions.list")).result).toEqual([]);
+    expect(await Bun.file(join(cwd, "keep.txt")).text()).toBe("keep");
+    if (kind === "symlink" || kind === "ancestor-symlink")
+      expect((await filesystem.lstat(kind === "symlink" ? link : workspace)).isSymbolicLink()).toBe(
+        true,
+      );
+  } finally {
+    await owner.close();
+  }
+});
+
+test("conversation workspace cleanup failure warns without undoing Session deletion", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-workspace-cleanup-warning-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const warnings: string[] = [];
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+          onWarning: (warning) => warnings.push(warning),
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const { sessionId } = (await client.command("session.create", { project: null, text: "hello" }))
+      .result as { sessionId: string };
+    await client.next((message) => message.type === "result");
+    const cwd = (
+      (await client.command("sessions.list")).result as { id: string; cwd: string }[]
+    ).find((session) => session.id === sessionId)!.cwd;
+    const original = filesystem.rm;
+    const remove = spyOn(filesystem, "rm").mockImplementation(async (path, options) => {
+      if (path === cwd) throw new Error("workspace removal denied");
+      return original(path, options);
+    });
+    try {
+      expect((await client.command("session.delete", { sessionId })).error).toBeUndefined();
+    } finally {
+      remove.mockRestore();
+    }
+    expect((await client.command("sessions.list")).result).toEqual([]);
+    expect((await stat(cwd)).isDirectory()).toBe(true);
+    expect(warnings).toEqual([expect.stringContaining("workspace removal denied")]);
+  } finally {
+    await owner.close();
+  }
+});
 
 test("initial and reconnect registry metadata present the canonical configured home", async () => {
   const owner = ownResources();
@@ -146,6 +473,7 @@ test("startup catalog and history never unlock encrypted execution configuration
       code: "internal",
     });
     expect(decryptions).toBe(1);
+    expect(await filesystem.readdir(join(homeDir, "desktop-data", "workspace"))).toEqual([]);
     authorized = true;
     client.messages.length = 0;
     expect(
@@ -1159,7 +1487,7 @@ test("concurrent project.create reports the owner of a shared canonical secondar
   }
 });
 
-test("legacy alias Projects retain Session membership and canonical directory ownership", async () => {
+test("legacy alias Projects preserve canonical ownership without backfilling Session bindings", async () => {
   const owner = ownResources();
   try {
     const homeDir = await owner.acquire(
@@ -1235,112 +1563,20 @@ test("legacy alias Projects retain Session membership and canonical directory ow
       ).error,
     ).toEqual({ code: "project_conflict", params: { project: "Original" } });
     expect((await client.command("projects.list")).result).toEqual([legacy]);
-    expect(
-      (await client.command("session.move", { sessionId: history.id, projectId: "legacy" })).error,
-    ).toEqual({ code: "invalid_command" });
     expect((await client.command("sessions.list")).result).toEqual([
-      expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" }),
+      expect.objectContaining({ id: history.id, cwd: alias, projectId: null, worktree: null }),
     ]);
-    expect(await client.next((message) => message.type === "sessions_changed")).toMatchObject({
-      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" })],
-    });
     const before = await readSessionSnapshot({ homeDir, dataRoot, cwd: alias, id: history.id });
-    expect(
-      (
-        await client.command("project.update", {
-          projectId: "legacy",
-          name: "Renamed",
-          directories: [alias],
-          primary: alias,
-        })
-      ).result,
-    ).toEqual({ ...legacy, name: "Renamed", directories: [canonical], primary: canonical });
-    expect(
-      await client.next(
-        (message) =>
-          message.type === "sessions_changed" &&
-          Array.isArray(message.projects) &&
-          message.projects[0]?.name === "Renamed",
-      ),
-    ).toMatchObject({
-      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" })],
+    await client.command("project.update", {
+      projectId: "legacy",
+      name: "Renamed",
+      directories: [alias],
+      primary: alias,
     });
-    const reconnected = await connect(server, "app://rukie", owner);
-    expect(await reconnected.next((message) => message.type === "sessions_changed")).toMatchObject({
-      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" })],
-    });
-    const originalRealpath = filesystem.realpath;
-    let releaseIdentity = () => {};
-    let reachedIdentity = () => {};
-    const reached = new Promise<void>((resolve) => {
-      reachedIdentity = resolve;
-    });
-    const identityBarrier = new Promise<void>((resolve) => {
-      releaseIdentity = resolve;
-    });
-    let identityLookups = 0;
-    // Hold only the old publication at the filesystem boundary; the competing Project write stays real.
-    const lookup = spyOn(filesystem, "realpath").mockImplementation((async (
-      path: Parameters<typeof filesystem.realpath>[0],
-    ) => {
-      const result = await originalRealpath(path);
-      if (path === alias && ++identityLookups === 2) {
-        reachedIdentity();
-        await identityBarrier;
-      }
-      return result;
-    }) as typeof filesystem.realpath);
-    owner.add(() => {
-      releaseIdentity();
-      lookup.mockRestore();
-    });
-    const pin = reconnected.command("session.pin", { sessionId: history.id });
-    await reached;
-    expect(
-      (
-        await reconnected.command("project.update", {
-          projectId: "legacy",
-          name: "Renamed",
-          directories: [other],
-          primary: other,
-        })
-      ).error,
-    ).toBeUndefined();
-    expect(
-      await reconnected.next(
-        (message) =>
-          message.type === "sessions_changed" &&
-          Array.isArray(message.projects) &&
-          message.projects[0]?.primary === other,
-      ),
-    ).toMatchObject({
-      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: null })],
-      pinned: [history.id],
-    });
-    const publicationCursor = reconnected.messages.length;
-    releaseIdentity();
-    expect((await pin).error).toBeUndefined();
-    const published = await reconnected.next(
-      (message) =>
-        reconnected.messages.indexOf(message) >= publicationCursor &&
-        message.type === "sessions_changed",
-    );
-    expect(published.projects).toEqual([expect.objectContaining({ primary: other })]);
-    expect(published.sessions).toEqual([
-      expect.objectContaining({ id: history.id, cwd: alias, projectId: null }),
+    await client.command("project.remove", { projectId: "legacy" });
+    expect((await client.command("sessions.list")).result).toEqual([
+      expect.objectContaining({ id: history.id, cwd: alias, projectId: null, worktree: null }),
     ]);
-    lookup.mockRestore();
-    await reconnected.command("project.remove", { projectId: "legacy" });
-    expect(
-      await reconnected.next(
-        (message) =>
-          message.type === "sessions_changed" &&
-          Array.isArray(message.projects) &&
-          message.projects.length === 0,
-      ),
-    ).toMatchObject({
-      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: null })],
-    });
     expect(await readSessionSnapshot({ homeDir, dataRoot, cwd: alias, id: history.id })).toEqual(
       before,
     );
@@ -1384,6 +1620,7 @@ test("session.move rejects its owning Project after a primary switch without cha
       archived: [],
       preferences: {},
     });
+    await db.bindSession(history.id, "p");
     const server = await owner.acquire(
       () => startServer({ homeDir, onHandshake: () => {} }),
       (server) => server.close(),
@@ -1653,12 +1890,18 @@ test("an application-root Session held by another owner permits only a read-only
 test("permission epochs survive takeover and settle once, with session rules applying to later calls", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-permission-wire-"));
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("write", { path: "first.txt", content: "one" }), {
-      stopReason: "toolUse",
-    }),
-    fauxAssistantMessage(fauxToolCall("write", { path: "second.txt", content: "two" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: join(homeDir, "first.txt"), content: "one" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: join(homeDir, "second.txt"), content: "two" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const server = await startServer({
@@ -1830,7 +2073,9 @@ test.each(["success", "failure"])(
       });
       await client.command("session.unsubscribe", { sessionId });
       const dataRoot = join(homeDir, "desktop-data");
-      const cwd = join(dataRoot, "workspace");
+      const cwd = (
+        (await client.command("sessions.list")).result as { id: string; cwd: string }[]
+      ).find((session) => session.id === sessionId)!.cwd;
       await clock.tickAsync(600000 - 1);
       await expect(
         createSession({ ...fake, homeDir, dataRoot, cwd, resumeId: sessionId }),
@@ -1877,7 +2122,9 @@ test("idle unsubscribed Session releases its lease exactly at ten minutes", asyn
     await client.next((message) => message.type === "result");
     clock = FakeTimers.install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout"] });
     await client.command("session.unsubscribe", { sessionId });
-    const cwd = join(homeDir, "desktop-data", "workspace");
+    const cwd = (
+      (await client.command("sessions.list")).result as { id: string; cwd: string }[]
+    ).find((session) => session.id === sessionId)!.cwd;
     await clock.tickAsync(600000 - 1);
     await expect(
       createSession({
@@ -1926,7 +2173,9 @@ test("SIGTERM awaits Session shutdown and kills running Background Job process g
     const created = await client.command("session.create", { project: null, text: "start job" });
     const sessionId = (created.result as { sessionId: string }).sessionId;
     await client.next((message) => message.type === "result");
-    const cwd = join(homeDir, "desktop-data", "workspace");
+    const cwd = (
+      (await client.command("sessions.list")).result as { id: string; cwd: string }[]
+    ).find((session) => session.id === sessionId)!.cwd;
     const pid = await waitForPidFile(join(cwd, "pid"));
     expect(() => process.kill(pid, 0)).not.toThrow();
     child.kill("SIGTERM");
@@ -1953,7 +2202,7 @@ test("SIGTERM awaits Session shutdown and kills running Background Job process g
 test("aborting a permission request broadcasts settlement and rejects its late epoch", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-cancel-permission-wire-"));
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("write", { path: "file", content: "one" }), {
+    fauxAssistantMessage(fauxToolCall("write", { path: join(homeDir, "file"), content: "one" }), {
       stopReason: "toolUse",
     }),
   ]);
@@ -1985,7 +2234,7 @@ test("aborting a permission request broadcasts settlement and rejects its late e
 test("Run, pending Interaction and Queued Input prevent idle reclamation", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-active-idle-wire-"));
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("write", { path: "file", content: "one" }), {
+    fauxAssistantMessage(fauxToolCall("write", { path: join(homeDir, "file"), content: "one" }), {
       stopReason: "toolUse",
     }),
   ]);
@@ -2015,7 +2264,9 @@ test("Run, pending Interaction and Queued Input prevent idle reclamation", async
         ...fake,
         homeDir,
         dataRoot: join(homeDir, "desktop-data"),
-        cwd: join(homeDir, "desktop-data", "workspace"),
+        cwd: ((await client.command("sessions.list")).result as { id: string; cwd: string }[]).find(
+          (session) => session.id === sessionId,
+        )!.cwd,
         resumeId: sessionId,
       }),
     ).rejects.toMatchObject({ code: "session-busy" });
@@ -2054,7 +2305,9 @@ test("a running Background Job holds an unsubscribed idle Session", async () => 
     const created = await client.command("session.create", { project: null, text: "job" });
     const sessionId = (created.result as { sessionId: string }).sessionId;
     await client.next((message) => message.type === "result");
-    const cwd = join(homeDir, "desktop-data", "workspace");
+    const cwd = (
+      (await client.command("sessions.list")).result as { id: string; cwd: string }[]
+    ).find((session) => session.id === sessionId)!.cwd;
     const pid = await waitForPidFile(join(cwd, "pid"));
     expect((await client.command("session.archive", { sessionId })).error).toEqual({
       code: "session_busy",
@@ -2136,7 +2389,9 @@ test("a native background Subagent holds a parent Session after its Run ends", a
         ...fake,
         homeDir,
         dataRoot: join(homeDir, "desktop-data"),
-        cwd: join(homeDir, "desktop-data", "workspace"),
+        cwd: ((await client.command("sessions.list")).result as { id: string; cwd: string }[]).find(
+          (session) => session.id === sessionId,
+        )!.cwd,
         resumeId: sessionId,
       }),
     ).rejects.toMatchObject({ code: "session-busy" });
@@ -2154,8 +2409,8 @@ test("a session grant settles other pending permission cards covered by its rule
   const fake = fakeModel([
     fauxAssistantMessage(
       [
-        fauxToolCall("write", { path: "first", content: "one" }, { id: "first" }),
-        fauxToolCall("write", { path: "second", content: "two" }, { id: "second" }),
+        fauxToolCall("write", { path: join(homeDir, "first"), content: "one" }, { id: "first" }),
+        fauxToolCall("write", { path: join(homeDir, "second"), content: "two" }, { id: "second" }),
       ],
       { stopReason: "toolUse" },
     ),
@@ -2225,9 +2480,12 @@ test("unsubscribed Sessions publish permission creation, reconnect state and can
     await first.next((m) => summary(m, sessionId, false));
     first.messages.length = 0;
     reply.resolve(
-      fauxAssistantMessage(fauxToolCall("write", { path: "first.txt", content: "one" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: join(homeDir, "first.txt"), content: "one" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
     );
     await first.next((m) => m.type === "interaction_requested");
     await first.next((m) => summary(m, sessionId, true));
@@ -2320,7 +2578,9 @@ test("desktop output wire reads committed bytes after server restart without ope
       (await client.command("prompt", { sessionId, text: "unconfigured model" })).error,
     ).toMatchObject({ code: "model_unavailable" });
     const owner = await createSession({
-      cwd: join(homeDir, "desktop-data", "workspace"),
+      cwd: ((await client.command("sessions.list")).result as { id: string; cwd: string }[]).find(
+        (session) => session.id === sessionId,
+      )!.cwd,
       homeDir,
       dataRoot: join(homeDir, "desktop-data"),
       resumeId: sessionId,
@@ -2611,8 +2871,14 @@ for (const platform of ["darwin", "linux", "win32"] as const) {
         expect(selected.result).toEqual([await realpath(project)]);
         expect(calls[0]?.slice(0, 2)).toEqual(["/usr/bin/osascript", "-e"]);
         expect(calls[0]?.[2]).not.toContain(project);
+        calls.length = 0;
+        expect((await client.command("host.pickFolder", { multiple: false })).result).toEqual([
+          await realpath(project),
+        ]);
+        expect(calls[0]?.[2]).toContain("{choose folder}");
+        expect(calls[0]?.[2]).not.toContain("multiple selections allowed");
         folder = "";
-        expect((await client.command("host.pickFolder")).result).toBeNull();
+        expect((await client.command("host.pickFolder", { multiple: false })).result).toBeNull();
       } else {
         expect(selected.error).toEqual({ code: "unsupported" });
         expect(calls).toEqual([]);
@@ -2842,9 +3108,12 @@ test("archive refuses running and waiting Sessions but accepts a subscribed idle
       async () => {
         entered.resolve();
         await proceed.promise;
-        return fauxAssistantMessage(fauxToolCall("write", { path: "file", content: "saved" }), {
-          stopReason: "toolUse",
-        });
+        return fauxAssistantMessage(
+          fauxToolCall("write", { path: join(homeDir, "file"), content: "saved" }),
+          {
+            stopReason: "toolUse",
+          },
+        );
       },
       fauxAssistantMessage("done"),
     ]);
@@ -3344,7 +3613,7 @@ test("session.move preserves an unopened Session and publishes its new Project c
     ).toEqual({ code: "session_not_found" });
     expect(
       (await client.command("session.move", { sessionId: history.id, projectId: null })).error,
-    ).toEqual({ code: "invalid_command" });
+    ).toBeUndefined();
   } finally {
     await owner.close();
   }
@@ -3589,7 +3858,7 @@ test("project.update validates complete canonical state and requires trust only 
   }
 });
 
-test("project.remove rejects running and waiting Sessions in any directory and preserves idle history and files", async () => {
+test("project.remove rejects running and waiting Sessions in any directory and deletes bound archived and pinned history while preserving files", async () => {
   const owner = ownResources();
   const proceed = Promise.withResolvers<void>();
   try {
@@ -3624,16 +3893,20 @@ test("project.remove rejects running and waiting Sessions in any directory and p
       archived: [history.id],
       preferences: {},
     });
+    await db.bindSession(history.id, "p");
     const entered = Promise.withResolvers<void>();
     const fake = fakeModel([
       async () => {
         entered.resolve();
         await proceed.promise;
         return fauxAssistantMessage(
-          fauxToolCall("write", { path: "kept.txt", content: "kept content" }),
+          fauxToolCall("write", { path: join(homeDir, "approval.txt"), content: "approved" }),
           { stopReason: "toolUse" },
         );
       },
+      fauxAssistantMessage(fauxToolCall("write", { path: "kept.txt", content: "kept content" }), {
+        stopReason: "toolUse",
+      }),
       fauxAssistantMessage("done"),
     ]);
     const server = await owner.acquire(
@@ -3661,13 +3934,22 @@ test("project.remove rejects running and waiting Sessions in any directory and p
     await client.command("interaction.reply", { identity: asked.identity, reply: "allow" });
     await client.next((message) => message.type === "result");
     await client.command("session.pin", { sessionId });
-    const before = await readSessionSnapshot({ homeDir, dataRoot, cwd: second, id: sessionId });
-    const archivedBefore = await readSessionSnapshot({
-      homeDir,
-      dataRoot,
-      cwd: first,
-      id: history.id,
+    const external = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot,
+          cwd: first,
+          resumeId: history.id,
+          ...fakeModel([fauxAssistantMessage("unused")]),
+        }),
+      (session) => session.close(),
+    );
+    expect((await client.command("project.remove", { projectId: "p" })).error).toEqual({
+      code: "session_busy",
     });
+    expect((await client.command("sessions.list")).result).toHaveLength(2);
+    await external.close();
     expect((await client.command("project.remove", { projectId: "p" })).result).toEqual({});
     expect((await client.command("project.remove", { projectId: "p" })).error).toEqual({
       code: "project_not_found",
@@ -3678,21 +3960,12 @@ test("project.remove rejects running and waiting Sessions in any directory and p
         Array.isArray(message.projects) &&
         message.projects.length === 0 &&
         Array.isArray(message.pinned) &&
-        message.pinned.includes(sessionId),
+        message.pinned.length === 0 &&
+        Array.isArray(message.archived) &&
+        message.archived.length === 0,
     );
     expect((await client.command("projects.list")).result).toEqual([]);
-    expect((await client.command("sessions.list")).result).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: sessionId, cwd: second }),
-        expect.objectContaining({ id: history.id, cwd: first }),
-      ]),
-    );
-    expect(await readSessionSnapshot({ homeDir, dataRoot, cwd: second, id: sessionId })).toEqual(
-      before,
-    );
-    expect(await readSessionSnapshot({ homeDir, dataRoot, cwd: first, id: history.id })).toEqual(
-      archivedBefore,
-    );
+    expect((await client.command("sessions.list")).result).toEqual([]);
     expect(await Bun.file(join(second, "kept.txt")).text()).toBe("kept content");
     await server.close();
     const reopened = await owner.acquire(
@@ -3702,8 +3975,8 @@ test("project.remove rejects running and waiting Sessions in any directory and p
     const reconnect = await connect(reopened, "app://rukie", owner);
     expect((await reconnect.command("projects.list")).result).toEqual([]);
     expect(await reconnect.next((message) => message.type === "sessions_changed")).toMatchObject({
-      pinned: [sessionId],
-      archived: [history.id],
+      pinned: [],
+      archived: [],
     });
   } finally {
     proceed.resolve();
@@ -3782,48 +4055,23 @@ test("Project edits and removal reload idle Session ownership, directories and t
     await prompt("after directory edit", 2);
     expect(JSON.stringify(fake.contexts[1])).toContain("THIRD_ADDED");
     expect(JSON.stringify(fake.contexts[1])).not.toContain("SECOND_REMOVED_UPDATE");
-    expect(await Bun.file(join(first, "opens")).text()).toBe("opened\nopened\n");
+    expect(await Bun.file(join(first, "opens")).text()).toBe("opened\n");
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, projectId: project.id, worktree: null, cwd: third }),
+    );
     expect(
       (await client.command("project.remove", { projectId: project.id })).error,
     ).toBeUndefined();
-    await writeFile(join(third, "AGENTS.md"), "THIRD_REMOVED_PROJECT");
-    await prompt("after Project removal", 3);
-    expect(JSON.stringify(fake.contexts[2])).not.toContain("THIRD_REMOVED_PROJECT");
-    expect(await Bun.file(join(first, "opens")).text()).toBe("opened\nopened\n");
-    const replacement = (
-      await client.command("project.create", {
-        name: "Replacement",
-        directories: [first, second],
-        trusted: true,
-      })
-    ).result as { id: string };
-    await prompt("after registration", 4);
-    expect(JSON.stringify(fake.contexts[3])).toContain("SECOND_REMOVED_UPDATE");
-    expect(await Bun.file(join(first, "opens")).text()).toBe("opened\nopened\nopened\n");
-    expect(
-      (
-        await client.command("project.update", {
-          projectId: replacement.id,
-          name: "Only second",
-          directories: [second],
-          primary: second,
-        })
-      ).error,
-    ).toBeUndefined();
-    await writeFile(join(second, "AGENTS.md"), "SECOND_NO_LONGER_OWNED");
-    await prompt("after cwd removal", 5);
-    expect(JSON.stringify(fake.contexts[4])).not.toContain("SECOND_NO_LONGER_OWNED");
-    expect(await Bun.file(join(first, "opens")).text()).toBe("opened\nopened\nopened\n");
-    expect((await client.command("sessions.list")).result).toEqual([
-      expect.objectContaining({ id: sessionId, cwd: first }),
-    ]);
+    expect((await client.command("prompt", { sessionId, text: "deleted" })).error).toEqual({
+      code: "session_not_found",
+    });
   } finally {
     proceed.resolve();
     await owner.close();
   }
 });
 
-test("legacy alias Project edits preserve cwd hook trust until membership or registration removal", async () => {
+test("legacy alias Project edits synchronize cwd while preserving binding and unrelated registrations", async () => {
   const owner = ownResources();
   try {
     const homeDir = await owner.acquire(
@@ -3925,15 +4173,792 @@ test("legacy alias Project edits preserve cwd hook trust until membership or reg
     )
       throw new Error("Missing Project id");
     await prompt("after canonical registration", 4);
-    expect(await opens.text()).toBe("trusted-open\ntrusted-open\ntrusted-open\n");
+    expect(await opens.text()).toBe("trusted-open\ntrusted-open\n");
     expect(
       (await client.command("project.remove", { projectId: replacement.result.id })).error,
     ).toBeUndefined();
     await prompt("after registration removal", 5);
-    expect(await opens.text()).toBe("trusted-open\ntrusted-open\ntrusted-open\n");
+    expect(await opens.text()).toBe("trusted-open\ntrusted-open\n");
     expect((await client.command("sessions.list")).result).toEqual([
-      expect.objectContaining({ id: sessionId, cwd: alias, projectId: null }),
+      expect.objectContaining({ id: sessionId, cwd: second, projectId: "legacy", worktree: null }),
     ]);
+  } finally {
+    await owner.close();
+  }
+});
+
+async function gitAt(cwd: string, ...args: string[]) {
+  const child = Bun.spawn(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  if (code) throw new Error(stderr);
+  return stdout.trim();
+}
+
+test("Git Project queries only repository roots and worktree Sessions retain isolation across edits, restart, moves and deletion", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-worktree-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const repository = await realpath(await mkdtemp(join(homeDir, "repo-")));
+    const extra = await realpath(await mkdtemp(join(homeDir, "extra-")));
+    await mkdir(join(repository, "nested"));
+    await writeFile(join(repository, "tracked.txt"), "committed");
+    await writeFile(join(repository, "AGENTS.md"), "MAIN_REPOSITORY_CONTEXT");
+    await mkdir(join(repository, ".rukie"));
+    await writeFile(
+      join(repository, ".rukie/settings.json"),
+      JSON.stringify({
+        hooks: {
+          SessionStart: [{ hooks: [{ type: "command", command: "printf trusted > trust-proof" }] }],
+        },
+      }),
+    );
+    await writeFile(join(extra, "AGENTS.md"), "EXTRA_DIRECTORY_CONTEXT");
+    await gitAt(repository, "init", "-b", "main");
+    await gitAt(repository, "add", ".");
+    await gitAt(
+      repository,
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "-m",
+      "initial",
+    );
+    const head = await gitAt(repository, "rev-parse", "HEAD");
+    await writeFile(join(repository, "tracked.txt"), "uncommitted");
+    const fake = fakeModel(Array.from({ length: 5 }, () => fauxAssistantMessage("done")));
+    const launch = () =>
+      owner.acquire(
+        () =>
+          startServer({
+            homeDir,
+            sessionOptions: fake,
+            hostPlatform: "darwin",
+            executeHost: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+            onHandshake: () => {},
+          }),
+        (server) => server.close(),
+      );
+    const server = await launch();
+    let client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Repo",
+        directories: [repository, extra],
+        trusted: true,
+      })
+    ).result as { id: string };
+    expect((await client.command("project.git", { projectId: project.id })).result).toEqual({
+      repository: true,
+      branch: "main",
+      head,
+    });
+    const nested = (
+      await client.command("project.create", {
+        name: "Nested",
+        directories: [join(repository, "nested")],
+        trusted: true,
+      })
+    ).result as { id: string };
+    expect((await client.command("project.git", { projectId: nested.id })).result).toEqual({
+      repository: false,
+      branch: null,
+      head: "",
+    });
+    const response = await client.command("session.create", {
+      project: project.id,
+      worktree: true,
+      text: "isolated",
+    });
+    expect(response.error).toBeUndefined();
+    const sessionId = (response.result as { sessionId: string }).sessionId;
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    const summary = (
+      (await client.command("sessions.list")).result as {
+        id: string;
+        cwd: string;
+        worktree: { id: string; branch: string } | null;
+      }[]
+    ).find((item) => item.id === sessionId)!;
+    expect(summary.worktree).toEqual({
+      id: expect.any(String),
+      branch: expect.stringMatching(/^rukie\/worktree-[a-f0-9]{8}$/),
+    });
+    expect(summary.cwd).toMatch(
+      new RegExp(`/desktop-data/worktrees/[a-f0-9]{8}/${repository.split("/").at(-1)}$`),
+    );
+    expect(await gitAt(summary.cwd, "branch", "--show-current")).toBe(summary.worktree!.branch);
+    expect(await Bun.file(join(summary.cwd, "tracked.txt")).text()).toBe("committed");
+    expect(await Bun.file(join(summary.cwd, "trust-proof")).text()).toBe("trusted");
+    expect(JSON.stringify(fake.contexts[0])).toContain("EXTRA_DIRECTORY_CONTEXT");
+    expect((await client.command("host.revealPath", { path: summary.cwd })).error).toBeUndefined();
+    expect(
+      (await client.command("host.openInTerminal", { path: summary.cwd })).error,
+    ).toBeUndefined();
+    expect((await client.command("session.move", { sessionId, projectId: null })).error).toEqual({
+      code: "worktree_session",
+    });
+    await client.command("project.update", {
+      projectId: project.id,
+      name: "Repo",
+      directories: [repository, extra],
+      primary: extra,
+    });
+    await server.close();
+    client = await connect(await launch(), "app://rukie", owner);
+    expect(
+      (await client.command("prompt", { sessionId, text: "after restart" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, cwd: summary.cwd, worktree: summary.worktree }),
+    );
+    expect((await client.command("session.delete", { sessionId })).error).toBeUndefined();
+    expect((await stat(summary.cwd)).isDirectory()).toBe(true);
+    expect((await client.command("host.revealPath", { path: summary.cwd })).error).toBeUndefined();
+    await client.command("project.update", {
+      projectId: project.id,
+      name: "Repo",
+      directories: [repository, extra],
+      primary: repository,
+    });
+    const next = await client.command("session.create", {
+      project: project.id,
+      worktree: true,
+      text: "second",
+    });
+    const secondId = (next.result as { sessionId: string }).sessionId;
+    await client.next((message) => message.type === "result" && message.sessionId === secondId);
+    const second = ((await client.command("sessions.list")).result as { cwd: string }[])[0]!;
+    expect(
+      (await client.command("project.remove", { projectId: project.id })).error,
+    ).toBeUndefined();
+    expect((await stat(second.cwd)).isDirectory()).toBe(true);
+    expect((await client.command("sessions.list")).result).toEqual([]);
+    const orphaned = (await client.command("worktrees.list")).result as {
+      id: string;
+      path: string;
+      branch: string;
+    }[];
+    expect(orphaned).toHaveLength(2);
+    for (const tree of orphaned) {
+      expect(
+        (await client.command("worktree.delete", { worktreeId: tree.id })).error,
+      ).toBeUndefined();
+      expect(
+        await gitAt(repository, "show-ref", "--verify", `refs/heads/${tree.branch}`),
+      ).toContain(tree.branch);
+    }
+    expect((await client.command("worktrees.list")).result).toEqual([]);
+  } finally {
+    await owner.close();
+  }
+});
+
+test("worktree creation retries an occupied branch, supports detached HEAD and fails without a Session or leaked allocation", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-worktree-fail-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const repository = await realpath(await mkdtemp(join(homeDir, "repo-")));
+    await gitAt(repository, "init", "-b", "main");
+    await writeFile(join(repository, "tracked.txt"), "initial");
+    await gitAt(repository, "add", ".");
+    await gitAt(
+      repository,
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "-m",
+      "initial",
+    );
+    await gitAt(repository, "branch", "rukie/worktree-aaaaaaaa");
+    await gitAt(repository, "checkout", "--detach");
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Repo",
+        directories: [repository],
+        trusted: true,
+      })
+    ).result as { id: string };
+    expect((await client.command("project.git", { projectId: project.id })).result).toMatchObject({
+      repository: true,
+      branch: null,
+      head: await gitAt(repository, "rev-parse", "HEAD"),
+    });
+    const original = crypto.randomUUID.bind(crypto);
+    let calls = 0;
+    const uuid = spyOn(crypto, "randomUUID").mockImplementation(() => {
+      calls++;
+      return calls === 3 ? "aaaaaaaa-0000-4000-8000-000000000000" : original();
+    });
+    let created: Record<string, unknown>;
+    try {
+      created = await client.command("session.create", {
+        project: project.id,
+        worktree: true,
+        text: "retry branch",
+      });
+    } finally {
+      uuid.mockRestore();
+    }
+    expect(created.error).toBeUndefined();
+    const sessionId = (created.result as { sessionId: string }).sessionId;
+    await client.next((message) => message.type === "result");
+    const summary = (
+      (await client.command("sessions.list")).result as {
+        worktree: { branch: string };
+        cwd: string;
+      }[]
+    )[0]!;
+    expect(summary.worktree.branch).not.toBe("rukie/worktree-aaaaaaaa");
+    expect(calls).toBeGreaterThanOrEqual(4);
+    await client.command("session.delete", { sessionId });
+    // Corrupt Git's worktree metadata path, which makes real git worktree add fail.
+    await rm(join(repository, ".git/worktrees"), { recursive: true, force: true });
+    await writeFile(join(repository, ".git/worktrees"), "blocks metadata directory");
+    const failed = await client.command("session.create", {
+      project: project.id,
+      worktree: true,
+      text: "cannot allocate",
+    });
+    expect(failed.error).toMatchObject({
+      code: "worktree_failed",
+      params: { message: expect.any(String) },
+    });
+    expect((await client.command("sessions.list")).result).toEqual([]);
+    expect(await filesystem.readdir(join(homeDir, "desktop-data/worktrees"))).toHaveLength(1);
+    expect(await gitAt(repository, "branch", "--list", "rukie/worktree-*")).toContain(
+      "rukie/worktree-aaaaaaaa",
+    );
+    expect(
+      (await client.command("session.create", { project: null, worktree: true, text: "invalid" }))
+        .error,
+    ).toEqual({ code: "invalid_command" });
+    await server.close();
+    await rm(join(repository, ".git/worktrees"));
+    // An execution open error after Git creation must also roll back the new worktree and branch.
+    const noModel = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const second = await connect(noModel, "app://rukie", owner);
+    const before = await gitAt(repository, "branch", "--list", "rukie/worktree-*");
+    expect(
+      (
+        await second.command("session.create", {
+          project: project.id,
+          worktree: true,
+          text: "no model",
+        })
+      ).error,
+    ).toEqual({ code: "model_unavailable" });
+    expect((await second.command("sessions.list")).result).toEqual([]);
+    expect(await gitAt(repository, "branch", "--list", "rukie/worktree-*")).toBe(before);
+    expect(await filesystem.readdir(join(homeDir, "desktop-data/worktrees"))).toHaveLength(1);
+  } finally {
+    await owner.close();
+  }
+});
+
+test("untrusted worktree Projects do not load tracked project hooks", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-worktree-untrusted-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const repository = await realpath(await mkdtemp(join(homeDir, "repo-")));
+    await mkdir(join(repository, ".rukie"));
+    await writeFile(
+      join(repository, ".rukie/settings.json"),
+      JSON.stringify({
+        hooks: {
+          SessionStart: [{ hooks: [{ type: "command", command: "touch UNTRUSTED_HOOK_RAN" }] }],
+        },
+      }),
+    );
+    await gitAt(repository, "init", "-b", "main");
+    await gitAt(repository, "add", ".");
+    await gitAt(
+      repository,
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "-m",
+      "initial",
+    );
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (db) => db.close(),
+    );
+    await database.saveRegistry({
+      projects: [
+        {
+          id: "untrusted",
+          name: "Repo",
+          primary: repository,
+          directories: [repository],
+          trusted: false,
+        },
+      ],
+      pinned: [],
+      archived: [],
+      preferences: {},
+    });
+    await database.close();
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect(
+      (
+        await client.command("session.create", {
+          project: "untrusted",
+          worktree: true,
+          text: "untrusted",
+        })
+      ).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result");
+    const summary = ((await client.command("sessions.list")).result as { cwd: string }[])[0]!;
+    expect(await Bun.file(join(summary.cwd, "UNTRUSTED_HOOK_RAN")).exists()).toBe(false);
+  } finally {
+    await owner.close();
+  }
+});
+
+test("worktree settings list, force deletion retains branches and refresh repairs vanished bindings", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-worktree-settings-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const repository = await realpath(await mkdtemp(join(homeDir, "repo-")));
+    await writeFile(join(repository, "tracked.txt"), "initial");
+    await gitAt(repository, "init", "-b", "main");
+    await gitAt(repository, "add", ".");
+    await gitAt(
+      repository,
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "-m",
+      "initial",
+    );
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel(Array.from({ length: 6 }, () => fauxAssistantMessage("done"))),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    let client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Repo",
+        directories: [repository],
+        trusted: true,
+      })
+    ).result as { id: string };
+    const create = async () => {
+      const { sessionId } = (
+        await client.command("session.create", {
+          project: project.id,
+          worktree: true,
+          text: "work",
+        })
+      ).result as { sessionId: string };
+      await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+      return sessionId;
+    };
+    const sessionId = await create();
+    const [tree] = (await client.command("worktrees.list")).result as {
+      id: string;
+      path: string;
+      branch: string;
+      repository: string;
+    }[];
+    expect(tree!.repository).toBe(repository);
+    await server.close();
+    const occupied = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot: join(homeDir, "desktop-data"),
+          cwd: tree!.path,
+          resumeId: sessionId,
+          ...fakeModel([]),
+        }),
+      (session) => session.close(),
+    );
+    const restarted = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel(Array.from({ length: 6 }, () => fauxAssistantMessage("done"))),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const active = await connect(restarted, "app://rukie", owner);
+    expect((await active.command("worktree.delete", { worktreeId: tree!.id })).error).toEqual({
+      code: "session_busy",
+    });
+    expect((await stat(tree!.path)).isDirectory()).toBe(true);
+    expect((await active.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, worktree: { id: tree!.id, branch: tree!.branch } }),
+    );
+    await occupied.close();
+    client = active;
+
+    await filesystem.rename(repository, `${repository}-unavailable`);
+    expect((await client.command("worktree.delete", { worktreeId: tree!.id })).error).toMatchObject(
+      { code: "worktree_failed" },
+    );
+    expect((await client.command("worktrees.list")).result).toContainEqual(
+      expect.objectContaining({ id: tree!.id }),
+    );
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({
+        id: sessionId,
+        cwd: tree!.path,
+        worktree: { id: tree!.id, branch: tree!.branch },
+      }),
+    );
+    await filesystem.rename(`${repository}-unavailable`, repository);
+    expect(
+      (await client.command("prompt", { sessionId, text: "retry after Git failure" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    await writeFile(join(tree!.path, "tracked.txt"), "dirty");
+    // Filesystem boundary after Git removal: another Core frontend must still be excluded.
+    const originalRm = filesystem.rm;
+    let reservationError: unknown;
+    let attempted = false;
+    const removal = spyOn(filesystem, "rm").mockImplementation(async (path, options) => {
+      if (String(path) === join(tree!.path, "..")) {
+        attempted = true;
+        try {
+          const competitor = await createSession({
+            homeDir,
+            dataRoot: join(homeDir, "desktop-data"),
+            cwd: tree!.path,
+            resumeId: sessionId,
+            ...fakeModel([]),
+          });
+          await competitor.close();
+        } catch (error) {
+          reservationError = error;
+        }
+      }
+      return originalRm(path, options);
+    });
+    owner.add(() => removal.mockRestore());
+    expect(
+      (await client.command("worktree.delete", { worktreeId: tree!.id })).error,
+    ).toBeUndefined();
+    removal.mockRestore();
+    expect(attempted).toBe(true);
+    expect(reservationError).toMatchObject({ code: "session-busy" });
+    expect(await Bun.file(join(tree!.path, "tracked.txt")).exists()).toBe(false);
+    expect(await gitAt(repository, "show-ref", "--verify", `refs/heads/${tree!.branch}`)).toContain(
+      tree!.branch,
+    );
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({
+        id: sessionId,
+        cwd: repository,
+        projectId: project.id,
+        worktree: null,
+      }),
+    );
+    expect((await client.command("worktrees.list")).result).toEqual([]);
+    const vanishedId = await create();
+    const [vanished] = (await client.command("worktrees.list")).result as {
+      id: string;
+      path: string;
+      branch: string;
+    }[];
+    await rm(vanished!.path, { recursive: true });
+    expect((await client.command("worktrees.list")).result).toEqual([]);
+    expect((await client.command("worktrees.refresh")).error).toBeUndefined();
+    expect(await gitAt(repository, "worktree", "list", "--porcelain")).not.toContain(
+      vanished!.path,
+    );
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: vanishedId, worktree: null }),
+    );
+    expect(
+      (await client.command("prompt", { sessionId: vanishedId, text: "resume" })).error,
+    ).toBeUndefined();
+    await client.next((message) => message.type === "result" && message.sessionId === vanishedId);
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: vanishedId, cwd: repository, worktree: null }),
+    );
+    const interruptedId = await create();
+    const [interrupted] = (await client.command("worktrees.list")).result as {
+      id: string;
+      path: string;
+    }[];
+    const originalMkdir = filesystem.mkdir;
+    let injectFailure = false;
+    function mkdirWithFailure(
+      path: PathLike,
+      options: MakeDirectoryOptions & { recursive: true },
+    ): Promise<string | undefined>;
+    function mkdirWithFailure(
+      path: PathLike,
+      options?: Mode | (MakeDirectoryOptions & { recursive?: false }) | null,
+    ): Promise<void>;
+    function mkdirWithFailure(
+      path: PathLike,
+      options?: Mode | MakeDirectoryOptions | null,
+    ): Promise<string | undefined>;
+    async function mkdirWithFailure(
+      path: PathLike,
+      options?: Mode | MakeDirectoryOptions | null,
+    ): Promise<string | void> {
+      if (
+        injectFailure &&
+        String(path) === join(homeDir, "desktop-data", "sessions", interruptedId)
+      )
+        throw new Error("Session storage temporarily unavailable after Git removal");
+      return originalMkdir(path, options);
+    }
+    const lostPersistence = spyOn(filesystem, "mkdir").mockImplementation(mkdirWithFailure);
+    const realRm = filesystem.rm;
+    const afterGit = spyOn(filesystem, "rm").mockImplementation(async (path, options) => {
+      const result = await realRm(path, options);
+      if (String(path) === join(interrupted!.path, "..")) injectFailure = true;
+      return result;
+    });
+    owner.add(() => {
+      lostPersistence.mockRestore();
+      afterGit.mockRestore();
+    });
+    expect(
+      (await client.command("worktree.delete", { worktreeId: interrupted!.id })).error,
+    ).toEqual({ code: "internal" });
+    lostPersistence.mockRestore();
+    afterGit.mockRestore();
+    expect(await Bun.file(join(interrupted!.path, "tracked.txt")).exists()).toBe(false);
+    await restarted.close();
+    const repaired = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel(
+            Array.from({ length: 3 }, () => fauxAssistantMessage("recovered")),
+          ),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const repairClient = await connect(repaired, "app://rukie", owner);
+    expect(
+      (
+        await repairClient.command("prompt", {
+          sessionId: interruptedId,
+          text: "recover without manual refresh",
+        })
+      ).error,
+    ).toBeUndefined();
+    await repairClient.next(
+      (message) => message.type === "result" && message.sessionId === interruptedId,
+    );
+    expect((await repairClient.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: interruptedId, cwd: repository, worktree: null }),
+    );
+    client = repairClient;
+    const unpublishedId = await create();
+    const [unpublished] = (await client.command("worktrees.list")).result as { id: string }[];
+    const failingBindings = await owner.acquire(
+      () => openBunSqliteDatabase(join(homeDir, "desktop-data", "app.sqlite")),
+      (database) => database.close(),
+    );
+    // The real app database rejects only binding publication, after Core has committed Move.
+    await failingBindings.exec(
+      "CREATE TRIGGER fail_binding BEFORE INSERT ON session_bindings WHEN NEW.worktreeId IS NULL BEGIN SELECT RAISE(ABORT, 'binding storage unavailable'); END;",
+    );
+    expect(
+      (await client.command("worktree.delete", { worktreeId: unpublished!.id })).error,
+    ).toEqual({ code: "internal" });
+    await failingBindings.exec("DROP TRIGGER fail_binding");
+    await failingBindings.close();
+    await repaired.close();
+    const published = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("published")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const publishedClient = await connect(published, "app://rukie", owner);
+    expect(
+      (
+        await publishedClient.command("prompt", {
+          sessionId: unpublishedId,
+          text: "repair binding after committed Move",
+        })
+      ).error,
+    ).toBeUndefined();
+    await publishedClient.next(
+      (message) => message.type === "result" && message.sessionId === unpublishedId,
+    );
+    expect((await publishedClient.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: unpublishedId, cwd: repository, worktree: null }),
+    );
+  } finally {
+    await owner.close();
+  }
+});
+
+test("worktree deletion rejects a Session waiting for permission without changing its branch or binding", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-worktree-busy-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const repository = await realpath(await mkdtemp(join(homeDir, "repo-")));
+    await writeFile(join(repository, "tracked.txt"), "initial");
+    await gitAt(repository, "init", "-b", "main");
+    await gitAt(repository, "add", ".");
+    await gitAt(
+      repository,
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "-m",
+      "initial",
+    );
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: join(homeDir, "blocked.txt"), content: "write" }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("done"),
+    ]);
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: { ...fake, settings: { permissionMode: "ask" } },
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Repo",
+        directories: [repository],
+        trusted: true,
+      })
+    ).result as { id: string };
+    const { sessionId } = (
+      await client.command("session.create", { project: project.id, worktree: true, text: "write" })
+    ).result as { sessionId: string };
+    const asked = await client.next((message) => message.type === "interaction_requested");
+    const [tree] = (await client.command("worktrees.list")).result as {
+      id: string;
+      path: string;
+      branch: string;
+    }[];
+    expect((await client.command("worktree.delete", { worktreeId: tree!.id })).error).toEqual({
+      code: "session_busy",
+    });
+    expect((await stat(tree!.path)).isDirectory()).toBe(true);
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, worktree: { id: tree!.id, branch: tree!.branch } }),
+    );
+    await client.command("interaction.reply", { identity: asked.identity, reply: "deny" });
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    expect(
+      (await client.command("worktree.delete", { worktreeId: tree!.id })).error,
+    ).toBeUndefined();
+  } finally {
+    await owner.close();
+  }
+});
+
+test("moving into a Project serializes with removal and never publishes a dangling binding", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      async () => realpath(await mkdtemp(join(tmpdir(), "rukie-move-remove-"))),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const target = join(homeDir, "target");
+    await mkdir(target);
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Target",
+        directories: [target],
+        trusted: true,
+      })
+    ).result as { id: string };
+    const { sessionId } = (await client.command("session.create", { project: null, text: "start" }))
+      .result as { sessionId: string };
+    await client.next((message) => message.type === "result");
+    const [moved, removed] = await Promise.all([
+      client.command("session.move", { sessionId, projectId: project.id }),
+      client.command("project.remove", { projectId: project.id }),
+    ]);
+    expect(moved.error).toBeUndefined();
+    expect(removed.error).toBeUndefined();
+    expect((await client.command("projects.list")).result).toEqual([]);
+    expect((await client.command("sessions.list")).result).toEqual([]);
   } finally {
     await owner.close();
   }

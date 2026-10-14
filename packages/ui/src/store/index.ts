@@ -302,6 +302,12 @@ function validEnvelope(input: unknown): boolean {
           [item.id, item.title, item.model, item.cwd].every((value) => typeof value === "string") &&
           (item.projectId === null ||
             (typeof item.projectId === "string" && Boolean(item.projectId))) &&
+          (item.worktree === null ||
+            (record(item.worktree) &&
+              typeof item.worktree.id === "string" &&
+              Boolean(item.worktree.id) &&
+              typeof item.worktree.branch === "string" &&
+              Boolean(item.worktree.branch))) &&
           ["prompt", "model", "user"].includes(String(item.titleSource)) &&
           finite(item.createdAt) &&
           finite(item.updatedAt) &&

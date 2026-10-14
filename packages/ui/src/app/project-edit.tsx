@@ -142,6 +142,7 @@ export function ProjectEdit({
             {t("app.cancel")}
           </Button>
           <Button
+            variant="destructive"
             className="h-9 bg-destructive-soft text-destructive-soft-foreground not-disabled:hover:bg-destructive-soft/80 not-disabled:active:bg-destructive-soft"
             disabled={pending || busy || !connected}
             onClick={() => {

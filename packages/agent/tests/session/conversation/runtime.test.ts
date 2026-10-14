@@ -121,6 +121,7 @@ test.each(["allow", "deny"] as const)(
       permission: {
         ...dirs,
         rules: [],
+        getAccessScope: () => ({ readWrite: [], readOnly: [] }),
         getMode: () => "ask",
         getTools: () => tools,
         getMessages: async () => [],

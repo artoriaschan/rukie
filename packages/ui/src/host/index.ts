@@ -11,7 +11,7 @@ import type {
 } from "@rukie/shared";
 export interface DesktopHost {
   getConnection(): Promise<{ port: number; token: string }>;
-  pickProjectFolder(): Promise<string[] | null>;
+  pickProjectFolder(multiple?: boolean): Promise<string[] | null>;
   /** App binds its single connection before host actions; host never opens or closes it. */
   bindClient?(client: WireClient): void;
   modelServices: {
@@ -115,10 +115,13 @@ export function browserHost(): DesktopHost {
     bindClient: (value) => {
       client = value;
     },
-    pickProjectFolder: async () => {
+    pickProjectFolder: async (multiple) => {
       if (!client) throw new Error("Browser host client is not connected");
       await client.connect();
-      const result: unknown = await client.request({ type: "host.pickFolder" });
+      const result: unknown = await client.request({
+        type: "host.pickFolder",
+        ...(multiple === undefined ? {} : { multiple }),
+      });
       if (
         result !== null &&
         (!Array.isArray(result) ||

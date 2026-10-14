@@ -7,6 +7,7 @@ import { mkdir } from "node:fs/promises";
 import {
   createSession,
   moveSession,
+  withSessionMove,
   discoverSqliteSessions,
   readSessionStorage,
   type Session,
@@ -230,4 +231,39 @@ test("conversation Rewind retains notification progress and future moves establi
   expect(
     session.messages.filter((m) => m.role === "system-reminder" && m.source === "session-move"),
   ).toHaveLength(1);
+});
+
+test("Session Move reservation excludes other frontends through host work and binding publication", async () => {
+  dirs = await tempDirs();
+  const options = { ...dirs, dataRoot: join(dirs.homeDir, "data") };
+  const target = join(dirs.homeDir, "target");
+  await mkdir(target);
+  session = await createSession({ ...options, ...fakeModel([fauxAssistantMessage("done")]) });
+  await session.run("preserve history");
+  const id = session.id;
+  await session.close();
+  session = undefined;
+  const contender = (cwd: string) =>
+    createSession({ ...options, cwd, resumeId: id, ...fakeModel([]) });
+  await withSessionMove({ ...options, id, newCwd: target }, async (move) => {
+    await expect(contender(dirs.cwd)).rejects.toMatchObject({ code: "session-busy" });
+    await move();
+    await expect(contender(target)).rejects.toMatchObject({ code: "session-busy" });
+  });
+  session = await contender(target);
+  expect(await discoverSqliteSessions(options)).toContainEqual(
+    expect.objectContaining({ id, cwd: target }),
+  );
+  expect(session.messages.some((message) => message.role === "user")).toBe(true);
+  await session.close();
+  session = undefined;
+  await expect(
+    withSessionMove({ ...options, cwd: target, id, newCwd: dirs.cwd }, async () => {
+      throw new Error("Host operation failed");
+    }),
+  ).rejects.toThrow("Host operation failed");
+  session = await contender(target);
+  expect(await discoverSqliteSessions(options)).toContainEqual(
+    expect.objectContaining({ id, cwd: target }),
+  );
 });

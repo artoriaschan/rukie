@@ -57,9 +57,12 @@ test.each([
   async (permissionMode, configuredMode, expectedMode) => {
     dirs = await tempDirs();
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("write", { path: "mode.txt", content: "written" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: join(dirs.homeDir, "mode.txt"), content: "written" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("continued"),
     ]);
     const session = await createSession({
@@ -70,7 +73,7 @@ test.each([
     });
     expect(session.permissionMode).toBe(expectedMode);
     expect((await session.run("write")).text).toBe("continued");
-    expect(await Bun.file(join(dirs.cwd, "mode.txt")).exists()).toBe(
+    expect(await Bun.file(join(dirs.homeDir, "mode.txt")).exists()).toBe(
       expectedMode === "full-access",
     );
     expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
@@ -85,7 +88,11 @@ test("switching permission mode during a Run applies to the next tool call", asy
   const fake = fakeModel([
     ...["first", "second", "third", "fourth"].map((name) =>
       fauxAssistantMessage(
-        fauxToolCall("write", { path: `${name}.txt`, content: name }, { id: name }),
+        fauxToolCall(
+          "write",
+          { path: join(dirs.homeDir, `${name}.txt`), content: name },
+          { id: name },
+        ),
         { stopReason: "toolUse" },
       ),
     ),
@@ -111,10 +118,10 @@ test("switching permission mode during a Run applies to the next tool call", asy
   });
   expect(session.permissionMode).toBe("ask");
   expect(requests).toEqual(["first", "third", "fourth"]);
-  expect(await Bun.file(join(dirs.cwd, "first.txt")).exists()).toBe(false);
-  expect(await Bun.file(join(dirs.cwd, "second.txt")).text()).toBe("second");
-  expect(await Bun.file(join(dirs.cwd, "third.txt")).exists()).toBe(false);
-  expect(await Bun.file(join(dirs.cwd, "fourth.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "first.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "second.txt")).text()).toBe("second");
+  expect(await Bun.file(join(dirs.homeDir, "third.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "fourth.txt")).exists()).toBe(false);
   expect(
     fake.contexts.at(-1)!.messages.filter((message) => message.role === "toolResult"),
   ).toMatchObject([
@@ -139,16 +146,19 @@ test.each(["ask", "auto-review"] as const)(
     await session.run("stored prompt");
     expect(settings.permissionMode).toBe(permissionMode);
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("write", { path: "resumed.txt", content: "blocked" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: join(dirs.homeDir, "resumed.txt"), content: "blocked" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("resumed reply"),
     ]);
     await session.close();
     const resumed = await createSession({ ...dirs, ...fake, settings, resumeId: session.id });
     expect(resumed.permissionMode).toBe(permissionMode);
     await resumed.run("continue");
-    expect(await Bun.file(join(dirs.cwd, "resumed.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.homeDir, "resumed.txt")).exists()).toBe(false);
     expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({ role: "toolResult", isError: true });
     expect(JSON.stringify(fake.contexts[0]!.messages)).not.toContain("full-access");
   },
@@ -156,7 +166,7 @@ test.each(["ask", "auto-review"] as const)(
 
 test("frontend can allow a tool call using its id, name, arguments and signal", async () => {
   dirs = await tempDirs();
-  const args = { path: "allowed.txt", content: "approved content" };
+  const args = { path: join(dirs.homeDir, "allowed.txt"), content: "approved content" };
   const fake = fakeModel([
     fauxAssistantMessage(fauxToolCall("write", args, { id: "write-ask" }), {
       stopReason: "toolUse",
@@ -171,9 +181,12 @@ test("frontend can allow a tool call using its id, name, arguments and signal", 
       expect({ ...request }).toMatchObject({
         toolCallId: "write-ask",
         toolName: "write",
-        args: { ...args, path: join(dirs.cwd, args.path) },
+        args: { ...args, path: args.path },
         mode: "ask",
-        sessionAllow: { kind: "directory", rule: `write(${join(realpathSync(dirs.cwd), "**")})` },
+        sessionAllow: {
+          kind: "directory",
+          rule: `write(${join(realpathSync(dirs.homeDir), "**")})`,
+        },
         signal: expect.any(AbortSignal),
       });
       expect(request.signal.aborted).toBe(false);
@@ -189,7 +202,7 @@ test("frontend can allow a tool call using its id, name, arguments and signal", 
       })
     ).text,
   ).toBe("done");
-  expect(await Bun.file(join(dirs.cwd, "allowed.txt")).text()).toBe("approved content");
+  expect(await Bun.file(join(dirs.homeDir, "allowed.txt")).text()).toBe("approved content");
   expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
     role: "toolResult",
     toolCallId: "write-ask",
@@ -202,7 +215,11 @@ test("frontend denial blocks the tool, reports the denial and lets the model con
   dirs = await tempDirs();
   const fake = fakeModel([
     fauxAssistantMessage(
-      fauxToolCall("write", { path: "denied.txt", content: "blocked" }, { id: "write-denied" }),
+      fauxToolCall(
+        "write",
+        { path: join(dirs.homeDir, "denied.txt"), content: "blocked" },
+        { id: "write-denied" },
+      ),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("recovered"),
@@ -243,7 +260,7 @@ test("frontend denial blocks the tool, reports the denial and lets the model con
     isError: true,
     content: [{ type: "text", text: expect.stringContaining("Tool not authorized: write") }],
   });
-  expect(await Bun.file(join(dirs.cwd, "denied.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "denied.txt")).exists()).toBe(false);
 });
 
 test.each(["pending", "allow", "allow-session", "reject"] as const)(
@@ -252,7 +269,11 @@ test.each(["pending", "allow", "allow-session", "reject"] as const)(
     dirs = await tempDirs();
     const fake = fakeModel([
       fauxAssistantMessage(
-        fauxToolCall("write", { path: "cancelled.txt", content: "blocked" }, { id: "write-abort" }),
+        fauxToolCall(
+          "write",
+          { path: join(dirs.homeDir, "cancelled.txt"), content: "blocked" },
+          { id: "write-abort" },
+        ),
         { stopReason: "toolUse" },
       ),
     ]);
@@ -301,7 +322,7 @@ test.each(["pending", "allow", "allow-session", "reject"] as const)(
     ]);
     expect(events.at(-1)).toMatchObject({ type: "result", success: false });
     answer.resolve("allow");
-    expect(await Bun.file(join(dirs.cwd, "cancelled.txt")).exists()).toBe(false);
+    expect(await Bun.file(join(dirs.homeDir, "cancelled.txt")).exists()).toBe(false);
     const next = fakeModel([fauxAssistantMessage("continued")]);
     await session.close();
     const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
@@ -319,9 +340,12 @@ test.each(
 )("tools allowed through $source in $mode do not ask the frontend", async ({ mode, source }) => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("write", { path: "allowed.txt", content: "allowed" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: join(dirs.homeDir, "allowed.txt"), content: "allowed" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const permissions =
@@ -340,7 +364,7 @@ test.each(
     },
   });
   await session.run("write");
-  expect(await Bun.file(join(dirs.cwd, "allowed.txt")).text()).toBe("allowed");
+  expect(await Bun.file(join(dirs.homeDir, "allowed.txt")).text()).toBe("allowed");
   expect(requests).toEqual([]);
 });
 
@@ -394,7 +418,7 @@ test("allowing one call does not authorize later calls to the same tool", async 
     fauxAssistantMessage(
       fauxToolCall(
         "write",
-        { path: "first.txt", content: "first" },
+        { path: join(dirs.homeDir, "first.txt"), content: "first" },
         {
           id: "first-write",
         },
@@ -404,7 +428,7 @@ test("allowing one call does not authorize later calls to the same tool", async 
     fauxAssistantMessage(
       fauxToolCall(
         "write",
-        { path: "second.txt", content: "second" },
+        { path: join(dirs.homeDir, "second.txt"), content: "second" },
         {
           id: "second-write",
         },
@@ -424,8 +448,8 @@ test("allowing one call does not authorize later calls to the same tool", async 
   });
   await session.run("write twice");
   expect(requests.map((request) => request.toolCallId)).toEqual(["first-write", "second-write"]);
-  expect(await Bun.file(join(dirs.cwd, "first.txt")).text()).toBe("first");
-  expect(await Bun.file(join(dirs.cwd, "second.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "first.txt")).text()).toBe("first");
+  expect(await Bun.file(join(dirs.homeDir, "second.txt")).exists()).toBe(false);
 });
 
 test("a Permission pending at close reissues with native identity and old allow-session cannot authorize it", async () => {
@@ -436,7 +460,7 @@ test("a Permission pending at close reissues with native identity and old allow-
     fauxAssistantMessage(
       fauxToolCall(
         "write",
-        { path: "approval.txt", content: "approved bytes" },
+        { path: join(dirs.homeDir, "approval.txt"), content: "approved bytes" },
         { id: "repeated-provider-id" },
       ),
       { stopReason: "toolUse" },
@@ -472,7 +496,7 @@ test("a Permission pending at close reissues with native identity and old allow-
   expect(replacement?.identity?.requestId).toBe(old.identity?.requestId);
   expect(replacement?.identity?.epoch).not.toBe(old.identity?.epoch);
   expect(old.signal.aborted).toBe(true);
-  expect(await Bun.file(join(dirs.cwd, "approval.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "approval.txt")).exists()).toBe(false);
   expect(
     cold.contexts[0]?.messages.findLast((message) => message.role === "toolResult"),
   ).toMatchObject({ isError: true });
@@ -486,7 +510,10 @@ test("cold pending Permission uses current deny rules without accepting its old 
     ...dirs,
     ...fakeModel([
       fauxAssistantMessage(
-        fauxToolCall("write", { path: "current-policy.txt", content: "must not be written" }),
+        fauxToolCall("write", {
+          path: join(dirs.homeDir, "current-policy.txt"),
+          content: "must not be written",
+        }),
         { stopReason: "toolUse" },
       ),
     ]),
@@ -515,7 +542,7 @@ test("cold pending Permission uses current deny rules without accepting its old 
   await resumed.waitForIdle();
   expect(old.signal.aborted).toBe(true);
   expect(asks).toBe(0);
-  expect(await Bun.file(join(dirs.cwd, "current-policy.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "current-policy.txt")).exists()).toBe(false);
   expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
     isError: true,
     permissionDenial: { by: "rule", rule: "write" },
@@ -554,7 +581,10 @@ test("cold pending Permission ignores project hooks and allow rules after user t
     settings: (await loadSettings(dirs)).settings,
     ...fakeModel([
       fauxAssistantMessage(
-        fauxToolCall("write", { path: "project-approval.txt", content: "no stale approval" }),
+        fauxToolCall("write", {
+          path: join(dirs.homeDir, "project-approval.txt"),
+          content: "no stale approval",
+        }),
         { stopReason: "toolUse" },
       ),
     ]),
@@ -586,7 +616,7 @@ test("cold pending Permission ignores project hooks and allow rules after user t
   expect(old.signal.aborted).toBe(true);
   expect(asked).toBe(1);
   expect(await Bun.file(join(dirs.cwd, "hook-count")).text()).toBe("run");
-  expect(await Bun.file(join(dirs.cwd, "project-approval.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, "project-approval.txt")).exists()).toBe(false);
   expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
     isError: true,
     permissionDenial: { by: "user" },

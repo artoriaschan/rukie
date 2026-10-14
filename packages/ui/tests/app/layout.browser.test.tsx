@@ -373,6 +373,7 @@ test.each([1280, 420])(
             titleSource: "prompt",
             cwd: "/workspace",
             projectId: null,
+            worktree: null,
             model: "test/script",
             createdAt: index,
             updatedAt: index,

@@ -6,7 +6,21 @@ Permission Rule 按 `deny` → `ask` → `allow` 的顺序匹配。显式 `deny`
 
 恢复未结算的调用时，Agent Core 重新读取当前规则、Trusted Project、Hook 和工具参数。审批的稳定请求身份可恢复，但 callback epoch、signal 与 session 临时 allow 不恢复；旧回复不能授权新阶段。原生 safe replay 的 execute 路径也经过当前授权，unsafe intent 不因当前规则放宽而重跑。Plan Mode 提供规划上下文，始终独立于 Permission Mode。请求恢复与执行阶段见 [Agent Core](../packages/agent/README.md#pending-interactions)。
 
-桌面端 Trusted Project 来自创建 Project 或首次使用旧 Project 时的显式信任确认。服务端按已信任 Project 的登记目录身份派生执行 settings 的 `trustedProjects`，保留所属 cwd 的目录别名信任，不写回用户 settings；Agent Core 匹配要求路径精确相等，不继承父目录信任。拒绝旧 Project 的确认不阻止 Session 运行，但不加载项目 hooks、MCP 配置与 allow 规则。附加目录仅贡献项目指令，其可执行配置不合并。见 [ADR-0041](adr/0041-desktop-project-explicit-trust.md)。
+桌面端 Trusted Project 来自创建 Project 或首次使用旧 Project 时的显式信任确认。服务端按已信任 Project 的登记目录身份派生执行 settings 的 `trustedProjects`，保留所属 cwd 的目录别名信任，不写回用户 settings；Agent Core 匹配要求路径精确相等，不继承父目录信任。拒绝旧 Project 的确认不阻止 Session 运行，但不加载项目 hooks、MCP 配置与 allow 规则。附加目录贡献项目指令与 Session 访问范围中的可读写根，其可执行配置不合并。见 [ADR-0041](adr/0041-desktop-project-explicit-trust.md)。
+
+## Session 访问范围
+
+文件工具的 Permission Mode 默认值按真实目标路径决定。cwd 与 `additionalDirectories` 可读写；已发现技能的根目录与本 Session（含子 Session）的 Background Job 输出目录只读。`glob`、`grep` 省略 `path` 时使用 cwd；符号链接与尚未创建的文件通过已有祖先的真实路径判定。
+
+| 文件目标                          | ask  | auto-review       | full-access |
+| --------------------------------- | ---- | ----------------- | ----------- |
+| 范围内 read / glob / grep         | 放行 | 放行              | 放行        |
+| 可读写范围内 write / edit         | 放行 | 放行              | 放行        |
+| 范围外，或只读范围内 write / edit | 询问 | Permission Review | 放行        |
+
+范围只改变模式默认值：显式 deny / ask、Hook 与 Permission Review 阶段保持原有优先级。审批的「本 session 允许此目录」创建当前文件工具的目录级临时 allow 规则，覆盖子路径；父子 Session 共享范围与授权，Resume 后临时授权失效。`bash`、MCP 与 `web_fetch` 不按文件范围判定，因此访问范围不是操作系统 sandbox。决定见 [ADR-0044](adr/0044-session-access-scope.md)。
+
+Headless CLI 没有审批回调，默认拒绝范围外文件访问；使用 `--allow-tools 'read(~/reference/**)'` 或 `--permission-mode full-access` 显式授权。相对权限规则仍以 cwd 解析，附加目录不贡献可执行配置、MCP 或技能。
 
 ## Web fetch 域名规则
 

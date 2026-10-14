@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, stat, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { mkdir, stat, realpath, lstat, rmdir, rm } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { Hono } from "hono";
 import { upgradeWebSocket, websocket } from "@hono/bun";
 import type { WSContext } from "hono/ws";
@@ -12,6 +12,7 @@ import {
   renameSessionTitle,
   deleteSession,
   moveSession,
+  withSessionMove,
   discoverSqliteSessions,
   isSqliteSessionBusy,
   readSessionSnapshot,
@@ -30,6 +31,7 @@ import {
   type WireResponse,
   type WireProject,
   type WireSessionSummary,
+  type WireWorktree,
   WIRE_SUBPROTOCOL,
   ModelServiceSchema,
   ModelPriceRequestSchema,
@@ -41,6 +43,15 @@ import { parseWireCommand } from "./command.ts";
 import { AppDatabase, type ApplicationRegistry } from "./storage/app-database.ts";
 import { secretVault, type SecretEncryption, type EncryptionBackend } from "./storage/secrets.ts";
 import { applicationMcpPersistence, applicationConfiguration } from "./storage/configuration.ts";
+
+import {
+  projectGit,
+  createWorktree,
+  discardUnopenedWorktree,
+  worktreeDirectoryExists,
+  removeWorktree,
+  pruneWorktrees,
+} from "./worktrees.ts";
 
 type Registry = ApplicationRegistry;
 export interface ServerOptions {
@@ -101,6 +112,22 @@ export async function startServer(options: ServerOptions) {
   const directory = options.dataRoot;
   const workspace = join(directory, "workspace");
   await mkdir(workspace, { recursive: true });
+  // Resolve initial OS aliases once, then pin every owned ancestor's filesystem identity.
+  const ownedWorkspace = await realpath(workspace);
+  const ownedAncestry: { path: string; dev: number; ino: number }[] = [];
+  for (let path = ownedWorkspace; ; path = dirname(path)) {
+    const info = await lstat(path);
+    ownedAncestry.push({ path, dev: info.dev, ino: info.ino });
+    if (dirname(path) === path) break;
+  }
+  const workspaceIdentityUnchanged = async () => {
+    for (const identity of ownedAncestry) {
+      const info = await lstat(identity.path);
+      if (info.isSymbolicLink() || info.dev !== identity.dev || info.ino !== identity.ino)
+        return false;
+    }
+    return (await realpath(workspace)) === ownedWorkspace;
+  };
   const database = await AppDatabase.open(options.configurationRoot ?? directory);
   let localDatabase = database;
   const sharedConfiguration =
@@ -121,8 +148,7 @@ export async function startServer(options: ServerOptions) {
         })
       ).settings;
     const registry = await localDatabase.registry();
-    // Legacy registry paths and Session cwd retain their spelling; ownership uses filesystem identity.
-    // An unavailable registered directory still owns its stored path until it becomes resolvable.
+    // Preserve legacy registry spelling; filesystem identity is used for directory conflicts.
     const presentationHomeDir = await realpath(options.homeDir).catch(() => options.homeDir);
     const directoryIdentity = (path: string) => realpath(path).catch(() => path);
     const projectSnapshot = () =>
@@ -135,20 +161,16 @@ export async function startServer(options: ServerOptions) {
           directories: await Promise.all(project.directories.map(directoryIdentity)),
         })),
       );
-    const projectForCwd = async (cwd: string) => {
-      const identity = await directoryIdentity(cwd);
-      return (await projectIdentities()).find((item) => item.directories.includes(identity));
-    };
-
-    const projectOpening = async (cwd: string) => {
+    const removingProjects = new Set<string>();
+    const projectOpening = async (cwd: string, projectId?: string) => {
       const identity = await directoryIdentity(cwd);
       const identities = await projectIdentities();
-      const owningProject = identities.find((item) => item.directories.includes(identity));
+      const owningProject = identities.find((item) => item.project.id === projectId);
       const trustedDirectories = [
         ...new Set([
-          ...identities
-            .filter((item) => item.project.trusted)
-            .flatMap((item) => [...item.project.directories, ...item.directories]),
+          ...(owningProject?.project.trusted
+            ? [...owningProject.project.directories, ...owningProject.directories]
+            : []),
           // Core matches exact cwd spellings; add its alias only for this trusted filesystem owner.
           ...(owningProject?.project.trusted ? [cwd] : []),
         ]),
@@ -411,7 +433,45 @@ export async function startServer(options: ServerOptions) {
       let owner: Session | undefined;
       let openedProject: { identity: string; key: string } | undefined;
       const opening = (async () => {
-        const openingState = await projectOpening(cwd);
+        let binding = resumeId ? await localDatabase.sessionBinding(resumeId) : undefined;
+        const projectId = binding?.projectId ?? initial?.project ?? undefined;
+        if (projectId && removingProjects.has(projectId)) throw new CommandError("session_busy");
+        const project = registry.projects.find((item) => item.id === projectId);
+        if (resumeId && project && binding?.worktreeId) {
+          const worktree = (await localDatabase.worktrees()).find(
+            (item) => item.id === binding?.worktreeId,
+          );
+          // A retained record plus a missing path is durable evidence of interrupted deletion.
+          // Repair before native Resume, including failures after Git removal or after Move commit.
+          if (!worktree || !(await worktreeDirectoryExists(worktree.path))) {
+            await withSessionMove(
+              {
+                cwd,
+                homeDir: options.homeDir,
+                dataRoot: options.dataRoot,
+                id: resumeId,
+                newCwd: project.primary,
+              },
+              async (move) => {
+                if (cwd !== project.primary) await move();
+                await localDatabase.bindSession(resumeId, project.id);
+              },
+            );
+            binding = { projectId: project.id, worktreeId: null };
+            cwd = project.primary;
+          }
+        }
+        if (resumeId && project && !binding?.worktreeId && cwd !== project.primary) {
+          await moveSession({
+            cwd,
+            homeDir: options.homeDir,
+            dataRoot: options.dataRoot,
+            id: resumeId,
+            newCwd: project.primary,
+          });
+          cwd = project.primary;
+        }
+        const openingState = await projectOpening(cwd, projectId);
         const { owningProject, identity: cwdIdentity } = openingState;
         openedProject = openingState;
         const configuredSettings =
@@ -477,7 +537,9 @@ export async function startServer(options: ServerOptions) {
           permissionMode: initial?.permissionMode,
           cwd,
           additionalDirectories: owningProject?.project.directories.filter(
-            (_, index) => owningProject.directories[index] !== cwdIdentity,
+            (_, index) =>
+              owningProject.directories[index] !==
+              (binding?.worktreeId || initial?.worktree ? owningProject.primary : cwdIdentity),
           ),
           homeDir: options.homeDir,
           dataRoot: options.dataRoot,
@@ -547,20 +609,21 @@ export async function startServer(options: ServerOptions) {
         Layer.effect(Runs, FiberMap.make<string>()),
       ),
     );
-    const summaries = async (projects = projectSnapshot()): Promise<WireSessionSummary[]> => {
+    const summaries = async (): Promise<WireSessionSummary[]> => {
       const committed = await discoverSqliteSessions({
         dataRoot: options.dataRoot,
         homeDir: options.homeDir,
         onWarning: warning,
       });
-      const identities = await projectIdentities(projects);
+      const worktrees = await localDatabase.worktrees();
       const projected = await Promise.all(
         committed.map(async (summary) => {
-          const identity = await directoryIdentity(summary.cwd);
+          const binding = await localDatabase.sessionBinding(summary.id);
+          const worktree = worktrees.find((item) => item.id === binding?.worktreeId);
           return {
             ...summary,
-            projectId:
-              identities.find((item) => item.directories.includes(identity))?.project.id ?? null,
+            worktree: worktree ? { id: worktree.id, branch: worktree.branch } : null,
+            projectId: binding?.projectId ?? null,
             running: sessions.get(summary.id)?.running ?? false,
             waitingPermission: [...pending.values()].some((item) => item.sessionId === summary.id),
           };
@@ -573,7 +636,8 @@ export async function startServer(options: ServerOptions) {
       const current = sessions.get(id);
       if (current) {
         const opened = openedProjects.get(id);
-        const latest = await projectOpening(opened?.cwd ?? "");
+        const binding = await localDatabase.sessionBinding(id);
+        const latest = await projectOpening(opened?.cwd ?? "", binding?.projectId);
         if (opened?.key === latest.key || executing(current)) return current;
         // Applying Project ownership, directories and trust waits for idle execution.
         // Closing here reloads cwd configuration without interrupting an active Run.
@@ -606,12 +670,11 @@ export async function startServer(options: ServerOptions) {
       const work = (async () => {
         if (sharedConfiguration) registry.preferences = await database.preferences();
         let projects = projectSnapshot();
-        let committed = await summaries(projects);
-        // Filesystem identity resolution is asynchronous. Refresh when a Project mutation
-        // changed the registry meanwhile, so the event pairs ownership with the same state.
+        let committed = await summaries();
+        // Discovery is asynchronous; publish summaries with the current Project registry.
         while (JSON.stringify(projects) !== JSON.stringify(registry.projects)) {
           projects = projectSnapshot();
-          committed = await summaries(projects);
+          committed = await summaries();
         }
         if (active && !shuttingDown)
           send(active, {
@@ -780,8 +843,130 @@ export async function startServer(options: ServerOptions) {
           return hostOperation(command, {
             platform: options.hostPlatform ?? process.platform,
             execute: options.executeHost ?? executeHost,
-            roots: [...registry.projects.flatMap((project) => project.directories), workspace],
+            roots: [
+              ...registry.projects.flatMap((project) => project.directories),
+              workspace,
+              ...(await localDatabase.worktrees()).map((item) => item.path),
+            ],
           });
+        case "worktrees.list": {
+          const items = await localDatabase.worktrees();
+          const existing = await Promise.all(
+            items.map(async (item) => ((await worktreeDirectoryExists(item.path)) ? item : null)),
+          );
+          return existing.filter((item) => item !== null);
+        }
+        case "worktrees.refresh":
+        case "worktree.delete": {
+          return mutateProjects(async () => {
+            const items = await localDatabase.worktrees();
+            const selected =
+              command.type === "worktree.delete"
+                ? items.filter((item) => item.id === command.worktreeId)
+                : items;
+            if (command.type === "worktree.delete" && selected.length === 0)
+              throw new CommandError("invalid_command");
+            const invalid: WireWorktree[] = [];
+            for (const item of selected) {
+              if (command.type === "worktree.delete" || !(await worktreeDirectoryExists(item.path)))
+                invalid.push(item);
+            }
+            const bound: WireSessionSummary[] = [];
+            try {
+              for (const summary of await summaries()) {
+                const binding = await localDatabase.sessionBinding(summary.id);
+                if (!invalid.some((item) => item.id === binding?.worktreeId)) continue;
+                const current = sessions.get(summary.id);
+                if (
+                  organizing.has(summary.id) ||
+                  (sessionCommands.get(summary.id) ?? 0) > 0 ||
+                  openings.has(summary.id) ||
+                  (current && executing(current)) ||
+                  (!current &&
+                    isSqliteSessionBusy({
+                      cwd: summary.cwd,
+                      homeDir: options.homeDir,
+                      dataRoot: options.dataRoot,
+                      id: summary.id,
+                    }))
+                )
+                  throw new CommandError("session_busy");
+                organizing.add(summary.id);
+                bound.push(summary);
+              }
+              for (const summary of bound) {
+                const current = sessions.get(summary.id);
+                if (!current) continue;
+                clearTimeout(idleTimers.get(summary.id));
+                idleTimers.delete(summary.id);
+                await current.close();
+                observations.get(summary.id)?.();
+                observations.delete(summary.id);
+                sessions.delete(summary.id);
+                openedProjects.delete(summary.id);
+                children.delete(summary.id);
+                admissions.delete(summary.id);
+                for (const subscribed of subscriptions.values()) {
+                  subscribed.get(summary.id)?.();
+                  subscribed.delete(summary.id);
+                }
+              }
+              // Nest reservations so every bound Session stays exclusively owned through Git,
+              // metadata Move and binding publication, including another frontend's Core opens.
+              const remove = async () => {
+                if (command.type === "worktree.delete") {
+                  try {
+                    await removeWorktree(invalid[0]!);
+                  } catch (error) {
+                    throw new CommandError("worktree_failed", {
+                      message: error instanceof Error ? error.message : String(error),
+                    });
+                  }
+                } else {
+                  for (const repository of new Set(selected.map((item) => item.repository)))
+                    await pruneWorktrees(repository);
+                }
+              };
+              const reserve = async (index: number): Promise<void> => {
+                const summary = bound[index];
+                if (!summary) return remove();
+                const project = registry.projects.find((item) => item.id === summary.projectId);
+                if (!project) throw new CommandError("project_not_found");
+                await withSessionMove(
+                  {
+                    cwd: summary.cwd,
+                    homeDir: options.homeDir,
+                    dataRoot: options.dataRoot,
+                    id: summary.id,
+                    newCwd: project.primary,
+                  },
+                  async (move) => {
+                    await reserve(index + 1);
+                    if (command.type === "worktree.delete") await move();
+                    await localDatabase.bindSession(summary.id, project.id);
+                  },
+                );
+              };
+              await reserve(0);
+              for (const item of invalid) await localDatabase.removeWorktree(item.id);
+              await changed();
+              const remaining = await localDatabase.worktrees();
+              const existing = await Promise.all(
+                remaining.map(async (item) =>
+                  (await worktreeDirectoryExists(item.path)) ? item : null,
+                ),
+              );
+              return existing.filter((item) => item !== null);
+            } finally {
+              for (const summary of bound) organizing.delete(summary.id);
+            }
+          });
+        }
+        case "project.git": {
+          const project = registry.projects.find((item) => item.id === command.projectId);
+          if (!project) throw new CommandError("project_not_found");
+          return projectGit(project.primary);
+        }
         case "projects.list":
           return runtime.runPromise(
             Effect.gen(function* () {
@@ -851,34 +1036,42 @@ export async function startServer(options: ServerOptions) {
           return mutateProjects(async () => {
             const project = registry.projects.find((p) => p.id === command.projectId);
             if (!project) throw new CommandError("project_not_found");
-            const directories = await Promise.all(project.directories.map(directoryIdentity));
-            const committed = await summaries();
-            for (const summary of committed) {
-              if (!directories.includes(await directoryIdentity(summary.cwd))) continue;
-              const current = sessions.get(summary.id);
-              if (
-                openings.has(summary.id) ||
-                (current && executing(current)) ||
-                (!current &&
-                  isSqliteSessionBusy({
-                    cwd: summary.cwd,
-                    homeDir: options.homeDir,
-                    dataRoot: options.dataRoot,
-                    id: summary.id,
-                  }))
-              )
-                throw new CommandError("session_busy");
+            removingProjects.add(project.id);
+            const bound: WireSessionSummary[] = [];
+            try {
+              for (const summary of await summaries()) {
+                if (summary.projectId !== project.id) continue;
+                const current = sessions.get(summary.id);
+                if (
+                  organizing.has(summary.id) ||
+                  (sessionCommands.get(summary.id) ?? 0) > 0 ||
+                  openings.has(summary.id) ||
+                  (current && executing(current)) ||
+                  (!current &&
+                    isSqliteSessionBusy({
+                      cwd: summary.cwd,
+                      homeDir: options.homeDir,
+                      dataRoot: options.dataRoot,
+                      id: summary.id,
+                    }))
+                )
+                  throw new CommandError("session_busy");
+                bound.push(summary);
+                organizing.add(summary.id);
+              }
+              for (const summary of bound)
+                await executeCommand(
+                  { type: "session.delete", id: command.id, sessionId: summary.id },
+                  socket,
+                );
+              registry.projects = registry.projects.filter((p) => p.id !== project.id);
+              await save();
+              await changed();
+              return {};
+            } finally {
+              removingProjects.delete(project.id);
+              for (const summary of bound) organizing.delete(summary.id);
             }
-            // Recheck all live Sessions after asynchronous discovery, including new admissions.
-            for (const [id, opened] of openedProjects) {
-              const current = sessions.get(id);
-              if (directories.includes(opened.identity) && current && executing(current))
-                throw new CommandError("session_busy");
-            }
-            registry.projects = registry.projects.filter((p) => p.id !== project.id);
-            await save();
-            await changed();
-            return {};
           });
         }
         case "project.trust": {
@@ -894,21 +1087,62 @@ export async function startServer(options: ServerOptions) {
         case "sessions.list":
           return summaries();
         case "session.create": {
-          const cwd =
-            command.project === null
-              ? workspace
-              : registry.projects.find((p) => p.id === command.project)?.primary;
-          if (!cwd) throw new CommandError("project_not_found");
-          const session = await runtime.runPromise(
-            Effect.gen(function* () {
-              const core = yield* AgentCore;
-              return yield* Effect.promise(() => core.open(cwd, undefined, command));
-            }),
-          );
-          subscribe(socket, session);
-          const requestId = await startRun(session, command.text, command.images);
-          await changed();
-          return { sessionId: session.id, requestId };
+          return mutateProjects(async () => {
+            const primary =
+              command.project === null
+                ? join(workspace, crypto.randomUUID())
+                : registry.projects.find((p) => p.id === command.project)?.primary;
+            if (!primary) throw new CommandError("project_not_found");
+            let cwd: string = primary;
+            if (command.worktree && command.project === null)
+              throw new CommandError("invalid_command");
+            let worktree: WireWorktree | undefined;
+            if (command.worktree && command.project) {
+              try {
+                worktree = await createWorktree(directory, command.project, cwd);
+                await localDatabase.saveWorktree(worktree);
+                cwd = worktree.path;
+              } catch (error) {
+                if (worktree)
+                  await discardUnopenedWorktree(worktree).catch((cleanup) =>
+                    warning(String(cleanup)),
+                  );
+                throw new CommandError("worktree_failed", {
+                  message: String(error instanceof Error ? error.message : error),
+                });
+              }
+            }
+            if (command.project === null) await mkdir(cwd);
+            let session: Session;
+            try {
+              session = await runtime.runPromise(
+                Effect.gen(function* () {
+                  const core = yield* AgentCore;
+                  return yield* Effect.promise(() => core.open(cwd, undefined, command));
+                }),
+              );
+            } catch (error) {
+              if (worktree) {
+                await discardUnopenedWorktree(worktree).catch((cleanup) =>
+                  warning(String(cleanup)),
+                );
+                await localDatabase.removeWorktree(worktree.id);
+              }
+              if (command.project === null)
+                await rmdir(cwd).catch((cleanupError: unknown) =>
+                  warning(
+                    `Could not remove unopened conversation workspace: ${String(cleanupError)}`,
+                  ),
+                );
+              throw error;
+            }
+            if (command.project !== null)
+              await localDatabase.bindSession(session.id, command.project, worktree?.id);
+            subscribe(socket, session);
+            const requestId = await startRun(session, command.text, command.images);
+            await changed();
+            return { sessionId: session.id, requestId };
+          });
         }
         case "session.subscribe": {
           const current = sessions.get(command.sessionId);
@@ -1055,43 +1289,63 @@ export async function startServer(options: ServerOptions) {
           return { mode: command.mode };
         }
         case "session.move": {
-          const project = registry.projects.find((item) => item.id === command.projectId);
-          if (!project) throw new CommandError("project_not_found");
-          const summary = (await summaries()).find((item) => item.id === command.sessionId);
-          if (!summary) throw new CommandError("session_not_found");
-          if ((await projectForCwd(summary.cwd))?.project.id === project.id)
-            throw new CommandError("invalid_command");
-          const current = sessions.get(command.sessionId);
-          if (
-            openings.has(command.sessionId) ||
-            (current && executing(current)) ||
-            [...pending.values()].some((item) => item.sessionId === command.sessionId)
-          )
-            throw new CommandError("session_busy");
-          if (current) {
-            clearTimeout(idleTimers.get(current.id));
-            idleTimers.delete(current.id);
-            await current.close();
-            observations.get(current.id)?.();
-            observations.delete(current.id);
-            sessions.delete(current.id);
-            openedProjects.delete(current.id);
-            children.delete(current.id);
-            admissions.delete(current.id);
-            for (const subscribed of subscriptions.values()) {
-              subscribed.get(current.id)?.();
-              subscribed.delete(current.id);
+          return mutateProjects(async () => {
+            const project = registry.projects.find((item) => item.id === command.projectId);
+            if (command.projectId !== null && !project) throw new CommandError("project_not_found");
+            if (project && removingProjects.has(project.id)) throw new CommandError("session_busy");
+            const summary = (await summaries()).find((item) => item.id === command.sessionId);
+            if (!summary) throw new CommandError("session_not_found");
+            if (summary.worktree) throw new CommandError("worktree_session");
+            if (summary.projectId === command.projectId) throw new CommandError("invalid_command");
+            const current = sessions.get(command.sessionId);
+            if (
+              openings.has(command.sessionId) ||
+              (current && executing(current)) ||
+              [...pending.values()].some((item) => item.sessionId === command.sessionId)
+            )
+              throw new CommandError("session_busy");
+            if (current) {
+              clearTimeout(idleTimers.get(current.id));
+              idleTimers.delete(current.id);
+              await current.close();
+              observations.get(current.id)?.();
+              observations.delete(current.id);
+              sessions.delete(current.id);
+              openedProjects.delete(current.id);
+              children.delete(current.id);
+              admissions.delete(current.id);
+              for (const subscribed of subscriptions.values()) {
+                subscribed.get(current.id)?.();
+                subscribed.delete(current.id);
+              }
             }
-          }
-          await moveSession({
-            cwd: summary.cwd,
-            homeDir: options.homeDir,
-            dataRoot: options.dataRoot,
-            id: summary.id,
-            newCwd: project.primary,
+            const newCwd = project?.primary ?? join(workspace, crypto.randomUUID());
+            if (!project) await mkdir(newCwd);
+            try {
+              await moveSession({
+                cwd: summary.cwd,
+                homeDir: options.homeDir,
+                dataRoot: options.dataRoot,
+                id: summary.id,
+                newCwd,
+              });
+            } catch (error) {
+              if (!project) {
+                try {
+                  await rm(newCwd, { recursive: true });
+                } catch (cleanupError) {
+                  warning(
+                    `Could not remove unused conversation workspace: ${String(cleanupError)}`,
+                  );
+                }
+              }
+              throw error;
+            }
+            if (project) await localDatabase.bindSession(summary.id, project.id);
+            else await localDatabase.unbindSession(summary.id);
+            await changed();
+            return {};
           });
-          await changed();
-          return {};
         }
         case "session.delete": {
           const summary = (await summaries()).find((session) => session.id === command.sessionId);
@@ -1124,6 +1378,39 @@ export async function startServer(options: ServerOptions) {
             dataRoot: options.dataRoot,
             id: summary.id,
           });
+          await localDatabase.unbindSession(summary.id);
+          // Only app-owned direct children qualify. Never follow a replaced workspace or cwd link.
+          const child = relative(workspace, summary.cwd);
+          if (
+            summary.projectId === null &&
+            child &&
+            child !== ".." &&
+            !isAbsolute(child) &&
+            !child.includes(sep)
+          ) {
+            try {
+              const [rootInfo, childInfo] = await Promise.all([
+                lstat(workspace),
+                lstat(summary.cwd),
+              ]);
+              if (
+                !rootInfo.isSymbolicLink() &&
+                !childInfo.isSymbolicLink() &&
+                childInfo.isDirectory()
+              ) {
+                const root = await realpath(workspace);
+                const target = await realpath(summary.cwd);
+                if (
+                  root === ownedWorkspace &&
+                  relative(root, target) === child &&
+                  (await workspaceIdentityUnchanged())
+                )
+                  await rm(summary.cwd, { recursive: true });
+              }
+            } catch (error) {
+              warning(`Could not remove conversation workspace: ${String(error)}`);
+            }
+          }
           registry.pinned = registry.pinned.filter((id) => id !== command.sessionId);
           registry.archived = registry.archived.filter((id) => id !== command.sessionId);
           await save();

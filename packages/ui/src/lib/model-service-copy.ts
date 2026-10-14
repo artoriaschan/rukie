@@ -32,6 +32,18 @@ export const modelServiceCopy = {
     "services.nav.computer": "Computer control",
     "services.nav.browser": "Browser control",
     "services.nav.runtime": "Runtime",
+    "worktrees.delete-failed": "Could not delete this worktree: {{message}}",
+    "worktrees.delete": "Delete",
+    "worktrees.heading": "Independent worktrees",
+    "worktrees.description":
+      "Independent Git worktree folders used by Sessions. Deleting removes the folder and its uncommitted changes (the derived branch stays in the repository), and bound Sessions return to the primary Project folder.",
+    "worktrees.refresh": "Refresh",
+    "worktrees.empty": "No independent worktrees",
+    "worktrees.delete-title": "Delete independent worktree",
+    "worktrees.delete-description":
+      "Delete {{path}} (including uncommitted changes), keep branch {{branch}}; bound Sessions will return to the primary Project folder.",
+    "worktrees.busy":
+      "The bound Session is busy. Stop execution and finish pending confirmations before deleting this worktree.",
     "services.nav.worktrees": "Worktrees",
     "services.nav.extensions": "Extensions",
     "services.nav.hooks": "Hooks",
@@ -171,6 +183,17 @@ export const modelServiceCopy = {
     "services.nav.computer": "操作电脑",
     "services.nav.browser": "操作浏览器",
     "services.nav.runtime": "运行环境",
+    "worktrees.delete-failed": "无法删除工作树：{{message}}",
+    "worktrees.delete": "删除",
+    "worktrees.heading": "独立工作树",
+    "worktrees.description":
+      "会话使用的独立 git 工作树目录。删除会连同目录内未提交的改动一起清除（派生分支保留在仓库中），绑定它的会话将回到主项目目录。",
+    "worktrees.refresh": "刷新",
+    "worktrees.empty": "暂无独立工作树",
+    "worktrees.delete-title": "删除独立工作树",
+    "worktrees.delete-description":
+      "将删除 {{path}}（含未提交改动），分支 {{branch}} 保留；绑定它的会话会回到主项目目录。",
+    "worktrees.busy": "绑定会话正在执行或等待确认，请结束后再删除工作树。",
     "services.nav.worktrees": "工作树",
     "services.nav.extensions": "扩展",
     "services.nav.hooks": "钩子",

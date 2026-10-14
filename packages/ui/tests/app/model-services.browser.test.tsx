@@ -345,6 +345,8 @@ test("model services creates a provider and preserves input when encrypted save 
     await screen.getByRole("textbox", { name: "Model ID", exact: true }).click();
     await screen.getByRole("button", { name: "Save model", exact: true }).click();
     await expect.poll(() => providers[0]?.models[0]?.id).toBe("script-model");
+    // Wait for the previous modal to finish exiting before opening its next view.
+    await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
     await screen.getByRole("button", { name: "Provider actions" }).click();
     await screen.getByRole("menuitem", { name: "Delete provider" }).click();
     await screen.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
@@ -649,7 +651,7 @@ test.each([1280, 420])(
       } else {
         expect(search.getBoundingClientRect().height).toBe(0);
         await expect
-          .element(screen.getByRole("region", { name: "Model services", exact: true }))
+          .element(screen.getByRole("button", { name: "Model services", exact: true }))
           .toHaveFocus();
       }
     } finally {
@@ -792,7 +794,10 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     await expect
       .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().height))
       .toBe(180);
-    expect(screen.getByRole("dialog").element().getBoundingClientRect().width).toBe(448);
+    // The enter scale must finish before asserting the exact final panel width.
+    await expect
+      .poll(() => screen.getByRole("dialog").element().getBoundingClientRect().width)
+      .toBe(448);
     expect(screen.getByRole("dialog").element().querySelector("kbd")).toBeNull();
     await expect
       .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().top))
@@ -1993,6 +1998,7 @@ test("cancel and close model and rename dialogs never save edits", async () => {
     await screen.getByRole("button", { name: "Add model", exact: true }).click();
     await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("unsaved-model");
     await screen.getByRole("button", { name: close, exact: true }).click();
+    await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
     await screen.getByRole("button", { name: "Provider actions" }).click();
     await screen.getByRole("menuitem", { name: "Rename provider" }).click();
     await screen.getByRole("textbox", { name: "Provider name" }).fill("unsaved-name");

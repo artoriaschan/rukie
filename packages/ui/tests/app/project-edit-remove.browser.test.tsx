@@ -117,6 +117,7 @@ const session: WireSessionSummary = {
   titleSource: "prompt",
   cwd: "/project",
   projectId: "project",
+  worktree: null,
   model: "test/script",
   createdAt: 1,
   updatedAt: 2,
@@ -285,7 +286,7 @@ test("trusted Project additions confirm all folders, mark new folders and retain
     await expect
       .element(
         screen
-          .getByRole("region", { name: "Conversations", exact: true })
+          .getByRole("region", { name: "Projects", exact: true })
           .getByRole("button", { name: "Existing history", exact: true }),
       )
       .toBeVisible();
@@ -422,7 +423,7 @@ for (const code of ["project_conflict", "project_reserved", "project_trust_requi
   });
 }
 
-test("removal confirmation cancels back to its draft and preserves chats, pins and archived history", async () => {
+test("removal confirmation cancels back to its draft and deletes bound chats, pins and archived history", async () => {
   const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
   const connection = await owner.startWire();
@@ -458,11 +459,14 @@ test("removal confirmation cancels back to its draft and preserves chats, pins a
       await expect
         .element(
           confirmation.getByText(
-            "This only removes the project from the app. Files on your computer and existing chats will not be deleted.",
+            "Delete this project and all of its chats? Files in the project directories will not be deleted.",
             { exact: true },
           ),
         )
         .toBeVisible();
+      await expect
+        .element(confirmation.getByRole("button", { name: "Remove project", exact: true }))
+        .toHaveClass("f01-destructive");
       if (action === "Escape") {
         await confirmation.getByRole("heading", { name: "Remove Project?", exact: true }).click();
         await userEvent.keyboard("{Escape}");
@@ -489,14 +493,14 @@ test("removal confirmation cancels back to its draft and preserves chats, pins a
           .getByRole("region", { name: "Pinned", exact: true })
           .getByRole("button", { name: "Existing history", exact: true }),
       )
-      .toBeVisible();
+      .not.toBeInTheDocument();
     await expect
       .element(
         screen
           .getByRole("region", { name: "Conversations", exact: true })
           .getByRole("button", { name: "Second folder history", exact: true }),
       )
-      .toBeVisible();
+      .not.toBeInTheDocument();
     await screen.getByRole("button", { name: "Search chats", exact: true }).click();
     await screen.getByRole("combobox").fill("Archived history");
     await expect
@@ -581,7 +585,7 @@ test("a server busy removal keeps its confirmation open with a localized alert",
   }
 });
 
-test("a removed Project leaves its currently opened Session and Transcript open in Conversations", async () => {
+test("a removed Project clears its opened Session and Transcript", async () => {
   const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
   const connection = await owner.startWire();
@@ -596,7 +600,6 @@ test("a removed Project leaves its currently opened Session and Transcript open 
     await expect
       .element(screen.getByRole("button", { name: "Project", exact: true }))
       .toBeVisible();
-    const before = await requests(connection.port);
     await fetch(`http://127.0.0.1:${connection.port}/message`, {
       method: "POST",
       body: JSON.stringify({
@@ -608,24 +611,24 @@ test("a removed Project leaves its currently opened Session and Transcript open 
       }),
     });
     await expect.element(screen.getByText("Retained transcript", { exact: true })).toBeVisible();
-    await changeProjects(connection.port, [], [{ ...session, title: "Fix compiler" }], ["one"]);
-    await expect.element(screen.getByText("Retained transcript", { exact: true })).toBeVisible();
+    const projectRow = screen
+      .getByRole("region", { name: "Projects", exact: true })
+      .getByRole("button", { name: "Project", exact: true });
+    (projectRow.element() as HTMLButtonElement).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    await screen.getByRole("button", { name: "Edit project", exact: true }).click();
+    const editor = screen.getByRole("dialog", { name: "Edit project", exact: true });
+    await editor.getByRole("button", { name: "Remove local project", exact: true }).click();
+    await screen.getByRole("button", { name: "Remove project", exact: true }).click();
     await expect
-      .element(screen.getByRole("banner").getByRole("img", { name: "Conversations", exact: true }))
-      .toBeVisible();
+      .element(screen.getByText("Retained transcript", { exact: true }))
+      .not.toBeInTheDocument();
     await expect
       .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
       .toBeVisible();
     await expect
-      .element(
-        screen
-          .getByRole("region", { name: "Pinned", exact: true })
-          .getByRole("button", { name: "Fix compiler", exact: true }),
-      )
-      .toHaveAttribute("aria-current", "page");
-    expect(
-      (await requests(connection.port)).filter((request) => request.type === "session.unsubscribe"),
-    ).toEqual(before.filter((request) => request.type === "session.unsubscribe"));
+      .element(screen.getByRole("button", { name: "Fix compiler", exact: true }))
+      .not.toBeInTheDocument();
   } finally {
     await owner.close();
   }
@@ -763,7 +766,7 @@ test("canonical Project edits retain alias Session membership, title, count and 
     />,
   );
   try {
-    const aliasSession = { ...session, cwd: "/alias", projectId: "project" };
+    const aliasSession = { ...session, cwd: "/alias", projectId: "project", worktree: null };
     await changeProjects(
       connection.port,
       [{ ...project, directories: ["/canonical"], primary: "/canonical", name: "Renamed" }],

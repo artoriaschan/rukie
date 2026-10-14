@@ -206,10 +206,13 @@ export async function startDesktop(options: DesktopOptions) {
         throw new Error("Invalid provider identity");
       await manage({ type: "delete", id });
     });
-    ipcMain.handle("rukie:pickProjectFolder", async (event) => {
+    ipcMain.handle("rukie:pickProjectFolder", async (event, multiple: unknown = true) => {
       authorize(event);
+      if (typeof multiple !== "boolean") throw new Error("Invalid folder selection mode");
       const result = await dialog.showOpenDialog(window, {
-        properties: ["openDirectory", "createDirectory", "multiSelections"],
+        properties: multiple
+          ? ["openDirectory", "createDirectory", "multiSelections"]
+          : ["openDirectory", "createDirectory"],
       });
       return result.canceled || result.filePaths.length === 0 ? null : result.filePaths;
     });

@@ -2,6 +2,8 @@ import { testClock } from "../helpers/test-clock";
 import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
+import { join } from "node:path";
+import type { SessionOptions } from "@rukie/agent";
 
 test("English startup locale keeps waiting, thinking and approval activity in English across Runs", async () => {
   const env = { LANG: "en_US.UTF-8" };
@@ -35,20 +37,25 @@ test("English startup locale keeps waiting, thinking and approval activity in En
 
 test("REVIEW stays visible until all concurrent reviews finish, without counting their tokens", async () => {
   let allowed = 0;
+  const session: Partial<SessionOptions> = {
+    onToolCallAllowed: () => {
+      allowed++;
+    },
+  };
   const app = await start(["--permission-mode", "auto-review", "review two writes"], {
     controlReviews: true,
-    session: {
-      onToolCallAllowed: () => {
-        allowed++;
-      },
+    session,
+    prepare: async (root) => {
+      session.cwd = join(root, "project");
+      await Bun.write(join(session.cwd, ".keep"), "");
     },
   });
   const screen = () => app.screen().join("\n");
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools([
-      { name: "write", args: { path: "first.txt", content: "first" } },
-      { name: "write", args: { path: "second.txt", content: "second" } },
+      { name: "write", args: { path: "../first.txt", content: "first" } },
+      { name: "write", args: { path: "../second.txt", content: "second" } },
     ]);
     await app.waitFor(() => app.reviews.length === 2 && screen().includes("REVIEW"));
     expect(screen()).toContain("REVIEW");
@@ -78,8 +85,14 @@ test("REVIEW stays visible until all concurrent reviews finish, without counting
 test.each(["deny", "failure"])(
   "review %s shows its reason in the panel and cancellation clears concurrent reviews",
   async (outcome) => {
+    const session: Partial<SessionOptions> = {};
     const app = await start(["--permission-mode", "auto-review", "review and ask"], {
       controlReviews: true,
+      session,
+      prepare: async (root) => {
+        session.cwd = join(root, "project");
+        await Bun.write(join(session.cwd, ".keep"), "");
+      },
     });
     const screen = () => app.screen().join("\n");
     try {
@@ -88,7 +101,7 @@ test.each(["deny", "failure"])(
       await app.waitFor(() => screen().includes("❯ next draft"));
       app.calls[0]!.tools([
         { name: "bash", args: { command: "printf must-not-run", description: "Run test command" } },
-        { name: "write", args: { path: "refused.txt", content: "refused" } },
+        { name: "write", args: { path: "../refused.txt", content: "refused" } },
       ]);
       await app.waitFor(() => app.reviews.length === 2 && screen().includes("REVIEW"));
       if (outcome === "deny") {
