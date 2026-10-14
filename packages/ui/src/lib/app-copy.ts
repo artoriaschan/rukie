@@ -6,7 +6,7 @@ export const appCopy = {
     "app.remove-project": "Remove project",
     "app.remove-project-title": "Remove {{name}}?",
     "app.remove-project-description":
-      "This only removes the project from the app. Files on your computer and existing chats will not be deleted.",
+      "Delete this project and all of its chats? Files in the project directories will not be deleted.",
     "app.remove-project-busy":
       "A Session in this Project is running, waiting for interaction or open elsewhere. Close or finish it before removing the Project.",
     "app.primary": "Primary",
@@ -236,8 +236,7 @@ export const appCopy = {
     "app.remove-local-project": "移除本地项目",
     "app.remove-project": "移除项目",
     "app.remove-project-title": "移除 {{name}}？",
-    "app.remove-project-description":
-      "这只会从应用中移除该项目。你电脑上的文件和现有聊天不会被删除。",
+    "app.remove-project-description": "确定删除该项目及其全部对话？项目目录中的文件不会被删除。",
     "app.remove-project-busy":
       "项目下有 Session 正在执行、等待交互或在别处打开，结束或关闭后才能移除项目。",
     "app.primary": "主要",

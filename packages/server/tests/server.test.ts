@@ -74,6 +74,77 @@ test("conversation workspaces are independent and deletion removes their files",
   }
 });
 
+test("Project binding survives directory removal, read-only subscription and restart; execution synchronizes cwd", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-binding-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const first = await realpath(await mkdtemp(join(homeDir, "first-")));
+    const second = await realpath(await mkdtemp(join(homeDir, "second-")));
+    const fake = fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {}, sessionOptions: fake }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Project",
+        directories: [first, second],
+        trusted: true,
+      })
+    ).result as { id: string };
+    const { sessionId } = (
+      await client.command("session.create", { project: project.id, text: "start" })
+    ).result as { sessionId: string };
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    await client.command("project.update", {
+      projectId: project.id,
+      name: "Project",
+      directories: [second],
+      primary: second,
+    });
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, projectId: project.id, cwd: first }),
+    );
+    await server.close();
+    const next = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {}, sessionOptions: fake }),
+      (server) => server.close(),
+    );
+    const reconnected = await connect(next, "app://rukie", owner);
+    await reconnected.command("session.subscribe", { sessionId });
+    expect((await reconnected.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, projectId: project.id, cwd: first }),
+    );
+    expect(
+      (await reconnected.command("prompt", { sessionId, text: "continue" })).error,
+    ).toBeUndefined();
+    await reconnected.next(
+      (message) => message.type === "result" && message.sessionId === sessionId,
+    );
+    expect((await reconnected.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, projectId: project.id, cwd: second }),
+    );
+    const snapshot = await readSessionSnapshot({
+      homeDir,
+      dataRoot: join(homeDir, "desktop-data"),
+      cwd: second,
+      id: sessionId,
+    });
+    expect(JSON.stringify(snapshot)).toContain(first);
+    expect(JSON.stringify(snapshot)).toContain(second);
+    expect(JSON.stringify(fake.contexts.at(-1))).toContain(first);
+    expect(JSON.stringify(fake.contexts.at(-1))).toContain(second);
+    await reconnected.command("session.delete", { sessionId });
+    expect((await reconnected.command("sessions.list")).result).toEqual([]);
+  } finally {
+    await owner.close();
+  }
+});
+
 test.each(["project", "root", "symlink", "outside", "ancestor-symlink"] as const)(
   "conversation deletion preserves %s directories",
   async (kind) => {
@@ -1341,7 +1412,7 @@ test("concurrent project.create reports the owner of a shared canonical secondar
   }
 });
 
-test("legacy alias Projects retain Session membership and canonical directory ownership", async () => {
+test("legacy alias Projects preserve canonical ownership without backfilling Session bindings", async () => {
   const owner = ownResources();
   try {
     const homeDir = await owner.acquire(
@@ -1417,112 +1488,20 @@ test("legacy alias Projects retain Session membership and canonical directory ow
       ).error,
     ).toEqual({ code: "project_conflict", params: { project: "Original" } });
     expect((await client.command("projects.list")).result).toEqual([legacy]);
-    expect(
-      (await client.command("session.move", { sessionId: history.id, projectId: "legacy" })).error,
-    ).toEqual({ code: "invalid_command" });
     expect((await client.command("sessions.list")).result).toEqual([
-      expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" }),
-    ]);
-    expect(await client.next((message) => message.type === "sessions_changed")).toMatchObject({
-      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" })],
-    });
-    const before = await readSessionSnapshot({ homeDir, dataRoot, cwd: alias, id: history.id });
-    expect(
-      (
-        await client.command("project.update", {
-          projectId: "legacy",
-          name: "Renamed",
-          directories: [alias],
-          primary: alias,
-        })
-      ).result,
-    ).toEqual({ ...legacy, name: "Renamed", directories: [canonical], primary: canonical });
-    expect(
-      await client.next(
-        (message) =>
-          message.type === "sessions_changed" &&
-          Array.isArray(message.projects) &&
-          message.projects[0]?.name === "Renamed",
-      ),
-    ).toMatchObject({
-      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" })],
-    });
-    const reconnected = await connect(server, "app://rukie", owner);
-    expect(await reconnected.next((message) => message.type === "sessions_changed")).toMatchObject({
-      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" })],
-    });
-    const originalRealpath = filesystem.realpath;
-    let releaseIdentity = () => {};
-    let reachedIdentity = () => {};
-    const reached = new Promise<void>((resolve) => {
-      reachedIdentity = resolve;
-    });
-    const identityBarrier = new Promise<void>((resolve) => {
-      releaseIdentity = resolve;
-    });
-    let identityLookups = 0;
-    // Hold only the old publication at the filesystem boundary; the competing Project write stays real.
-    const lookup = spyOn(filesystem, "realpath").mockImplementation((async (
-      path: Parameters<typeof filesystem.realpath>[0],
-    ) => {
-      const result = await originalRealpath(path);
-      if (path === alias && ++identityLookups === 2) {
-        reachedIdentity();
-        await identityBarrier;
-      }
-      return result;
-    }) as typeof filesystem.realpath);
-    owner.add(() => {
-      releaseIdentity();
-      lookup.mockRestore();
-    });
-    const pin = reconnected.command("session.pin", { sessionId: history.id });
-    await reached;
-    expect(
-      (
-        await reconnected.command("project.update", {
-          projectId: "legacy",
-          name: "Renamed",
-          directories: [other],
-          primary: other,
-        })
-      ).error,
-    ).toBeUndefined();
-    expect(
-      await reconnected.next(
-        (message) =>
-          message.type === "sessions_changed" &&
-          Array.isArray(message.projects) &&
-          message.projects[0]?.primary === other,
-      ),
-    ).toMatchObject({
-      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: null })],
-      pinned: [history.id],
-    });
-    const publicationCursor = reconnected.messages.length;
-    releaseIdentity();
-    expect((await pin).error).toBeUndefined();
-    const published = await reconnected.next(
-      (message) =>
-        reconnected.messages.indexOf(message) >= publicationCursor &&
-        message.type === "sessions_changed",
-    );
-    expect(published.projects).toEqual([expect.objectContaining({ primary: other })]);
-    expect(published.sessions).toEqual([
       expect.objectContaining({ id: history.id, cwd: alias, projectId: null }),
     ]);
-    lookup.mockRestore();
-    await reconnected.command("project.remove", { projectId: "legacy" });
-    expect(
-      await reconnected.next(
-        (message) =>
-          message.type === "sessions_changed" &&
-          Array.isArray(message.projects) &&
-          message.projects.length === 0,
-      ),
-    ).toMatchObject({
-      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: null })],
+    const before = await readSessionSnapshot({ homeDir, dataRoot, cwd: alias, id: history.id });
+    await client.command("project.update", {
+      projectId: "legacy",
+      name: "Renamed",
+      directories: [alias],
+      primary: alias,
     });
+    await client.command("project.remove", { projectId: "legacy" });
+    expect((await client.command("sessions.list")).result).toEqual([
+      expect.objectContaining({ id: history.id, cwd: alias, projectId: null }),
+    ]);
     expect(await readSessionSnapshot({ homeDir, dataRoot, cwd: alias, id: history.id })).toEqual(
       before,
     );
@@ -1566,6 +1545,7 @@ test("session.move rejects its owning Project after a primary switch without cha
       archived: [],
       preferences: {},
     });
+    await db.bindSession(history.id, "p");
     const server = await owner.acquire(
       () => startServer({ homeDir, onHandshake: () => {} }),
       (server) => server.close(),
@@ -3785,7 +3765,7 @@ test("project.update validates complete canonical state and requires trust only 
   }
 });
 
-test("project.remove rejects running and waiting Sessions in any directory and preserves idle history and files", async () => {
+test("project.remove rejects running and waiting Sessions in any directory and deletes bound archived and pinned history while preserving files", async () => {
   const owner = ownResources();
   const proceed = Promise.withResolvers<void>();
   try {
@@ -3820,6 +3800,7 @@ test("project.remove rejects running and waiting Sessions in any directory and p
       archived: [history.id],
       preferences: {},
     });
+    await db.bindSession(history.id, "p");
     const entered = Promise.withResolvers<void>();
     const fake = fakeModel([
       async () => {
@@ -3857,13 +3838,22 @@ test("project.remove rejects running and waiting Sessions in any directory and p
     await client.command("interaction.reply", { identity: asked.identity, reply: "allow" });
     await client.next((message) => message.type === "result");
     await client.command("session.pin", { sessionId });
-    const before = await readSessionSnapshot({ homeDir, dataRoot, cwd: second, id: sessionId });
-    const archivedBefore = await readSessionSnapshot({
-      homeDir,
-      dataRoot,
-      cwd: first,
-      id: history.id,
+    const external = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot,
+          cwd: first,
+          resumeId: history.id,
+          ...fakeModel([fauxAssistantMessage("unused")]),
+        }),
+      (session) => session.close(),
+    );
+    expect((await client.command("project.remove", { projectId: "p" })).error).toEqual({
+      code: "session_busy",
     });
+    expect((await client.command("sessions.list")).result).toHaveLength(2);
+    await external.close();
     expect((await client.command("project.remove", { projectId: "p" })).result).toEqual({});
     expect((await client.command("project.remove", { projectId: "p" })).error).toEqual({
       code: "project_not_found",
@@ -3874,21 +3864,12 @@ test("project.remove rejects running and waiting Sessions in any directory and p
         Array.isArray(message.projects) &&
         message.projects.length === 0 &&
         Array.isArray(message.pinned) &&
-        message.pinned.includes(sessionId),
+        message.pinned.length === 0 &&
+        Array.isArray(message.archived) &&
+        message.archived.length === 0,
     );
     expect((await client.command("projects.list")).result).toEqual([]);
-    expect((await client.command("sessions.list")).result).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: sessionId, cwd: second }),
-        expect.objectContaining({ id: history.id, cwd: first }),
-      ]),
-    );
-    expect(await readSessionSnapshot({ homeDir, dataRoot, cwd: second, id: sessionId })).toEqual(
-      before,
-    );
-    expect(await readSessionSnapshot({ homeDir, dataRoot, cwd: first, id: history.id })).toEqual(
-      archivedBefore,
-    );
+    expect((await client.command("sessions.list")).result).toEqual([]);
     expect(await Bun.file(join(second, "kept.txt")).text()).toBe("kept content");
     await server.close();
     const reopened = await owner.acquire(
@@ -3898,8 +3879,8 @@ test("project.remove rejects running and waiting Sessions in any directory and p
     const reconnect = await connect(reopened, "app://rukie", owner);
     expect((await reconnect.command("projects.list")).result).toEqual([]);
     expect(await reconnect.next((message) => message.type === "sessions_changed")).toMatchObject({
-      pinned: [sessionId],
-      archived: [history.id],
+      pinned: [],
+      archived: [],
     });
   } finally {
     proceed.resolve();
@@ -3978,48 +3959,23 @@ test("Project edits and removal reload idle Session ownership, directories and t
     await prompt("after directory edit", 2);
     expect(JSON.stringify(fake.contexts[1])).toContain("THIRD_ADDED");
     expect(JSON.stringify(fake.contexts[1])).not.toContain("SECOND_REMOVED_UPDATE");
-    expect(await Bun.file(join(first, "opens")).text()).toBe("opened\nopened\n");
+    expect(await Bun.file(join(first, "opens")).text()).toBe("opened\n");
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, projectId: project.id, cwd: third }),
+    );
     expect(
       (await client.command("project.remove", { projectId: project.id })).error,
     ).toBeUndefined();
-    await writeFile(join(third, "AGENTS.md"), "THIRD_REMOVED_PROJECT");
-    await prompt("after Project removal", 3);
-    expect(JSON.stringify(fake.contexts[2])).not.toContain("THIRD_REMOVED_PROJECT");
-    expect(await Bun.file(join(first, "opens")).text()).toBe("opened\nopened\n");
-    const replacement = (
-      await client.command("project.create", {
-        name: "Replacement",
-        directories: [first, second],
-        trusted: true,
-      })
-    ).result as { id: string };
-    await prompt("after registration", 4);
-    expect(JSON.stringify(fake.contexts[3])).toContain("SECOND_REMOVED_UPDATE");
-    expect(await Bun.file(join(first, "opens")).text()).toBe("opened\nopened\nopened\n");
-    expect(
-      (
-        await client.command("project.update", {
-          projectId: replacement.id,
-          name: "Only second",
-          directories: [second],
-          primary: second,
-        })
-      ).error,
-    ).toBeUndefined();
-    await writeFile(join(second, "AGENTS.md"), "SECOND_NO_LONGER_OWNED");
-    await prompt("after cwd removal", 5);
-    expect(JSON.stringify(fake.contexts[4])).not.toContain("SECOND_NO_LONGER_OWNED");
-    expect(await Bun.file(join(first, "opens")).text()).toBe("opened\nopened\nopened\n");
-    expect((await client.command("sessions.list")).result).toEqual([
-      expect.objectContaining({ id: sessionId, cwd: first }),
-    ]);
+    expect((await client.command("prompt", { sessionId, text: "deleted" })).error).toEqual({
+      code: "session_not_found",
+    });
   } finally {
     proceed.resolve();
     await owner.close();
   }
 });
 
-test("legacy alias Project edits preserve cwd hook trust until membership or registration removal", async () => {
+test("legacy alias Project edits synchronize cwd while preserving binding and unrelated registrations", async () => {
   const owner = ownResources();
   try {
     const homeDir = await owner.acquire(
@@ -4121,14 +4077,14 @@ test("legacy alias Project edits preserve cwd hook trust until membership or reg
     )
       throw new Error("Missing Project id");
     await prompt("after canonical registration", 4);
-    expect(await opens.text()).toBe("trusted-open\ntrusted-open\ntrusted-open\n");
+    expect(await opens.text()).toBe("trusted-open\ntrusted-open\n");
     expect(
       (await client.command("project.remove", { projectId: replacement.result.id })).error,
     ).toBeUndefined();
     await prompt("after registration removal", 5);
-    expect(await opens.text()).toBe("trusted-open\ntrusted-open\ntrusted-open\n");
+    expect(await opens.text()).toBe("trusted-open\ntrusted-open\n");
     expect((await client.command("sessions.list")).result).toEqual([
-      expect.objectContaining({ id: sessionId, cwd: alias, projectId: null }),
+      expect.objectContaining({ id: sessionId, cwd: second, projectId: "legacy" }),
     ]);
   } finally {
     await owner.close();

@@ -64,7 +64,8 @@ export class AppDatabase {
         CREATE TABLE IF NOT EXISTS providers (id TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS models (provider TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE, id TEXT NOT NULL, PRIMARY KEY(provider,id));
         CREATE TABLE IF NOT EXISTS credentials (id TEXT PRIMARY KEY, ciphertext TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS session_index (id TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+        CREATE TABLE IF NOT EXISTS session_index (id TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS session_bindings (sessionId TEXT PRIMARY KEY, projectId TEXT NOT NULL, worktreeId TEXT);`);
       return new AppDatabase(db);
     } catch (error) {
       await db.close();
@@ -257,6 +258,29 @@ export class AppDatabase {
   }
   async saveCapability(key: string, value: unknown): Promise<void> {
     await this.db.transaction((tx) => this.putDocument(tx, `capability:${key}`, value));
+  }
+  async sessionBinding(
+    sessionId: string,
+  ): Promise<{ projectId: string; worktreeId: string | null } | undefined> {
+    return this.db.get<{ projectId: string; worktreeId: string | null }>(
+      "SELECT projectId, worktreeId FROM session_bindings WHERE sessionId = ?",
+      sessionId,
+    );
+  }
+  async bindSession(
+    sessionId: string,
+    projectId: string,
+    worktreeId: string | null = null,
+  ): Promise<void> {
+    await this.db.run(
+      "INSERT OR REPLACE INTO session_bindings VALUES (?, ?, ?)",
+      sessionId,
+      projectId,
+      worktreeId,
+    );
+  }
+  async unbindSession(sessionId: string): Promise<void> {
+    await this.db.run("DELETE FROM session_bindings WHERE sessionId = ?", sessionId);
   }
   /** Reconcile only committed metadata supplied by read-only Session discovery. Never resumes a Session. */
   async reconcileSessions(summaries: WireSessionSummary[]): Promise<void> {
