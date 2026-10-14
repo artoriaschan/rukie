@@ -215,7 +215,7 @@ export const appCopy = {
     "app.project-details": "Project details",
     "app.pin-details": "Pin details",
     "app.unpin-details": "Unpin details",
-    "app.project-session-count": "{{count}} sessions",
+    "app.project-session-count": "Sessions: {{count}}",
     "app.new-in-project": "New chat in {{project}}",
     "app.error": "Action failed: {{message}}",
     "app.no-models": "No authenticated models available",

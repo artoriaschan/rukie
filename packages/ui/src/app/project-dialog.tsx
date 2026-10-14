@@ -36,7 +36,8 @@ export function ProjectDialog({
         ],
       )}
     >
-      <div className="flex min-h-0 flex-col gap-3" aria-busy={pending}>
+      {/* Passive clicks keep Escape inside this dialog without adding a Tab stop. */}
+      <div className="flex min-h-0 flex-col gap-3" tabIndex={-1} aria-busy={pending}>
         <div className="flex h-8 shrink-0 items-center justify-between gap-2">
           <h2 className="min-w-0 flex-1 truncate text-ui-lg font-medium" title={title}>
             {title}

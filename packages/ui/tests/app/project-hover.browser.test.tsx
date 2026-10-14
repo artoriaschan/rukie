@@ -148,7 +148,7 @@ test.each([
     });
     await expect.element(card).toBeVisible();
     await expect
-      .element(card.getByText(dark ? "2 个会话" : "2 sessions", { exact: true }))
+      .element(card.getByText(dark ? "2 个会话" : "Sessions: 2", { exact: true }))
       .toBeVisible();
     for (const path of ["~/repo", "/custom/home-other/repo", "/other"])
       await expect.element(card.getByText(path, { exact: true })).toBeVisible();
@@ -179,6 +179,10 @@ test.each([
     await expect
       .element(screen.getByRole("button", { name: "In project", exact: true }))
       .toHaveAttribute("aria-current", "page");
+    // The narrow sidebar toggle keeps keyboard focus and its readable hint open.
+    // Dismiss that hint through its public Escape action before moving off the Project.
+    await userEvent.keyboard("{Escape}");
+    await expect.element(screen.getByRole("tooltip")).not.toBeInTheDocument();
     await screen.getByRole("button", { name: dark ? "新聊天" : "New chat", exact: true }).hover();
     const selected = disclosure.element().parentElement!;
     expect(getComputedStyle(selected).backgroundColor).not.toBe(color);

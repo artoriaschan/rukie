@@ -57,6 +57,7 @@ test("creating a named Project preserves its folders when trust is cancelled", a
         ),
       )
       .toBeVisible();
+    await dialog.getByRole("heading", { name: "Trust these folders?", exact: true }).click();
     await userEvent.keyboard("{Escape}");
     dialog = screen.getByRole("dialog", { name: "Create project", exact: true });
     await expect
@@ -503,6 +504,12 @@ test.each([
       await expect
         .element(dialog.getByRole("button", { name: dark ? "关闭" : "Close", exact: true }))
         .toBeDisabled();
+      await dialog
+        .getByRole("heading", {
+          name: dark ? "信任这些文件夹吗？" : "Trust these folders?",
+          exact: true,
+        })
+        .click();
       await userEvent.keyboard("{Escape}");
       await expect.element(dialog).toBeVisible();
       await fetch(`http://127.0.0.1:${connection.port}/flush`, { method: "POST" });
@@ -552,7 +559,7 @@ test("choosing an already registered primary opens its Project without creating 
   }
 });
 
-test("removing a focused creation folder keeps focus and Escape inside C27", async () => {
+test("removing a focused creation folder and clicking passive content keeps Escape inside C27", async () => {
   const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
   const connection = await owner.startWire();
@@ -579,6 +586,7 @@ test("removing a focused creation folder keeps focus and Escape inside C27", asy
       .element(dialog.getByRole("textbox", { name: "Project name", exact: true }))
       .toHaveFocus();
     await expect.element(dialog.getByText("second", { exact: true })).toBeVisible();
+    await dialog.getByRole("heading", { name: "Create project", exact: true }).click();
     await userEvent.keyboard("{Escape}");
     await expect.element(dialog).not.toBeInTheDocument();
     expect(await requests(connection.port)).not.toContainEqual(

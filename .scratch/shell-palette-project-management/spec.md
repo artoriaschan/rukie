@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 三栏外壳底色与项目管理界面
 
@@ -182,11 +182,12 @@ Project 创建后无法再管理：不能改名、不能增删目录、不能从
 
 | 决定或修改                                                                               | 归属                                                                                                                                               | 理由                                                                                                                                      |
 | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Project 名称可编辑；目录增删与主目录切换在一个命令中提交                                 | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)（proposed，交付前确认）                                                     | ADR-0041 写明“切换主目录不改变 Project 名称”且只支持创建；编辑改变了这条既有取舍                                                          |
+| Project 名称可编辑；目录增删与主目录切换在一个命令中提交                                 | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)（accepted，已确认）                                                         | ADR-0041 写明“切换主目录不改变 Project 名称”且只支持创建；编辑改变了这条既有取舍                                                          |
 | 已信任 Project 新增目录必须显式确认（`trusted: true`），否则服务端拒绝                   | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md) | 信任仍是精确目录集合；服务端强制确认，与创建一致，不允许 UI 之外的信任提升                                                                |
 | 移除 Project 只删除登记；会话回到“对话”，按无项目信任重开                                | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)    | 组织信息与 Session 存储分离；不删除文件或 Transcript，信任在下一次空闲执行时随登记消失                                                    |
 | 编辑后已打开会话在空闲时重开以派生新的附加目录与信任                                     | 沿用 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md) 与 [ADR-0039](../../docs/adr/0039-session-additional-directories.md)        | 复用已有的信任更新重开机制，不中断活跃 Run，附加目录仍由前端每次打开时提供                                                                |
 | 详情卡按 sidecar 实际配置的家目录身份缩写路径；Session 展示归属由真实目录身份投影到 wire | 更新 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md)                                                                       | `sessions_changed.homeDir` 与摘要 `projectId` 是展示元数据；不增加宿主 API，统一使用既有真实身份归属规则，保留 cwd 与信任合同，不猜测路径 |
+| 已信任登记目录的旧 cwd 别名只派生到执行 settings 的精确路径信任                          | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md) | 登记 canonical 化后保留同一目录身份的 cwd 可执行配置，成员或登记移除后撤去；不修改 Core 匹配、用户 settings 或旧 cwd，不继承父目录信任    |
 | 三栏底色、工作区阴影、项目弹窗、目录行、详情卡、路径提示与柔和 destructive               | 无需 ADR                                                                                                                                           | 局部视觉与交互，由 DESIGN.md 与 rukie.pen 维护；使用已安装 primitives，不改变外部持久化或执行合同                                         |
 
 ## Further Notes
@@ -203,3 +204,5 @@ Project 创建后无法再管理：不能改名、不能增删目录、不能从
 ## Comments
 
 - 2026-10-14：按 implement-spec 在 `feat/shell-palette-project-management` 单一集成分支交付，基于最新 `origin/main`（`b0f50385`）。每张票据使用新的实现子代理和独立工作树，每次集成使用新的合并子代理；测试接缝采用本 spec 的 Testing Decisions。适用验证与 GUI 验收由主代理统一协调，完成后记录各工单证据并交付一个 PR，合并仍等待用户授权。
+
+- 2026-10-14：06 完成 50 项 User Stories、实现、双语文案、文档及 ADR Coverage 审阅，ADR-0041/0031 的 accepted 状态与最终决定一致；信任的历史 cwd 别名由 server 仅在已信任精确目录身份归属下派生到执行 settings，公开 hook 副作用验证改名后保留、成员及登记移除后撤去。最终本地证据采用增量组合：首次 check:dev 在两个未使用的 AnimatedBadge 类型导出处失败，其前置格式/lint/types 与修正后的 scoped 检查、Knip 及全部未执行下游阶段共同满足静态要求；首次 test:desktop 实际 236 pass / 2 fail（43.93s），两项旧消费者/提示关闭失败经最小修复后 2 pass，未重跑整包。另修复被动内容点击后 Esc 丢失（C27 red/green，8 个相关取消/pending/几何用例通过）与英文计数文案（2 个实际消费者通过）；服务端 alias 执行信任 red/green 与相关 3 项真实 wire 用例通过。一次隔离 Chromium GUI 完成全部受影响流程、Light/Dark/420px、键盘/指针与长路径；后续只复查 Esc 区域和 C30 英文文案。临时 picker boundary 替代、初始 IPv6 源无效、一次取消的 macOS picker 命令、工具 about:blank 与剪贴板读取权限限制均保留，不声称原生验收；浏览器与两次隔离启动器已退出，临时目录/HTML 已清理。详细命令、实际失败、故事审阅、截图与有效性见 `/tmp/rukie-shell-palette-evidence/ticket06.md` 及 `story-audit06.md`。本 spec resolved 表示适用本地实现/评审/验证完成；PR 最终提交 CI 尚待主流程推送与检查，未授权合并。

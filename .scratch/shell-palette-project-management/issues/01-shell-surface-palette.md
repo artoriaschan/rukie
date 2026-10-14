@@ -23,3 +23,5 @@ Status: resolved
 - 保留既有几何：宽屏聊天/设置为 `(52,44)`、右/下 4px 留白；聊天窄屏布局及 overlay 侧栏不变。设置在现有 `max-width:640px` 规则下为 left/right/bottom 0、52px 导航、内容 left52，已测量并由验证负责人确认保留；没有将宽屏 inset 强加给窄屏。
 - `bunx --no oxfmt` 格式化两个改动文件，`bunx --no oxlint packages/ui/tests/app/layout.browser.test.tsx` 通过。完整静态检查、适用 desktop 包级验收及最终 agent-browser 主页/会话/设置的 Light/Dark 和窄屏截图统一交给 [06](06-acceptance.md)，本票不重复运行。详细命令、失败与有效性记录位于验证负责人提供的 `/tmp/rukie-shell-palette-evidence/ticket01.md`；本票 resolved 表示实现和本地 focused 要求完成，最终 GUI 证据由 06 补齐。
 - ADR Coverage：沿用 spec 中局部外壳视觉规则“无需 ADR”的记录；本票只修改呈现 token 与现有容器的深度，不改变模块、依赖、协议、信任或资源生命周期。
+
+- 2026-10-14：最终本地集成验收由 [06](06-acceptance.md) 完成，包含 applicable static 增量组合、首次 desktop 整包实际失败及对应 focused 修正、隔离 GUI 与 ADR Coverage；本票与 spec 同步 resolved。详细边界和实际结果以 06 最新记录为准，不代表 CI 或 PR 合并已验收。

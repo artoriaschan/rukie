@@ -62,6 +62,7 @@ test("pending Project save blocks duplicate submission and closing until the res
     await expect.element(dialog.getByRole("textbox")).toBeDisabled();
     for (const name of ["Save", "Cancel", "Close", "Remove local project"])
       await expect.element(dialog.getByRole("button", { name, exact: true })).toBeDisabled();
+    await dialog.getByRole("heading", { name: "Edit project", exact: true }).click();
     await userEvent.keyboard("{Escape}");
     await expect.element(dialog).toBeVisible();
     expect(
@@ -246,8 +247,10 @@ test("trusted Project additions confirm all folders, mark new folders and retain
     expect(rows[0]!.textContent).not.toContain("New");
     expect(rows[1]!.textContent).toContain("New");
     for (const action of ["Cancel", "Close", "Escape"]) {
-      if (action === "Escape") await userEvent.keyboard("{Escape}");
-      else await trust.getByRole("button", { name: action, exact: true }).click();
+      if (action === "Escape") {
+        await trust.getByRole("heading", { name: "Trust these folders?", exact: true }).click();
+        await userEvent.keyboard("{Escape}");
+      } else await trust.getByRole("button", { name: action, exact: true }).click();
       dialog = screen.getByRole("dialog", { name: "Edit project", exact: true });
       await expect.element(dialog.getByRole("textbox")).toHaveValue("Combined repos");
       await expect.element(dialog.getByText("third", { exact: true })).toBeVisible();
@@ -371,8 +374,10 @@ test("cancel, close and Escape discard the entire Project edit draft", async () 
       await dialog.getByRole("textbox").fill("Discard me");
       await dialog.getByRole("button", { name: "Remove folder /project", exact: true }).click();
       await expect.element(dialog.getByRole("textbox")).toHaveFocus();
-      if (action === "Escape") await userEvent.keyboard("{Escape}");
-      else await dialog.getByRole("button", { name: action, exact: true }).click();
+      if (action === "Escape") {
+        await dialog.getByRole("heading", { name: "Edit project", exact: true }).click();
+        await userEvent.keyboard("{Escape}");
+      } else await dialog.getByRole("button", { name: action, exact: true }).click();
       await expect.element(dialog).not.toBeInTheDocument();
     }
     expect(await requests(connection.port)).not.toContainEqual(
@@ -458,8 +463,10 @@ test("removal confirmation cancels back to its draft and preserves chats, pins a
           ),
         )
         .toBeVisible();
-      if (action === "Escape") await userEvent.keyboard("{Escape}");
-      else await confirmation.getByRole("button", { name: action, exact: true }).click();
+      if (action === "Escape") {
+        await confirmation.getByRole("heading", { name: "Remove Project?", exact: true }).click();
+        await userEvent.keyboard("{Escape}");
+      } else await confirmation.getByRole("button", { name: action, exact: true }).click();
       dialog = screen.getByRole("dialog", { name: "Edit project", exact: true });
       await expect.element(dialog.getByRole("textbox")).toHaveValue("Unsaved name");
     }
@@ -779,7 +786,7 @@ test("canonical Project edits retain alias Session membership, title, count and 
     );
     disclosure.element().focus();
     const card = screen.getByRole("dialog", { name: "Project details", exact: true });
-    await expect.element(card.getByText("1 sessions", { exact: true })).toBeVisible();
+    await expect.element(card.getByText("Sessions: 1", { exact: true })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await screen.getByRole("button", { name: "Search chats", exact: true }).click();
     await expect

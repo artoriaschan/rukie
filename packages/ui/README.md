@@ -28,7 +28,7 @@ Project 按 server 提供的 Session 摘要 `projectId` 分组；该值按 cwd �
 
 会话行右键、行内更多与标题栏菜单共用“移动到项目”，目标排除当前所属 Project，执行中或等待确认时禁用。未信任目标先确认并完成 `project.trust`，再发送 `session.move`；取消不移动。成功后按新的 `projectId` 分组，当前 Session 重新订阅，失败显示本地化错误并保留当前对话。Session Move 的持久化和执行边界见 [server README](../server/README.md#行为与限制)。
 
-搜索聊天浮层沿用 CommandPalette，聊天结果列出全部未归档 Session，独立按更新时间降序排列，匹配 Session Title 和 Project 名称；右侧仅显示所属 Project，执行中的 Session 显示 Running 图标。结果在 A13 ScrollArea 内滚动，快捷操作固定在其下方，提供新聊天与打开文件夹。方向键跨两个分组移动，Enter 执行，Esc 或点击背景关闭并恢复搜索入口焦点；打开文件夹沿用添加项目流程，并在搜索释放焦点后交给文件夹选择器或路径对话框。浮层几何与直接切换的减少动态效果规则见 [DESIGN.md](../../DESIGN.md#search-overlay)。
+搜索聊天浮层沿用 CommandPalette，聊天结果列出全部未归档 Session，独立按更新时间降序排列，匹配 Session Title 和 Project 名称；右侧仅显示所属 Project，执行中的 Session 显示 Running 图标。结果在 A13 ScrollArea 内滚动，快捷操作固定在其下方，提供新聊天与打开文件夹。方向键跨两个分组移动，Enter 执行，Esc 或点击背景关闭并恢复搜索入口焦点；打开文件夹沿用添加项目流程，并在搜索释放焦点后交给文件夹选择器或项目创建表单。浮层几何与直接切换的减少动态效果规则见 [DESIGN.md](../../DESIGN.md#search-overlay)。
 
 store 严格校验 `sessions_changed.archived` 的 Session id 列表，并保留完整 Session 摘要；侧栏、搜索与数字导航排除 Archived Session。会话行右键、行内更多和标题栏菜单共用归档操作，执行中或等待确认时禁用。归档当前选择的 Session 后 App 取消订阅并返回首页新聊天，其他 Session 的归档不切换当前对话；`closedSessionId` 使对应缓存视图失效。归档不删除 Transcript 或 Session Store，也没有取消归档入口。
 
@@ -64,4 +64,4 @@ The conversation Plus opens the Pencil C09 attachment menu and keeps image picki
 
 供应商表单自动保存：Base URL 和 API Key 停止输入 500ms 后提交，切换服务、离开设置或卸载立即提交待保存输入；服务开关、协议和模型操作立即提交。请求串行执行，保存结果不覆盖后续编辑，失败保留输入并显示安全错误提示。表单没有保存与取消按钮；重命名和模型编辑在确认后提交，取消或关闭不提交。服务开关独立控制 `enabled`，不改变模型自身开关。
 
-侧栏 Project 行以当前 Session cwd 的精确目录归属显示选中背景；会话数排除归档并包含置顶。悬停 300ms 或键盘聚焦打开受控 beUI 详情卡，卡片以行背景矩形右侧 4px、顶边对齐锚定，按视口夹取且逃逸滚动裁切；指针通道保留该间隙，离开行与卡片 150ms 后关闭。ArrowRight 从项目行进入卡片操作；图钉临时固定详情，其他项目的悬停或聚焦不替换它，再次切换图钉、Escape 或外部点击关闭。编辑入口复用 C29；新聊天、设置及其他弹窗暂停详情卡。App 拥有打开与固定状态，可由后续菜单互斥控制。完整目录路径只按已校验的 `sessions_changed.homeDir` 家目录身份及分隔符边界缩写为 `~`；未收到元数据或不属于家目录时保持完整路径。
+侧栏 Project 行以 server 投影的当前 Session `projectId` 显示选中背景；会话数排除归档并包含置顶。悬停 300ms 或键盘聚焦打开受控 beUI 详情卡，卡片以行背景矩形右侧 4px、顶边对齐锚定，按视口夹取且逃逸滚动裁切；指针通道保留该间隙，离开行与卡片 150ms 后关闭。ArrowRight 从项目行进入卡片操作；图钉临时固定详情，其他项目的悬停或聚焦不替换它，再次切换图钉、Escape 或外部点击关闭。编辑入口复用 C29；新聊天、设置及其他弹窗暂停详情卡。App 拥有打开与固定状态，可由后续菜单互斥控制。完整目录路径只按已校验的 `sessions_changed.homeDir` 家目录身份及分隔符边界缩写为 `~`；未收到元数据或不属于家目录时保持完整路径。

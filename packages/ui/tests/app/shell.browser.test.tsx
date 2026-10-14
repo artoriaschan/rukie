@@ -440,14 +440,20 @@ test("Chinese project errors and disconnected pending sends present localized ac
   const connection = await commands.startWire();
   const screen = await render(
     <App
-      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      host={{
+        getConnection: async () => connection,
+        modelServices: modelServicesFixture,
+        pickProjectFolder: async () => ["/missing"],
+      }}
       locale="zh"
     />,
   );
   const url = `http://127.0.0.1:${connection.port}`;
   try {
     await screen.getByRole("button", { name: "添加项目", exact: true }).click();
-    await screen.getByRole("textbox", { name: "项目文件夹路径" }).fill("/missing");
+    await screen
+      .getByRole("button", { name: "添加 Rukie 可读取和编辑的文件夹", exact: true })
+      .click();
     await fetch(`${url}/error`, {
       method: "POST",
       body: JSON.stringify({ type: "project.create", code: "project_not_found" }),
@@ -461,6 +467,7 @@ test("Chinese project errors and disconnected pending sends present localized ac
       method: "POST",
       body: JSON.stringify({ type: "project.create", code: "unsafe-code-secret" }),
     });
+    await screen.getByRole("button", { name: "创建项目", exact: true }).click();
     await screen.getByRole("button", { name: "信任并创建", exact: true }).click();
     await expect.element(screen.getByRole("alert")).toHaveTextContent("无法处理此操作，请重试。");
     await screen.getByRole("button", { name: "取消", exact: true }).click();

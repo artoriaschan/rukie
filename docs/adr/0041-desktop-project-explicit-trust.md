@@ -12,7 +12,7 @@ status: accepted
 
 Project 在应用 SQLite registry 中保存名称、有序且非空的真实目录列表、主目录和显式信任状态；沿用 [ADR-0035](0035-desktop-isolated-sqlite-storage.md) 的应用组织信息归属。旧单目录记录读取为未信任 Project。
 
-创建必须先通过界面信任确认，wire `project.create` 只接受 `trusted: true`。已有未信任 Project 打开或新建 Session 前补确认；拒绝仍可运行 Session，但不授予项目级配置。用户确认后 `project.trust` 持久化信任。服务端在打开 Session 时，将已信任 Project 的全部目录派生到 Agent Core 的用户 settings，不写回数据库 settings。Project 信任、目录或归属改变后，已打开的 Session 在下次空闲执行时关闭并恢复，以重新派生附加目录和执行 settings 的 `trustedProjects`；活跃 Run 不被中断。
+创建必须先通过界面信任确认，wire `project.create` 只接受 `trusted: true`。已有未信任 Project 打开或新建 Session 前补确认；拒绝仍可运行 Session，但不授予项目级配置。用户确认后 `project.trust` 持久化信任。服务端在打开 Session 时，将已信任 Project 的全部目录派生到 Agent Core 的执行 settings，不写回数据库 settings。当前 cwd 与已信任 Project 的登记目录具有相同真实身份时，派生信任同时包含该 cwd 的原始拼写，使历史目录别名在登记 canonical 化后仍加载 cwd 的 hooks、MCP 和 allow 规则；失去该登记归属时不再派生此别名。Agent Core 继续按精确路径匹配，不继承父目录信任，也不改变 Session cwd。Project 信任、目录或归属改变后，已打开的 Session 在下次空闲执行时关闭并恢复，以重新派生附加目录和执行 settings 的 `trustedProjects`；活跃 Run 不被中断。
 
 [ADR-0014](0014-permission-rules-and-project-trust.md) 的精确路径匹配继续有效，不继承父目录信任。目录比较采用真实路径；一个目录只属于一个 Project，嵌套但不相等的目录可以分别登记。应用数据根及子目录不能登记。主目录重复选择复用已有 Project，不覆盖其名称；其他交集返回冲突 Project 名。名称去除首尾空白后为 1–128 字符。
 

@@ -3822,3 +3822,119 @@ test("Project edits and removal reload idle Session ownership, directories and t
     await owner.close();
   }
 });
+
+test("legacy alias Project edits preserve cwd hook trust until membership or registration removal", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-alias-trust-")),
+      (directory) => rm(directory, { recursive: true, force: true }),
+    );
+    const canonical = await realpath(await mkdtemp(join(homeDir, "repository-")));
+    const alias = join(homeDir, "link");
+    const second = await realpath(await mkdtemp(join(homeDir, "second-")));
+    await symlink(canonical, alias);
+    await mkdir(join(canonical, ".rukie"));
+    await writeFile(
+      join(canonical, ".rukie", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          SessionStart: [
+            { hooks: [{ type: "command", command: "printf 'trusted-open\\n' >> opens" }] },
+          ],
+        },
+      }),
+    );
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (resource) => resource.close(),
+    );
+    // A pre-canonicalized registration retains its explicit trust and original path spelling.
+    await database.saveRegistry({
+      projects: [
+        {
+          id: "legacy",
+          name: "Original",
+          directories: [alias, second],
+          primary: alias,
+          trusted: true,
+        },
+      ],
+      pinned: [],
+      archived: [],
+      preferences: {},
+    });
+    await database.close();
+    const fake = fakeModel(Array.from({ length: 5 }, () => fauxAssistantMessage("done")));
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {}, sessionOptions: fake }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const created = await client.command("session.create", { project: "legacy", text: "first" });
+    expect(created.error).toBeUndefined();
+    if (
+      typeof created.result !== "object" ||
+      created.result === null ||
+      !("sessionId" in created.result) ||
+      typeof created.result.sessionId !== "string"
+    )
+      throw new Error("Missing Session id");
+    const sessionId = created.result.sessionId;
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    const opens = Bun.file(join(canonical, "opens"));
+    expect(await opens.text()).toBe("trusted-open\n");
+    const prompt = async (text: string, count: number) => {
+      client.messages.length = 0;
+      expect((await client.command("prompt", { sessionId, text })).error).toBeUndefined();
+      await client.next((message) => message.type === "result" && fake.contexts.length === count);
+    };
+    const renamed = await client.command("project.update", {
+      projectId: "legacy",
+      name: "Renamed",
+      directories: [alias, second],
+      primary: alias,
+    });
+    expect(renamed.error).toBeUndefined();
+    expect(renamed.result).toMatchObject({ directories: [canonical, second], primary: canonical });
+    await prompt("after rename-only canonicalization", 2);
+    expect(await opens.text()).toBe("trusted-open\ntrusted-open\n");
+    expect(
+      (
+        await client.command("project.update", {
+          projectId: "legacy",
+          name: "Only second",
+          directories: [second],
+          primary: second,
+        })
+      ).error,
+    ).toBeUndefined();
+    await prompt("after cwd membership removal", 3);
+    expect(await opens.text()).toBe("trusted-open\ntrusted-open\n");
+    const replacement = await client.command("project.create", {
+      name: "Replacement",
+      directories: [canonical],
+      trusted: true,
+    });
+    expect(replacement.error).toBeUndefined();
+    if (
+      typeof replacement.result !== "object" ||
+      replacement.result === null ||
+      !("id" in replacement.result) ||
+      typeof replacement.result.id !== "string"
+    )
+      throw new Error("Missing Project id");
+    await prompt("after canonical registration", 4);
+    expect(await opens.text()).toBe("trusted-open\ntrusted-open\ntrusted-open\n");
+    expect(
+      (await client.command("project.remove", { projectId: replacement.result.id })).error,
+    ).toBeUndefined();
+    await prompt("after registration removal", 5);
+    expect(await opens.text()).toBe("trusted-open\ntrusted-open\ntrusted-open\n");
+    expect((await client.command("sessions.list")).result).toEqual([
+      expect.objectContaining({ id: sessionId, cwd: alias, projectId: null }),
+    ]);
+  } finally {
+    await owner.close();
+  }
+});

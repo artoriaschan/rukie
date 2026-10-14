@@ -145,11 +145,13 @@ export async function startServer(options: ServerOptions) {
       const identities = await projectIdentities();
       const owningProject = identities.find((item) => item.directories.includes(identity));
       const trustedDirectories = [
-        ...new Set(
-          identities
+        ...new Set([
+          ...identities
             .filter((item) => item.project.trusted)
             .flatMap((item) => [...item.project.directories, ...item.directories]),
-        ),
+          // Core matches exact cwd spellings; add its alias only for this trusted filesystem owner.
+          ...(owningProject?.project.trusted ? [cwd] : []),
+        ]),
       ].sort();
       return {
         identity,
