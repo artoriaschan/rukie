@@ -18,7 +18,7 @@ async function git(cwd: string, args: string[]) {
   ]);
   return { exitCode, stdout: stdout.trim(), stderr: stderr.trim() };
 }
-export class WorktreeFailure extends Error {}
+class WorktreeFailure extends Error {}
 
 export async function projectGit(primary: string): Promise<WireProjectGit> {
   const unavailable = { repository: false, branch: null, head: "" };
