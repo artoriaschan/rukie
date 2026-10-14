@@ -19,3 +19,5 @@ Blocked by: 05
 - Implemented wire list/refresh/delete, existing-directory filtering, source prune, forced removal with retained branch, bound Session admission/external lease protection, main-directory move and lazy recovery after refresh. Git failure preserves record/binding for retry.
 - Settings Environment → Worktrees enabled (compact icon rail at narrow width), localized list/refresh/empty/deletion dialog and inline busy error; installed beUI Button/MorphingModal and existing shadcn ScrollArea reused. DESIGN and owning READMEs updated.
 - Focused evidence: `/tmp/rukie-session-workspaces-evidence/06-verification.md`. Ticket stays claimed pending integration-wide review, final verification and joint spec closure. Root owns aggregate/static, final manual Chromium acceptance and cleanup.
+
+- Review 修正：`fix/session-workspaces-review` 补齐 Project 移动/删除串行边界、工作树删除期间实际 Core 写者租约与重启前自动修复，以及 canonical workspace 祖先 inode/dev 校验。公开 server/Core reproducer 先红后绿；详细命令、原始失败、增量验证与责任边界见 `/tmp/rukie-session-workspaces-evidence/review-fixes-verification.md`。保留 claimed，最终验收与关闭由集成负责人执行。

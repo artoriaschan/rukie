@@ -20,3 +20,5 @@ Status: claimed
 - `env -u NO_COLOR bun test packages/server/tests/server.test.ts`：64 pass / 0 fail，502 assertions，3.96s；包含已有 cwd 消费者、创建/删除、打开失败和安全边界。新增清理失败 warning 用例增量验证：1 pass / 0 fail，4 assertions，292ms。新测试单例均低于 1s；UI 两例合计 tests 1.21s，真实 Chromium 与 WS 启动/渲染成本。
 - UI focused：在 `packages/ui` 运行 `env -u NO_COLOR node ../../node_modules/vitest/vitest.mjs run --project ui-browser tests/app/session-delete.browser.test.tsx`：2 pass / 0 fail，1.63s。初次从根目录筛选 `ui-browser` 未找到嵌套项目，已纠正 cwd；一次编辑命令 cwd 错误未改源码，关联运行已停止，保留诊断日志。
 - 详细证据与日志：`/tmp/rukie-session-workspaces-evidence/01-verification.md`。工单保持 claimed，待集成 review、统一静态/desktop 与 GUI 验收后关闭。
+
+- Review 修正：`fix/session-workspaces-review` 补齐 Project 移动/删除串行边界、工作树删除期间实际 Core 写者租约与重启前自动修复，以及 canonical workspace 祖先 inode/dev 校验。公开 server/Core reproducer 先红后绿；详细命令、原始失败、增量验证与责任边界见 `/tmp/rukie-session-workspaces-evidence/review-fixes-verification.md`。保留 claimed，最终验收与关闭由集成负责人执行。

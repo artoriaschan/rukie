@@ -23,3 +23,5 @@ Blocked by: 01
 - 检查：`bunx --no tsc -b --pretty false` 通过；更晚准入/测试改动交由最终静态复验。`oxfmt` 与 `git diff --check` 通过。日志与逐次证据：`/tmp/rukie-session-workspaces-evidence/02-verification.md`。最终静态、聚合/desktop、agent-browser 验收与分支 review 由 integration owner 协调；工单保持 claimed 至统一关闭。
 
 - 合入最新 integration（工单 04）后：Session 范围内 write 自动放行使六个 server 权限卡生命周期 fixture 失效；保留原组合结果 60 pass / 6 fail（`02-post04-server.log`），统一改为 homeDir 下范围外的文件路径。六例增量全部通过（584ms）；Project 移除的等待场景同样改为范围外 write，项目内文件写入仍验证保留。UI 与目录几何证据继续复用，不重跑。
+
+- Review 修正：`fix/session-workspaces-review` 补齐 Project 移动/删除串行边界、工作树删除期间实际 Core 写者租约与重启前自动修复，以及 canonical workspace 祖先 inode/dev 校验。公开 server/Core reproducer 先红后绿；详细命令、原始失败、增量验证与责任边界见 `/tmp/rukie-session-workspaces-evidence/review-fixes-verification.md`。保留 claimed，最终验收与关闭由集成负责人执行。

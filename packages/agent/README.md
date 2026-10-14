@@ -8,6 +8,8 @@
 
 `moveSession({ cwd, homeDir, dataRoot, id, newCwd })` 只支持 SQLite。调用方先关闭已打开的 Session；接口取得写者租约，在同一原生事务中追加旧、新 cwd 的 Session Move 条目并更新元数据，保留 id、标题和 Transcript。存储缺失或 cwd 不匹配以 `session-not-found` 拒绝，占用以 `session-busy` 拒绝，JSONL 以 `session-move-unsupported` 拒绝；拒绝不改动 Session 数据。接口不创建 Session、不启动模型或调度 Resume，也不复制或删除工作目录文件。下一次 Run 把最新尚未告知的移动记录与新目录环境快照原子提交到 Transcript；Resume 不重复发布已提交提醒。决定见 [ADR-0040](../../docs/adr/0040-session-move-transcript-boundary.md)。
 
+`withSessionMove(options, operation)` 让 Frontend 在同一实际写者租约内协调宿主资源删除、Session Move 与归属发布。回调收到一次性的异步 Move 函数，必须在回调结束前调用并等待；回调返回或抛错后租约释放，函数失效。调用 Move 前宿主操作失败保留原元数据；Move 已提交后后续宿主存储失败不回滚 Transcript，调用方负责持久化恢复依据并在下一次打开前修复归属。接口只预约关闭的 SQLite Session，不调度原生执行。
+
 `deleteSession({ cwd, homeDir, dataRoot?, id })` 取得写者租约后永久移除根 Session 目录，包括共用存储的全部子代理 Conversation、tasks、Transcript 与输出；同时移除数据根下该 id 的 `attachments/` 与 `file-history/`。删除前校验所有目标的规范路径与 metadata 身份；写入与 busy 探测也拒绝存储目录、存储文件或协调目录/文件（含悬空链接）的符号链接重定向，缺失或 cwd 不匹配返回 `session-not-found`，租约占用返回 `session-busy`，符号链接目标拒绝；这些校验失败不移除任何文件。调用方先关闭本宿主已打开的空闲 Session；此接口不创建产品 Session、不执行恢复、不读取模型或凭据。永久协调文件保留以防删除与打开锁住不同 inode，它没有 Session 内容；已删除 id 的列表与恢复分别返回缺失与 `session-not-found`。升级到本租约协议前须关闭使用旧目录内 `host-lease.sqlite` 的宿主，旧协议与新协议不互锁。
 
 原生 JSONL 启用 sidecar fsync，[存储文件适配器](src/store/files.ts)在成功追加后 flush 文件，包括 main 提交标记；提交确认后才采用状态和发布对应成功事实。写入或 flush 失败会向调用方传播；原生 Storage 进入 poisoned 状态时须 `await session.close()` 后重开。flush 发生在追加之后，拒绝确认不等于磁盘字节回滚，重新打开时以原生已提交事实为准。进程强制退出测试验证租约释放和恢复，不代表断电测试。

@@ -288,6 +288,18 @@ export async function renameSessionTitle(
 export async function moveSession(
   options: UserDataOptions & { cwd: string; id: string; newCwd: string },
 ): Promise<void> {
+  await withSessionMove(options, (move) => move());
+}
+
+/** Reserve a closed Session's writer through host resource changes, Move and publication.
+ * The callback must await Move if it calls it, at most once, before returning.
+ * The function expires after the callback. Host failures before Move leave metadata unchanged;
+ * failures after commit need caller-owned durable repair. No native execution or recovery is scheduled.
+ */
+export async function withSessionMove<T>(
+  options: UserDataOptions & { cwd: string; id: string; newCwd: string },
+  operation: (move: () => Promise<void>) => Promise<T>,
+): Promise<T> {
   const { id } = options;
   if (!options.dataRoot)
     throw createUserVisibleError("Session Move requires SQLite storage.", {
@@ -325,27 +337,37 @@ export async function moveSession(
         await reader.close(BACKGROUND_CONTEXT);
       }
     });
-    database = await openBunSqliteDatabase(path);
-    const storage = await SqliteStorage.open(database);
-    kernel = createNativeSession(storage);
-    const metadata = parseSessionMetadata(await kernel.snapshot(SessionMetadataDoc, context));
-    const conversation = (
-      await storage.scanConversations({}, 100000, undefined, context)
-    ).items.find((row) => Number(row.id) === metadata.activeConversationId);
-    if (!conversation) throw new Error("Active conversation is missing.");
-    await kernel.commit(async (tx) => {
-      const doc = await tx.doc(SessionMetadataDoc);
-      const entry = await tx.appendEntry(conversation.id, {
-        kind: "rukie.session-move",
-        data: { oldCwd: cwd, newCwd, timestamp: Date.now() },
+    let active = true;
+    let moved = false;
+    try {
+      return await operation(async () => {
+        if (!active || moved) throw new Error("Session Move reservation is no longer available.");
+        moved = true;
+        database = await openBunSqliteDatabase(path);
+        const storage = await SqliteStorage.open(database);
+        kernel = createNativeSession(storage);
+        const metadata = parseSessionMetadata(await kernel.snapshot(SessionMetadataDoc, context));
+        const conversation = (
+          await storage.scanConversations({}, 100000, undefined, context)
+        ).items.find((row) => Number(row.id) === metadata.activeConversationId);
+        if (!conversation) throw new Error("Active conversation is missing.");
+        await kernel.commit(async (tx) => {
+          const doc = await tx.doc(SessionMetadataDoc);
+          const entry = await tx.appendEntry(conversation.id, {
+            kind: "rukie.session-move",
+            data: { oldCwd: cwd, newCwd, timestamp: Date.now() },
+          });
+          const moved = await tx.doc(SessionMoveDoc);
+          moved.entryId = Number(entry.id);
+          moved.oldCwd = cwd;
+          moved.newCwd = newCwd;
+          doc.cwd = newCwd;
+          doc.updatedAt = Date.now();
+        }, context);
       });
-      const moved = await tx.doc(SessionMoveDoc);
-      moved.entryId = Number(entry.id);
-      moved.oldCwd = cwd;
-      moved.newCwd = newCwd;
-      doc.cwd = newCwd;
-      doc.updatedAt = Date.now();
-    }, context);
+    } finally {
+      active = false;
+    }
   } finally {
     try {
       if (kernel) await kernel.close(BACKGROUND_CONTEXT);
