@@ -1,0 +1,50 @@
+docs/adr/0045-git-worktree-sessions.md
+  s_b484c597b1936d::t_f04c1f631c9312 1-35
+docs/adr/0037-browser-host-sidecar-capabilities.md
+  s_b484c597b1936d::t_288bbef9a2706a 37
+docs/adr/0041-desktop-project-explicit-trust.md
+  s_b484c597b1936d::t_df7019b17d6036 13-14
+.scratch/session-workspaces/spec.md
+  s_b484c597b1936d::t_ed573da41c3060 48
+  s_b484c597b1936d::t_c806c72d01e8d8 115-121
+  s_b484c597b1936d::t_16ccfe8c1bbe62 1-47,49-114,122-126
+.scratch/session-workspaces/issues/06-worktree-settings.md
+  s_b484c597b1936d::t_557471f197a88f 1-17
+.scratch/session-workspaces/issues/01-conversation-workspaces.md
+  s_b484c597b1936d::t_6a40ca109e652a 1-13
+.scratch/session-workspaces/issues/02-session-project-binding.md
+  s_b484c597b1936d::t_0b7aff083df53a 1-18
+.scratch/session-workspaces/issues/03-move-to-project-menu.md
+  s_b484c597b1936d::t_8cdb7508ef4874 1-16
+docs/adr/0042-conversation-owned-workspace.md
+  s_b484c597b1936d::t_ca7afd91c3630e 1-30
+.scratch/session-workspaces/issues/04-session-access-scope.md
+  s_b484c597b1936d::t_a9af0baf7ee4f5 1-13
+docs/adr/README.md
+  s_b484c597b1936d::t_4b3f2e1b18a4c4 73-76
+docs/adr/0039-session-additional-directories.md
+  s_b484c597b1936d::t_7b8581213d3095 13-14
+docs/adr/0043-session-project-binding.md
+  s_b484c597b1936d::t_4039d925483e9c 1-30
+.scratch/session-workspaces/issues/05-git-worktree-sessions.md
+  s_b484c597b1936d::t_968acac20efc2b 1-18
+docs/adr/0044-session-access-scope.md
+  s_b484c597b1936d::t_b008a228db7e4e 1-21,27-40
+  s_b484c597b1936d::t_c806c72d01e8d8 22-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "49fd2ba08ee38ede8fe89ca6fc826a7e252129e9",
+  "prompts": {},
+  "sessions": {
+    "s_b484c597b1936d": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_byqtaqztvkjk",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
