@@ -782,7 +782,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       .filter((message) => message.role === "system-reminder"),
   ).toMatchObject([
     { source: "environment", content: expect.stringContaining("git branch:") },
-    { source: "date", content: expect.stringContaining("Current date:") },
+    { source: "time", content: expect.stringContaining("Current time:") },
   ]);
   expect(server.requests).toHaveLength(1);
   expect(JSON.stringify(server.requests[0]!.body.messages)).toContain(
@@ -944,12 +944,12 @@ test("reads a piped prompt and completes normally", async () => {
     { role: "developer", content: expect.stringContaining("You are Rukie") },
     {
       role: "user",
-      content: [{ type: "text", text: expect.stringContaining("<system-reminder>\ncwd:") }],
+      content: [{ type: "text", text: expect.stringContaining("<system-reminder>\ngit branch:") }],
     },
     {
       role: "user",
       content: [
-        { type: "text", text: expect.stringContaining("<system-reminder>\nCurrent date:") },
+        { type: "text", text: expect.stringContaining("<system-reminder>\nCurrent time:") },
       ],
     },
     { role: "user", content: [{ type: "text", text: "from pipe" }] },

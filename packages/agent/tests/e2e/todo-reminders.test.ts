@@ -272,7 +272,7 @@ test("Compaction immediately persists the current Todo List after the summary fo
   const summary = session.messages.findIndex(
     (message) => message.role === "session-notice" && message.notice.kind === "compaction",
   );
-  expect(session.messages[summary + 1]).toMatchObject({ role: "system-reminder", source: "date" });
+  expect(session.messages[summary + 1]).toMatchObject({ role: "system-reminder", source: "time" });
   expect(session.messages[summary + 2]).toMatchObject({
     role: "system-reminder",
     source: "todo",
@@ -340,7 +340,7 @@ test("unchanged Todo List and skills reminders are re-injected after each Compac
   expect([...first, ...second].filter((event) => event.type === "compaction_end")).toHaveLength(2);
   for (const events of [first, second])
     expect(publishedReminders(events).map((message) => message.source)).toEqual([
-      "date",
+      "time",
       "skills",
       "todo",
     ]);

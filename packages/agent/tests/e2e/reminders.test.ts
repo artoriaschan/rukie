@@ -73,7 +73,7 @@ test("the first Run supplies static identity, environment and both levels of Pro
   const reminders = publishedReminders(events);
   expect(reminders.map((event) => event.source)).toEqual([
     "environment",
-    "date",
+    "time",
     "user-instructions",
     "project-instructions",
   ]);
@@ -82,7 +82,7 @@ test("the first Run supplies static identity, environment and both levels of Pro
   expect(getCurrentSystemPrompt(messages)).toContain(`platform: ${process.platform}`);
   expect(reminders[0]!.content).toContain("git branch: reminder-test");
   expect(reminders[0]!.content).toContain("?? AGENTS.md");
-  expect(reminders[1]!.content).toBe("Current date: 2026-10-01");
+  expect(reminders[1]!.content).toContain("Current time: 2026-10-01");
   expect(reminders[2]!.content).toContain("Personal coding preferences");
   expect(reminders[3]!.content).toContain("Project coding conventions");
   expect(JSON.stringify(messages)).not.toContain("Ignored fallback instructions");
@@ -110,7 +110,7 @@ async function transcript() {
   return Bun.file(join(root, file)).text();
 }
 
-test("resume preserves the model and Transcript prefix and appends changed date and Project Instructions", async () => {
+test("resume preserves the model and Transcript prefix and appends changed time and Project Instructions", async () => {
   dirs = await tempDirs();
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Original project instructions");
   let date = new Date("2026-10-01T12:00:00Z");
@@ -131,7 +131,7 @@ test("resume preserves the model and Transcript prefix and appends changed date 
   expect(storedMessages[0]).toMatchObject({ role: "system-reminder", source: "environment" });
   expect(storedMessages.filter((message) => message.role === "system-reminder")).toMatchObject([
     { source: "environment" },
-    { source: "date", content: "Current date: 2026-10-01" },
+    { source: "time", content: expect.stringContaining("Current time: 2026-10-01") },
     {
       source: "project-instructions",
       content: expect.stringContaining("Original project instructions"),
@@ -170,9 +170,7 @@ test("resume preserves the model and Transcript prefix and appends changed date 
     { role: "assistant", content: [{ type: "text", text: "second reply" }] },
     {
       role: "user",
-      content: [
-        { type: "text", text: "<system-reminder>\nCurrent date: 2026-10-02\n</system-reminder>" },
-      ],
+      content: [{ type: "text", text: expect.stringContaining("Current time: 2026-10-02") }],
     },
     {
       role: "user",
@@ -187,8 +185,8 @@ test("resume preserves the model and Transcript prefix and appends changed date 
   ]);
   expect(publishedReminders(events)).toEqual([
     {
-      source: "date",
-      content: "Current date: 2026-10-02",
+      source: "time",
+      content: expect.stringContaining("Current time: 2026-10-02"),
     },
     {
       source: "project-instructions",
