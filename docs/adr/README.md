@@ -70,5 +70,9 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0039 Session 附加目录只提供路径和项目指令](0039-session-additional-directories.md) — `accepted`
 - [0040 Session Move 改绑 cwd 并以 Transcript 记录移动边界](0040-session-move-transcript-boundary.md) — `accepted`
 - [0041 桌面端 Project 通过显式确认授予精确目录信任](0041-desktop-project-explicit-trust.md) — `accepted`
+- [0042 对话 Session 独占工作目录，删除时一并删除](0042-conversation-owned-workspace.md) — `accepted`
+- [0043 Session 持久绑定 Project，cwd 跟随主目录，移除 Project 删除其 Session](0043-session-project-binding.md) — `accepted`
+- [0044 文件工具按 Session 访问范围决定模式默认值](0044-session-access-scope.md) — `accepted`
+- [0045 Git Project 的新 Session 可使用独立工作树](0045-git-worktree-sessions.md) — `accepted`
 
 <!-- ADR_INDEX_END -->

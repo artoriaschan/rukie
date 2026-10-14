@@ -10,6 +10,8 @@ status: accepted
 
 ## 决定
 
+部分替代：Session 归属、`project.remove` 对 Session 的处理与主目录切换对已有 Session 的影响由 [ADR-0043](0043-session-project-binding.md) 替代；“对话”共用 `workspace/` 由 [ADR-0042](0042-conversation-owned-workspace.md) 替代。Project 登记结构、显式信任、派生 `trustedProjects` 与目录冲突规则继续有效。
+
 Project 在应用 SQLite registry 中保存名称、有序且非空的真实目录列表、主目录和显式信任状态；沿用 [ADR-0035](0035-desktop-isolated-sqlite-storage.md) 的应用组织信息归属。旧单目录记录读取为未信任 Project。
 
 创建必须先通过界面信任确认，wire `project.create` 只接受 `trusted: true`。已有未信任 Project 打开或新建 Session 前补确认；拒绝仍可运行 Session，但不授予项目级配置。用户确认后 `project.trust` 持久化信任。服务端在打开 Session 时，将已信任 Project 的全部目录派生到 Agent Core 的执行 settings，不写回数据库 settings。当前 cwd 与已信任 Project 的登记目录具有相同真实身份时，派生信任同时包含该 cwd 的原始拼写，使历史目录别名在登记 canonical 化后仍加载 cwd 的 hooks、MCP 和 allow 规则；失去该登记归属时不再派生此别名。Agent Core 继续按精确路径匹配，不继承父目录信任，也不改变 Session cwd。Project 信任、目录或归属改变后，已打开的 Session 在下次空闲执行时关闭并恢复，以重新派生附加目录和执行 settings 的 `trustedProjects`；活跃 Run 不被中断。

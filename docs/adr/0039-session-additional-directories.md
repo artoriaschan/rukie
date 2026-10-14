@@ -10,6 +10,8 @@ status: accepted
 
 ## 决定
 
+部分替代：附加目录进入 Session 访问范围并改变文件工具的模式默认值，由 [ADR-0044](0044-session-access-scope.md) 替代本文“权限路径解析保持原有语义”的部分；指令加载与不合并可执行配置的规则继续有效。
+
 Frontend 在每次打开 Session 时通过 `createSession` 提供 `additionalDirectories`。Agent Core 要求绝对路径，规范化后去重并排除 cwd；Session 仍只有一个 cwd，工具执行目录、权限路径解析与文件跟踪保持原有语义。
 
 首次 Run 的环境快照列出附加目录。每个附加目录仅加载自身 `AGENTS.md` 作为 Project Instructions，按独立 reminder 来源比较当前内容并在变化时追加；提醒记录在 Transcript，Session Resume 可重建已提供的模型输入。目录选项由 Frontend 重新提供，不另存为 Session 配置。

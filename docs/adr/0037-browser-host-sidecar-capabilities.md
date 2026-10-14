@@ -34,7 +34,7 @@ sidecar 的 `SecretEncryption` 后端由启动方通过私有启动通道显式�
 
 在 Finder 中显示与在终端打开由 sidecar 通过 WS 命令执行，Electron 与浏览器形态共用这条路径，main 不再保留对应实现。选择文件夹在浏览器形态由 sidecar 弹出系统对话框，Electron 继续使用窗口内的原生对话框。
 
-sidecar 只对已存在的绝对路径执行这些操作；显示与终端只接受已登记项目根、无项目会话的 workspace 目录及其子路径。外部进程按参数向量启动，不经 shell，路径不拼入脚本源码。不支持的平台返回明确错误，界面退回手动填写路径。
+sidecar 只对已存在的绝对路径执行这些操作；显示与终端只接受已登记项目根、无项目会话的 workspace 目录及其子路径；[ADR-0045](0045-git-worktree-sessions.md) 增加已记录的工作树目录。外部进程按参数向量启动，不经 shell，路径不拼入脚本源码。不支持的平台返回明确错误，界面退回手动填写路径。
 
 ADR-0035 的其余数据归属、凭证安全与开发隔离规则，以及 [ADR-0036](0036-shared-development-configuration.md) 的开发配置共享规则继续有效。规格与实施工单见[浏览器开发模式 spec](../../.scratch/desktop-web-dev/spec.md)。
 
