@@ -63,3 +63,7 @@ Session 摘要的必填 `projectId: string | null` 读取应用数据根 `app.sq
 `project.git { projectId }` 返回 `{ repository, branch, head }`；主目录不是 Git 仓库顶层、没有提交或 Git 不可用时返回 `{ repository: false, branch: null, head: "" }`。detached HEAD 返回 `branch: null` 与当前提交。`session.create` 可传 `worktree: true`，只接受已登记 Project。server 创建 `dataRoot/worktrees/<短id>/<仓库目录名>` 和独立生成 id 的 `rukie/worktree-<短id>` 分支，已有分支重试，不 fetch、不带入主目录未提交改动。Git 创建失败返回带输出摘要的 `worktree_failed`，不创建 Session；后续打开失败回滚新工作树及记录并返回打开错误。
 
 本机应用数据库保存工作树记录，Session 绑定保存 `worktreeId`；摘要必填 `worktree: { id, branch } | null`。工作树 Session 从所属 Project 派生信任，附加目录排除主目录，重启和后续执行保留工作树 cwd、跳过主目录懒同步；`session.move` 返回 `worktree_session`。删除 Session 或移除 Project 仅清除 Session 与绑定，保留工作树、记录及分支。`host.revealPath` 与 `host.openInTerminal` 允许已记录的工作树目录及真实子路径，仍拒绝符号链接逃逸；应用数据根的工作树不能登记为 Project。完整决定见 [ADR-0045](../../docs/adr/0045-git-worktree-sessions.md)。
+
+`worktrees.list` 列出已记录且目录仍存在的工作树。`worktree.delete { worktreeId }` 在绑定 Session 的命令、执行、排队、后台工作、Interaction 或外部写入 lease 活跃时返回 `session_busy`；准入锁一直覆盖 Git 删除、Session Move 和绑定发布。成功执行 `git worktree remove --force`（丢弃未提交改动、保留分支），清除记录与 `worktreeId` 并把绑定 Session 移到 Project 当前主目录。已删除 Session / Project 的工作树仍可单独删除。Git 删除失败返回带摘要的 `worktree_failed`，记录与绑定保留，可恢复源仓库后重试；若 Git 已删除目录但后续 Session Move 失败，记录仍保留，刷新后由下一次打开同步主目录。
+
+`worktrees.refresh` 删除目录已不存在的记录，清除受影响 Session 的 `worktreeId`；下一次打开才同步主目录。刷新对存在的源仓库执行 `git worktree prune`，源仓库缺失时跳过 Git 操作。刷新同样保护受影响 Session 的准入，并返回现存工作树列表；它不会删除仍存在的工作树或派生分支。

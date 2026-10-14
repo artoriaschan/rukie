@@ -1,4 +1,4 @@
-import { mkdir, realpath, rm } from "node:fs/promises";
+import { mkdir, realpath, rm, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { WireProjectGit, WireWorktree } from "@rukie/shared";
 
@@ -115,4 +115,33 @@ export async function discardUnopenedWorktree(worktree: WireWorktree): Promise<v
   if (removed.exitCode !== 0)
     throw new WorktreeFailure(removed.stderr || "Could not remove unopened branch.");
   await rm(join(worktree.path, ".."), { recursive: true, force: true });
+}
+
+export async function worktreeDirectoryExists(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      return false;
+    throw error;
+  }
+}
+
+/** User-requested removal retains the derived branch, including its committed changes. */
+export async function removeWorktree(worktree: WireWorktree): Promise<void> {
+  const result = await git(worktree.repository, ["worktree", "remove", "--force", worktree.path]);
+  if (result.exitCode !== 0)
+    throw new WorktreeFailure((result.stderr || result.stdout).slice(-2000));
+  await rm(join(worktree.path, ".."), { recursive: true, force: true });
+}
+
+export async function pruneWorktrees(repository: string): Promise<void> {
+  if (!(await worktreeDirectoryExists(repository))) return;
+  const result = await git(repository, ["worktree", "prune"]);
+  if (result.exitCode !== 0)
+    throw new WorktreeFailure((result.stderr || result.stdout).slice(-2000));
 }

@@ -1,0 +1,91 @@
+.worktree-settings-title {
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.worktree-settings-section {
+  padding: 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.worktree-settings-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+.worktree-settings-heading > div {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.worktree-settings-heading > button {
+  flex-shrink: 0;
+}
+.worktree-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.worktree-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  min-width: 0;
+}
+.worktree-settings-row > button {
+  padding-inline: 10px;
+  flex-shrink: 0;
+}
+.worktree-settings-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+.worktree-settings-branch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.worktree-settings-repository {
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 9999px;
+  background: var(--secondary);
+  font-size: calc(var(--ui-font-size)*13/14);
+}
+.worktree-settings-empty {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+  padding: 42px 24px;
+}
+.worktree-settings-dialog {
+  max-width: 448px;
+}
+.worktree-settings-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 8px;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+}
+.worktree-settings-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}

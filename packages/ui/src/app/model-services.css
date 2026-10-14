@@ -1261,3 +1261,19 @@
 .model-services-provider-key-field {
   height: 63px;
 }
+
+/* Enabled settings pages retain the compact navigation rail on narrow screens. */
+@media (max-width: 640px) {
+  .model-services-navigation > .worktree-settings-navigation {
+    display: flex;
+  }
+  .worktree-settings-navigation > p,
+  .worktree-settings-navigation > button:disabled,
+  .worktree-settings-navigation > button > span {
+    display: none;
+  }
+  .worktree-settings-navigation > button {
+    padding: 0;
+    justify-content: center;
+  }
+}

@@ -1,6 +1,6 @@
 # 06：设置 → 环境 → 工作树
 
-Status: ready-for-agent
+Status: claimed
 
 Blocked by: 05
 
@@ -15,3 +15,7 @@ Blocked by: 05
 - [ ] 文档：server README、ui README
 
 ## Comments
+
+- Implemented wire list/refresh/delete, existing-directory filtering, source prune, forced removal with retained branch, bound Session admission/external lease protection, main-directory move and lazy recovery after refresh. Git failure preserves record/binding for retry.
+- Settings Environment → Worktrees enabled (compact icon rail at narrow width), localized list/refresh/empty/deletion dialog and inline busy error; installed beUI Button/MorphingModal and existing shadcn ScrollArea reused. DESIGN and owning READMEs updated.
+- Focused evidence: `/tmp/rukie-session-workspaces-evidence/06-verification.md`. Ticket stays claimed pending integration-wide review, final verification and joint spec closure. Root owns aggregate/static, final manual Chromium acceptance and cleanup.

@@ -65,3 +65,5 @@ The conversation Plus opens the Pencil C09 attachment menu and keeps image picki
 供应商表单自动保存：Base URL 和 API Key 停止输入 500ms 后提交，切换服务、离开设置或卸载立即提交待保存输入；服务开关、协议和模型操作立即提交。请求串行执行，保存结果不覆盖后续编辑，失败保留输入并显示安全错误提示。表单没有保存与取消按钮；重命名和模型编辑在确认后提交，取消或关闭不提交。服务开关独立控制 `enabled`，不改变模型自身开关。
 
 侧栏 Project 行以 server 投影的当前 Session `projectId` 显示选中背景；会话数排除归档并包含置顶。悬停 300ms 或键盘聚焦打开受控 beUI 详情卡，卡片以行背景矩形右侧 4px、顶边对齐锚定，按视口夹取且逃逸滚动裁切；指针通道保留该间隙，离开行与卡片 150ms 后关闭。ArrowRight 从项目行进入卡片操作；图钉临时固定详情，其他项目的悬停或聚焦不替换它，再次切换图钉、Escape 或外部点击关闭。编辑入口复用 C29；新聊天、设置及其他弹窗暂停详情卡。App 拥有打开与固定状态，可由后续菜单互斥控制。完整目录路径只按已校验的 `sessions_changed.homeDir` 家目录身份及分隔符边界缩写为 `~`；未收到元数据或不属于家目录时保持完整路径。
+
+设置 → 环境 → 工作树通过 `worktrees.list` 显示独立工作树的分支、仓库目录名与路径；“刷新”调用 `worktrees.refresh` 清理失效记录。删除确认写明完整路径、未提交改动丢弃与分支保留，成功调用 `worktree.delete` 后更新列表，绑定 Session 回到主项目目录。忙碌错误留在弹窗内，取消接收初始焦点，提交期间阻止重复提交和关闭。空列表显示“暂无独立工作树”。界面复用已安装的 beUI Button / MorphingModal 和设置 ScrollArea，颜色、尺寸与窄宽度行为由 [DESIGN.md](../../DESIGN.md#worktree-settings) 定义。

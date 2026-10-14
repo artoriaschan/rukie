@@ -75,6 +75,9 @@ export const WireCommandSchema = Type.Union([
   command("project.remove", { projectId: id }),
   command("project.trust", { projectId: id }),
   command("project.git", { projectId: id }),
+  command("worktrees.list", {}),
+  command("worktrees.refresh", {}),
+  command("worktree.delete", { worktreeId: id }),
   command("sessions.list", {}),
   command("session.create", {
     project: Type.Union([id, Type.Null()]),

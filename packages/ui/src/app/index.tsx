@@ -1194,6 +1194,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       {settingsOpen ? (
         <ModelServices
           services={host.modelServices}
+          request={client.request}
           onChanged={async () => {
             store.setModels(await client.request({ type: "models.list" }));
           }}

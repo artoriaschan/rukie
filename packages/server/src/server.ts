@@ -43,7 +43,14 @@ import { AppDatabase, type ApplicationRegistry } from "./storage/app-database.ts
 import { secretVault, type SecretEncryption, type EncryptionBackend } from "./storage/secrets.ts";
 import { applicationMcpPersistence, applicationConfiguration } from "./storage/configuration.ts";
 
-import { projectGit, createWorktree, discardUnopenedWorktree } from "./worktrees.ts";
+import {
+  projectGit,
+  createWorktree,
+  discardUnopenedWorktree,
+  worktreeDirectoryExists,
+  removeWorktree,
+  pruneWorktrees,
+} from "./worktrees.ts";
 
 type Registry = ApplicationRegistry;
 export interface ServerOptions {
@@ -801,6 +808,107 @@ export async function startServer(options: ServerOptions) {
               ...(await localDatabase.worktrees()).map((item) => item.path),
             ],
           });
+        case "worktrees.list": {
+          const items = await localDatabase.worktrees();
+          const existing = await Promise.all(
+            items.map(async (item) => ((await worktreeDirectoryExists(item.path)) ? item : null)),
+          );
+          return existing.filter((item) => item !== null);
+        }
+        case "worktrees.refresh":
+        case "worktree.delete": {
+          return mutateProjects(async () => {
+            const items = await localDatabase.worktrees();
+            const selected =
+              command.type === "worktree.delete"
+                ? items.filter((item) => item.id === command.worktreeId)
+                : items;
+            if (command.type === "worktree.delete" && selected.length === 0)
+              throw new CommandError("invalid_command");
+            const invalid: WireWorktree[] = [];
+            for (const item of selected) {
+              if (command.type === "worktree.delete" || !(await worktreeDirectoryExists(item.path)))
+                invalid.push(item);
+            }
+            const bound: WireSessionSummary[] = [];
+            try {
+              for (const summary of await summaries()) {
+                const binding = await localDatabase.sessionBinding(summary.id);
+                if (!invalid.some((item) => item.id === binding?.worktreeId)) continue;
+                const current = sessions.get(summary.id);
+                if (
+                  organizing.has(summary.id) ||
+                  (sessionCommands.get(summary.id) ?? 0) > 0 ||
+                  openings.has(summary.id) ||
+                  (current && executing(current)) ||
+                  (!current &&
+                    isSqliteSessionBusy({
+                      cwd: summary.cwd,
+                      homeDir: options.homeDir,
+                      dataRoot: options.dataRoot,
+                      id: summary.id,
+                    }))
+                )
+                  throw new CommandError("session_busy");
+                organizing.add(summary.id);
+                bound.push(summary);
+              }
+              for (const summary of bound) {
+                const current = sessions.get(summary.id);
+                if (!current) continue;
+                clearTimeout(idleTimers.get(summary.id));
+                idleTimers.delete(summary.id);
+                await current.close();
+                observations.get(summary.id)?.();
+                observations.delete(summary.id);
+                sessions.delete(summary.id);
+                openedProjects.delete(summary.id);
+                children.delete(summary.id);
+                admissions.delete(summary.id);
+                for (const subscribed of subscriptions.values()) {
+                  subscribed.get(summary.id)?.();
+                  subscribed.delete(summary.id);
+                }
+              }
+              if (command.type === "worktree.delete") {
+                try {
+                  await removeWorktree(invalid[0]!);
+                } catch (error) {
+                  throw new CommandError("worktree_failed", {
+                    message: error instanceof Error ? error.message : String(error),
+                  });
+                }
+              } else {
+                for (const repository of new Set(selected.map((item) => item.repository)))
+                  await pruneWorktrees(repository);
+              }
+              for (const summary of bound) {
+                const project = registry.projects.find((item) => item.id === summary.projectId);
+                if (!project) continue;
+                if (command.type === "worktree.delete")
+                  await moveSession({
+                    cwd: summary.cwd,
+                    homeDir: options.homeDir,
+                    dataRoot: options.dataRoot,
+                    id: summary.id,
+                    newCwd: project.primary,
+                  });
+                await localDatabase.bindSession(summary.id, project.id);
+              }
+              for (const item of invalid) await localDatabase.removeWorktree(item.id);
+              await changed();
+              const remaining = await localDatabase.worktrees();
+              const existing = await Promise.all(
+                remaining.map(async (item) =>
+                  (await worktreeDirectoryExists(item.path)) ? item : null,
+                ),
+              );
+              return existing.filter((item) => item !== null);
+            } finally {
+              for (const summary of bound) organizing.delete(summary.id);
+            }
+          });
+        }
         case "project.git": {
           const project = registry.projects.find((item) => item.id === command.projectId);
           if (!project) throw new CommandError("project_not_found");
