@@ -22,3 +22,7 @@ Blocked by: 02
 - TDD 与布局：原 project-directories 基线 6 项通过；创建名称/保留草稿、目录行整行 32px、已登记主目录捷径和模态路径提示 hit-test 均有 red/green 证据。受影响浏览器入口 14 项通过；新增 Light 宽屏与 Dark 窄屏几何/长列表/提交禁用 2 项通过；最终路径提示与 inset focus 增量 3 项通过；追加目录/名称保留与现有外壳 layout 7 项通过。结果逐项复用，未把中途失败称为通过。
 - 复用已安装 beUI MorphingModal/Input/Button/Tooltip，目录徽标使用公开 MCP 的 beUI AnimatedBadge 完整组件源码并按 DESIGN.md 适配；领域表单/目录行组合已有原语，因为 registry 不拥有 Project 草稿语义。未改变 MorphingModal 全局几何。路径提示使用独立 modalHint 55 层，位于弹窗之上、菜单之下，普通 Tooltip 仍使用 hint 40。
 - scoped UI typecheck 与 changed-file lint 通过，docs:update/check:docs 通过（150 个 Markdown）。详细命令、环境、耗时、失败与证据有效性见验证负责人提供的 `/tmp/rukie-shell-palette-evidence/ticket03.md`。完整静态、适用 desktop 包级和最终 agent-browser/screenshots 统一由 [06](06-acceptance.md) 完成，当前不声称 CI/GUI/合并已验收。
+
+- 2026-10-14：复审发现未满足的焦点、作用域对比度、目录别名归属与 fixture 清理要求，重新打开本票。新的单一修复代理在 `fix/project-management-review` 完成相关增量修复；证据见 `/tmp/rukie-shell-palette-evidence/review-fixes.md`。06 与整个 spec 仍等待最终验收。
+
+- 2026-10-14：复审修复完成并经当前 focused 验证：40 个 Project/layout 浏览器用例、14 个实际归属消费者、14 个 store 用例、10 个真实 WS/SQLite Project 用例及真实 fixture 初始化失败/清理失败路径通过适用断言；类型、scoped lint、150 文档与格式通过。旧 `project.setPrimary` 已清理；服务端统一投影真实目录身份到 nullable `projectId`，旧别名 cwd 与 Transcript 保留，异步发布按一致登记状态重新派生。C27 删除后焦点、C31 Light 对比度、徽标 4px 位移和立即/幂等 fixture 清理已修复。End 的公开测量窗口重现精确 507px 后改为读取实时内容范围；新回归与原布局终点断言通过。详细命令、真实红、无效 fixture/诊断失败和增量复用边界见 `/tmp/rukie-shell-palette-evidence/review-fixes.md`。本票恢复 resolved 表示实现及复审 scoped 要求完成；spec 和 06 尚未关闭，整包、GUI、CI 与 PR 仍由最终验收负责。

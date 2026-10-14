@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
-import { render } from "vitest-browser-react";
+import { ownProjectBrowserTest } from "../helpers/project-browser";
 import { App } from "../../src/app";
 import { modelServicesFixture } from "../helpers/model-services";
 import "../../src/theme.css";
@@ -9,10 +9,11 @@ const requests = async (port: number): Promise<Record<string, unknown>[]> =>
   (await fetch(`http://127.0.0.1:${port}/commands`)).json();
 
 test("creating a named Project preserves its folders when trust is cancelled", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
+  const connection = await owner.startWire();
   let pick = 0;
-  const screen = await render(
+  const screen = await owner.render(
     <App
       locale="en"
       host={{
@@ -84,17 +85,17 @@ test("creating a named Project preserves its folders when trust is cancelled", a
       )
       .toBeVisible();
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
 test.each([false, true])(
   "existing untrusted Project confirms before opening; trust=%s still opens history",
   async (accept) => {
+    const owner = ownProjectBrowserTest();
     await page.viewport(1280, 900);
-    const connection = await commands.startWire();
-    const screen = await render(
+    const connection = await owner.startWire();
+    const screen = await owner.render(
       <App
         locale="en"
         host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -124,6 +125,7 @@ test.each([false, true])(
               title: "Fix compiler",
               titleSource: "prompt",
               cwd: "/project",
+              projectId: "project",
               model: "test/script",
               createdAt: 1,
               updatedAt: 2,
@@ -166,16 +168,16 @@ test.each([false, true])(
           .toContainEqual(expect.objectContaining({ type: "project.trust", projectId: "project" }));
       }
     } finally {
-      await screen.unmount();
-      await commands.stopWire(connection.port);
+      await owner.close();
     }
   },
 );
 
 test("any Project directory groups and names history, and switching primary affects future chats", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{
@@ -209,6 +211,7 @@ test("any Project directory groups and names history, and switching primary affe
             title: "Existing second repo",
             titleSource: "prompt",
             cwd: "/second",
+            projectId: "project",
             model: "test/script",
             createdAt: 1,
             updatedAt: 2,
@@ -267,16 +270,16 @@ test("any Project directory groups and names history, and switching primary affe
       .poll(() => requests(connection.port))
       .toContainEqual(expect.objectContaining({ type: "session.create", project: "project" }));
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
 for (const code of ["project_conflict", "project_reserved"] as const) {
   test(`${code} returns to its named form with a localized creation error`, async () => {
+    const owner = ownProjectBrowserTest();
     await page.viewport(1280, 900);
-    const connection = await commands.startWire();
-    const screen = await render(
+    const connection = await owner.startWire();
+    const screen = await owner.render(
       <App
         locale="en"
         host={{
@@ -315,16 +318,16 @@ for (const code of ["project_conflict", "project_reserved"] as const) {
             : "Application data folders cannot be added as a Project.",
         );
     } finally {
-      await screen.unmount();
-      await commands.stopWire(connection.port);
+      await owner.close();
     }
   });
 }
 
 test("directory rows distinguish names, reserve primary controls, reveal full paths and protect the last folder", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{
@@ -381,8 +384,7 @@ test("directory rows distinguish names, reserve primary controls, reveal full pa
       .element(dialog.getByRole("button", { name: "Create project", exact: true }))
       .toBeDisabled();
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
@@ -392,17 +394,17 @@ test.each([
 ])(
   "Project dialogs preserve the shell and scroll long folder lists at $width (dark=$dark)",
   async ({ width, dark }) => {
+    const owner = ownProjectBrowserTest();
     await page.viewport(width, 700);
     await commands.reducedMotion(true);
-    const previous = document.documentElement.className;
     document.documentElement.classList.toggle("dark", dark);
     document.documentElement.classList.toggle("light", !dark);
-    const connection = await commands.startWire();
+    const connection = await owner.startWire();
     const directories = Array.from(
       { length: 24 },
       (_, i) => `/folders/long-parent-${i}/repository-${i}`,
     );
-    const screen = await render(
+    const screen = await owner.render(
       <App
         locale={dark ? "zh" : "en"}
         host={{
@@ -511,18 +513,16 @@ test.each([
           expect(Math.abs(rect[key] - baseline[index]![key])).toBeLessThanOrEqual(1);
       }
     } finally {
-      await screen.unmount();
-      await commands.stopWire(connection.port);
-      document.documentElement.className = previous;
-      await commands.reducedMotion(false);
+      await owner.close();
     }
   },
 );
 
 test("choosing an already registered primary opens its Project without creating another", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{
@@ -548,7 +548,43 @@ test("choosing an already registered primary opens its Project without creating 
       expect.objectContaining({ type: "project.create" }),
     );
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
+  }
+});
+
+test("removing a focused creation folder keeps focus and Escape inside C27", async () => {
+  const owner = ownProjectBrowserTest();
+  await page.viewport(1280, 900);
+  const connection = await owner.startWire();
+  const screen = await owner.render(
+    <App
+      locale="en"
+      host={{
+        getConnection: async () => connection,
+        modelServices: modelServicesFixture,
+        pickProjectFolder: async () => ["/first", "/second"],
+      }}
+    />,
+  );
+  try {
+    await screen.getByRole("button", { name: "Add project", exact: true }).click();
+    const dialog = screen.getByRole("dialog", { name: "Create project", exact: true });
+    await dialog
+      .getByRole("button", { name: "Add folders Rukie can read and edit", exact: true })
+      .click();
+    const remove = dialog.getByRole("button", { name: "Remove folder /first", exact: true });
+    remove.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect
+      .element(dialog.getByRole("textbox", { name: "Project name", exact: true }))
+      .toHaveFocus();
+    await expect.element(dialog.getByText("second", { exact: true })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(dialog).not.toBeInTheDocument();
+    expect(await requests(connection.port)).not.toContainEqual(
+      expect.objectContaining({ type: "project.create" }),
+    );
+  } finally {
+    await owner.close();
   }
 });

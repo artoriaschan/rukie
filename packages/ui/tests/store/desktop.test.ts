@@ -33,6 +33,7 @@ test("registry snapshots preserve pin membership and selected Session sort order
         messageCount: 1,
         model: "test/script",
         cwd: "/project",
+        projectId: "p",
         createdAt: 10,
         updatedAt: 30,
       },
@@ -43,6 +44,7 @@ test("registry snapshots preserve pin membership and selected Session sort order
         messageCount: 1,
         model: "test/script",
         cwd: "/project",
+        projectId: "p",
         createdAt: 20,
         updatedAt: 10,
       },
@@ -390,6 +392,7 @@ test("Project edit and removal snapshots preserve Session membership facts, pin 
     messageCount: 1,
     model: "test/script",
     cwd: "/first",
+    projectId: "p",
     createdAt: 1,
     updatedAt: 2,
   };
@@ -418,10 +421,14 @@ test("Project edit and removal snapshots preserve Session membership facts, pin 
   });
   store.receive({ ...message, projects: [{ ...project, name: 42 }] });
   expect(store.getState().projects).toEqual([project]);
-  store.receive({ ...message, projects: [] });
+  for (const projectId of [undefined, 42, ""]) {
+    store.receive({ ...message, sessions: [{ ...session, projectId }] });
+    expect(store.getState().sessions).toEqual([session]);
+  }
+  store.receive({ ...message, projects: [], sessions: [{ ...session, projectId: null }] });
   expect(store.getState()).toMatchObject({
     projects: [],
-    sessions: [session],
+    sessions: [{ ...session, projectId: null }],
     pinned: ["s"],
     archived: ["archived"],
   });

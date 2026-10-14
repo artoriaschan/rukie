@@ -70,7 +70,11 @@ export function ProjectCreate({
               directories={directories}
               primary={primary}
               onPrimary={onPrimary}
-              onRemove={onRemove}
+              onRemove={(directory) => {
+                onRemove(directory);
+                // The removed control loses focus before Escape can reach the dialog.
+                nameInput.current?.focus();
+              }}
               disabled={picking}
             />
             <Button

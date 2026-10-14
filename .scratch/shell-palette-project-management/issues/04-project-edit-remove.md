@@ -23,3 +23,7 @@ Blocked by: 02, 03
 - 2026-10-14：公开 App/wire 浏览器证据按差异组合覆盖 16 个新用例及 4 个既有受影响用例：编辑保存/禁用、受信任新增确认与 Cancel/Close/Esc 草稿保留、未信任新增、错误、目录接任与最后目录、编辑取消、移除保留置顶/归档、当前 Session/Transcript 保留、busy 禁用与兜底、pending 与不支持 picker、Light1280/Dark420 几何长标题。每轮 red/green、失败原因、耗时与精确命令保留在外部验证记录；不将增量通过称为最新版本整包通过。
 - 2026-10-14：适用 scoped lint、ui 类型、文档检查150文件与格式/diff 通过，集成分支仍为 `f3934f47`，合并检查 Already up to date。沿用 spec ADR Coverage 的 ADR0041/0039/0035，局部编辑呈现未增加架构取舍。全量评审、整包、手工 GUI/截图、PR/CI 由 06/主代理负责；未启动 Electron、未使用真实凭据或 Session。
 - 2026-10-14：影响发现留给新的最终评审修复代理：UI 已不使用 `project.setPrimary`，shared/server/fake helper 的旧命令需要按单一路径规则清理，独特主目录用例迁移至 `project.update`。另需检查 C27 删除聚焦目录后 Esc 的焦点交接：04 已修复 C29，03 没有覆盖该 C27 路径，尚未复现，避免将其记为已修复。
+
+- 2026-10-14：复审发现未满足的焦点、作用域对比度、目录别名归属与 fixture 清理要求，重新打开本票。新的单一修复代理在 `fix/project-management-review` 完成相关增量修复；证据见 `/tmp/rukie-shell-palette-evidence/review-fixes.md`。06 与整个 spec 仍等待最终验收。
+
+- 2026-10-14：复审修复完成并经当前 focused 验证：40 个 Project/layout 浏览器用例、14 个实际归属消费者、14 个 store 用例、10 个真实 WS/SQLite Project 用例及真实 fixture 初始化失败/清理失败路径通过适用断言；类型、scoped lint、150 文档与格式通过。旧 `project.setPrimary` 已清理；服务端统一投影真实目录身份到 nullable `projectId`，旧别名 cwd 与 Transcript 保留，异步发布按一致登记状态重新派生。C27 删除后焦点、C31 Light 对比度、徽标 4px 位移和立即/幂等 fixture 清理已修复。End 的公开测量窗口重现精确 507px 后改为读取实时内容范围；新回归与原布局终点断言通过。详细命令、真实红、无效 fixture/诊断失败和增量复用边界见 `/tmp/rukie-shell-palette-evidence/review-fixes.md`。本票恢复 resolved 表示实现及复审 scoped 要求完成；spec 和 06 尚未关闭，整包、GUI、CI 与 PR 仍由最终验收负责。

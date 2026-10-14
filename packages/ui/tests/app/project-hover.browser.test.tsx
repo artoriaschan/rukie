@@ -1,16 +1,17 @@
 import { expect, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
-import { render } from "vitest-browser-react";
+import { ownProjectBrowserTest } from "../helpers/project-browser";
 import { App } from "../../src/app";
 import { act } from "react";
 import { modelServicesFixture } from "../helpers/model-services";
 import "../../src/theme.css";
 
 test("Project keyboard detail preserves disclosure and opens the shared editor", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
   await commands.reducedMotion(true);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -52,10 +53,7 @@ test("Project keyboard detail preserves disclosure and opens the shared editor",
       .element(screen.getByRole("dialog", { name: "Edit project", exact: true }))
       .toBeVisible();
   } finally {
-    vi.useRealTimers();
-    await screen.unmount();
-    await commands.stopWire(connection.port);
-    await commands.reducedMotion(false);
+    await owner.close();
   }
 });
 
@@ -63,12 +61,12 @@ test.each([
   { width: 1280, dark: false },
   { width: 420, dark: true },
 ])("Project detail count, paths, selected row and geometry at $width", async ({ width, dark }) => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(width, 700);
   await commands.reducedMotion(true);
-  const previous = document.documentElement.className;
   document.documentElement.classList.toggle("dark", dark);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale={dark ? "zh" : "en"}
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -89,6 +87,7 @@ test.each([
       title: "In project",
       titleSource: "prompt",
       cwd: "/custom/home/repo",
+      projectId: "project",
       model: "test/script",
       createdAt: 1,
       updatedAt: 2,
@@ -184,18 +183,16 @@ test.each([
     const selected = disclosure.element().parentElement!;
     expect(getComputedStyle(selected).backgroundColor).not.toBe(color);
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
-    document.documentElement.className = previous;
-    await commands.reducedMotion(false);
+    await owner.close();
   }
 });
 
 test("fixed Project detail survives another Project intent and App transitions suspend the portal", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
   await commands.reducedMotion(true);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -299,18 +296,16 @@ test("fixed Project detail survives another Project intent and App transitions s
     await userEvent.keyboard("{Enter}");
     await expect.element(card).not.toBeInTheDocument();
   } finally {
-    vi.useRealTimers();
-    await screen.unmount();
-    await commands.stopWire(connection.port);
-    await commands.reducedMotion(false);
+    await owner.close();
   }
 });
 
 test("long Project paths wrap, remain selectable and scroll within the viewport", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(600, 420);
   await commands.reducedMotion(true);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -359,17 +354,16 @@ test("long Project paths wrap, remain selectable and scroll within the viewport"
       .element(card.getByRole("button", { name: "Edit project", exact: true }))
       .toBeVisible();
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
-    await commands.reducedMotion(false);
+    await owner.close();
   }
 });
 
 test("Project hover uses exact intent deadlines and retains the measured pointer corridor", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
   await commands.reducedMotion(true);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -444,9 +438,6 @@ test("Project hover uses exact intent deadlines and retains the measured pointer
     expect(visible()).toBe(false);
     await expect.element(disclosure).toHaveFocus();
   } finally {
-    vi.useRealTimers();
-    await screen.unmount();
-    await commands.stopWire(connection.port);
-    await commands.reducedMotion(false);
+    await owner.close();
   }
 });

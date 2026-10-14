@@ -63,7 +63,7 @@ const ROLL_EXIT_TRANSITION = { duration: 0.14, ease: EASE_OUT } as const;
 const ROLL_BLUR = "blur(0px)";
 
 const ICON_ROLL_VARIANTS: Variants = {
-  initial: { opacity: 0, y: 12, filter: ROLL_BLUR },
+  initial: { opacity: 0, y: 4, filter: ROLL_BLUR },
   animate: {
     opacity: 1,
     y: 0,
@@ -72,23 +72,23 @@ const ICON_ROLL_VARIANTS: Variants = {
   },
   exit: {
     opacity: 0,
-    y: -12,
+    y: -4,
     filter: ROLL_BLUR,
     transition: ROLL_EXIT_TRANSITION,
   },
 };
 
 const TEXT_ROLL_VARIANTS: Variants = {
-  initial: { opacity: 0, y: "90%", filter: ROLL_BLUR },
+  initial: { opacity: 0, y: 4, filter: ROLL_BLUR },
   animate: {
     opacity: 1,
-    y: "0%",
+    y: 0,
     filter: "blur(0px)",
     transition: { duration: 0.12, ease: EASE_OUT },
   },
   exit: {
     opacity: 0,
-    y: "-90%",
+    y: -4,
     filter: ROLL_BLUR,
     transition: ROLL_EXIT_TRANSITION,
   },

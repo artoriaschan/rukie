@@ -300,6 +300,8 @@ function validEnvelope(input: unknown): boolean {
         (item) =>
           record(item) &&
           [item.id, item.title, item.model, item.cwd].every((value) => typeof value === "string") &&
+          (item.projectId === null ||
+            (typeof item.projectId === "string" && Boolean(item.projectId))) &&
           ["prompt", "model", "user"].includes(String(item.titleSource)) &&
           finite(item.createdAt) &&
           finite(item.updatedAt) &&

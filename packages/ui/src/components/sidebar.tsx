@@ -315,14 +315,13 @@ export function Sidebar(props: SidebarProps) {
                         count={
                           props.recent.filter(
                             (session) =>
-                              project.directories.includes(session.cwd) &&
+                              project.id === session.projectId &&
                               !props.archived.includes(session.id),
                           ).length
                         }
                         selected={props.recent.some(
                           (session) =>
-                            session.id === props.selected &&
-                            project.directories.includes(session.cwd),
+                            session.id === props.selected && project.id === session.projectId,
                         )}
                         expanded={!projectGroups.includes(project.id)}
                         open={props.detailProject?.id === project.id}

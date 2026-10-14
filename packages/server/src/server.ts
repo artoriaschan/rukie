@@ -125,9 +125,11 @@ export async function startServer(options: ServerOptions) {
     // An unavailable registered directory still owns its stored path until it becomes resolvable.
     const presentationHomeDir = await realpath(options.homeDir).catch(() => options.homeDir);
     const directoryIdentity = (path: string) => realpath(path).catch(() => path);
-    const projectIdentities = () =>
+    const projectSnapshot = () =>
+      registry.projects.map((project) => ({ ...project, directories: [...project.directories] }));
+    const projectIdentities = (projects = projectSnapshot()) =>
       Promise.all(
-        registry.projects.map(async (project) => ({
+        projects.map(async (project) => ({
           project,
           primary: await directoryIdentity(project.primary),
           directories: await Promise.all(project.directories.map(directoryIdentity)),
@@ -543,20 +545,27 @@ export async function startServer(options: ServerOptions) {
         Layer.effect(Runs, FiberMap.make<string>()),
       ),
     );
-    const summaries = async (): Promise<WireSessionSummary[]> => {
-      const committed = (
-        await discoverSqliteSessions({
-          dataRoot: options.dataRoot,
-          homeDir: options.homeDir,
-          onWarning: warning,
-        })
-      ).map((summary) => ({
-        ...summary,
-        running: sessions.get(summary.id)?.running ?? false,
-        waitingPermission: [...pending.values()].some((item) => item.sessionId === summary.id),
-      }));
-      await localDatabase.reconcileSessions(committed);
-      return committed;
+    const summaries = async (projects = projectSnapshot()): Promise<WireSessionSummary[]> => {
+      const committed = await discoverSqliteSessions({
+        dataRoot: options.dataRoot,
+        homeDir: options.homeDir,
+        onWarning: warning,
+      });
+      const identities = await projectIdentities(projects);
+      const projected = await Promise.all(
+        committed.map(async (summary) => {
+          const identity = await directoryIdentity(summary.cwd);
+          return {
+            ...summary,
+            projectId:
+              identities.find((item) => item.directories.includes(identity))?.project.id ?? null,
+            running: sessions.get(summary.id)?.running ?? false,
+            waitingPermission: [...pending.values()].some((item) => item.sessionId === summary.id),
+          };
+        }),
+      );
+      await localDatabase.reconcileSessions(projected);
+      return projected;
     };
     const find = async (id: string, selection?: SessionOptions["resumeModelSelection"]) => {
       const current = sessions.get(id);
@@ -594,14 +603,21 @@ export async function startServer(options: ServerOptions) {
       if (shuttingDown) return Promise.resolve();
       const work = (async () => {
         if (sharedConfiguration) registry.preferences = await database.preferences();
-        const committed = await summaries();
+        let projects = projectSnapshot();
+        let committed = await summaries(projects);
+        // Filesystem identity resolution is asynchronous. Refresh when a Project mutation
+        // changed the registry meanwhile, so the event pairs ownership with the same state.
+        while (JSON.stringify(projects) !== JSON.stringify(registry.projects)) {
+          projects = projectSnapshot();
+          committed = await summaries(projects);
+        }
         if (active && !shuttingDown)
           send(active, {
             type: "sessions_changed",
             homeDir: presentationHomeDir,
             ...(closedSessionId ? { closedSessionId } : {}),
             sessions: committed,
-            projects: registry.projects,
+            projects,
             pinned: registry.pinned,
             archived: registry.archived,
             preferences: registry.preferences,
@@ -863,17 +879,11 @@ export async function startServer(options: ServerOptions) {
             return {};
           });
         }
-        case "project.trust":
-        case "project.setPrimary": {
+        case "project.trust": {
           return mutateProjects(async () => {
             const project = registry.projects.find((p) => p.id === command.projectId);
             if (!project) throw new CommandError("project_not_found");
-            if (command.type === "project.trust") project.trusted = true;
-            else {
-              if (!project.directories.includes(command.directory))
-                throw new CommandError("invalid_command");
-              project.primary = command.directory;
-            }
+            project.trusted = true;
             await save();
             await changed();
             return project;

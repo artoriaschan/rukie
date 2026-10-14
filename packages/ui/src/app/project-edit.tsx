@@ -8,7 +8,7 @@ import { ScrollArea } from "../components/ui/scroll-area";
 import { useAppText } from "../lib/i18n";
 import { useErrorText } from "./error";
 import { ProjectDialog } from "./project-dialog";
-import { ProjectDirectories } from "./project-directories";
+import { ProjectDirectories, removeProjectDirectory } from "./project-directories";
 import { ProjectTrust } from "./project-trust";
 
 /** A mounted editor owns its draft; confirmation cancellation keeps it, closing discards it. */
@@ -193,10 +193,9 @@ export function ProjectEdit({
             disabled={picking || pending}
             onPrimary={setPrimary}
             onRemove={(directory) => {
-              if (directories.length <= 1) return;
-              const remaining = directories.filter((path) => path !== directory);
-              setDirectories(remaining);
-              if (primary === directory) setPrimary(remaining[0]!);
+              const next = removeProjectDirectory(directories, primary, directory);
+              setDirectories(next.directories);
+              setPrimary(next.primary);
               // The clicked folder control disappears; keep keyboard cancellation inside the modal.
               nameInput.current?.focus();
             }}

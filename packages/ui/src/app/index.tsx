@@ -45,7 +45,7 @@ import type { PermissionDecision } from "../lib/transcript";
 import { ModelServices } from "./model-services";
 import { AppConversation } from "./conversation";
 import { ProjectCreate } from "./project-create";
-import { directoryName } from "./project-directories";
+import { directoryName, removeProjectDirectory } from "./project-directories";
 import { ProjectEdit } from "./project-edit";
 import { ProjectTrust } from "./project-trust";
 import { DeleteSession } from "./delete-session";
@@ -253,9 +253,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   );
   const view = state.selected ? (state.views[state.selected] ?? emptyView) : emptyView;
   const targetProject = state.projects.find((project) => project.id === state.target);
-  const currentProject = state.projects.find((project) =>
-    project.directories.includes(current?.cwd ?? ""),
-  );
+  const currentProject = state.projects.find((project) => project.id === current?.projectId);
   const connected = state.connection === "connected";
   const safe = (action: () => Promise<unknown>) => {
     void action().catch((reason) => setError(t("app.error", { message: errorText(reason) })));
@@ -264,10 +262,10 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     await ensureTrust(
       store
         .getState()
-        .projects.find((project) =>
-          project.directories.includes(
-            store.getState().sessions.find((session) => session.id === sessionId)?.cwd ?? "",
-          ),
+        .projects.find(
+          (project) =>
+            project.id ===
+            store.getState().sessions.find((session) => session.id === sessionId)?.projectId,
         ),
       reuseDecline,
     );
@@ -595,10 +593,9 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     setProjectError("");
   };
   const removeDirectory = (directory: string) => {
-    if (directories.length <= 1) return;
-    const remaining = directories.filter((path) => path !== directory);
-    setDirectories(remaining);
-    if (primary === directory) setPrimary(remaining[0] ?? "");
+    const next = removeProjectDirectory(directories, primary, directory);
+    setDirectories(next.directories);
+    setPrimary(next.primary);
   };
   const confirmProject = () => {
     if (!projectName.trim() || !directories.length || !primary || pickingFolder || !connected)
@@ -1108,8 +1105,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             label: session.title,
             group: t("app.chats"),
             keywords: [
-              state.projects.find((project) => project.directories.includes(session.cwd))?.name ??
-                "",
+              state.projects.find((project) => project.id === session.projectId)?.name ?? "",
             ],
             status: session.running ? (
               <LoaderCircle
@@ -1117,8 +1113,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 className="size-3 animate-spin motion-reduce:animate-none"
               />
             ) : undefined,
-            badge: state.projects.find((project) => project.directories.includes(session.cwd))
-              ?.name,
+            badge: state.projects.find((project) => project.id === session.projectId)?.name,
             onSelect: () => safe(() => select(session.id)),
           })),
           {
@@ -1173,7 +1168,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           }
           busy={state.sessions.some(
             (session) =>
-              editingProject.directories.includes(session.cwd) &&
+              editingProject.id === session.projectId &&
               (session.running ||
                 session.waitingPermission ||
                 state.views[session.id]?.running ||

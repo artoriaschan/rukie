@@ -90,3 +90,10 @@ export function ProjectDirectories({
     </ul>
   );
 }
+
+/** Keep a nonempty ordered draft and promote the next directory when its primary is removed. */
+export function removeProjectDirectory(directories: string[], primary: string, directory: string) {
+  if (directories.length <= 1) return { directories, primary };
+  const remaining = directories.filter((path) => path !== directory);
+  return { directories: remaining, primary: primary === directory ? remaining[0]! : primary };
+}

@@ -18,7 +18,7 @@ Project 在应用 SQLite registry 中保存名称、有序且非空的真实目�
 
 `project.update` 提交名称、完整目录列表和主目录，校验时排除自身。已信任 Project 新增目录必须再次显式确认并携带 `trusted: true`，否则返回 `project_trust_required`；未信任 Project 编辑后保持未信任。只改名、移除目录或切换主目录无需重新确认。`project.remove` 只删除应用登记，保留目录文件、Session、Transcript、置顶与归档；任一目录下有执行中、等待 Interaction 或其他进程占用的 Session 时返回 `session_busy`。Project 变更按同一队列完成校验、持久化和变更事件发布。
 
-编辑或移除不改变旧 Session cwd；cwd 不再等于任何已登记目录时回到“对话”，不再获得该 Project 的信任或附加目录。切换主目录不改变 Project 名称与旧 Session cwd，只影响新 Session。旧 Session 按原 cwd 打开，所属 Project 的其余目录按 [ADR-0039](0039-session-additional-directories.md) 提供附加指令；hooks、MCP 和 settings 仍只从 cwd 加载。
+server 以同一目录身份规则将展示归属派生为 wire Session 摘要的 `projectId: string | null`；Frontend 的分组、标题、搜索、计数、选中、信任提示与移动目标共享这个事实，不重复比较 cwd 字符串。目录别名在编辑时转为 canonical 登记后，原 cwd 的 Session 仍归属于该 Project。编辑或移除不改变旧 Session cwd；cwd 的真实身份不再等于任何已登记目录时回到“对话”，不再获得该 Project 的信任或附加目录。切换主目录不改变 Project 名称与旧 Session cwd，只影响新 Session。旧 Session 按原 cwd 打开，所属 Project 的其余目录按 [ADR-0039](0039-session-additional-directories.md) 提供附加指令；hooks、MCP 和 settings 仍只从 cwd 加载。
 
 ## 备选方案
 

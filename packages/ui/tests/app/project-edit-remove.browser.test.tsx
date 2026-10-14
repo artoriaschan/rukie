@@ -1,18 +1,54 @@
 import { expect, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
-import { render } from "vitest-browser-react";
+import type { render } from "vitest-browser-react";
+import { ownProjectBrowserTest } from "../helpers/project-browser";
 import { App } from "../../src/app";
 import type { WireProject, WireSessionSummary } from "@rukie/shared";
 import { modelServicesFixture } from "../helpers/model-services";
 import "../../src/theme.css";
 
+function buttonContrast(element: Element) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const paint = canvas.getContext("2d");
+  if (!paint) throw new Error("Canvas color conversion unavailable");
+  const channels = (color: string) => {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    const [red, green, blue, alpha] = paint.getImageData(0, 0, 1, 1).data;
+    return [red!, green!, blue!, alpha! / 255];
+  };
+  let background = [255, 255, 255];
+  const ancestors: Element[] = [];
+  for (let parent: Element | null = element; parent; parent = parent.parentElement)
+    ancestors.unshift(parent);
+  for (const parent of ancestors) {
+    const color = channels(getComputedStyle(parent).backgroundColor);
+    const alpha = color[3] ?? 1;
+    background = background.map((value, index) => color[index]! * alpha + value * (1 - alpha));
+  }
+  const luminance = (color: number[]) =>
+    color
+      .slice(0, 3)
+      .map((value) => {
+        const channel = value / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+      })
+      .reduce((total, value, index) => total + value * [0.2126, 0.7152, 0.0722][index]!, 0);
+  const text = luminance(channels(getComputedStyle(element).color));
+  const surface = luminance(background);
+  return (Math.max(text, surface) + 0.05) / (Math.min(text, surface) + 0.05);
+}
+
 const requests = async (port: number): Promise<Record<string, unknown>[]> =>
   (await fetch(`http://127.0.0.1:${port}/commands`)).json();
 
 test("pending Project save blocks duplicate submission and closing until the response", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -34,15 +70,15 @@ test("pending Project save blocks duplicate submission and closing until the res
     await fetch(`http://127.0.0.1:${connection.port}/flush`, { method: "POST" });
     await expect.element(dialog).not.toBeInTheDocument();
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
 test("unsupported edit folder picking shows a retryable alert and preserves the Project draft", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -63,8 +99,7 @@ test("unsupported edit folder picking shows a retryable alert and preserves the 
       .element(dialog.getByRole("textbox", { name: "Folder path", exact: true }))
       .not.toBeInTheDocument();
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
@@ -80,6 +115,7 @@ const session: WireSessionSummary = {
   title: "Existing history",
   titleSource: "prompt",
   cwd: "/project",
+  projectId: "project",
   model: "test/script",
   createdAt: 1,
   updatedAt: 2,
@@ -123,9 +159,10 @@ async function openEditor(
 }
 
 test("editing a Project submits one complete draft and leaves unchanged or nameless drafts disabled", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -170,15 +207,15 @@ test("editing a Project submits one complete draft and leaves unchanged or namel
       )
       .toBeVisible();
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
 test("trusted Project additions confirm all folders, mark new folders and retain the draft on cancellation", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{
@@ -250,15 +287,15 @@ test("trusted Project additions confirm all folders, mark new folders and retain
       )
       .toBeVisible();
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
 test("untrusted Project additions save directly without granting trust", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{
@@ -295,15 +332,15 @@ test("untrusted Project additions save directly without granting trust", async (
       expect.objectContaining({ type: "project.trust" }),
     );
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
 test("cancel, close and Escape discard the entire Project edit draft", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -342,16 +379,16 @@ test("cancel, close and Escape discard the entire Project edit draft", async () 
       expect.objectContaining({ type: "project.update" }),
     );
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
 for (const code of ["project_conflict", "project_reserved", "project_trust_required"] as const) {
   test(`${code} leaves the Project edit draft with a localized alert`, async () => {
+    const owner = ownProjectBrowserTest();
     await page.viewport(1280, 900);
-    const connection = await commands.startWire();
-    const screen = await render(
+    const connection = await owner.startWire();
+    const screen = await owner.render(
       <App
         locale="en"
         host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -375,16 +412,16 @@ for (const code of ["project_conflict", "project_reserved", "project_trust_requi
       await expect.element(dialog.getByRole("textbox")).toHaveValue("My renamed project");
       await expect.element(dialog.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
     } finally {
-      await screen.unmount();
-      await commands.stopWire(connection.port);
+      await owner.close();
     }
   });
 }
 
 test("removal confirmation cancels back to its draft and preserves chats, pins and archived history", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -465,17 +502,17 @@ test("removal confirmation cancels back to its draft and preserves chats, pins a
       expect.objectContaining({ type: "session.delete" }),
     );
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
 test.each(["running", "waitingPermission"] as const)(
   "a Project with a %s Session cannot be removed",
   async (busy) => {
+    const owner = ownProjectBrowserTest();
     await page.viewport(1280, 900);
-    const connection = await commands.startWire();
-    const screen = await render(
+    const connection = await owner.startWire();
+    const screen = await owner.render(
       <App
         locale="en"
         host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -501,16 +538,16 @@ test.each(["running", "waitingPermission"] as const)(
         expect.objectContaining({ type: "project.remove" }),
       );
     } finally {
-      await screen.unmount();
-      await commands.stopWire(connection.port);
+      await owner.close();
     }
   },
 );
 
 test("a server busy removal keeps its confirmation open with a localized alert", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -533,15 +570,15 @@ test("a server busy removal keeps its confirmation open with a localized alert",
     await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect.element(dialog.getByRole("textbox")).toHaveValue("Project");
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
 test("a removed Project leaves its currently opened Session and Transcript open in Conversations", async () => {
+  const owner = ownProjectBrowserTest();
   await page.viewport(1280, 900);
-  const connection = await commands.startWire();
-  const screen = await render(
+  const connection = await owner.startWire();
+  const screen = await owner.render(
     <App
       locale="en"
       host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -583,8 +620,7 @@ test("a removed Project leaves its currently opened Session and Transcript open 
       (await requests(connection.port)).filter((request) => request.type === "session.unsubscribe"),
     ).toEqual(before.filter((request) => request.type === "session.unsubscribe"));
   } finally {
-    await screen.unmount();
-    await commands.stopWire(connection.port);
+    await owner.close();
   }
 });
 
@@ -594,18 +630,18 @@ test.each([
 ])(
   "Project editing and removal retain shell geometry and long names at $width (dark=$dark)",
   async ({ width, dark }) => {
+    const owner = ownProjectBrowserTest();
     await page.viewport(width, 700);
     await commands.reducedMotion(true);
-    const previous = document.documentElement.className;
     document.documentElement.classList.toggle("dark", dark);
     document.documentElement.classList.toggle("light", !dark);
-    const connection = await commands.startWire();
+    const connection = await owner.startWire();
     const name = "repository-with-a-very-long-name-".repeat(4);
     const directories = Array.from(
       { length: 24 },
       (_, i) => `/long/path/${"parent/".repeat(12)}repository-${i}`,
     );
-    const screen = await render(
+    const screen = await owner.render(
       <App
         locale={dark ? "zh" : "en"}
         host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
@@ -664,12 +700,32 @@ test.each([
       expect(getComputedStyle(confirm.element()).backgroundColor).toBe(
         dark ? "rgba(255, 92, 92, 0.15)" : "rgb(253, 232, 232)",
       );
+      expect(buttonContrast(confirm.element())).toBeGreaterThanOrEqual(4.5);
       expect(getComputedStyle(confirm.element()).color).toBe(
-        dark ? "rgb(255, 122, 122)" : "rgb(224, 49, 49)",
+        dark ? "rgb(255, 122, 122)" : "rgb(207, 34, 46)",
       );
+      expect(getComputedStyle(confirm.element()).cursor).toBe("pointer");
+      await confirm.hover();
+      await expect.poll(() => buttonContrast(confirm.element())).toBeGreaterThanOrEqual(4.5);
+      await userEvent.keyboard("{Tab}");
+      await expect.element(confirm).toHaveFocus();
+      await expect
+        .poll(() => {
+          const style = getComputedStyle(confirm.element());
+          return (
+            style.boxShadow !== "none" ||
+            (style.outlineStyle !== "none" && Number.parseFloat(style.outlineWidth) > 0)
+          );
+        })
+        .toBe(true);
       await fetch(`http://127.0.0.1:${connection.port}/hold`, { method: "POST" });
       await confirm.click();
       await expect.element(confirm).toBeDisabled();
+      expect(getComputedStyle(confirm.element()).cursor).toBe("not-allowed");
+      await userEvent.keyboard("{Enter}");
+      expect(
+        (await requests(connection.port)).filter((request) => request.type === "project.remove"),
+      ).toHaveLength(1);
       await expect.element(close).toBeDisabled();
       await expect
         .element(dialog.getByRole("button", { name: dark ? "取消" : "Cancel", exact: true }))
@@ -684,10 +740,60 @@ test.each([
             Math.abs(element.getBoundingClientRect()[key] - baseline[i]![key]),
           ).toBeLessThanOrEqual(1);
     } finally {
-      await screen.unmount();
-      await commands.stopWire(connection.port);
-      document.documentElement.className = previous;
-      await commands.reducedMotion(false);
+      await owner.close();
     }
   },
 );
+
+test("canonical Project edits retain alias Session membership, title, count and selection", async () => {
+  const owner = ownProjectBrowserTest();
+  await page.viewport(1280, 900);
+  const connection = await owner.startWire();
+  const screen = await owner.render(
+    <App
+      locale="en"
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+    />,
+  );
+  try {
+    const aliasSession = { ...session, cwd: "/alias", projectId: "project" };
+    await changeProjects(
+      connection.port,
+      [{ ...project, directories: ["/canonical"], primary: "/canonical", name: "Renamed" }],
+      [aliasSession],
+    );
+    const group = screen.getByRole("group", { name: "Renamed", exact: true });
+    await expect
+      .element(group.getByRole("button", { name: "Existing history", exact: true }))
+      .toBeVisible();
+    const disclosure = group.getByRole("button", { name: "Renamed", exact: true });
+    const unselectedBackground = getComputedStyle(
+      disclosure.element().parentElement!,
+    ).backgroundColor;
+    await group.getByRole("button", { name: "Existing history", exact: true }).click();
+    const header = screen.getByRole("banner");
+    await expect.element(header.getByRole("img", { name: "Renamed", exact: true })).toBeVisible();
+    await screen.getByRole("textbox", { name: "Prompt", exact: true }).hover();
+    expect(getComputedStyle(disclosure.element().parentElement!).backgroundColor).not.toBe(
+      unselectedBackground,
+    );
+    disclosure.element().focus();
+    const card = screen.getByRole("dialog", { name: "Project details", exact: true });
+    await expect.element(card.getByText("1 sessions", { exact: true })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await screen.getByRole("button", { name: "Search chats", exact: true }).click();
+    await expect
+      .element(screen.getByRole("option", { name: /Existing history/ }))
+      .toHaveTextContent("Existing historyRenamed");
+    await userEvent.keyboard("{Escape}");
+    await changeProjects(connection.port, [], [{ ...aliasSession, projectId: null }]);
+    await expect
+      .element(header.getByRole("img", { name: "Renamed", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: "Existing history", exact: true }))
+      .toHaveAttribute("aria-current", "page");
+  } finally {
+    await owner.close();
+  }
+});

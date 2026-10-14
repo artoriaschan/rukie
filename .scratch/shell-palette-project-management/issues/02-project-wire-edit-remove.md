@@ -21,3 +21,7 @@ Status: resolved
 验证：Project 相关 server wire 范围第一次为 12 pass / 1 fail（2.69s），唯一失败是旧冲突 fixture 的 basename 名称预期；保留预期并提供明确 first/second 请求名称后，最小复验 1 pass（712ms）。后续打开配置快照修正只重验信任与重开两个用例，2 pass（1473ms）；UI Node client/store 两文件 19 pass（544ms）。每个新增行为都有先失败后通过证据；新集成用例使用真实 WS、SQLite、Hook 与受控模型 barrier，单例耗时均低于 1s。scoped oxlint、server/UI tsc 引用构建、docs:update、check:docs（150 Markdown）及 diff 检查通过。命令、环境修正、保留失败与证据复用范围记录于 `/tmp/rukie-shell-palette-evidence/ticket02.md`。ADR-0041、Project 词条与 server/UI README 已同步；本票沿用并扩展 spec ADR Coverage 中的精确信任与 Session 恢复边界。
 
 本票仅关闭 wire 与 Node 解析要求；整个 spec 的集成评审、check:dev、桌面包与 Light/Dark/窄宽浏览器验收由 06 和主流程完成，CI 尚未执行，不代表整个 spec 已验收或合并。
+
+- 2026-10-14：复审发现未满足的焦点、作用域对比度、目录别名归属与 fixture 清理要求，重新打开本票。新的单一修复代理在 `fix/project-management-review` 完成相关增量修复；证据见 `/tmp/rukie-shell-palette-evidence/review-fixes.md`。06 与整个 spec 仍等待最终验收。
+
+- 2026-10-14：复审修复完成并经当前 focused 验证：40 个 Project/layout 浏览器用例、14 个实际归属消费者、14 个 store 用例、10 个真实 WS/SQLite Project 用例及真实 fixture 初始化失败/清理失败路径通过适用断言；类型、scoped lint、150 文档与格式通过。旧 `project.setPrimary` 已清理；服务端统一投影真实目录身份到 nullable `projectId`，旧别名 cwd 与 Transcript 保留，异步发布按一致登记状态重新派生。C27 删除后焦点、C31 Light 对比度、徽标 4px 位移和立即/幂等 fixture 清理已修复。End 的公开测量窗口重现精确 507px 后改为读取实时内容范围；新回归与原布局终点断言通过。详细命令、真实红、无效 fixture/诊断失败和增量复用边界见 `/tmp/rukie-shell-palette-evidence/review-fixes.md`。本票恢复 resolved 表示实现及复审 scoped 要求完成；spec 和 06 尚未关闭，整包、GUI、CI 与 PR 仍由最终验收负责。

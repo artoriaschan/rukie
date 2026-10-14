@@ -88,7 +88,7 @@
   --path-tooltip: #161616;
   --path-tooltip-foreground: #ffffff;
   --destructive-soft: #fde8e8;
-  --destructive-soft-foreground: #e03131;
+  --destructive-soft-foreground: #cf222e;
   --tooltip: var(--popover);
   --tooltip-foreground: var(--foreground);
   --tooltip-tag: var(--muted);

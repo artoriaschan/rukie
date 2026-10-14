@@ -938,10 +938,24 @@ test("multi-directory Projects canonicalize, require trust and keep exact owners
       ).error,
     ).toEqual({ code: "project_not_found" });
     expect(
-      (await client.command("project.setPrimary", { projectId: id, directory: second })).result,
+      (
+        await client.command("project.update", {
+          projectId: id,
+          name: projectResult.name,
+          directories: [first, second],
+          primary: second,
+        })
+      ).result,
     ).toMatchObject({ primary: second, name: projectResult.name });
     expect(
-      (await client.command("project.setPrimary", { projectId: id, directory: nested })).error,
+      (
+        await client.command("project.update", {
+          projectId: id,
+          name: projectResult.name,
+          directories: [first, second],
+          primary: nested,
+        })
+      ).error,
     ).toEqual({ code: "invalid_command" });
     expect((await client.command("project.trust", { projectId: id })).result).toMatchObject({
       trusted: true,
@@ -1092,7 +1106,12 @@ test("concurrent project.create reports the owner of a shared canonical secondar
         trusted: true,
       }),
       client.command("project.trust", { projectId: "seed" }),
-      client.command("project.setPrimary", { projectId: "seed", directory: homeDir }),
+      client.command("project.update", {
+        projectId: "seed",
+        name: seedProject.name,
+        directories: seedProject.directories,
+        primary: homeDir,
+      }),
     ]);
     lookup.mockRestore();
     const firstWon = replies[0]!.error === undefined;
@@ -1110,7 +1129,14 @@ test("concurrent project.create reports the owner of a shared canonical secondar
     expect(replies[3]!.error).toBeUndefined();
     // A rejected overlap must release the queue for later Project writes.
     expect(
-      (await client.command("project.setPrimary", { projectId: "seed", directory: homeDir })).error,
+      (
+        await client.command("project.update", {
+          projectId: "seed",
+          name: seedProject.name,
+          directories: seedProject.directories,
+          primary: homeDir,
+        })
+      ).error,
     ).toBeUndefined();
     await server.close();
     const reopened = await owner.acquire(
@@ -1119,7 +1145,12 @@ test("concurrent project.create reports the owner of a shared canonical secondar
     );
     const restartedClient = await connect(reopened, "app://rukie", owner);
     expect((await restartedClient.command("projects.list")).result).toEqual([
-      { ...seedProject, trusted: true, primary: homeDir },
+      {
+        ...seedProject,
+        directories: [seed, await realpath(homeDir)],
+        trusted: true,
+        primary: await realpath(homeDir),
+      },
       winner.result,
     ]);
   } finally {
@@ -1208,8 +1239,111 @@ test("legacy alias Projects retain Session membership and canonical directory ow
       (await client.command("session.move", { sessionId: history.id, projectId: "legacy" })).error,
     ).toEqual({ code: "invalid_command" });
     expect((await client.command("sessions.list")).result).toEqual([
-      expect.objectContaining({ id: history.id, cwd: alias }),
+      expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" }),
     ]);
+    expect(await client.next((message) => message.type === "sessions_changed")).toMatchObject({
+      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" })],
+    });
+    const before = await readSessionSnapshot({ homeDir, dataRoot, cwd: alias, id: history.id });
+    expect(
+      (
+        await client.command("project.update", {
+          projectId: "legacy",
+          name: "Renamed",
+          directories: [alias],
+          primary: alias,
+        })
+      ).result,
+    ).toEqual({ ...legacy, name: "Renamed", directories: [canonical], primary: canonical });
+    expect(
+      await client.next(
+        (message) =>
+          message.type === "sessions_changed" &&
+          Array.isArray(message.projects) &&
+          message.projects[0]?.name === "Renamed",
+      ),
+    ).toMatchObject({
+      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" })],
+    });
+    const reconnected = await connect(server, "app://rukie", owner);
+    expect(await reconnected.next((message) => message.type === "sessions_changed")).toMatchObject({
+      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: "legacy" })],
+    });
+    const originalRealpath = filesystem.realpath;
+    let releaseIdentity = () => {};
+    let reachedIdentity = () => {};
+    const reached = new Promise<void>((resolve) => {
+      reachedIdentity = resolve;
+    });
+    const identityBarrier = new Promise<void>((resolve) => {
+      releaseIdentity = resolve;
+    });
+    let identityLookups = 0;
+    // Hold only the old publication at the filesystem boundary; the competing Project write stays real.
+    const lookup = spyOn(filesystem, "realpath").mockImplementation((async (
+      path: Parameters<typeof filesystem.realpath>[0],
+    ) => {
+      const result = await originalRealpath(path);
+      if (path === alias && ++identityLookups === 2) {
+        reachedIdentity();
+        await identityBarrier;
+      }
+      return result;
+    }) as typeof filesystem.realpath);
+    owner.add(() => {
+      releaseIdentity();
+      lookup.mockRestore();
+    });
+    const pin = reconnected.command("session.pin", { sessionId: history.id });
+    await reached;
+    expect(
+      (
+        await reconnected.command("project.update", {
+          projectId: "legacy",
+          name: "Renamed",
+          directories: [other],
+          primary: other,
+        })
+      ).error,
+    ).toBeUndefined();
+    expect(
+      await reconnected.next(
+        (message) =>
+          message.type === "sessions_changed" &&
+          Array.isArray(message.projects) &&
+          message.projects[0]?.primary === other,
+      ),
+    ).toMatchObject({
+      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: null })],
+      pinned: [history.id],
+    });
+    const publicationCursor = reconnected.messages.length;
+    releaseIdentity();
+    expect((await pin).error).toBeUndefined();
+    const published = await reconnected.next(
+      (message) =>
+        reconnected.messages.indexOf(message) >= publicationCursor &&
+        message.type === "sessions_changed",
+    );
+    expect(published.projects).toEqual([expect.objectContaining({ primary: other })]);
+    expect(published.sessions).toEqual([
+      expect.objectContaining({ id: history.id, cwd: alias, projectId: null }),
+    ]);
+    lookup.mockRestore();
+    await reconnected.command("project.remove", { projectId: "legacy" });
+    expect(
+      await reconnected.next(
+        (message) =>
+          message.type === "sessions_changed" &&
+          Array.isArray(message.projects) &&
+          message.projects.length === 0,
+      ),
+    ).toMatchObject({
+      sessions: [expect.objectContaining({ id: history.id, cwd: alias, projectId: null })],
+    });
+    expect(await readSessionSnapshot({ homeDir, dataRoot, cwd: alias, id: history.id })).toEqual(
+      before,
+    );
   } finally {
     await owner.close();
   }
@@ -1256,7 +1390,14 @@ test("session.move rejects its owning Project after a primary switch without cha
     );
     const client = await connect(server, "app://rukie", owner);
     expect(
-      (await client.command("project.setPrimary", { projectId: "p", directory: second })).error,
+      (
+        await client.command("project.update", {
+          projectId: "p",
+          name: "Project",
+          directories: [first, second],
+          primary: second,
+        })
+      ).error,
     ).toBeUndefined();
     expect(
       (await client.command("session.move", { sessionId: history.id, projectId: "p" })).error,
@@ -1351,7 +1492,12 @@ test("Project trust enables only registered cwd hooks and primary changes preser
     await create("p", 1);
     expect(JSON.stringify(fake.contexts[1])).toContain("FIRST_PROJECT_HOOK");
     expect(JSON.stringify(fake.contexts[2])).not.toContain("SECOND_PROJECT_HOOK");
-    await client.command("project.setPrimary", { projectId: "p", directory: second });
+    await client.command("project.update", {
+      projectId: "p",
+      name: "Project",
+      directories: [first, second],
+      primary: second,
+    });
     const changed = await create("p", 2);
     expect(JSON.stringify(fake.contexts[3])).toContain("SECOND_PROJECT_HOOK");
     expect(JSON.stringify(fake.contexts[3])).toContain("FIRST_DIRECTORY_INSTRUCTIONS");

@@ -98,6 +98,7 @@ const moveSession = {
   title: "Fix compiler",
   titleSource: "prompt",
   cwd: "/project/docs",
+  projectId: "project",
   updatedAt: 20,
   createdAt: 10,
   messageCount: 1,

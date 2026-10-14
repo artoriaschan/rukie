@@ -74,7 +74,6 @@ export const WireCommandSchema = Type.Union([
   }),
   command("project.remove", { projectId: id }),
   command("project.trust", { projectId: id }),
-  command("project.setPrimary", { projectId: id, directory: id }),
   command("sessions.list", {}),
   command("session.create", {
     project: Type.Union([id, Type.Null()]),
@@ -165,6 +164,8 @@ export interface WireSessionSummary {
   messageCount: number;
   model: string;
   cwd: string;
+  /** Presentation ownership by filesystem identity; cwd keeps its persisted spelling. */
+  projectId: string | null;
   running?: boolean;
   waitingPermission?: boolean;
 }

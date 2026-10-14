@@ -90,7 +90,7 @@ Project 创建后无法再管理：不能改名、不能增删目录、不能从
 - 新增 `project.remove { projectId }`：删除 registry 登记，不触碰任何目录文件、Session Transcript、置顶或归档状态。该 Project 任一目录下有 Session 执行中或等待交互时，以 `session_busy` 拒绝。
 - 所有 Project 变更都进入现有的 Project 变更队列，成功后发出现有的变更事件。
 - 编辑后重新派生打开状态：现有 Session 的 cwd 不变。打开会话时，仍按“cwd 等于某个 Project 任一目录”判断归属，并由此派生附加目录与 `trustedProjects`。已打开且空闲的 Session 在下一次空闲执行时关闭并以新配置重开，沿用信任更新的重开机制；活跃 Run 不被中断。cwd 不再属于任何 Project 的会话按“对话”打开，不再获得项目级信任。
-- 会话数在 UI 中由 Session 摘要派生：统计 cwd 属于该 Project 任一目录、且未归档的 Session，包含已置顶的。wire 不新增计数字段。
+- 会话数在 UI 中由 Session 摘要派生：统计 `projectId` 指向该 Project、且未归档的 Session，包含已置顶的。server 用真实目录身份提供必填 `projectId: string | null`，UI 的分组、标题、搜索、计数、选中、信任提示与移动目标共享它；旧 Session cwd 保留原样。wire 不新增计数字段。
 
 ### 创建项目（C27）与统一信任确认（C28）
 
@@ -180,14 +180,14 @@ Project 创建后无法再管理：不能改名、不能增删目录、不能从
 
 ## ADR Coverage
 
-| 决定或修改                                                                 | 归属                                                                                                                                               | 理由                                                                                                  |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Project 名称可编辑；目录增删与主目录切换在一个命令中提交                   | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)（proposed，交付前确认）                                                     | ADR-0041 写明“切换主目录不改变 Project 名称”且只支持创建；编辑改变了这条既有取舍                      |
-| 已信任 Project 新增目录必须显式确认（`trusted: true`），否则服务端拒绝     | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md) | 信任仍是精确目录集合；服务端强制确认，与创建一致，不允许 UI 之外的信任提升                            |
-| 移除 Project 只删除登记；会话回到“对话”，按无项目信任重开                  | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)    | 组织信息与 Session 存储分离；不删除文件或 Transcript，信任在下一次空闲执行时随登记消失                |
-| 编辑后已打开会话在空闲时重开以派生新的附加目录与信任                       | 沿用 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md) 与 [ADR-0039](../../docs/adr/0039-session-additional-directories.md)        | 复用已有的信任更新重开机制，不中断活跃 Run，附加目录仍由前端每次打开时提供                            |
-| 详情卡按 sidecar 实际配置的家目录身份缩写路径，复用现有组织信息事件        | 更新 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md)                                                                       | `sessions_changed.homeDir` 是仅供展示的元数据；不增加宿主 API，不改变精确目录归属或信任，不猜测家目录 |
-| 三栏底色、工作区阴影、项目弹窗、目录行、详情卡、路径提示与柔和 destructive | 无需 ADR                                                                                                                                           | 局部视觉与交互，由 DESIGN.md 与 rukie.pen 维护；使用已安装 primitives，不改变外部持久化或执行合同     |
+| 决定或修改                                                                               | 归属                                                                                                                                               | 理由                                                                                                                                      |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Project 名称可编辑；目录增删与主目录切换在一个命令中提交                                 | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)（proposed，交付前确认）                                                     | ADR-0041 写明“切换主目录不改变 Project 名称”且只支持创建；编辑改变了这条既有取舍                                                          |
+| 已信任 Project 新增目录必须显式确认（`trusted: true`），否则服务端拒绝                   | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md) | 信任仍是精确目录集合；服务端强制确认，与创建一致，不允许 UI 之外的信任提升                                                                |
+| 移除 Project 只删除登记；会话回到“对话”，按无项目信任重开                                | 更新 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md)；沿用 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)    | 组织信息与 Session 存储分离；不删除文件或 Transcript，信任在下一次空闲执行时随登记消失                                                    |
+| 编辑后已打开会话在空闲时重开以派生新的附加目录与信任                                     | 沿用 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md) 与 [ADR-0039](../../docs/adr/0039-session-additional-directories.md)        | 复用已有的信任更新重开机制，不中断活跃 Run，附加目录仍由前端每次打开时提供                                                                |
+| 详情卡按 sidecar 实际配置的家目录身份缩写路径；Session 展示归属由真实目录身份投影到 wire | 更新 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md)                                                                       | `sessions_changed.homeDir` 与摘要 `projectId` 是展示元数据；不增加宿主 API，统一使用既有真实身份归属规则，保留 cwd 与信任合同，不猜测路径 |
+| 三栏底色、工作区阴影、项目弹窗、目录行、详情卡、路径提示与柔和 destructive               | 无需 ADR                                                                                                                                           | 局部视觉与交互，由 DESIGN.md 与 rukie.pen 维护；使用已安装 primitives，不改变外部持久化或执行合同                                         |
 
 ## Further Notes
 

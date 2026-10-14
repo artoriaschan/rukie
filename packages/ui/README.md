@@ -20,13 +20,13 @@ wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `
 
 ⌘N 新建对话，⌘K / Ctrl+K 打开搜索，⌃1–⌃9 按当前未归档 Session 的排序选择 Session，⌥⌘P 置顶或取消置顶。分组折叠、显示与排序通过 `preferences.set` 保存。输入框 Enter 发送、Shift+Enter 换行；输入法组合中的 Enter 不发送。纯图标控件带 tooltip 和可访问名称。
 
-Project 按 Session cwd 匹配任一目录分组；新 Session 使用主目录，切换主目录后已有 Session 仍保留原 cwd。添加项目与搜索的“打开文件夹”共用多目录选择、主目录设置和信任确认；取消创建确认不发送命令，确认后发送带必填名称的 `project.create { name, directories, trusted: true }`。所选主目录已登记时直接在原 Project 中新建草稿；未信任 Project 在新建或打开 Session 前补确认，拒绝仍可使用 Session，但不加载项目级配置。目录所有权、真实路径与信任边界见 [server README](../server/README.md#行为与限制)。
+Project 按 server 提供的 Session 摘要 `projectId` 分组；该值按 cwd 与登记目录的真实身份匹配派生，旧别名 cwd 保留原样；新 Session 使用主目录，切换主目录后已有 Session 仍保留原 cwd。添加项目与搜索的“打开文件夹”共用多目录选择、主目录设置和信任确认；取消创建确认不发送命令，确认后发送带必填名称的 `project.create { name, directories, trusted: true }`。所选主目录已登记时直接在原 Project 中新建草稿；未信任 Project 在新建或打开 Session 前补确认，拒绝仍可使用 Session，但不加载项目级配置。目录所有权、真实路径与信任边界见 [server README](../server/README.md#行为与限制)。
 
 欢迎页 Project 下拉的“编辑项目”预填名称、有序目录和主目录；改名、增删目录与主目录切换都在草稿中完成，保存时统一发送 `project.update { projectId, name, directories, primary, trusted? }`。无修改或空名称不能保存；移除主目录由下一个目录接任，最后一个目录不能移除。已信任 Project 新增目录先确认所有目录，并标记新增项，确认后带 `trusted: true` 保存；未信任 Project 直接保存且保持未信任。取消、关闭和 Esc 放弃编辑；取消信任确认回到原草稿。错误留在编辑表单并显示本地化 alert。
 
 “移除本地项目”经确认后发送 `project.remove { projectId }`，只移除登记，保留文件、Session、Transcript、置顶和归档状态；取消确认回到草稿。项目下有执行中、等待 Interaction 或被其他执行 owner 占用的 Session 时禁用移除，服务端 `session_busy` 拒绝也在确认框显示原因。移除 Project 或其中目录后，原 cwd 的 Session 回到“对话”，当前打开的 Session 与 Transcript 保持打开，后续执行配置由 server 重新派生。提交期间禁止重复操作和关闭。弹窗使用 [DESIGN.md](../../DESIGN.md#project-directories-and-trust) 的局部尺寸与颜色，长名称保留完整可访问标题，窄屏仍显示关闭与底栏。
 
-会话行右键、行内更多与标题栏菜单共用“移动到项目”，目标排除当前所属 Project，执行中或等待确认时禁用。未信任目标先确认并完成 `project.trust`，再发送 `session.move`；取消不移动。成功后按新 cwd 分组，当前 Session 重新订阅，失败显示本地化错误并保留当前对话。Session Move 的持久化和执行边界见 [server README](../server/README.md#行为与限制)。
+会话行右键、行内更多与标题栏菜单共用“移动到项目”，目标排除当前所属 Project，执行中或等待确认时禁用。未信任目标先确认并完成 `project.trust`，再发送 `session.move`；取消不移动。成功后按新的 `projectId` 分组，当前 Session 重新订阅，失败显示本地化错误并保留当前对话。Session Move 的持久化和执行边界见 [server README](../server/README.md#行为与限制)。
 
 搜索聊天浮层沿用 CommandPalette，聊天结果列出全部未归档 Session，独立按更新时间降序排列，匹配 Session Title 和 Project 名称；右侧仅显示所属 Project，执行中的 Session 显示 Running 图标。结果在 A13 ScrollArea 内滚动，快捷操作固定在其下方，提供新聊天与打开文件夹。方向键跨两个分组移动，Enter 执行，Esc 或点击背景关闭并恢复搜索入口焦点；打开文件夹沿用添加项目流程，并在搜索释放焦点后交给文件夹选择器或路径对话框。浮层几何与直接切换的减少动态效果规则见 [DESIGN.md](../../DESIGN.md#search-overlay)。
 
