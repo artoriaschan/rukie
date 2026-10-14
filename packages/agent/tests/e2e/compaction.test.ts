@@ -250,6 +250,8 @@ test("manual Compaction after cold reopen refreshes current project, skill, Plan
   session.subscribe((event) => events.push(event));
   await session.run("continue");
   expect(JSON.stringify(fake.contexts.at(-1))).not.toContain("git branch:");
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain(`cwd: ${dirs.cwd}`);
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("instruction-priority");
   expect(publishedReminders(events)).toEqual([]);
   frontend = "Updated frontend state.";
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Latest project contract.");

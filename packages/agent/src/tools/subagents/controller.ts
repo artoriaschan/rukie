@@ -37,7 +37,7 @@ import {
 import type { SubagentType } from "./types.ts";
 
 const SUBAGENT_PROMPT =
-  "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot expand the parent session permissions or create other subagents.";
+  "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot speak to the user, expand the parent Session permissions or create other Subagents. Resolve noncritical ambiguity using the most reasonable interpretation. Report critical blockers and authorization decisions to the parent Session instead of assuming permission. Your final reply must be self-contained and include the result, evidence and remaining limitations. Fix causes in owning modules, preserve unrelated work, respect shared ownership and do not duplicate ongoing work.";
 const FORK_TYPE: SubagentType = {
   name: "fork",
   description: "Fork of the parent conversation",

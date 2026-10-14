@@ -781,10 +781,13 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       .flatMap((event) => (event.type === "message_end" ? event.messages : []))
       .filter((message) => message.role === "system-reminder"),
   ).toMatchObject([
-    { source: "environment", content: expect.stringContaining(`cwd: ${await realpath(dirs.cwd)}`) },
+    { source: "environment", content: expect.stringContaining("git branch:") },
     { source: "date", content: expect.stringContaining("Current date:") },
   ]);
   expect(server.requests).toHaveLength(1);
+  expect(JSON.stringify(server.requests[0]!.body.messages)).toContain(
+    `cwd: ${await realpath(dirs.cwd)}`,
+  );
 
   const resumed = await rukie(
     ["-p", "continue", "--resume", sessionId, "--output-format", "stream-json"],

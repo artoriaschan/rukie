@@ -22,6 +22,7 @@ import {
   type Models,
   type Message,
   type UserMessage,
+  getCurrentSystemPrompt,
 } from "@earendil-works/pi-ai";
 import {
   Harness,
@@ -135,7 +136,8 @@ import type { QuestionReply, QuestionRequest } from "../tools/question.ts";
 import { mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 import type { WebFetchOptions } from "../tools/web-fetch/index.ts";
 import { validateImage, type PromptImage } from "../images/index.ts";
-import { SYSTEM_PROMPT } from "./prompt.ts";
+import { SYSTEM_PROMPT, systemPrompt } from "./prompt.ts";
+import { userDataDirectory } from "../config/paths.ts";
 import { createThinkingTiming } from "./thinking.ts";
 import { createSubagentController } from "../tools/subagents/index.ts";
 import { createToolLoadout } from "./tools.ts";
@@ -446,6 +448,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const failedCleanup: (() => Promise<void>)[] = [lease.release];
   try {
     await validateSessionDocuments(lease.storage, context);
+    let configuredSystemPrompt = SYSTEM_PROMPT;
+    let configuredSystemSections: Record<string, string> = { instructions: SYSTEM_PROMPT };
     const registry = createRegistry();
     const env = new NodeExecutionEnv({ cwd });
     failedCleanup.push(() => env.cleanup(context));
@@ -1936,7 +1940,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           model: { provider: selected.provider, modelId: selected.id },
           thinkingLevel: nativeThinkingLevel(childThinking),
           cwd,
-          instructions: SYSTEM_PROMPT,
+          instructions: systemPrompt({
+            cwd,
+            additionalDirectories,
+            userDataDirectory: userDataDirectory(options),
+            tools: childLoadout.registrations,
+          }).text,
           extensions: [extension],
           tools: (await childLoadout.plan(!selection.retained)).tools,
         };
@@ -2115,19 +2124,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       ];
       const unannouncedMove =
         afterCompactionId === undefined && sessionMove.entryId > sessionMove.notifiedEntryId;
-      const latestEnvironment = observation
-        ?.messages()
-        .findLast(
-          (message) => message.role === "system-reminder" && message.source === "environment",
-        );
-      // Conversation Rewind can retain an old cwd snapshot while Session scope keeps the move.
-      const staleEnvironment =
-        afterCompactionId === undefined &&
-        sessionMove.entryId > 0 &&
-        latestEnvironment?.role === "system-reminder" &&
-        !latestEnvironment.content.startsWith(`cwd: ${cwd}\n`);
       const reminders = await collectReminders({
-        refreshEnvironment: unannouncedMove || staleEnvironment,
+        refreshEnvironment: unannouncedMove,
         messages:
           afterCompactionId === undefined
             ? observation
@@ -2309,8 +2307,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         },
       },
       install: async (_registrations, offered, ctx) => {
+        const prompt = systemPrompt({
+          cwd,
+          additionalDirectories,
+          userDataDirectory: userDataDirectory(options),
+          tools: toolLoadout.registrations,
+        });
+        configuredSystemPrompt = prompt.text;
+        configuredSystemSections = prompt.rendered;
         const extension = {
           name: "rukie.session",
+          sections: prompt.sections,
           tools: toolLoadout.registrations,
           hooks: [
             hook(CompactionTask, {
@@ -3215,7 +3222,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       runSummaries: () => structuredClone(runSummaries),
       contextUsage: () =>
         contextUsage(modelMessages(), model.contextWindow, latestInputTokens(), {
-          instructions: SYSTEM_PROMPT,
+          instructions: getCurrentSystemPrompt(modelMessages()) || configuredSystemPrompt,
+          sections: configuredSystemSections,
           tools: toolLoadout.registrations,
         }),
       contextReport: () =>
@@ -3226,7 +3234,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           model: `${model.provider}/${model.id}`,
           window: model.contextWindow,
           mcpServers: mcp.toolServers,
-          configured: { instructions: SYSTEM_PROMPT, tools: toolLoadout.registrations },
+          configured: {
+            instructions: getCurrentSystemPrompt(modelMessages()) || configuredSystemPrompt,
+            sections: configuredSystemSections,
+            tools: toolLoadout.registrations,
+          },
         }),
       sideQuestion(question, input) {
         assertAvailable();
@@ -3251,7 +3263,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           yield* sideQuestion({
             question,
             messages: view.messages,
-            systemPrompt: SYSTEM_PROMPT,
+            systemPrompt: getCurrentSystemPrompt(view.messages) || configuredSystemPrompt,
             model: selected,
             models,
             running,

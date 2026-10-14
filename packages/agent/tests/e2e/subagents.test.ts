@@ -39,6 +39,11 @@ test.each(["subagent", "subagent_fork"])(
             message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
           ),
         ).not.toContain("subagent");
+        const instructions = getCurrentSystemMessage(context.messages)?.sections?.instructions;
+        expect(instructions).toContain("You cannot speak to the user");
+        expect(instructions).toContain("Report critical blockers");
+        expect(instructions).toContain("self-contained");
+        expect(instructions).toContain(`cwd: ${dirs.cwd}`);
         await child.promise;
         return fauxAssistantMessage("child conclusion");
       }

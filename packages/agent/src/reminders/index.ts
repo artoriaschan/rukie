@@ -77,10 +77,7 @@ export async function collectReminders(options: {
       currentContent: async () => {
         const branch = await git(cwd, ["branch", "--show-current"]);
         const status = await git(cwd, ["status", "--short"]);
-        const additional = options.additionalDirectories?.length
-          ? `\nadditional directories:\n${options.additionalDirectories.join("\n")}`
-          : "";
-        return `cwd: ${cwd}${additional}\nplatform: ${process.platform}\ngit branch: ${branch || "detached HEAD"}\ngit status:\n${status || "clean"}`;
+        return `git branch: ${branch || "detached HEAD"}\ngit status:\n${status || "clean"}`;
       },
     });
   }

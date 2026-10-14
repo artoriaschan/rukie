@@ -7,7 +7,11 @@ import { inspectImage } from "../images/index.ts";
 
 const tokens = (text: string) => Math.ceil(text.length / 4);
 
-type ConfiguredContext = { instructions: string; tools: readonly Tool[] };
+type ConfiguredContext = {
+  instructions: string;
+  sections?: Readonly<Record<string, string>>;
+  tools: readonly Tool[];
+};
 
 const imageTokens = (data: string) => {
   const info = inspectImage(Buffer.from(data, "base64"));
@@ -39,7 +43,10 @@ export function contextUsage(
     for (const section of Object.values(system.sections ?? {})) {
       if (section) segments.system += tokens(section);
     }
-  } else if (configured) segments.system = tokens(configured.instructions);
+  } else if (configured)
+    segments.system = configured.sections
+      ? Object.values(configured.sections).reduce((sum, section) => sum + tokens(section), 0)
+      : tokens(configured.instructions);
   for (const tool of system
     ? getCurrentTools(messages)
     : (configured?.tools ?? getCurrentTools(messages)))
@@ -151,7 +158,12 @@ export function contextReport(options: {
         0,
       );
   } else if (options.configured) {
-    category["system-prompt"] = tokens(options.configured.instructions);
+    category["system-prompt"] = options.configured.sections
+      ? Object.values(options.configured.sections).reduce(
+          (sum, section) => sum + tokens(section),
+          0,
+        )
+      : tokens(options.configured.instructions);
   }
   for (const tool of system
     ? getCurrentTools(messages)

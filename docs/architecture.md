@@ -134,13 +134,13 @@ Interaction 由 Agent Core 发起，frontend 提供响应回调。[`interaction/
 
 ## 模型上下文
 
-System Prompt 提供行为指令，只读取会话内稳定的输入；System Reminder 承载日期、项目说明、Skill 目录或正文、MCP 描述以及其他有来源的上下文。两者的分工与待补指引见 [ADR-0046](adr/0046-system-prompt-sections-and-reminder-roles.md)。用户说明读取 `~/.rukie/AGENTS.md`；项目说明优先读取项目根的 `AGENTS.md`，缺失时读取 `CLAUDE.md`。[`reminders/`](../packages/agent/src/reminders/index.ts)按来源与最近持久化内容比较，仅提交需要更新的提醒，通过可追溯模型投影贡献上下文。
+根 Session 用 pi-durable `section()` 生成 System Prompt，`instructions` 保留身份段，各节只读取已注册工具、平台、shell、cwd 与附加目录等会话内稳定输入；环境节在 Compaction 后保留，Session Move 后追加新节，时间与 Git 状态不进入各节。子代理拼接基础指引、子代理通用规则与类型 prompt；System Reminder 承载日期、项目说明、Skill 目录或正文、MCP 描述以及其他有来源的上下文。`environment` 提醒只记录 Git 分支与状态，Compaction 后不重发。两者的分工与待补指引见 [ADR-0046](adr/0046-system-prompt-sections-and-reminder-roles.md)。用户说明读取 `~/.rukie/AGENTS.md`；项目说明优先读取项目根的 `AGENTS.md`，缺失时读取 `CLAUDE.md`。[`reminders/`](../packages/agent/src/reminders/index.ts)按来源与最近持久化内容比较，仅提交需要更新的提醒，通过可追溯模型投影贡献上下文。
 
 Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它追加原生 compaction 记录，模型上下文由 System Prompt、摘要、保留尾部与之后的消息重建；原始 Transcript 仍保留。压缩后重新建立当前提醒来源，后续请求和恢复走相同的上下文投影。
 
 原生准备在新 head 建立当前工具的完整基线；新投影尚无 system 工具基线时，Session 先从选中分支的完整 Transcript 重建可见工具，再规划基线，避免丢失已发现的 MCP 工具。已有基线时使用当前投影，Rewind 也沿选中分支恢复。`deferred-tools` reminder 从当前投影中的来源文本重建名单差异，压缩后重新提供完整名单。
 
-`Session.messages` 是选中对话的完整已提交消息投影，Compaction 前的消息仍按原顺序呈现；当前模型上下文由原生 head、摘要与保留尾部构造，二者分别读取。Context Usage 与 Context Report 是观测结果，不追加为模型内容；实际 provider 用量与分类估算的区别见 `CONTEXT.md`。Side Question 使用独立、无工具的单轮调用，不修改主 Run 或 Transcript。
+`Session.messages` 是选中对话的完整已提交消息投影，Compaction 前的消息仍按原顺序呈现；当前模型上下文由原生 head、摘要与保留尾部构造，二者分别读取。Context Usage 与 Context Report 是观测结果，不追加为模型内容；实际 provider 用量与分类估算的区别见 `CONTEXT.md`。Context Usage、Context Report 与 Side Question 使用当前 Session 实际渲染的 System Prompt；首次模型请求前从相同节内容建立统计与侧问上下文。Side Question 使用独立、无工具的单轮调用，不修改主 Run 或 Transcript。
 
 ## Transcript、Tool State 与 Rewind
 
