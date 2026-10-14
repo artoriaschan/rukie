@@ -84,6 +84,8 @@ const DELEGATION_TOOLS = new Set(["subagent", "subagent_fork", "send_message", "
 
 export interface SubagentControllerOptions {
   harness: Harness;
+  /** The Session clock, shared with native task settlement. */
+  now(): number;
   parent: Conversation;
   parentSessionId: string;
   state: ToolStateDefinition;
@@ -731,7 +733,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
       throw new Error(
         `Unknown subagent type "${request.type}". Available types: ${[...types.keys()].join(", ")}.`,
       );
-    const startedAt = Date.now();
+    const startedAt = options.now();
     const created = await api.commit(async (tx) => {
       const doc = await tx.doc(state.document, parent.id);
       const current = parseSubagentIdentities(doc.value ?? [], parentSessionId);
@@ -812,7 +814,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
             ? outcome.reason
             : "aborted",
         startedAt,
-        Date.now(),
+        options.now(),
       );
     return { kind: "completed", agentId: created.id, childSessionId: created.id, result };
   }

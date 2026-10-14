@@ -903,13 +903,10 @@ test("a human quote queued before reporter admission stays human through placeme
     const inputs = parent.messages.filter((message) => message.role === "user");
     expect(inputs[1]).toMatchObject({ content: [{ type: "text", text: humanQuote }] });
     expect(inputs[2]).toMatchObject({
-      content: [
-        {
-          type: "text",
-          text: `Subagent ${identity.id} (Quoted) finished. Its closing message:\nanswer`,
-        },
-      ],
+      content: `Subagent ${identity.id} (Quoted) finished. Its closing message:\nanswer`,
     });
+    expect(inputs[1]).not.toHaveProperty("source");
+    expect(inputs[2]).not.toHaveProperty("source");
     await parent.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: parent.id });
     try {

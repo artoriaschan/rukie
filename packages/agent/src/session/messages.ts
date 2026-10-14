@@ -273,7 +273,10 @@ export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptM
         }
         if (projected.role === "user") {
           if (typeof fact.displayContent === "string")
-            projected.content = [{ type: "text", text: fact.displayContent }];
+            projected.content =
+              typeof message.content === "string"
+                ? fact.displayContent
+                : [{ type: "text", text: fact.displayContent }];
           if (
             Array.isArray(fact.imageNames) &&
             fact.imageNames.every((name) => name === null || typeof name === "string")

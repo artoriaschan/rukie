@@ -383,14 +383,23 @@ test("an image can steer a running Run without enabling ordinary prompt submissi
     await app.waitFor(() => app.screen().includes("❯"));
     app.calls[0]!.finish();
     await app.waitFor(() => app.calls.length === 2);
-    expect(
-      app.calls[1]!.context.messages.findLast((message) => message.role === "user"),
-    ).toMatchObject({
-      content: [
-        { type: "text", text: "[Image #1] look" },
-        { type: "image", data: png, mimeType: "image/png" },
-      ],
-    });
+    const inputs = app.calls[1]!.context.messages.filter((message) => message.role === "user");
+    expect(inputs.slice(-2)).toMatchObject([
+      {
+        content: [
+          { type: "text", text: "[Image #1] look" },
+          { type: "image", data: png, mimeType: "image/png" },
+        ],
+      },
+      {
+        content: [
+          {
+            type: "text",
+            text: "<system-reminder>\nA user message arrived while work was in progress and has now been placed in the conversation. Treat it as a supplement or correction to the current task unless the user clearly changes the task. The current output was not interrupted by this input.\n</system-reminder>",
+          },
+        ],
+      },
+    ]);
     app.calls[1]!.finish();
   } finally {
     await app.cleanup();

@@ -40,6 +40,7 @@ test.each(["stop", "error", "aborted", "length"] as const)(
       });
       let cleaned = false;
       const controller = createSubagentController({
+        now: Date.now,
         harness,
         parent,
         parentSessionId: "product",
@@ -191,6 +192,7 @@ test("interrupt explicitly aborts a native background child and commits its outc
       agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
     });
     const controller = createSubagentController({
+      now: Date.now,
       harness,
       parent,
       parentSessionId: "product",
@@ -298,6 +300,7 @@ test("idle send keeps logical identity and runs an owned native fork with prior 
     });
     let configurations = 0;
     const controller = createSubagentController({
+      now: Date.now,
       harness,
       parent,
       parentSessionId: "product",
@@ -405,6 +408,7 @@ test("background native child survives ordinary parent abort and its durable rep
       agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
     });
     const controller = createSubagentController({
+      now: Date.now,
       harness,
       parent,
       parentSessionId: "product",
@@ -492,6 +496,7 @@ test.each([false, true])(
       });
       let configurations = 0;
       const controller = createSubagentController({
+        now: Date.now,
         harness,
         parent,
         parentSessionId: "product",
@@ -562,6 +567,7 @@ test.each([false, true])(
         agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
       });
       const controller = createSubagentController({
+        now: Date.now,
         harness,
         parent,
         parentSessionId: "product",

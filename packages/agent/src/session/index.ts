@@ -1593,6 +1593,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       }
     >();
     const subagents = createSubagentController({
+      now: () => (options.now?.() ?? new Date()).getTime(),
       onWarning: warn,
       harness,
       parent: conversation,
