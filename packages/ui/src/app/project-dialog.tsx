@@ -38,10 +38,13 @@ export function ProjectDialog({
     >
       <div className="flex min-h-0 flex-col gap-3" aria-busy={pending}>
         <div className="flex h-8 shrink-0 items-center justify-between gap-2">
-          <h2 className="text-ui-lg font-medium">{title}</h2>
+          <h2 className="min-w-0 flex-1 truncate text-ui-lg font-medium" title={title}>
+            {title}
+          </h2>
           <Button
             size="icon"
             variant="ghost"
+            className="shrink-0"
             aria-label={t("component.close")}
             disabled={pending}
             onClick={onClose}

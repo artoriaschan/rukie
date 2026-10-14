@@ -1,7 +1,14 @@
 import { modelServiceCopy } from "./model-service-copy";
 export const appCopy = {
   en: {
-    "app.project-directories": "Project directories",
+    "app.edit-project": "Edit project",
+    "app.remove-local-project": "Remove local project",
+    "app.remove-project": "Remove project",
+    "app.remove-project-title": "Remove {{name}}?",
+    "app.remove-project-description":
+      "This only removes the project from the app. Files on your computer and existing chats will not be deleted.",
+    "app.remove-project-busy":
+      "A Session in this Project is running, waiting for interaction or open elsewhere. Close or finish it before removing the Project.",
     "app.primary": "Primary",
     "app.set-primary": "Set as primary",
     "app.create-project": "Create project",
@@ -219,7 +226,14 @@ export const appCopy = {
     "app.max": "Maximum",
   },
   zh: {
-    "app.project-directories": "项目目录",
+    "app.edit-project": "编辑项目",
+    "app.remove-local-project": "移除本地项目",
+    "app.remove-project": "移除项目",
+    "app.remove-project-title": "移除 {{name}}？",
+    "app.remove-project-description":
+      "这只会从应用中移除该项目。你电脑上的文件和现有聊天不会被删除。",
+    "app.remove-project-busy":
+      "项目下有 Session 正在执行、等待交互或在别处打开，结束或关闭后才能移除项目。",
     "app.primary": "主要",
     "app.set-primary": "设为主要",
     "app.create-project": "创建项目",

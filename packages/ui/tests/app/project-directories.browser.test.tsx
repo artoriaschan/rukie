@@ -237,21 +237,26 @@ test("any Project directory groups and names history, and switching primary affe
       expect.objectContaining({ type: "project.create" }),
     );
     await screen.getByRole("main").getByRole("button", { name: "Cross repo", exact: true }).click();
-    await screen.getByRole("menuitem", { name: "Project directories", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Edit project", exact: true }).click();
     const setPrimary = screen.getByRole("button", { name: "Set as primary /second", exact: true });
     await setPrimary.hover();
     expect(getComputedStyle(setPrimary.element()).opacity).toBe("1");
     await setPrimary.click();
+    expect(await requests(connection.port)).not.toContainEqual(
+      expect.objectContaining({ type: "project.update" }),
+    );
+    await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect
       .poll(() => requests(connection.port))
       .toContainEqual(
         expect.objectContaining({
-          type: "project.setPrimary",
+          type: "project.update",
           projectId: "project",
-          directory: "/second",
+          primary: "/second",
+          directories: ["/first", "/second"],
+          name: "Cross repo",
         }),
       );
-    await screen.getByRole("button", { name: "Cancel", exact: true }).click();
     await screen
       .getByRole("textbox", { name: "Prompt", exact: true })
       .fill("new after primary switch");

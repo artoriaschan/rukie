@@ -43,7 +43,7 @@ export function ProjectTrust({
     >
       <ScrollArea
         className="project-directory-list rounded-xl border border-border"
-        viewportLabel={t("app.project-directories")}
+        viewportLabel={t("app.source-folders")}
       >
         <ul className="flex flex-col">
           {project.directories.map((directory) => (
