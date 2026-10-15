@@ -1,0 +1,34 @@
+.scratch/desktop-plan-mode/issues/05-c40-plan-review.md
+  s_254dd3930a6164::t_f5217a618d5a66 1-29
+.scratch/desktop-plan-mode/spec.md
+  s_254dd3930a6164::t_c53b4983a0ece1 1-115
+  s_254dd3930a6164::t_b86cece4e2f537 116-121
+.scratch/desktop-plan-mode/issues/04-plan-mode-toggle.md
+  s_254dd3930a6164::t_afa289f51283a8 1-23
+.scratch/desktop-plan-mode/issues/06-c41-session-summary.md
+  s_254dd3930a6164::t_68a497567dde45 1-21
+.scratch/desktop-plan-mode/issues/02-wire-server-interactions.md
+  s_254dd3930a6164::t_cfea5946046080 1-29
+.scratch/desktop-plan-mode/issues/03-c43-question-card.md
+  s_254dd3930a6164::t_8fa1acf151ba26 1-30
+.scratch/desktop-plan-mode/issues/01-pen-design.md
+  s_254dd3930a6164::t_ce71453b6a601d 1-29
+.scratch/desktop-plan-mode/issues/07-side-pane-plan-tab.md
+  s_254dd3930a6164::t_b3664b2d2952d3 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "87bbe2169374b32979fab4b0d33f39c51de99b8e",
+  "prompts": {},
+  "sessions": {
+    "s_254dd3930a6164": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_uoubqqlefycg",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
