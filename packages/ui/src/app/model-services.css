@@ -569,9 +569,6 @@
 }
 .model-services-catalog-heading > button {
   height: 24px;
-  width: 16px;
-  min-width: 16px;
-  padding: 0;
 }
 .model-services-catalog-cards > .model-services-catalog-tile {
   height: 68px;
@@ -658,8 +655,8 @@
   gap: 8px;
 }
 .model-services-help-label > svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 .model-services-model-metadata {
   display: flex;
@@ -687,8 +684,8 @@
   color: var(--foreground);
 }
 .model-services-api-menu [role="option"] > svg {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
 }
 .model-services-api-menu [aria-selected="true"] {
   background: transparent;
@@ -722,8 +719,6 @@
   background: var(--destructive);
 }
 .model-services-toolbar > button:first-child {
-  width: 32px;
-  padding: 0;
   background: var(--secondary);
   border-color: transparent;
 }
@@ -781,16 +776,7 @@
 }
 
 .model-services-help-label .model-services-capability-help {
-  width: 14px;
-  height: 14px;
-  min-height: 14px;
-  min-width: 14px;
-  padding: 0;
   color: var(--muted-foreground);
-}
-.model-services-capability-help > svg {
-  width: 14px;
-  height: 14px;
 }
 
 /* Pencil C10-C16 and A13: each settings region owns an overlay ScrollArea. */
@@ -841,9 +827,12 @@
   display: block !important;
   min-width: 100%;
 }
-.model-services-toolbar > button {
+.model-services-toolbar > button:not([data-size="icon"]) {
   height: 28px;
   min-height: 28px;
+}
+.model-services-toolbar > button[data-size="icon"] {
+  align-self: center;
 }
 .model-services-provider-form > div:has(> label[for]) {
   height: 63px;
@@ -1181,11 +1170,12 @@
   text-align: center;
 }
 .model-services-provider-empty-icon {
-  width: 32px;
-  height: 32px;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
   color: color-mix(in srgb, var(--foreground) 30%, transparent);
-  margin-bottom: 20px;
+  /* Centered in the original 32px slot so the copy keeps its y232 position. */
+  margin: 10px 0 30px;
 }
 :root:not(.dark) .model-services-provider-empty-icon {
   color: color-mix(in srgb, var(--foreground) 40%, transparent);

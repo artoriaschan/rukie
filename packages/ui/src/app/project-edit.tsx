@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import type { WireProject } from "@rukie/shared";
 import { Folder, Plus } from "lucide-react";
-import { WireError } from "../client";
 import { Button } from "../components/motion/button/base";
 import { Input } from "../components/motion/input";
 import { ScrollArea } from "../components/ui/scroll-area";
@@ -9,6 +8,7 @@ import { useAppText } from "../lib/i18n";
 import { useErrorText } from "./error";
 import { ProjectDialog } from "./project-dialog";
 import { ProjectDirectories, removeProjectDirectory } from "./project-directories";
+import { ProjectRemove } from "./project-remove";
 import { ProjectTrust } from "./project-trust";
 
 /** A mounted editor owns its draft; confirmation cancellation keeps it, closing discards it. */
@@ -37,7 +37,6 @@ export function ProjectEdit({
   const t = useAppText();
   const errorText = useErrorText();
   const nameInput = useRef<HTMLInputElement>(null);
-  const cancel = useRef<HTMLButtonElement>(null);
   const submitting = useRef(false);
   const [name, setName] = useState(project.name);
   const [directories, setDirectories] = useState(project.directories);
@@ -93,25 +92,6 @@ export function ProjectEdit({
       setPicking(false);
     }
   };
-  const remove = async () => {
-    if (busy || !connected || submitting.current) return;
-    submitting.current = true;
-    setPending(true);
-    setError("");
-    try {
-      await onRemove();
-      onClose();
-    } catch (reason) {
-      setError(
-        reason instanceof WireError && reason.code === "session_busy"
-          ? t("app.remove-project-busy")
-          : errorText(reason),
-      );
-    } finally {
-      submitting.current = false;
-      setPending(false);
-    }
-  };
   if (view === "trust")
     return (
       <ProjectTrust
@@ -124,35 +104,14 @@ export function ProjectEdit({
     );
   if (view === "remove")
     return (
-      <ProjectDialog
-        title={t("app.remove-project-title", { name: project.name })}
-        width={448}
-        initialFocus={cancel}
-        pending={pending}
-        onClose={back}
-      >
-        <p className="text-ui-base text-muted-foreground">{t("app.remove-project-description")}</p>
-        {busy || error ? (
-          <p role="alert" className="text-ui-sm text-destructive">
-            {error || t("app.remove-project-busy")}
-          </p>
-        ) : null}
-        <div className="flex shrink-0 items-center justify-end gap-2">
-          <Button autoFocus ref={cancel} variant="ghost" disabled={pending} onClick={back}>
-            {t("app.cancel")}
-          </Button>
-          <Button
-            variant="destructive"
-            className="h-9 bg-destructive-soft text-destructive-soft-foreground not-disabled:hover:bg-destructive-soft/80 not-disabled:active:bg-destructive-soft"
-            disabled={pending || busy || !connected}
-            onClick={() => {
-              void remove();
-            }}
-          >
-            {t("app.remove-project")}
-          </Button>
-        </div>
-      </ProjectDialog>
+      <ProjectRemove
+        project={project}
+        busy={busy}
+        connected={connected}
+        onRemove={onRemove}
+        onCancel={back}
+        onRemoved={onClose}
+      />
     );
   return (
     <ProjectDialog

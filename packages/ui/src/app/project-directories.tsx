@@ -45,9 +45,9 @@ export function ProjectDirectories({
             >
               <div
                 tabIndex={0}
-                className="flex h-full min-w-0 w-full items-center gap-2 px-3 outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                className="flex h-full min-w-0 w-full items-center gap-2 px-3 outline-none row-hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
-                <Folder className="size-4 shrink-0 text-muted-foreground" />
+                <Folder className="size-3 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 truncate text-ui-base">
                   {name}
                   {duplicate ? (
@@ -77,8 +77,7 @@ export function ProjectDirectories({
                 {onRemove ? (
                   <Button
                     variant="ghost"
-                    size="sm"
-                    className="size-7 shrink-0 p-1"
+                    size="icon"
                     aria-label={`${t("app.remove-folder")} ${directory}`}
                     disabled={disabled || directories.length === 1}
                     onClick={() => onRemove(directory)}

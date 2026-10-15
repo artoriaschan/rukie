@@ -1,0 +1,159 @@
+/* C32: 40px bar above the composer; its surface extends 16px behind the composer's top corners. */
+.new-chat-selector {
+  position: relative;
+  display: flex;
+  height: 40px;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 12px 12px 0 0;
+  background: var(--surface);
+}
+.new-chat-selector::after {
+  position: absolute;
+  inset: 100% 0 auto;
+  height: 16px;
+  background: var(--surface);
+  content: "";
+  pointer-events: none;
+}
+.new-chat-composer {
+  position: relative;
+}
+.new-chat-project {
+  display: flex;
+  min-width: 0;
+  height: 32px;
+  align-items: center;
+  gap: 0;
+  border-radius: 8px;
+  padding: 0 4px;
+}
+.new-chat-project:hover,
+.new-chat-project:focus-within {
+  background: var(--hover);
+}
+.new-chat-clear {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--foreground);
+}
+button.new-chat-clear {
+  cursor: pointer;
+}
+button.new-chat-clear:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+button.new-chat-clear:focus-visible,
+.new-chat-trigger:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.new-chat-x {
+  display: none;
+}
+.new-chat-project:hover .new-chat-x,
+.new-chat-project:focus-within .new-chat-x {
+  display: block;
+}
+.new-chat-project:hover .new-chat-folder,
+.new-chat-project:focus-within .new-chat-folder {
+  display: none;
+}
+.new-chat-trigger {
+  display: inline-flex;
+  min-width: 0;
+  height: 32px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 0 8px 0 4px;
+  color: var(--foreground);
+  font-size: var(--text-ui-base);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.new-chat-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.new-chat-branch {
+  max-width: 50%;
+  padding: 0 8px;
+}
+.new-chat-branch:hover:not(:disabled),
+.new-chat-branch[data-state="open"] {
+  background: var(--hover);
+}
+/* C33/C34 menus share the search row, group title, fixed trailing mark and scrolling list. */
+.new-chat-menu {
+  max-height: min(480px, var(--radix-dropdown-menu-content-available-height));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.new-chat-search {
+  display: flex;
+  height: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  margin: 4px;
+  padding: 0 8px;
+  border: 1px solid var(--input-border-focused);
+  border-radius: 4px;
+}
+.new-chat-search:focus-within {
+  border-color: var(--foreground);
+}
+.new-chat-search input {
+  min-width: 0;
+  flex: 1;
+  background: transparent;
+  color: var(--foreground);
+  font-size: var(--text-ui-base);
+  line-height: 1.5;
+  outline: none;
+}
+.new-chat-search input::placeholder {
+  color: var(--muted-foreground);
+}
+.new-chat-menu-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+.new-chat-menu-list > * + * {
+  margin-top: 2px;
+}
+.new-chat-group {
+  min-height: 0;
+  padding: 4px 8px;
+  color: var(--foreground);
+  font-weight: normal;
+}
+.new-chat-mark {
+  display: inline-flex;
+  width: 16px;
+  flex-shrink: 0;
+  justify-content: center;
+}
+.new-chat-empty,
+.new-chat-note {
+  padding: 4px 8px;
+  font-size: var(--text-ui-sm);
+  line-height: 1.5;
+}
+.new-chat-empty {
+  color: var(--muted-foreground);
+}
+.new-chat-error {
+  color: var(--danger);
+}

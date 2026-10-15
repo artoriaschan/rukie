@@ -106,7 +106,7 @@ export function CodeBlock({
       className={cn("w-full overflow-hidden rounded-xl bg-muted/80 text-ui-base", className)}
     >
       <div className="flex min-h-8 items-center gap-2 px-3">
-        <FileCode2 aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+        <FileCode2 aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
         {filename ? (
           <span className="min-w-0 truncate font-mono text-ui-base text-foreground">
             {filename}
@@ -139,9 +139,9 @@ export function CodeBlock({
             }
             onClick={handleCopy}
             transition={{ duration: 0.16, ease: EASE_OUT }}
-            className="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
           </motion.button>
         ) : null}
       </div>

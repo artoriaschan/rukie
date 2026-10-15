@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { X } from "lucide-react";
 import type { PresentedPermissionRequest } from "../lib/transcript";
 import type { QueuedInput } from "@rukie/agent";
 import type { SubagentPresentation } from "../lib/transcript";
@@ -230,8 +231,8 @@ export function Summary({
     >
       <div className="flex items-center justify-between">
         <h2 className="text-ui-base font-medium">{t("conversation.summary")}</h2>
-        <Button size="sm" variant="ghost" onClick={onClose} aria-label={t("conversation.close")}>
-          ×
+        <Button size="icon" variant="ghost" onClick={onClose} aria-label={t("conversation.close")}>
+          <X />
         </Button>
       </div>
       {todos.length ? (

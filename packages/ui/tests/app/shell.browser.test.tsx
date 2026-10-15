@@ -49,7 +49,7 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
         .getByRole("button", { name: "Toggle sidebar", exact: true });
       expect(region(toggle.element())).toBe("no-drag");
       const toggleLeft = toggle.element().getBoundingClientRect().left;
-      expect(toggleLeft).toBe(156);
+      expect(toggleLeft).toBe(160);
       const sidebarBody = screen
         .getByRole("button", { name: "New chat", exact: true })
         .element()
@@ -130,7 +130,7 @@ test("sidebar searches projects, selects a welcome target and creates a Session 
     await expect
       .element(screen.getByRole("button", { name: "Search chats", exact: true }))
       .toHaveFocus();
-    await screen.getByRole("button", { name: "Workspace", exact: true }).click();
+    await screen.getByRole("button", { name: "Conversation", exact: true }).click();
     await screen.getByRole("menuitem", { name: "Project", exact: true }).click();
     await expect
       .element(screen.getByRole("heading", { name: /What should we build/ }))
@@ -664,8 +664,8 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
     expect(header.querySelector('[aria-label="Toggle sidebar"]')).toBeNull();
     expect(header.getBoundingClientRect().width).toBe(1280);
     expect(getComputedStyle(header.lastElementChild!).borderLeftWidth).toBe("0px");
-    expect(back.element().getBoundingClientRect().left).toBe(88);
-    expect(forward.element().getBoundingClientRect().left).toBe(122);
+    expect(back.element().getBoundingClientRect().left).toBe(92);
+    expect(forward.element().getBoundingClientRect().left).toBe(126);
     for (const button of [back, forward]) {
       const bounds = button.element().getBoundingClientRect();
       expect(bounds.top + bounds.height / 2).toBe(22);
@@ -913,11 +913,15 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
       .toHaveFocus();
     await userEvent.keyboard("{ArrowDown}");
     await expect
+      .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
+      .toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}");
+    await expect
       .element(screen.getByRole("menuitem", { name: "Move to Project", exact: true }))
       .toHaveFocus();
     await userEvent.keyboard("{ArrowDown}");
     await expect
-      .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
+      .element(screen.getByRole("menuitem", { name: "Delete chat", exact: true }))
       .toHaveFocus();
     await userEvent.keyboard("{Escape}");
     expect(session.element().parentElement!.contains(document.activeElement)).toBe(true);
@@ -927,6 +931,11 @@ test("Session row exposes pin and more on hover and focus and shares pin actions
       .toBeVisible();
     expect(screen.getByRole("menuitem").all()).toHaveLength(5);
     const menu = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
+    expect(
+      [...menu.children].map((child) =>
+        child.tagName === "HR" ? "---" : (child.textContent ?? "").trim(),
+      ),
+    ).toEqual(["Rename", "Unpin", "Archive", "Move to Project", "---", "Delete chat"]);
     expect(menu.querySelector('span[style*="transform"]')).toBeNull();
     for (const item of screen.getByRole("menuitem").all()) {
       const cursor = item.element().hasAttribute("disabled") ? "not-allowed" : "pointer";
@@ -1074,7 +1083,7 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
       .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
       .toHaveAttribute("aria-disabled", "true");
     await expect
-      .element(screen.getByRole("menuitem", { name: "Permanently delete", exact: true }))
+      .element(screen.getByRole("menuitem", { name: "Delete chat", exact: true }))
       .toHaveAttribute("aria-disabled", "true");
     const disabledArchive = screen.getByRole("menuitem", { name: "Archive", exact: true });
     expect(getComputedStyle(disabledArchive.element()).cursor).toBe("not-allowed");
@@ -1082,9 +1091,7 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
       "not-allowed",
     );
     await disabledArchive.click({ force: true });
-    await screen
-      .getByRole("menuitem", { name: "Permanently delete", exact: true })
-      .click({ force: true });
+    await screen.getByRole("menuitem", { name: "Delete chat", exact: true }).click({ force: true });
     await expect.element(disabledArchive).toBeVisible();
     await expect
       .element(screen.getByRole("dialog", { name: "Permanently delete chat?", exact: true }))
@@ -1100,7 +1107,7 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
       .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
       .toBeDisabled();
     await expect
-      .element(screen.getByRole("menuitem", { name: "Permanently delete", exact: true }))
+      .element(screen.getByRole("menuitem", { name: "Delete chat", exact: true }))
       .toBeDisabled();
     const disabledContextArchive = screen.getByRole("menuitem", { name: "Archive", exact: true });
     expect(getComputedStyle(disabledContextArchive.element()).cursor).toBe("not-allowed");
@@ -1125,7 +1132,7 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
       .element(screen.getByRole("menuitem", { name: "Archive", exact: true }))
       .toHaveAttribute("aria-disabled", "true");
     await expect
-      .element(screen.getByRole("menuitem", { name: "Permanently delete", exact: true }))
+      .element(screen.getByRole("menuitem", { name: "Delete chat", exact: true }))
       .toHaveAttribute("aria-disabled", "true");
     await userEvent.keyboard("{ArrowDown}{Enter}");
     const sent = await fetch(`http://127.0.0.1:${connection.port}/commands`).then((response) =>
@@ -1183,7 +1190,7 @@ test("permanent delete confirms from all Session menus, cancellation sends nothi
     const row = screen.getByRole("button", { name: "Fix compiler", exact: true });
     const more = screen.getByRole("button", { name: "Session actions Fix compiler", exact: true });
     await more.click();
-    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Delete chat", exact: true }).click();
     await expect
       .element(screen.getByRole("dialog", { name: "Permanently delete chat?", exact: true }))
       .toBeVisible();
@@ -1197,7 +1204,7 @@ test("permanent delete confirms from all Session menus, cancellation sends nothi
       .toBeVisible();
     await screen.getByRole("button", { name: "Cancel", exact: true }).click();
     await row.click({ button: "right" });
-    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Delete chat", exact: true }).click();
     await userEvent.keyboard("{Escape}");
     await expect
       .element(screen.getByRole("dialog", { name: "Permanently delete chat?", exact: true }))
@@ -1205,7 +1212,7 @@ test("permanent delete confirms from all Session menus, cancellation sends nothi
     await row.click();
     await expect.element(screen.getByText("Open one", { exact: true })).toBeVisible();
     await screen.getByRole("button", { name: "Session actions", exact: true }).click();
-    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Delete chat", exact: true }).click();
     await expect.element(screen.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
     expect(
       (await sent()).some((command: { type: string }) => command.type === "session.delete"),
@@ -1239,7 +1246,7 @@ test("permanent delete keeps failures visible and submitting once preserves anot
     await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
     await expect.element(screen.getByText("Open one", { exact: true })).toBeVisible();
     await screen.getByRole("button", { name: "会话更多 Explore ideas", exact: true }).click();
-    await screen.getByRole("menuitem", { name: "永久删除", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "删除会话", exact: true }).click();
     await expect
       .element(screen.getByRole("dialog", { name: "永久删除聊天？", exact: true }))
       .toBeVisible();
@@ -1308,7 +1315,7 @@ test("delete confirmation keeps readable destructive colors in both themes and p
   };
   try {
     await screen.getByRole("button", { name: "Session actions Fix compiler", exact: true }).click();
-    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Delete chat", exact: true }).click();
     const confirm = screen.getByRole("button", { name: "Permanently delete", exact: true });
     await expect.element(confirm).toBeVisible();
     for (const theme of ["light", "dark"]) {
@@ -1368,7 +1375,7 @@ test("delete confirmation scrolls long titles while keeping title and actions vi
   const previousFont = document.documentElement.style.getPropertyValue("--ui-font-size");
   try {
     await screen.getByRole("button", { name: "Session actions Fix compiler", exact: true }).click();
-    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Delete chat", exact: true }).click();
     await expect.element(screen.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
     const normal = screen.getByRole("dialog").element().getBoundingClientRect();
     expect(normal.height).toBe(190);
@@ -1402,7 +1409,7 @@ test("delete confirmation scrolls long titles while keeping title and actions vi
       }),
     });
     await screen.getByRole("button", { name: `Session actions ${title}`, exact: true }).click();
-    await screen.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Delete chat", exact: true }).click();
     await expect.element(screen.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
     for (const font of [14, 18]) {
       document.documentElement.style.setProperty("--ui-font-size", `${font}px`);

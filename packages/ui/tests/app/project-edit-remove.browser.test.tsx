@@ -148,15 +148,22 @@ async function openEditor(
   name = "Project",
   zh = false,
 ) {
-  await screen
-    .getByRole("main")
-    .getByRole("button", { name: zh ? "默认工作区" : "Workspace", exact: true })
-    .click();
-  await screen.getByRole("menuitem", { name, exact: true }).click();
-  await screen.getByRole("main").getByRole("button", { name, exact: true }).click();
-  await screen
-    .getByRole("menuitem", { name: zh ? "编辑项目" : "Edit project", exact: true })
-    .click();
+  // The new-chat Project menu (C33) only selects; editing is reached from the Project detail card.
+  const row = screen
+    .getByRole("region", { name: zh ? "项目" : "Projects", exact: true })
+    .getByRole("button", { name, exact: true });
+  // Narrow windows start with the sidebar collapsed.
+  if (!matchMedia("(min-width: 768px)").matches)
+    await screen
+      .getByRole("button", { name: zh ? "切换侧栏" : "Toggle sidebar", exact: true })
+      .click();
+  await expect.element(row).toBeVisible();
+  row.element().focus();
+  const card = screen.getByRole("dialog", {
+    name: zh ? "项目详情" : "Project details",
+    exact: true,
+  });
+  await card.getByRole("button", { name: zh ? "编辑项目" : "Edit project", exact: true }).click();
   return screen.getByRole("dialog", { name: zh ? "编辑项目" : "Edit project", exact: true });
 }
 
@@ -171,11 +178,7 @@ test("editing a Project submits one complete draft and leaves unchanged or namel
     />,
   );
   try {
-    await screen.getByRole("main").getByRole("button", { name: "Workspace", exact: true }).click();
-    await screen.getByRole("menuitem", { name: "Project", exact: true }).click();
-    await screen.getByRole("main").getByRole("button", { name: "Project", exact: true }).click();
-    await screen.getByRole("menuitem", { name: "Edit project", exact: true }).click();
-    const dialog = screen.getByRole("dialog", { name: "Edit project", exact: true });
+    const dialog = await openEditor(screen);
     const name = dialog.getByRole("textbox", { name: "Project name", exact: true });
     const save = dialog.getByRole("button", { name: "Save", exact: true });
     await expect.element(name).toHaveValue("Project");
@@ -205,7 +208,9 @@ test("editing a Project submits one complete draft and leaves unchanged or namel
     );
     await expect
       .element(
-        screen.getByRole("main").getByRole("button", { name: "Renamed Project", exact: true }),
+        screen
+          .getByRole("region", { name: "Projects", exact: true })
+          .getByRole("button", { name: "Renamed Project", exact: true }),
       )
       .toBeVisible();
   } finally {
@@ -280,7 +285,9 @@ test("trusted Project additions confirm all folders, mark new folders and retain
       );
     await expect
       .element(
-        screen.getByRole("main").getByRole("button", { name: "Combined repos", exact: true }),
+        screen
+          .getByRole("region", { name: "Projects", exact: true })
+          .getByRole("button", { name: "Combined repos", exact: true }),
       )
       .toBeVisible();
     await expect
@@ -314,12 +321,13 @@ test("untrusted Project additions save directly without granting trust", async (
       .element(screen.getByRole("button", { name: "Fix compiler", exact: true }))
       .toBeVisible();
     await changeProjects(connection.port, [{ ...project, trusted: false }]);
-    await screen.getByRole("main").getByRole("button", { name: "Workspace", exact: true }).click();
+    await screen
+      .getByRole("main")
+      .getByRole("button", { name: "Conversation", exact: true })
+      .click();
     await screen.getByRole("menuitem", { name: "Project", exact: true }).click();
     await screen.getByRole("button", { name: "Cancel", exact: true }).click();
-    await screen.getByRole("main").getByRole("button", { name: "Project", exact: true }).click();
-    await screen.getByRole("menuitem", { name: "Edit project", exact: true }).click();
-    const dialog = screen.getByRole("dialog", { name: "Edit project", exact: true });
+    const dialog = await openEditor(screen);
     await dialog.getByRole("button", { name: "Add folder", exact: true }).click();
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
     await expect.element(dialog).not.toBeInTheDocument();
@@ -356,20 +364,8 @@ test("cancel, close and Escape discard the entire Project edit draft", async () 
       .toBeVisible();
     await changeProjects(connection.port, [project]);
     for (const action of ["Cancel", "Close", "Escape"]) {
-      // Re-selecting the same Project through its public welcome menu does not recreate the App.
-      const trigger = screen
-        .getByRole("main")
-        .getByRole("button", { name: action === "Cancel" ? "Workspace" : "Project", exact: true });
-      await trigger.click();
-      if (action === "Cancel") {
-        await screen.getByRole("menuitem", { name: "Project", exact: true }).click();
-        await screen
-          .getByRole("main")
-          .getByRole("button", { name: "Project", exact: true })
-          .click();
-      }
-      await screen.getByRole("menuitem", { name: "Edit project", exact: true }).click();
-      const dialog = screen.getByRole("dialog", { name: "Edit project", exact: true });
+      // Reopening the editor for the same Project does not recreate the App.
+      const dialog = await openEditor(screen);
       await expect.element(dialog.getByRole("textbox")).toHaveValue("Project");
       await expect.element(dialog.getByText("project", { exact: true })).toBeVisible();
       await dialog.getByRole("textbox").fill("Discard me");
@@ -695,7 +691,7 @@ test.each([
       const close = dialog.getByRole("button", { name: dark ? "关闭" : "Close", exact: true });
       const box = dialog.element().getBoundingClientRect();
       const closeBox = close.element().getBoundingClientRect();
-      expect(closeBox.width).toBe(32);
+      expect(closeBox.width).toBe(24);
       expect(closeBox.right).toBeLessThanOrEqual(box.right - (dark ? 16 : 24));
       expect(closeBox.left).toBeGreaterThanOrEqual(box.left);
       const heading = dialog.getByRole("heading").element();

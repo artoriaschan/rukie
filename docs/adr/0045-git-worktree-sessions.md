@@ -22,14 +22,17 @@ server 在应用 SQLite 记录 rukie 创建的工作树：id、所属 Project、
 
 sidecar 的显示与终端允许根（[ADR-0037](0037-browser-host-sidecar-capabilities.md)）增加已记录的工作树目录。`<dataRoot>/worktrees/` 位于应用数据根内，不能登记为 Project。
 
+新聊天的分支菜单可以在主目录切换或新建本地分支。server 列出主目录可切换的本地分支（排除已被其他工作树检出的分支），以参数向量执行 `git switch <分支>` 或校验名称后执行 `git switch -c <分支>`，不 fetch、不 stash、不强制。主目录中绑定该 Project 的非工作树 Session 执行中、等待 Interaction 或被其他进程占用时拒绝；Git 因未提交改动冲突等原因拒绝时原样报告。切换完成后 post-checkout hook 失败不视为切换失败，以实际检出的分支为准。工作树 Session 不受主目录检出影响。
+
 ## 备选方案
 
 - 工作树放在仓库同级目录：会在用户目录写入应用管理的数据。
 - 工作树随 Session 删除：用户选择保留，由设置页统一清理。
 - 一棵工作树承载多个 Session（“在此工作树中新建聊天”）：用户未选择，工作树只在新建 Session 时创建。
 - 可配置根目录、创建前 fetch、按数量自动删除及删除前快照：本次不做。
-- 分支菜单提供切换与新建分支：会改变主目录检出状态，不属于工作树隔离；本次只显示当前分支和工作树开关。
+- 分支菜单只显示当前分支和工作树开关：最初为避免改变主目录检出状态而采用；rukie.pen M03-A 要求列出全部分支、搜索、切换与新建，后续以上述准入与失败语义实现，不再采用。
+- 切换前自动 stash 或 `--force`：会改写或藏起用户的未提交改动，因此由 Git 拒绝并报告。
 
 ## 影响
 
-工作树中的改动只能经派生分支合回，删除工作树会丢失未提交改动，确认弹窗必须写明路径与保留的分支。Git 不可用或主目录不是仓库顶层时不提供该选项。实施见[工单 05](../../.scratch/session-workspaces/issues/05-git-worktree-sessions.md) 与[工单 06](../../.scratch/session-workspaces/issues/06-worktree-settings.md)。
+工作树中的改动只能经派生分支合回，删除工作树会丢失未提交改动，确认弹窗必须写明路径与保留的分支。Git 不可用或主目录不是仓库顶层时不提供该选项。切换主目录分支会影响之后在主目录工作的 Session，因此在其执行时拒绝。实施见[工单 05](../../.scratch/session-workspaces/issues/05-git-worktree-sessions.md)、[工单 06](../../.scratch/session-workspaces/issues/06-worktree-settings.md) 与[新聊天选择条工单](../../.scratch/new-chat-selector/issues/01-new-chat-selector.md)。

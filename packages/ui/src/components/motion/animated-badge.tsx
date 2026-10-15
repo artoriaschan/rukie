@@ -41,10 +41,7 @@ const SIZE_CLASS: Record<AnimatedBadgeSize, string> = {
   md: "min-h-5 gap-1.5 px-2 text-ui-sm leading-[1.5]",
 };
 
-const ICON_CLASS: Record<AnimatedBadgeSize, string> = {
-  sm: "h-3 w-3",
-  md: "h-3.5 w-3.5",
-};
+const ICON_CLASS = "size-3";
 
 const ICONS: Record<AnimatedBadgeStatus, LucideIcon> = {
   neutral: Circle,
@@ -174,10 +171,10 @@ export function AnimatedBadge({
                   transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                   className="inline-flex"
                 >
-                  <Icon className={ICON_CLASS[size]} />
+                  <Icon className={ICON_CLASS} />
                 </motion.span>
               ) : (
-                (icon ?? <Icon className={ICON_CLASS[size]} />)
+                (icon ?? <Icon className={ICON_CLASS} />)
               )}
             </motion.span>
           </AnimatePresence>

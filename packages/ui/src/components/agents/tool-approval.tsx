@@ -151,15 +151,15 @@ export function ToolApproval({
           )}
         >
           {busy ? (
-            <LoaderCircle className={cn("size-4", !reduce && "animate-spin")} />
+            <LoaderCircle className={cn("size-3", !reduce && "animate-spin")} />
           ) : error ? (
-            <CircleAlert className="size-4" />
+            <CircleAlert className="size-3" />
           ) : status === "denied" ? (
-            <X className="size-4" />
+            <X className="size-3" />
           ) : status === "approved" || status === "complete" ? (
-            <Check className="size-4" />
+            <Check className="size-3" />
           ) : (
-            <ShieldCheck className="size-4" />
+            <ShieldCheck className="size-3" />
           )}
         </span>
 
@@ -192,7 +192,7 @@ export function ToolApproval({
             >
               {componentText("component.view-details")}
               <span aria-hidden="true" style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}>
-                <ChevronDown className="size-3.5" />
+                <ChevronDown className="size-3" />
               </span>
             </button>
           ) : null}

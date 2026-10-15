@@ -213,13 +213,13 @@ export function PromptInput({
                 size="icon"
                 disabled={disabled || loading}
                 aria-label={componentText("component.add-to-prompt")}
-                className={cn("min-h-8 min-w-8 rounded-lg", !trailingAction && "ml-auto")}
+                className={cn(!trailingAction && "ml-auto")}
               >
                 <span
                   aria-hidden="true"
                   style={{ transform: actionsOpen ? "rotate(45deg)" : undefined }}
                 >
-                  <Plus className="size-4" />
+                  <Plus />
                 </span>
               </Button>
             </MorphPopoverTrigger>
@@ -243,7 +243,7 @@ export function PromptInput({
                   className="flex w-full items-start gap-2 rounded-md px-2 py-1 min-h-8 text-left outline-none not-disabled:hover:bg-menu-hover focus-visible:bg-menu-hover disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {action.icon ? (
-                    <span className="mt-0.5 grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-4">
+                    <span className="mt-0.5 grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-3">
                       {action.icon}
                     </span>
                   ) : null}
@@ -271,7 +271,7 @@ export function PromptInput({
             <SelectTrigger className="min-h-8 w-auto max-w-52 rounded-lg border-0 bg-transparent px-2 py-0 text-ui-sm hover:bg-muted focus-visible:ring-2">
               <span className="flex min-w-0 items-center gap-2">
                 {currentModel?.icon ? (
-                  <span className="grid size-4 shrink-0 place-items-center text-muted-foreground [&_svg]:size-3.5">
+                  <span className="grid size-4 shrink-0 place-items-center text-muted-foreground [&_svg]:size-3">
                     {currentModel.icon}
                   </span>
                 ) : null}
@@ -290,7 +290,7 @@ export function PromptInput({
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     {option.icon ? (
-                      <span className="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-4">
+                      <span className="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-3">
                         {option.icon}
                       </span>
                     ) : null}
@@ -318,7 +318,7 @@ export function PromptInput({
                 : componentText("component.send-prompt")
             }
             onClick={loading ? onStop : undefined}
-            className={cn("min-h-8 min-w-8 rounded-lg", !trailingAction && "ml-auto")}
+            className={cn(!trailingAction && "ml-auto")}
           >
             <AnimatePresence initial={false} mode="popLayout">
               <motion.span
@@ -329,11 +329,7 @@ export function PromptInput({
                 transition={{ duration: reduce ? 0 : 0.12 }}
                 className="grid place-items-center"
               >
-                {loading ? (
-                  <Square className="size-3 fill-current" />
-                ) : (
-                  <ArrowUp className="size-4" />
-                )}
+                {loading ? <Square className="fill-current" /> : <ArrowUp />}
               </motion.span>
             </AnimatePresence>
           </Button>

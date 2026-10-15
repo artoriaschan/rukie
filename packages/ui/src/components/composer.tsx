@@ -119,7 +119,7 @@ export function Composer(props: ComposerProps) {
                   aria-label={t("app.remove-image", { name: image.name ?? t("app.images") })}
                   onClick={() => props.onImages(props.images.filter((_, i) => i !== index))}
                 >
-                  <X className="size-3" />
+                  <X />
                 </Button>
               </Tooltip>
             </div>
@@ -178,7 +178,7 @@ export function Composer(props: ComposerProps) {
                     aria-label={t("app.attach")}
                     className="conversation-add-trigger"
                   >
-                    <Plus className="size-4" />
+                    <Plus />
                   </Button>
                 </Menu.DropdownMenuTrigger>
               </Tooltip>
@@ -193,7 +193,7 @@ export function Composer(props: ComposerProps) {
                     className="conversation-tool-option"
                     onSelect={() => file.current?.click()}
                   >
-                    <Paperclip className="size-4" aria-hidden="true" />
+                    <Paperclip className="size-3" aria-hidden="true" />
                     <span>{t("app.attach")}</span>
                   </Menu.DropdownMenuItem>
                 </ScrollArea>
@@ -211,7 +211,7 @@ export function Composer(props: ComposerProps) {
                     props.permissionMode === "full-access" && "conversation-full-access",
                   )}
                 >
-                  <PermissionIcon className="size-4 shrink-0" />
+                  <PermissionIcon className="size-3 shrink-0" />
                   <span className="max-sm:sr-only">{t(`app.${props.permissionMode}`)}</span>
                   <ChevronDown className="size-3 shrink-0" aria-hidden="true" />
                 </Button>
@@ -238,7 +238,7 @@ export function Composer(props: ComposerProps) {
                           mode === "full-access" && "conversation-full-access",
                         )}
                       >
-                        <Icon className="size-4 shrink-0" aria-hidden="true" />
+                        <Icon className="size-3 shrink-0" aria-hidden="true" />
                         <span className="conversation-permission-copy">
                           <span className="block font-medium">{t(`app.${mode}`)}</span>
                           <span className="block text-ui-sm text-muted-foreground">
@@ -264,7 +264,7 @@ export function Composer(props: ComposerProps) {
                   disabled={props.disabled}
                   onClick={props.onStop}
                 >
-                  <Square className="size-4" />
+                  <Square />
                 </Button>
               </Tooltip>
             )}
@@ -277,7 +277,7 @@ export function Composer(props: ComposerProps) {
                     aria-label={`${t("app.context")} ${percent}%`}
                   >
                     <svg
-                      className="conversation-context-ring size-4 -rotate-90"
+                      className="conversation-context-ring -rotate-90"
                       viewBox="0 0 24 24"
                       aria-hidden="true"
                     >

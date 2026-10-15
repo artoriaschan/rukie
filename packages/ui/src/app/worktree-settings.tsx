@@ -139,7 +139,7 @@ export function WorktreeSettings({
             <p className="text-ui-base text-muted-foreground">{t("worktrees.description")}</p>
           </div>
           <Button variant="outline" size="sm" disabled={pending} onClick={() => void refresh()}>
-            <RefreshCw className="size-4" />
+            <RefreshCw className="size-3" />
             {t("worktrees.refresh")}
           </Button>
         </div>
@@ -152,7 +152,7 @@ export function WorktreeSettings({
           <ul className="worktree-settings-list">
             {trees.map((tree) => (
               <li key={tree.id} className="worktree-settings-row">
-                <GitBranch aria-hidden="true" className="size-4 shrink-0" />
+                <GitBranch aria-hidden="true" className="size-3 shrink-0" />
                 <div className="worktree-settings-info">
                   <div className="worktree-settings-branch">
                     <span className="font-mono text-ui-base">{tree.branch}</span>
@@ -178,7 +178,7 @@ export function WorktreeSettings({
           </ul>
         ) : (
           <div className="worktree-settings-empty">
-            <GitBranch aria-hidden="true" className="size-8 text-muted-foreground" />
+            <GitBranch aria-hidden="true" className="size-3 text-muted-foreground" />
             <p>{t("worktrees.empty")}</p>
           </div>
         )}
@@ -208,7 +208,7 @@ export function WorktreeSettings({
               </Button>
               <Button
                 variant="destructive"
-                className="h-9 bg-destructive-soft text-destructive-soft-foreground not-disabled:hover:bg-destructive-soft/80 not-disabled:active:bg-destructive-soft"
+                className="h-9"
                 disabled={pending}
                 onClick={() => void remove()}
               >

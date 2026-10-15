@@ -21,7 +21,6 @@ import {
   Settings,
   ArrowLeft,
   ArrowRight,
-  GitBranch,
 } from "lucide-react";
 import type { Locale } from "@rukie/i18n";
 import type {
@@ -51,8 +50,10 @@ import { directoryName, removeProjectDirectory } from "./project-directories";
 import { ProjectEdit } from "./project-edit";
 import { ProjectTrust } from "./project-trust";
 import { DeleteSession } from "./delete-session";
-import { RenameSession } from "./rename-session";
+import { RenameProject, RenameSession } from "./rename-session";
+import { ProjectRemove } from "./project-remove";
 import { useErrorText } from "./error";
+import { NewChatSelector, parseProjectGit } from "./new-chat-selector";
 
 export type AppHost = Pick<DesktopHost, "getConnection" | "modelServices"> &
   Partial<Omit<DesktopHost, "getConnection" | "modelServices">>;
@@ -125,6 +126,8 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const [detailEpoch, setDetailEpoch] = useState(0);
   const [detailProject, setDetailProject] = useState<{ id: string; pinned: boolean } | null>(null);
   const [editingProject, setEditingProject] = useState<WireProject | null>(null);
+  const [renamingProject, setRenamingProject] = useState<WireProject | null>(null);
+  const [removingProject, setRemovingProject] = useState<WireProject | null>(null);
   const [trust, setTrust] = useState<{
     project: Pick<WireProject, "directories" | "primary">;
     creating: boolean;
@@ -157,7 +160,15 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const newDraftSequence = useRef(0);
   const [newDraftKey, setNewDraftKey] = useState("new-0");
   const detailsDisabled =
-    settingsOpen || search || !!deleting || !!renaming || pathOpen || !!editingProject || !!trust;
+    settingsOpen ||
+    search ||
+    !!deleting ||
+    !!renaming ||
+    pathOpen ||
+    !!editingProject ||
+    !!renamingProject ||
+    !!removingProject ||
+    !!trust;
   useEffect(() => {
     setDetailProject(null);
     // Invalidate pending hover intent even when no card has opened yet.
@@ -265,22 +276,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       void client
         .request({ type: "project.git", projectId: targetProject.id })
         .then((result) => {
-          if (
-            active &&
-            typeof result === "object" &&
-            result !== null &&
-            "repository" in result &&
-            typeof result.repository === "boolean" &&
-            "branch" in result &&
-            (result.branch === null || typeof result.branch === "string") &&
-            "head" in result &&
-            typeof result.head === "string"
-          )
-            setProjectGit({
-              repository: result.repository,
-              branch: result.branch,
-              head: result.head,
-            });
+          if (active) setProjectGit(parseProjectGit(result));
         })
         .catch(() => {
           if (active) setProjectGit(null);
@@ -297,9 +293,37 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     targetProject?.primary,
     newDraftKey,
   ]);
-  const gitSource = projectGit?.branch ?? projectGit?.head.slice(0, 8) ?? "";
+  /** Returns the localized failure so the open branch menu can present it. */
+  const changeBranch = async (branch: string, create: boolean) => {
+    if (!targetProject) return errorText(new WireError("project_not_found"));
+    try {
+      setProjectGit(
+        parseProjectGit(
+          await client.request({
+            type: create ? "project.createBranch" : "project.checkout",
+            projectId: targetProject.id,
+            branch,
+          }),
+        ),
+      );
+      return null;
+    } catch (reason) {
+      return errorText(reason);
+    }
+  };
   const currentProject = state.projects.find((project) => project.id === current?.projectId);
   const connected = state.connection === "connected";
+  /** A Project with live Session work cannot be removed until that work settles. */
+  const projectBusy = (projectId: string) =>
+    state.sessions.some(
+      (session) =>
+        projectId === session.projectId &&
+        (session.running ||
+          session.waitingPermission ||
+          state.views[session.id]?.running ||
+          state.views[session.id]?.busy ||
+          Object.keys(state.views[session.id]?.interactions ?? {}).length > 0),
+    );
   const safe = (action: () => Promise<unknown>) => {
     void action().catch((reason) => setError(t("app.error", { message: errorText(reason) })));
   };
@@ -751,6 +775,34 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             : "";
       })
       .join("\n\n") ?? "";
+  const composer = (
+    <Composer
+      draft={draft}
+      images={images}
+      onDraft={setDraft}
+      onImages={setImages}
+      disabled={!connected}
+      submitting={sending}
+      running={Boolean(view.running)}
+      permissionMode={view.permissionMode ?? permission}
+      onPermission={setMode}
+      models={state.models}
+      model={
+        state.selected
+          ? view.snapshot?.model
+          : newSessionModel
+            ? `${newSessionModel.provider}/${newSessionModel.modelId}`
+            : undefined
+      }
+      thinkingLevel={view.thinkingLevel ?? model?.thinkingLevel}
+      contextReport={view.contextReport}
+      openingContext={view.openingContext}
+      compactionPoints={view.snapshot?.compactions.length}
+      onModel={setSelection}
+      onSend={() => safe(send)}
+      onStop={() => safe(stop)}
+    />
+  );
   const footer = (approval?: ReactNode) => (
     <div
       className={cn(
@@ -758,80 +810,13 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         approval ? "max-w-3xl" : "max-w-[800px]",
       )}
     >
-      {!state.selected ? (
-        <div className="flex min-h-8 items-center gap-2">
-          <Menu.DropdownMenu>
-            <Menu.DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="self-start">
-                <Folder className="size-4" />
-                {targetProject?.name ?? t("app.workspace")}
-              </Button>
-            </Menu.DropdownMenuTrigger>
-            <Menu.DropdownMenuContent>
-              <Menu.DropdownMenuGroup>
-                <Menu.DropdownMenuItem onSelect={() => store.select(null, null)}>
-                  {t("app.workspace")}
-                </Menu.DropdownMenuItem>
-                {state.projects.map((project) => (
-                  <Menu.DropdownMenuItem key={project.id} onSelect={() => newChat(project.id)}>
-                    {project.name}
-                  </Menu.DropdownMenuItem>
-                ))}
-                {targetProject ? (
-                  <Menu.DropdownMenuItem
-                    onSelect={() => {
-                      setEditingProject(targetProject);
-                    }}
-                  >
-                    {t("app.edit-project")}
-                  </Menu.DropdownMenuItem>
-                ) : null}
-                <Menu.DropdownMenuItem onSelect={() => safe(addProject)}>
-                  {t("app.add-project")}
-                </Menu.DropdownMenuItem>
-              </Menu.DropdownMenuGroup>
-            </Menu.DropdownMenuContent>
-          </Menu.DropdownMenu>
-          {projectGit?.repository ? (
-            <Menu.DropdownMenu>
-              <Menu.DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label={t("app.current-branch", { branch: gitSource })}
-                  className="min-w-0 max-w-48"
-                >
-                  <GitBranch className="size-4 shrink-0" />
-                  <span className="truncate">{gitSource}</span>
-                </Button>
-              </Menu.DropdownMenuTrigger>
-              <Menu.DropdownMenuContent className="w-80">
-                <Menu.DropdownMenuCheckboxItem
-                  checked={useWorktree}
-                  onCheckedChange={setUseWorktree}
-                  onSelect={(event) => event.preventDefault()}
-                  disabled={sending}
-                >
-                  <GitBranch className="size-4" />
-                  {t("app.use-worktree")}
-                </Menu.DropdownMenuCheckboxItem>
-                {useWorktree ? (
-                  <p className="px-2 py-1 text-ui-sm leading-[1.5] text-muted-foreground">
-                    {t("app.worktree-hint", { branch: gitSource })}
-                  </p>
-                ) : null}
-              </Menu.DropdownMenuContent>
-            </Menu.DropdownMenu>
-          ) : null}
-        </div>
-      ) : null}
       {!connected ? (
         <div role="status" className="rounded-xl border border-border bg-card px-4 py-3">
           <div className="flex items-center gap-2">
             {state.connection === "reconnecting" ? (
-              <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
+              <LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" />
             ) : (
-              <WifiOff className="size-4" />
+              <WifiOff className="size-3" />
             )}
             <span>
               {t(state.connection === "reconnecting" ? "app.reconnecting" : "app.disconnected")}
@@ -866,33 +851,25 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               {t("app.retry")}
             </Button>
           </div>
+        ) : state.selected ? (
+          composer
         ) : (
-          <Composer
-            draft={draft}
-            images={images}
-            onDraft={setDraft}
-            onImages={setImages}
-            disabled={!connected}
-            submitting={sending}
-            running={Boolean(view.running)}
-            permissionMode={view.permissionMode ?? permission}
-            onPermission={setMode}
-            models={state.models}
-            model={
-              state.selected
-                ? view.snapshot?.model
-                : newSessionModel
-                  ? `${newSessionModel.provider}/${newSessionModel.modelId}`
-                  : undefined
-            }
-            thinkingLevel={view.thinkingLevel ?? model?.thinkingLevel}
-            contextReport={view.contextReport}
-            openingContext={view.openingContext}
-            compactionPoints={view.snapshot?.compactions.length}
-            onModel={setSelection}
-            onSend={() => safe(send)}
-            onStop={() => safe(stop)}
-          />
+          <div className="flex min-w-0 flex-col">
+            <NewChatSelector
+              projects={state.projects}
+              target={targetProject}
+              git={projectGit}
+              worktree={useWorktree}
+              disabled={!connected || sending}
+              onProject={(projectId) =>
+                projectId === null ? store.select(null, null) : newChat(projectId)
+              }
+              onAddProject={() => safe(addProject)}
+              onWorktree={setUseWorktree}
+              onBranch={changeBranch}
+            />
+            <div className="new-chat-composer">{composer}</div>
+          </div>
         ))}
     </div>
   );
@@ -936,7 +913,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 aria-pressed={sidebar}
                 onClick={() => setSidebar(!sidebar)}
               >
-                <PanelLeft className="size-4" />
+                <PanelLeft />
               </Button>
             </Tooltip>
           ) : null}
@@ -957,9 +934,9 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   className="rounded-md p-1 text-muted-foreground outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {currentProject ? (
-                    <Folder className="size-4" />
+                    <Folder className="size-3" />
                   ) : (
-                    <MessageSquare className="size-4" />
+                    <MessageSquare className="size-3" />
                   )}
                 </span>
               </Tooltip>
@@ -968,7 +945,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                 <Tooltip content={t("app.more")}>
                   <Menu.DropdownMenuTrigger asChild>
                     <Button size="icon" variant="ghost" aria-label={t("app.more")}>
-                      <Ellipsis className="size-4" />
+                      <Ellipsis />
                     </Button>
                   </Menu.DropdownMenuTrigger>
                 </Tooltip>
@@ -1041,7 +1018,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   aria-expanded={summary}
                   onClick={() => setSummary(!summary)}
                 >
-                  <ListTree className="size-4" />
+                  <ListTree />
                 </Button>
               </Tooltip>
             </>
@@ -1062,7 +1039,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               className="bg-background"
               onClick={() => newChat(null)}
             >
-              <Home className="size-4 fill-current" />
+              <Home className="fill-current" />
             </Button>
           </Tooltip>
           <Button
@@ -1075,7 +1052,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               setSettingsOpen(true);
             }}
           >
-            <Settings className="size-4" />
+            <Settings />
           </Button>
         </nav>
         <div className="app-workspace relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -1110,6 +1087,11 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                     )
                   }
                   onEditProject={setEditingProject}
+                  onRenameProject={setRenamingProject}
+                  onRevealProject={(project) =>
+                    safe(() => client.request({ type: "host.revealPath", path: project.primary }))
+                  }
+                  onRemoveProject={setRemovingProject}
                   projects={state.projects}
                   pinned={state.pinned}
                   archived={state.archived}
@@ -1207,6 +1189,38 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           onDelete={() => client.request({ type: "session.delete", sessionId: deleting.id })}
         />
       ) : null}
+      {renamingProject ? (
+        <RenameProject
+          project={
+            state.projects.find((project) => project.id === renamingProject.id) ?? renamingProject
+          }
+          onClose={() => setRenamingProject(null)}
+          onSave={(name) => {
+            const project =
+              state.projects.find((candidate) => candidate.id === renamingProject.id) ??
+              renamingProject;
+            return client.request({
+              type: "project.update",
+              projectId: project.id,
+              name,
+              directories: project.directories,
+              primary: project.primary,
+            });
+          }}
+        />
+      ) : null}
+      {removingProject ? (
+        <ProjectRemove
+          project={
+            state.projects.find((project) => project.id === removingProject.id) ?? removingProject
+          }
+          busy={projectBusy(removingProject.id)}
+          connected={connected}
+          onRemove={() => client.request({ type: "project.remove", projectId: removingProject.id })}
+          onCancel={() => setRemovingProject(null)}
+          onRemoved={() => setRemovingProject(null)}
+        />
+      ) : null}
       {renaming ? (
         <RenameSession
           session={renaming}
@@ -1287,15 +1301,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           project={
             state.projects.find((project) => project.id === editingProject.id) ?? editingProject
           }
-          busy={state.sessions.some(
-            (session) =>
-              editingProject.id === session.projectId &&
-              (session.running ||
-                session.waitingPermission ||
-                state.views[session.id]?.running ||
-                state.views[session.id]?.busy ||
-                Object.keys(state.views[session.id]?.interactions ?? {}).length > 0),
-          )}
+          busy={projectBusy(editingProject.id)}
           connected={connected}
           onPick={async () => {
             if (!host.pickProjectFolder) throw new WireError("unsupported");

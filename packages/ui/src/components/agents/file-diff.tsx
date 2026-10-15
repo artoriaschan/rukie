@@ -155,7 +155,7 @@ export function FileDiff({
         onClick={() => setOpen(!currentOpen)}
         className="group flex min-h-7 w-full items-center gap-2 rounded-md py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
-        <FileCode2 aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <FileCode2 aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate font-mono text-ui-base text-foreground">
           {file}
         </span>
@@ -167,10 +167,10 @@ export function FileDiff({
           {streaming ? (
             <LoaderCircle
               aria-label={componentText("component.applying-changes")}
-              className={cn("size-3.5", !reduce && "animate-spin")}
+              className={cn("size-3", !reduce && "animate-spin")}
             />
           ) : (
-            <Check aria-label={componentText("component.changes-applied")} className="size-3.5" />
+            <Check aria-label={componentText("component.changes-applied")} className="size-3" />
           )}
         </span>
         <span
@@ -178,7 +178,7 @@ export function FileDiff({
           style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}
           className="shrink-0 text-muted-foreground/45 group-hover:text-muted-foreground"
         >
-          <ChevronDown className="size-3.5" />
+          <ChevronDown className="size-3" />
         </span>
       </button>
 
@@ -246,9 +246,9 @@ export function FileDiff({
                   }
                   onClick={handleCopy}
                   transition={{ duration: 0.16, ease: EASE_OUT }}
-                  className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  className="grid size-6 place-items-center rounded-md text-muted-foreground outline-none hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                  {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
                 </motion.button>
               </div>
             ) : null}

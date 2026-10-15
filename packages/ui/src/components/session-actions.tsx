@@ -1,27 +1,53 @@
 import {
   Archive,
+  Check,
+  Folder,
+  FolderOpen,
+  MessageCircle,
   Trash2,
   Pencil,
   Pin,
   PinOff,
-  FolderInput,
-  ChevronRight,
   type LucideIcon,
 } from "lucide-react";
-import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import { Fragment } from "react";
 import type { WireProject, WireSessionSummary } from "@rukie/shared";
 import { useAppText } from "../lib/i18n";
 import * as Menu from "./ui/dropdown-menu";
-import { ContextMenuItem, ContextMenuSeparator } from "./motion/context-menu";
+import {
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+} from "./motion/context-menu";
+
+interface SessionMoveTarget {
+  id: string;
+  /** A Project name is shown verbatim; fixed entries are localized copy. */
+  label: { name: string } | { copy: "app.choose-folder" | "app.move-out" };
+  icon: LucideIcon;
+  /** The Session's own Project: listed, checked and not selectable. */
+  current?: boolean;
+  separator?: boolean;
+  onSelect: () => void;
+}
 
 interface SessionAction {
   id: string;
-  label: "app.rename" | "app.pin" | "app.unpin" | "app.archive" | "app.delete" | "app.move-project";
+  label:
+    | "app.rename"
+    | "app.pin"
+    | "app.unpin"
+    | "app.archive"
+    | "app.delete-session"
+    | "app.move-project";
   icon: LucideIcon;
   disabled: boolean;
   destructive: boolean;
+  separator?: boolean;
   onSelect?: () => void;
-  targets?: { id: string; name: string; onSelect: () => void; separator?: boolean }[];
+  targets?: SessionMoveTarget[];
 }
 
 /** All Session menu entries are derived here; presentation chooses its menu primitive. */
@@ -36,7 +62,7 @@ export function sessionActions(
   onMove: (session: WireSessionSummary, project: WireProject | null) => void,
   onChooseFolder: (session: WireSessionSummary) => void,
 ): SessionAction[] {
-  const targets = projects.filter((project) => project.id !== session.projectId);
+  const busy = Boolean(session.running || session.waitingPermission);
   return [
     {
       id: "rename",
@@ -55,172 +81,149 @@ export function sessionActions(
       onSelect: () => onPin(session.id, !pinned),
     },
     {
-      id: "move",
-      label: "app.move-project",
-      icon: FolderInput,
-      disabled: Boolean(session.worktree || session.running || session.waitingPermission),
-      destructive: false,
-      targets: [
-        ...targets.map((project) => ({
-          id: project.id,
-          name: project.name,
-          onSelect: () => onMove(session, project),
-        })),
-        ...(session.projectId
-          ? [{ id: "move-out", name: "app.move-out", onSelect: () => onMove(session, null) }]
-          : []),
-        {
-          id: "choose-folder",
-          name: "app.choose-folder",
-          separator: true,
-          onSelect: () => onChooseFolder(session),
-        },
-      ],
-    },
-    {
       id: "archive",
       label: "app.archive",
       icon: Archive,
-      disabled: Boolean(session.running || session.waitingPermission),
+      disabled: busy,
       destructive: false,
       onSelect: () => onArchive(session.id),
     },
     {
+      id: "move",
+      label: "app.move-project",
+      icon: Folder,
+      disabled: Boolean(session.worktree) || busy,
+      destructive: false,
+      targets: [
+        ...projects.map((project) => ({
+          id: project.id,
+          label: { name: project.name },
+          icon: Folder,
+          current: project.id === session.projectId,
+          onSelect: () => onMove(session, project),
+        })),
+        {
+          id: "choose-folder",
+          label: { copy: "app.choose-folder" },
+          icon: FolderOpen,
+          separator: true,
+          onSelect: () => onChooseFolder(session),
+        },
+        ...(session.projectId
+          ? [
+              {
+                id: "move-out",
+                label: { copy: "app.move-out" } as const,
+                icon: MessageCircle,
+                onSelect: () => onMove(session, null),
+              },
+            ]
+          : []),
+      ],
+    },
+    {
       id: "delete",
-      label: "app.delete",
+      label: "app.delete-session",
       icon: Trash2,
-      disabled: Boolean(session.running || session.waitingPermission),
+      disabled: busy,
       destructive: true,
+      separator: true,
       onSelect: () => onDelete(session),
     },
   ];
 }
 
+function useTargetLabel() {
+  const t = useAppText();
+  return (target: SessionMoveTarget) =>
+    "name" in target.label ? target.label.name : t(target.label.copy);
+}
+
 export function SessionDropdownItems({ actions }: { actions: SessionAction[] }) {
   const t = useAppText();
-  return actions.map((action) =>
-    action.targets ? (
-      <Menu.DropdownMenuSub key={action.id}>
-        <Menu.DropdownMenuSubTrigger disabled={action.disabled}>
+  const label = useTargetLabel();
+  return actions.map((action) => (
+    <Fragment key={action.id}>
+      {action.separator ? <Menu.DropdownMenuSeparator /> : null}
+      {action.targets ? (
+        <Menu.DropdownMenuSub>
+          <Menu.DropdownMenuSubTrigger disabled={action.disabled}>
+            <action.icon />
+            {t(action.label)}
+          </Menu.DropdownMenuSubTrigger>
+          <Menu.DropdownMenuSubContent className="min-w-56">
+            <Menu.DropdownMenuGroup>
+              {action.targets.map((target) => (
+                <Fragment key={target.id}>
+                  {target.separator ? <Menu.DropdownMenuSeparator /> : null}
+                  <Menu.DropdownMenuItem
+                    disabled={action.disabled || target.current}
+                    aria-current={target.current ? "true" : undefined}
+                    onSelect={target.onSelect}
+                  >
+                    <target.icon />
+                    <span className="min-w-0 flex-1 truncate">{label(target)}</span>
+                    {target.current ? <Check aria-hidden="true" /> : null}
+                  </Menu.DropdownMenuItem>
+                </Fragment>
+              ))}
+            </Menu.DropdownMenuGroup>
+          </Menu.DropdownMenuSubContent>
+        </Menu.DropdownMenuSub>
+      ) : (
+        <Menu.DropdownMenuItem
+          disabled={action.disabled}
+          variant={action.destructive ? "destructive" : "default"}
+          onSelect={action.onSelect}
+        >
           <action.icon />
           {t(action.label)}
-        </Menu.DropdownMenuSubTrigger>
-        <Menu.DropdownMenuSubContent>
-          <Menu.DropdownMenuGroup>
-            {action.targets.map((target) => (
-              <Fragment key={target.id}>
-                {target.separator ? <Menu.DropdownMenuSeparator /> : null}
-                <Menu.DropdownMenuItem
-                  key={target.id}
-                  disabled={action.disabled}
-                  onSelect={target.onSelect}
-                >
-                  {target.id === "move-out"
-                    ? t("app.move-out")
-                    : target.id === "choose-folder"
-                      ? t("app.choose-folder")
-                      : target.name}
-                </Menu.DropdownMenuItem>
-              </Fragment>
-            ))}
-          </Menu.DropdownMenuGroup>
-        </Menu.DropdownMenuSubContent>
-      </Menu.DropdownMenuSub>
-    ) : (
-      <Menu.DropdownMenuItem
-        key={action.id}
-        disabled={action.disabled}
-        variant={action.destructive ? "destructive" : "default"}
-        onSelect={action.onSelect}
-      >
-        <action.icon />
-        {t(action.label)}
-      </Menu.DropdownMenuItem>
-    ),
-  );
+        </Menu.DropdownMenuItem>
+      )}
+    </Fragment>
+  ));
 }
 
 export function SessionContextItems({ actions }: { actions: SessionAction[] }) {
   const t = useAppText();
-  return actions.map((action) =>
-    action.targets ? (
-      <SessionContextTargets key={action.id} action={action} />
-    ) : (
-      <ContextMenuItem
-        key={action.id}
-        disabled={action.disabled}
-        tone={action.destructive ? "destructive" : "default"}
-        onSelect={action.onSelect}
-      >
-        <action.icon aria-hidden="true" className="size-4 shrink-0" />
-        {t(action.label)}
-      </ContextMenuItem>
-    ),
-  );
-}
-
-/** beUI context menu has no Sub API; compose its items in a keyboard-accessible nested group. */
-function SessionContextTargets({ action }: { action: SessionAction }) {
-  const t = useAppText();
-  const [open, setOpen] = useState(false);
-  const group = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (open) group.current?.querySelector<HTMLButtonElement>("button")?.focus();
-  }, [open]);
-  return (
-    <div
-      onKeyDown={(event) => {
-        if (event.key === "ArrowRight" && !open && !action.disabled) {
-          event.preventDefault();
-          event.stopPropagation();
-          setOpen(true);
-        }
-        if ((event.key === "ArrowLeft" || event.key === "Escape") && open) {
-          event.preventDefault();
-          event.stopPropagation();
-          group.current?.parentElement?.querySelector<HTMLButtonElement>("button")?.focus();
-          setOpen(false);
-        }
-      }}
-    >
-      <ContextMenuItem
-        disabled={action.disabled}
-        closeOnSelect={false}
-        onSelect={() => setOpen(!open)}
-        ariaHasPopup="menu"
-        ariaExpanded={open}
-      >
-        <action.icon aria-hidden="true" className="size-4 shrink-0" />
-        {t(action.label)}
-        <ChevronRight aria-hidden="true" className="ml-auto size-4" />
-      </ContextMenuItem>
-      {open ? (
-        <div ref={group} role="menu" aria-label={t(action.label)} className="pl-4">
-          {action.targets?.map((target) => (
-            <Fragment key={target.id}>
-              {target.separator ? <ContextMenuSeparator /> : null}
-              <ContextMenuItem
-                key={target.id}
-                disabled={action.disabled}
-                onSelect={target.onSelect}
-                textValue={
-                  target.id === "move-out"
-                    ? t("app.move-out")
-                    : target.id === "choose-folder"
-                      ? t("app.choose-folder")
-                      : target.name
-                }
-              >
-                {target.id === "move-out"
-                  ? t("app.move-out")
-                  : target.id === "choose-folder"
-                    ? t("app.choose-folder")
-                    : target.name}
-              </ContextMenuItem>
-            </Fragment>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
+  const label = useTargetLabel();
+  return actions.map((action) => (
+    <Fragment key={action.id}>
+      {action.separator ? <ContextMenuSeparator /> : null}
+      {action.targets ? (
+        <ContextMenuSub>
+          <ContextMenuSubTrigger disabled={action.disabled} textValue={t(action.label)}>
+            <action.icon aria-hidden="true" className="size-4 shrink-0" />
+            {t(action.label)}
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent ariaLabel={t(action.label)}>
+            {action.targets.map((target) => (
+              <Fragment key={target.id}>
+                {target.separator ? <ContextMenuSeparator /> : null}
+                <ContextMenuItem
+                  disabled={action.disabled || target.current}
+                  ariaCurrent={target.current}
+                  onSelect={target.onSelect}
+                  textValue={label(target)}
+                >
+                  <target.icon aria-hidden="true" className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{label(target)}</span>
+                  {target.current ? <Check aria-hidden="true" className="size-3 shrink-0" /> : null}
+                </ContextMenuItem>
+              </Fragment>
+            ))}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+      ) : (
+        <ContextMenuItem
+          disabled={action.disabled}
+          tone={action.destructive ? "destructive" : "default"}
+          onSelect={action.onSelect}
+        >
+          <action.icon aria-hidden="true" className="size-4 shrink-0" />
+          {t(action.label)}
+        </ContextMenuItem>
+      )}
+    </Fragment>
+  ));
 }

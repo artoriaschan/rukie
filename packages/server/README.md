@@ -60,7 +60,7 @@ Session 摘要的必填 `projectId: string | null` 读取应用数据根 `app.sq
 
 ## Git Project 独立工作树
 
-`project.git { projectId }` 返回 `{ repository, branch, head }`；主目录不是 Git 仓库顶层、没有提交或 Git 不可用时返回 `{ repository: false, branch: null, head: "" }`。detached HEAD 返回 `branch: null` 与当前提交。`session.create` 可传 `worktree: true`，只接受已登记 Project。server 创建 `dataRoot/worktrees/<短id>/<仓库目录名>` 和独立生成 id 的 `rukie/worktree-<短id>` 分支，已有分支重试，不 fetch、不带入主目录未提交改动。Git 创建失败返回带输出摘要的 `worktree_failed`，不创建 Session；后续打开失败回滚新工作树及记录并返回打开错误。
+`project.git { projectId }` 返回 `{ repository, branch, head, branches }`；`branches` 是主目录可切换的本地分支，按名称排序，排除已被其他工作树检出的分支。主目录不是 Git 仓库顶层、没有提交或 Git 不可用时返回 `{ repository: false, branch: null, head: "", branches: [] }`。detached HEAD 返回 `branch: null` 与当前提交。`project.checkout { projectId, branch }` 切换到列表中的分支，`project.createBranch { projectId, branch }` 校验名称后新建并检出，两者都返回新的 `project.git` 结果并发布 `sessions_changed`。分支名非法、已存在或不在列表中返回 `branch_invalid { branch }`；Git 拒绝（如未提交改动冲突）返回 `git_failed { message }`，不 stash、不强制；绑定该 Project 的非工作树 Session 执行中、等待 Interaction 或被占用时返回 `session_busy`。两者经 Project 变更队列串行，不 fetch。`session.create` 可传 `worktree: true`，只接受已登记 Project。server 创建 `dataRoot/worktrees/<短id>/<仓库目录名>` 和独立生成 id 的 `rukie/worktree-<短id>` 分支，已有分支重试，不 fetch、不带入主目录未提交改动。Git 创建失败返回带输出摘要的 `worktree_failed`，不创建 Session；后续打开失败回滚新工作树及记录并返回打开错误。
 
 本机应用数据库保存工作树记录，Session 绑定保存 `worktreeId`；摘要必填 `worktree: { id, branch } | null`。工作树 Session 从所属 Project 派生信任，附加目录排除主目录，重启和后续执行保留工作树 cwd、跳过主目录懒同步；`session.move` 返回 `worktree_session`。删除 Session 或移除 Project 仅清除 Session 与绑定，保留工作树、记录及分支。`host.revealPath` 与 `host.openInTerminal` 允许已记录的工作树目录及真实子路径，仍拒绝符号链接逃逸；应用数据根的工作树不能登记为 Project。完整决定见 [ADR-0045](../../docs/adr/0045-git-worktree-sessions.md)。
 

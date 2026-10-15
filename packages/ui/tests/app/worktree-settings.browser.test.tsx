@@ -94,8 +94,9 @@ test.each([
     const dialog = screen.getByRole("dialog", { name: labels.title, exact: true });
     await expect.element(dialog).toBeVisible();
     const confirm = dialog.getByRole("button", { name: labels.remove, exact: true });
-    const background = dark ? "rgba(255, 92, 92, 0.15)" : "rgb(253, 232, 232)";
-    const foreground = dark ? "rgb(255, 122, 122)" : "rgb(207, 34, 46)";
+    // C36 uses the solid destructive role, not the scoped soft variant of Project removal.
+    const background = dark ? "rgb(255, 92, 92)" : "rgb(224, 49, 49)";
+    const foreground = dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
     expect(getComputedStyle(confirm.element()).backgroundColor).toBe(background);
     expect(getComputedStyle(confirm.element()).color).toBe(foreground);
     expect(confirm.element().getBoundingClientRect().height).toBe(36);
@@ -107,12 +108,8 @@ test.each([
     ).toBe(32);
     expect(getComputedStyle(confirm.element()).cursor).toBe("pointer");
     await confirm.hover();
-    const hover = rgba(getComputedStyle(confirm.element()).backgroundColor);
-    const expectedHover = dark ? [255, 92, 92, 30] : [253, 232, 232, 204];
-    // Canvas premultiplies translucent RGB channels; permit its byte-rounding error.
-    hover.forEach((channel, index) =>
-      expect(Math.abs(channel - expectedHover[index]!)).toBeLessThanOrEqual(2),
-    );
+    // Destructive fills stay opaque on hover (DESIGN.md).
+    expect(rgba(getComputedStyle(confirm.element()).backgroundColor)).toEqual(rgba(background));
     expect(getComputedStyle(confirm.element()).color).toBe(foreground);
     await dialog.getByRole("heading", { name: labels.title, exact: true }).hover();
     const description =

@@ -309,7 +309,7 @@ export function MessageBubbleCollapsible({
       >
         <span>{currentOpen ? lessLabel : moreLabel}</span>
         <span aria-hidden="true" style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}>
-          <ChevronDown className="size-3.5" />
+          <ChevronDown className="size-3" />
         </span>
       </button>
     </div>

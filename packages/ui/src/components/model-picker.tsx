@@ -150,7 +150,7 @@ export function ModelPicker({
                     </span>
                     <span className="size-4">
                       {entry.spec === model ? (
-                        <Check data-model-check aria-hidden="true" className="size-4" />
+                        <Check data-model-check aria-hidden="true" className="size-3" />
                       ) : null}
                     </span>
                   </Menu.DropdownMenuItem>

@@ -45,8 +45,23 @@ test("sidebar titles follow Pencil and session hover changes immediately without
     expect(sidebar.querySelector("kbd")).toBeNull();
     await userEvent.keyboard("{/Control}");
     await first.hover();
+    for (const name of ["Unpin Fix compiler", "Session actions Fix compiler"]) {
+      const action = screen.getByRole("button", { name, exact: true }).element();
+      const box = action.getBoundingClientRect();
+      expect(getComputedStyle(action).opacity).toBe("1");
+      expect([box.width, box.height]).toEqual([24, 24]);
+      expect(getComputedStyle(action).borderRadius).toBe("6px");
+      expect(action.querySelector("svg")!.getBoundingClientRect().width).toBe(12);
+    }
     const hoverColor = getComputedStyle(firstRow).backgroundColor;
     expect(hoverColor).not.toBe("rgba(0, 0, 0, 0)");
+    const unpin = screen.getByRole("button", { name: "Unpin Fix compiler", exact: true });
+    await unpin.hover();
+    expect(getComputedStyle(firstRow).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    expect(getComputedStyle(unpin.element()).backgroundColor).toBe(hoverColor);
+    expect(getComputedStyle(unpin.element()).opacity).toBe("1");
+    await first.hover();
+    expect(getComputedStyle(firstRow).backgroundColor).toBe(hoverColor);
     expect(getComputedStyle(firstRow).transitionDuration).toBe("0s");
     await second.hover();
     expect(getComputedStyle(firstRow).backgroundColor).toBe("rgba(0, 0, 0, 0)");

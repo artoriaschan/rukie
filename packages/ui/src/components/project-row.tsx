@@ -1,7 +1,26 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { Folder, FolderOpen, MessageCircle, Pin, PinOff, Plus, Settings } from "lucide-react";
+import {
+  Folder,
+  FolderOpen,
+  MessageCircle,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Settings,
+  SlidersHorizontal,
+  SquarePen,
+  Trash2,
+} from "lucide-react";
 import type { WireProject } from "@rukie/shared";
 import { Button } from "./motion/button/base";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "./motion/context-menu";
 import { Popover, PopoverContent } from "./motion/popover";
 import { Tooltip } from "./motion/tooltip";
 import { useHoverGesture } from "../lib/hooks/use-hover-gesture";
@@ -24,6 +43,12 @@ interface ProjectRowProps {
   onToggle: () => void;
   onNew: () => void;
   onEdit: () => void;
+  /** C23 right-click actions; the Project pin is navigation state, not the detail-card pin. */
+  projectPinned: boolean;
+  onProjectPin: (pinned: boolean) => void;
+  onRename: () => void;
+  onReveal: () => void;
+  onRemove: () => void;
 }
 
 export function ProjectRow(props: ProjectRowProps) {
@@ -42,6 +67,7 @@ export function ProjectRow(props: ProjectRowProps) {
   const hovering = useRef(false);
   const suppressFocus = useRef(false);
   const enterPanel = useRef(false);
+  const menuOpen = useRef(false);
   const rowHover = useHoverGesture();
   const panelHover = useHoverGesture();
   const changeOpen = props.onOpenChange;
@@ -83,7 +109,7 @@ export function ProjectRow(props: ProjectRowProps) {
   const enter = () => {
     cancelClose();
     suppressFocus.current = false;
-    if (props.open || props.disabled || openTimer.current !== null) return;
+    if (props.open || props.disabled || menuOpen.current || openTimer.current !== null) return;
     openTimer.current = setTimeout(() => {
       openTimer.current = null;
       changeOpen(true);
@@ -149,7 +175,7 @@ export function ProjectRow(props: ProjectRowProps) {
       suppressFocus.current = false;
       return;
     }
-    if (pointerFocus.current || props.disabled) return;
+    if (pointerFocus.current || props.disabled || menuOpen.current) return;
     cancelOpen();
     changeOpen(true);
   };
@@ -175,80 +201,132 @@ export function ProjectRow(props: ProjectRowProps) {
       restoreFocusRef={disclosure}
       className="block w-full"
     >
-      <div
-        ref={anchor}
-        data-project-row={props.project.id}
-        className={cn(
-          "group/project flex min-w-0 items-center rounded-lg hover:bg-hover",
-          props.selected && "bg-selected",
-        )}
-        onPointerEnter={(event) => {
-          if (rowHover.enter(event)) {
-            hovering.current = true;
-            enter();
-          }
-        }}
-        onPointerLeave={(event) => {
-          pointerFocus.current = false;
-          if (rowHover.leave(event)) {
-            hovering.current = false;
-            leave();
-          }
-        }}
-        onPointerDown={() => {
-          pointerFocus.current = true;
-        }}
-        onPointerUp={() => {
-          pointerFocus.current = false;
-        }}
-        onPointerCancel={() => {
-          pointerFocus.current = false;
-        }}
-        onFocus={focus}
-        onBlur={blur}
-        onKeyDown={(event) => {
-          pointerFocus.current = false;
-          if (event.key === "ArrowRight" && !props.disabled) {
-            event.preventDefault();
-            suppressFocus.current = false;
-            enterPanel.current = !props.open;
-            changeOpen(true);
-            panel.current?.querySelector<HTMLButtonElement>("button")?.focus();
-          }
+      <ContextMenu
+        onOpenChange={(open) => {
+          menuOpen.current = open;
+          if (!open) return;
+          cancelOpen();
+          // The menu replaces transient hover details; a pinned card stays until dismissed.
+          if (props.open && !pinned.current) changeOpen(false);
         }}
       >
-        <button
-          ref={disclosure}
-          aria-expanded={props.expanded}
-          onClick={props.onToggle}
-          className="flex cursor-pointer active:bg-muted min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {props.expanded ? (
-            <FolderOpen className="size-4 shrink-0" />
-          ) : (
-            <Folder className="size-4 shrink-0" />
-          )}
-          <span className="truncate">{props.project.name}</span>
-        </button>
-        <Tooltip content={t("app.new-in-project", { project: props.project.name })}>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t("app.new-in-project", { project: props.project.name })}
-            className="shrink-0 opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100"
-            onClick={() => {
-              dismiss();
-              props.onNew();
+        <ContextMenuTrigger>
+          <div
+            ref={anchor}
+            tabIndex={-1}
+            data-project-row={props.project.id}
+            className={cn(
+              "group/project flex min-w-0 items-center rounded-lg row-hover:bg-hover",
+              props.selected && "bg-selected",
+            )}
+            onPointerEnter={(event) => {
+              if (rowHover.enter(event)) {
+                hovering.current = true;
+                enter();
+              }
+            }}
+            onPointerLeave={(event) => {
+              pointerFocus.current = false;
+              if (rowHover.leave(event)) {
+                hovering.current = false;
+                leave();
+              }
+            }}
+            onPointerDown={() => {
+              pointerFocus.current = true;
+            }}
+            onPointerUp={() => {
+              pointerFocus.current = false;
+            }}
+            onPointerCancel={() => {
+              pointerFocus.current = false;
+            }}
+            onFocus={(event) => {
+              // Closing the menu restores focus to this row container; return it to the disclosure.
+              if (event.target === anchor.current) {
+                suppressFocus.current = true;
+                disclosure.current?.focus();
+                return;
+              }
+              focus();
+            }}
+            onBlur={blur}
+            onKeyDown={(event) => {
+              pointerFocus.current = false;
+              if (event.key === "ArrowRight" && !props.disabled) {
+                event.preventDefault();
+                suppressFocus.current = false;
+                enterPanel.current = !props.open;
+                changeOpen(true);
+                panel.current?.querySelector<HTMLButtonElement>("button")?.focus();
+              }
             }}
           >
-            <Plus className="size-4" />
-          </Button>
-        </Tooltip>
-      </div>
+            <button
+              ref={disclosure}
+              aria-expanded={props.expanded}
+              onClick={props.onToggle}
+              className="flex cursor-pointer min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {props.expanded ? (
+                <FolderOpen className="size-3 shrink-0" />
+              ) : (
+                <Folder className="size-3 shrink-0" />
+              )}
+              <span className="truncate">{props.project.name}</span>
+            </button>
+            <Tooltip content={t("app.new-in-project", { project: props.project.name })}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("app.new-in-project", { project: props.project.name })}
+                className="mr-1 opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100"
+                onClick={() => {
+                  dismiss();
+                  props.onNew();
+                }}
+              >
+                <Plus />
+              </Button>
+            </Tooltip>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent ariaLabel={t("app.project-actions")}>
+          <ContextMenuItem onSelect={props.onRename}>
+            <Pencil aria-hidden="true" className="size-3 shrink-0" />
+            {t("app.rename")}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={props.onEdit}>
+            <SlidersHorizontal aria-hidden="true" className="size-3 shrink-0" />
+            {t("app.edit-project-menu")}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => props.onProjectPin(!props.projectPinned)}>
+            {props.projectPinned ? (
+              <PinOff aria-hidden="true" className="size-3 shrink-0" />
+            ) : (
+              <Pin aria-hidden="true" className="size-3 shrink-0" />
+            )}
+            {t(props.projectPinned ? "app.unpin" : "app.pin")}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={props.onNew}>
+            <SquarePen aria-hidden="true" className="size-3 shrink-0" />
+            {t("app.new-chat-in-project")}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={props.onReveal}>
+            <FolderOpen aria-hidden="true" className="size-3 shrink-0" />
+            {t("app.open-in-finder")}
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem tone="destructive" onSelect={props.onRemove}>
+            <Trash2 aria-hidden="true" className="size-3 shrink-0" />
+            {t("app.delete-project")}
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
       <PopoverContent
         ref={panel}
         ariaLabel={t("app.project-details")}
-        className="w-[320px] max-w-[calc(100vw-16px)] max-h-[calc(100dvh-16px)] p-4 flex flex-col gap-3"
+        className="w-[320px] max-w-[calc(100vw-16px)] max-h-[calc(100dvh-16px)] flex flex-col gap-1.5"
         onFocus={() => cancelClose()}
         onBlur={blur}
         onPointerEnter={(event) => {
@@ -264,15 +342,14 @@ export function ProjectRow(props: ProjectRowProps) {
           }
         }}
       >
-        <div className="flex min-w-0 items-center gap-2 min-h-7">
-          <Folder className="size-5 shrink-0" />
+        <div className="mx-1.5 mt-1.5 flex min-w-0 items-center gap-2 min-h-7">
+          <Folder className="size-3 shrink-0" />
           <span className="min-w-0 flex-1 break-words text-ui-lg font-medium">
             {props.project.name}
           </span>
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 min-h-7 min-w-7 shrink-0"
             aria-label={t(isPinned ? "app.unpin-details" : "app.pin-details")}
             aria-pressed={isPinned}
             onClick={() => {
@@ -286,34 +363,34 @@ export function ProjectRow(props: ProjectRowProps) {
               }
             }}
           >
-            {isPinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+            {isPinned ? <PinOff /> : <Pin />}
           </Button>
         </div>
-        <div className="flex items-center gap-2 text-ui-base">
-          <MessageCircle className="size-4 shrink-0 text-muted-foreground" />
+        <div className="mx-1.5 flex items-center gap-2 text-ui-base">
+          <MessageCircle className="size-3 shrink-0 text-muted-foreground" />
           {t("app.project-session-count", { count: props.count })}
         </div>
-        <div className="h-px shrink-0 bg-border" />
-        <div className="flex flex-col gap-2">
+        <div role="separator" className="h-px shrink-0 bg-border" />
+        <div className="mx-1.5 flex flex-col gap-2">
           {props.project.directories.map((path) => (
             <div key={path} className="flex items-start gap-2">
-              <Folder className="size-4 shrink-0 text-muted-foreground" />
+              <Folder className="size-3 shrink-0 text-muted-foreground" />
               <span className="min-w-0 select-text break-all font-mono text-ui-base">
                 {projectPath(path, props.homeDir)}
               </span>
             </div>
           ))}
         </div>
-        <div className="h-px shrink-0 bg-border" />
+        <div role="separator" className="h-px shrink-0 bg-border" />
         <Button
           variant="ghost"
-          className="w-full justify-start"
+          className="mx-1.5 mb-1.5 justify-start"
           onClick={() => {
             dismiss();
             props.onEdit();
           }}
         >
-          <Settings className="size-4 text-muted-foreground" />
+          <Settings className="size-3 text-muted-foreground" />
           {t("app.edit-project")}
         </Button>
       </PopoverContent>

@@ -1,7 +1,5 @@
-import { AnimatedBadge } from "../components/motion/animated-badge";
 import { useRef, useState } from "react";
 import type { WireProject } from "@rukie/shared";
-import { Folder } from "lucide-react";
 import { ProjectDialog } from "./project-dialog";
 import { Button } from "../components/motion/button/base";
 import { ScrollArea } from "../components/ui/scroll-area";
@@ -41,27 +39,19 @@ export function ProjectTrust({
       pending={pending}
       onClose={close}
     >
-      <ScrollArea
-        className="project-directory-list rounded-xl border border-border"
-        viewportLabel={t("app.source-folders")}
-      >
+      <ScrollArea className="project-directory-list" viewportLabel={t("app.source-folders")}>
         <ul className="flex flex-col">
           {project.directories.map((directory) => (
             <li
               key={directory}
-              className="flex items-center gap-2 border-b border-border px-3 py-1.5 last:border-b-0"
+              className="break-all text-center text-ui-base leading-[1.5] text-muted-foreground"
             >
-              <Folder className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 break-all font-mono text-ui-sm">{directory}</span>
+              <span>{directory}</span>
               {directory === project.primary ? (
-                <AnimatedBadge showIcon={false} size="sm" className="h-6">
-                  {t("app.primary")}
-                </AnimatedBadge>
+                <span className="text-foreground-subtlest"> · {t("app.primary")}</span>
               ) : null}
               {addedDirectories.includes(directory) ? (
-                <AnimatedBadge showIcon={false} size="sm" className="h-6">
-                  {t("app.new-folder")}
-                </AnimatedBadge>
+                <span className="text-foreground-subtlest"> · {t("app.new-folder")}</span>
               ) : null}
             </li>
           ))}

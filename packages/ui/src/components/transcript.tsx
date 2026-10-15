@@ -327,7 +327,7 @@ function Group({
                     : Sparkles;
               const label = (
                 <span className="flex min-w-0 flex-1 items-center gap-2 text-ui-control font-normal text-muted-foreground">
-                  <Icon aria-hidden="true" className="size-4 shrink-0" />
+                  <Icon aria-hidden="true" className="size-3 shrink-0" />
                   {working && latestDetail ? (
                     <TextShimmer
                       title={latestDetail}

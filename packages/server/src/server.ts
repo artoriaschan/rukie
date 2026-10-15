@@ -46,6 +46,8 @@ import { applicationMcpPersistence, applicationConfiguration } from "./storage/c
 
 import {
   projectGit,
+  checkoutBranch,
+  BranchFailure,
   createWorktree,
   discardUnopenedWorktree,
   worktreeDirectoryExists,
@@ -966,6 +968,55 @@ export async function startServer(options: ServerOptions) {
           const project = registry.projects.find((item) => item.id === command.projectId);
           if (!project) throw new CommandError("project_not_found");
           return projectGit(project.primary);
+        }
+        case "project.checkout":
+        case "project.createBranch": {
+          return mutateProjects(async () => {
+            const project = registry.projects.find((item) => item.id === command.projectId);
+            if (!project) throw new CommandError("project_not_found");
+            // Sessions working in the primary folder would observe the checkout; worktrees would not.
+            const bound: WireSessionSummary[] = [];
+            try {
+              for (const summary of await summaries()) {
+                if (summary.projectId !== project.id || summary.worktree) continue;
+                const current = sessions.get(summary.id);
+                if (
+                  organizing.has(summary.id) ||
+                  (sessionCommands.get(summary.id) ?? 0) > 0 ||
+                  openings.has(summary.id) ||
+                  (current && executing(current)) ||
+                  (!current &&
+                    isSqliteSessionBusy({
+                      cwd: summary.cwd,
+                      homeDir: options.homeDir,
+                      dataRoot: options.dataRoot,
+                      id: summary.id,
+                    }))
+                )
+                  throw new CommandError("session_busy");
+                bound.push(summary);
+                organizing.add(summary.id);
+              }
+              const result = await checkoutBranch(
+                project.primary,
+                command.branch,
+                command.type === "project.createBranch",
+              ).catch((error: unknown) => {
+                if (error instanceof BranchFailure)
+                  throw new CommandError(
+                    error.code,
+                    error.code === "git_failed"
+                      ? { message: error.message }
+                      : { branch: command.branch },
+                  );
+                throw error;
+              });
+              await changed();
+              return result;
+            } finally {
+              for (const summary of bound) organizing.delete(summary.id);
+            }
+          });
         }
         case "projects.list":
           return runtime.runPromise(

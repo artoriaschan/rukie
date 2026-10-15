@@ -194,7 +194,7 @@ test("Pencil composer, permission and context controls retain their real actions
       .not.toBeVisible();
     expect(form.getBoundingClientRect().width).toBe(736);
     expect(form.getBoundingClientRect().height).toBe(100);
-    expect(getComputedStyle(form.querySelector('button[type="submit"]')!).borderRadius).toBe("8px");
+    expect(getComputedStyle(form.querySelector('button[type="submit"]')!).borderRadius).toBe("6px");
     expect(getComputedStyle(prompt, "::placeholder").color).toBe("rgba(38, 38, 38, 0.4)");
     const trigger = screen.getByRole("button", { name: "Permission mode", exact: true });
     expect(trigger.element().getBoundingClientRect().height).toBe(28);

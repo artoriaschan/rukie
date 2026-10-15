@@ -316,17 +316,17 @@ export function ApprovalCard({
           )}
         >
           {busy ? (
-            <LoaderCircle className={cn("size-4", !reduce && "animate-spin")} />
+            <LoaderCircle className={cn("size-3", !reduce && "animate-spin")} />
           ) : interactive ? (
             questionMode ? (
-              <CircleHelp className="size-4" />
+              <CircleHelp className="size-3" />
             ) : (
-              <MessageSquareText className="size-4" />
+              <MessageSquareText className="size-3" />
             )
           ) : status === "rejected" ? (
-            <X className="size-4" />
+            <X className="size-3" />
           ) : (
-            <Check className="size-4" />
+            <Check className="size-3" />
           )}
         </span>
 
@@ -359,7 +359,7 @@ export function ApprovalCard({
                 onClick={onDismiss}
                 className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <X className="size-4" />
+                <X className="size-3" />
               </button>
             ) : null}
           </div>
@@ -403,9 +403,8 @@ export function ApprovalCard({
                       aria-label={componentText("component.previous-question")}
                       disabled={busy || disabled || currentStep === 0}
                       onClick={() => setStep(currentStep - 1)}
-                      className="rounded-lg"
                     >
-                      <ArrowLeft className="size-4" />
+                      <ArrowLeft />
                     </Button>
                     <ProgressDots current={currentStep} ids={questions.map((item) => item.id)} />
                   </>
@@ -419,17 +418,17 @@ export function ApprovalCard({
                   }
                   disabled={busy || disabled || !isAnswered(currentAnswer)}
                   onClick={continueQuestion}
-                  className="ml-auto rounded-lg"
+                  className={cn("ml-auto", currentStep === questions.length - 1 && "rounded-lg")}
                 >
                   {busy ? (
-                    <LoaderCircle className={cn("size-4", !reduce && "animate-spin")} />
+                    <LoaderCircle className={cn("size-3", !reduce && "animate-spin")} />
                   ) : currentStep === questions.length - 1 ? (
                     <>
                       {submitLabel}
-                      <ArrowRight className="size-3.5" />
+                      <ArrowRight className="size-3" />
                     </>
                   ) : (
-                    <ArrowRight className="size-4" />
+                    <ArrowRight />
                   )}
                 </Button>
               </div>

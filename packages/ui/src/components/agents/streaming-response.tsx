@@ -176,12 +176,12 @@ export function StreamingResponse({
                   }
                   onClick={handleCopy}
                 >
-                  {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                  {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
                 </ResponseAction>
               ) : null}
               {onRetry ? (
                 <ResponseAction label={componentText("component.retry-response")} onClick={onRetry}>
-                  <RotateCcw className="size-3.5" />
+                  <RotateCcw className="size-3" />
                 </ResponseAction>
               ) : null}
               {complete ? (
@@ -191,14 +191,14 @@ export function StreamingResponse({
                     active={currentFeedback === "up"}
                     onClick={() => setFeedback("up")}
                   >
-                    <ThumbsUp className="size-3.5" />
+                    <ThumbsUp className="size-3" />
                   </ResponseAction>
                   <ResponseAction
                     label={componentText("component.not-helpful")}
                     active={currentFeedback === "down"}
                     onClick={() => setFeedback("down")}
                   >
-                    <ThumbsDown className="size-3.5" />
+                    <ThumbsDown className="size-3" />
                   </ResponseAction>
                 </>
               ) : null}

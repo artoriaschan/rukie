@@ -589,7 +589,7 @@ export function ModelServices({
                   name === "worktrees" && request ? undefined : "settings-unavailable"
                 }
               >
-                <Icon className="size-4" />
+                <Icon className="size-3" />
                 <span>{t(`services.nav.${name}`)}</span>
               </Button>
             ))}
@@ -605,7 +605,7 @@ export function ModelServices({
             aria-current={page === "models" ? "page" : undefined}
             onClick={() => setPage("models")}
           >
-            <Server className="size-4" />
+            <Server className="size-3" />
             <span>{t("services.title")}</span>
           </Button>
         </div>
@@ -630,7 +630,7 @@ export function ModelServices({
                     aria-label={t("services.refresh")}
                     onClick={() => void load()}
                   >
-                    <RefreshCw className="size-4" />
+                    <RefreshCw />
                   </Button>
                   <Button
                     size="sm"
@@ -639,7 +639,7 @@ export function ModelServices({
                       setError("");
                     }}
                   >
-                    <Plus className="size-4" />
+                    <Plus className="size-3" />
                     {t("services.addProvider")}
                   </Button>
                 </div>
@@ -661,7 +661,7 @@ export function ModelServices({
                       setError("");
                     }}
                   >
-                    <Plus className="size-4" />
+                    <Plus className="size-3" />
                     {t("services.addProvider")}
                   </Button>
                   {error ? (
@@ -747,7 +747,7 @@ export function ModelServices({
                             aria-label={t("services.returnDetail")}
                             onClick={() => setCatalog(false)}
                           >
-                            <ArrowLeft className="size-4" />
+                            <ArrowLeft />
                           </Button>
                           <h2 className="text-ui-lg">{t("services.addProvider")}</h2>
                         </div>
@@ -759,12 +759,12 @@ export function ModelServices({
                             disabled={pending}
                           >
                             <span className="model-services-custom-icon">
-                              <Plus className="size-5" />
+                              <Plus className="size-3" />
                             </span>
                             <span className="model-services-catalog-label">
                               {t("services.create")}
                             </span>
-                            <ChevronRight className="ml-auto size-3.5" />
+                            <ChevronRight className="ml-auto size-3" />
                           </Button>
                           {PROVIDER_PRESETS.map((preset) => (
                             <Button
@@ -778,13 +778,13 @@ export function ModelServices({
                                 <ProviderIcon
                                   icon={preset.icon}
                                   variant="color"
-                                  className="size-[34px]"
+                                  className="size-3"
                                 />
                               </span>
                               <span className="model-services-catalog-label">
                                 {t(`services.presets.${preset.id}`)}
                               </span>
-                              <ChevronRight className="ml-auto size-3.5" />
+                              <ChevronRight className="ml-auto size-3" />
                             </Button>
                           ))}
                         </div>
@@ -796,7 +796,7 @@ export function ModelServices({
                             <ProviderIcon
                               icon={draft.icon}
                               variant="color"
-                              className="size-5 text-muted-foreground"
+                              className="size-3 text-muted-foreground"
                             />
                             {draft.name}
                           </h2>
@@ -815,7 +815,7 @@ export function ModelServices({
                                   variant="ghost"
                                   size="icon"
                                 >
-                                  <Ellipsis className="size-4" />
+                                  <Ellipsis />
                                 </Button>
                               </Menu.DropdownMenuTrigger>
                               <Menu.DropdownMenuContent
@@ -828,7 +828,7 @@ export function ModelServices({
                                     changeDialog("rename");
                                   }}
                                 >
-                                  <Pencil className="size-4" />
+                                  <Pencil className="size-3" />
                                   {t("services.rename")}
                                 </Menu.DropdownMenuItem>
                                 {selected?.hasCredential ? (
@@ -849,7 +849,7 @@ export function ModelServices({
                                   className="text-danger"
                                   onSelect={() => changeDialog("delete")}
                                 >
-                                  <Trash2 className="size-4" />
+                                  <Trash2 className="size-3" />
                                   {t("services.delete")}
                                 </Menu.DropdownMenuItem>
                               </Menu.DropdownMenuContent>
@@ -931,11 +931,7 @@ export function ModelServices({
                                 aria-pressed={showKey}
                                 onClick={() => void toggleKey()}
                               >
-                                {showKey ? (
-                                  <EyeOff className="size-4" />
-                                ) : (
-                                  <Eye className="size-4" />
-                                )}
+                                {showKey ? <EyeOff /> : <Eye />}
                               </Button>
                             }
                             onChange={(value) => {
@@ -958,13 +954,13 @@ export function ModelServices({
                         <div className="model-services-model-heading flex items-center justify-between gap-2">
                           <h3 className="font-medium">{t("services.models")}</h3>
                           <Button variant="secondary" size="sm" onClick={() => openModel()}>
-                            <Plus className="size-4" />
+                            <Plus className="size-3" />
                             {t("services.addModel")}
                           </Button>
                         </div>
                         {!draft.models.length ? (
                           <p className="model-services-empty text-ui-base text-muted-foreground">
-                            <Info className="size-4 shrink-0" />
+                            <Info className="size-3 shrink-0" />
                             {t("services.empty")}
                           </p>
                         ) : (
@@ -1005,7 +1001,7 @@ export function ModelServices({
                                 disabled={pending}
                                 onClick={() => void testConnection(item.id)}
                               >
-                                <Unplug className="size-4" />
+                                <Unplug />
                               </Button>
                               <Button
                                 size="icon"
@@ -1013,7 +1009,7 @@ export function ModelServices({
                                 aria-label={t("services.edit")}
                                 onClick={() => openModel(index)}
                               >
-                                <Pencil className="size-4" />
+                                <Pencil />
                               </Button>
                               <Button
                                 size="icon"
@@ -1027,7 +1023,7 @@ export function ModelServices({
                                   })
                                 }
                               >
-                                <Trash2 className="size-4" />
+                                <Trash2 />
                               </Button>
                             </div>
                           ))
@@ -1084,7 +1080,7 @@ export function ModelServices({
                 aria-label={t("services.close")}
                 onClick={() => changeDialog(null)}
               >
-                <X className="size-4" />
+                <X />
               </Button>
             </header>
             <ScrollArea
@@ -1290,7 +1286,7 @@ export function ModelServices({
                       {t("services.advancedDescription")}
                     </span>
                   </span>
-                  <ChevronDown className="ml-auto size-4" />
+                  <ChevronDown className="ml-auto size-3" />
                 </Button>
                 <div className="model-services-advanced" hidden={!advanced}>
                   <div className="model-services-advanced-columns">
@@ -1481,7 +1477,7 @@ export function ModelServices({
                 }}
               >
                 {t("services.confirm")}
-                <CornerDownLeft aria-hidden="true" className="size-4" />
+                <CornerDownLeft aria-hidden="true" className="size-3" />
               </Button>
             </div>
           </div>

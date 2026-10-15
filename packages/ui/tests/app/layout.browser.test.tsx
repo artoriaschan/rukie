@@ -96,7 +96,7 @@ test.each([
         near(headerBox.top, 0);
         near(headerBox.width, width);
         near(headerBox.height, 44);
-        near(toggle.element().getBoundingClientRect().left, 156);
+        near(toggle.element().getBoundingClientRect().left, 160);
         const nav = navigation.getBoundingClientRect();
         near(nav.left, 0);
         near(nav.top, 44);
@@ -196,7 +196,7 @@ test.each([
         near(nav.top, 44);
         near(nav.width, 52);
         near(nav.bottom, height);
-        near(toggle.element().getBoundingClientRect().left, 156);
+        near(toggle.element().getBoundingClientRect().left, 160);
         expect(root.scrollWidth).toBeLessThanOrEqual(width);
         expect(root.scrollHeight).toBeLessThanOrEqual(height);
       };

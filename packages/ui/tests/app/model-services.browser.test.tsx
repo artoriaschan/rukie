@@ -75,7 +75,7 @@ test("Pencil P01-E empty provider state preserves shell and opens the custom cat
         .poll(() => getComputedStyle(action.element()).color)
         .toBe(dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)");
       for (const [node, top, width, height] of [
-        [icon, 180, 32, 32],
+        [icon, 190, 12, 12],
         [title, 232, 560, 24],
         [description, 268, 560, 21],
         [action.element(), 312, 144, 28],
@@ -281,7 +281,7 @@ test("model services creates a provider and preserves input when encrypted save 
             .element()
             .getBoundingClientRect().width,
       )
-      .toBeCloseTo(14, 1);
+      .toBeCloseTo(24, 1);
     await expect
       .poll(
         () =>
@@ -290,7 +290,7 @@ test("model services creates a provider and preserves input when encrypted save 
             .element()
             .getBoundingClientRect().height,
       )
-      .toBeCloseTo(14, 1);
+      .toBeCloseTo(24, 1);
     await expect
       .element(screen.getByRole("radiogroup", { name: "Reasoning capabilities" }))
       .toBeVisible();
@@ -867,7 +867,7 @@ test.each([
       await expect.poll(() => getComputedStyle(option.element()).color).toBe(foreground);
       await expect.element(selected).toHaveAttribute("aria-selected", "true");
       await expect.element(option).toHaveAttribute("aria-selected", "false");
-      expect(selected.element().querySelector("svg")!.getBoundingClientRect().width).toBe(16);
+      expect(selected.element().querySelector("svg")!.getBoundingClientRect().width).toBe(12);
       const hovered = option.element().getBoundingClientRect();
       for (const key of ["left", "top", "width", "height"] as const)
         expect(hovered[key]).toBe(baseline[key]);
@@ -1718,8 +1718,8 @@ test("Pencil C13 preset catalog uses spaced cards without moving the workspace",
       }
       expect(getComputedStyle(custom).borderRadius).toBe("8px");
       expect(getComputedStyle(custom).cursor).toBe("pointer");
-      expect(custom.querySelector("svg")!.getBoundingClientRect().width).toBe(20);
-      expect(preset.querySelector("svg")!.getBoundingClientRect().width).toBe(34);
+      expect(custom.querySelector("svg")!.getBoundingClientRect().width).toBe(12);
+      expect(preset.querySelector("svg")!.getBoundingClientRect().width).toBe(12);
       expect(panel.getBoundingClientRect().toJSON()).toEqual(baseline);
     }
   }

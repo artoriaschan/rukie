@@ -8,12 +8,15 @@ import "../../src/theme.css";
 test("shared controls render compact geometry and grow with interface text", async () => {
   const screen = await render(
     <div>
-      <Button size="sm">Small</Button>
+      <Button size="sm">
+        <svg aria-hidden="true" viewBox="0 0 24 24" />
+        Small
+      </Button>
       <Button size="xs">Micro</Button>
       <Button>Standard</Button>
       <Button size="lg">Large</Button>
       <Button size="icon" aria-label="Icon">
-        +
+        <svg aria-hidden="true" viewBox="0 0 24 24" />
       </Button>
       <ButtonLink href="#target">Link</ButtonLink>
       <Input label="Field" defaultValue="Value" />
@@ -26,7 +29,6 @@ test("shared controls render compact geometry and grow with interface text", asy
       ["Micro", 24],
       ["Standard", 32],
       ["Large", 36],
-      ["Icon", 32],
     ] as const) {
       const element = screen.getByRole("button", { name, exact: true }).element();
       expect(element.getBoundingClientRect().height).toBe(height);
@@ -40,6 +42,18 @@ test("shared controls render compact geometry and grow with interface text", asy
         name === "Small" ? "19.5px" : name === "Micro" ? "18px" : "21px",
       );
     }
+    const icon = screen.getByRole("button", { name: "Icon", exact: true }).element();
+    expect(icon.getBoundingClientRect().width).toBe(24);
+    expect(icon.getBoundingClientRect().height).toBe(24);
+    expect(getComputedStyle(icon).borderRadius).toBe("6px");
+    expect(icon.querySelector("svg")!.getBoundingClientRect().width).toBe(12);
+    expect(
+      screen
+        .getByRole("button", { name: "Small", exact: true })
+        .element()
+        .querySelector("svg")!
+        .getBoundingClientRect().width,
+    ).toBe(12);
     const standardStyle = getComputedStyle(
       screen.getByRole("button", { name: "Standard", exact: true }).element(),
     );

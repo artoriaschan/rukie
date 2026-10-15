@@ -34,8 +34,7 @@ test("all three Session menus share move targets and moving changes the sidebar 
         await screen.getByRole("button", { name: "Session actions", exact: true }).click();
       const move = screen.getByRole("menuitem", { name: "Move to Project", exact: true });
       await expect.element(move).toBeEnabled();
-      if (entry === "context") await move.click();
-      else await move.hover();
+      await move.hover();
       const target = screen.getByRole("menuitem", { name: "Project", exact: true });
       await expect.element(target).toBeVisible();
       await expect
@@ -81,8 +80,7 @@ test("all three Session menus share move targets and moving changes the sidebar 
       if (entry === "title")
         await screen.getByRole("button", { name: "Session actions", exact: true }).click();
       const move = screen.getByRole("menuitem", { name: "Move to Project", exact: true });
-      if (entry === "context") await move.click();
-      else await move.hover();
+      await move.hover();
       await expect
         .element(screen.getByRole("menuitem", { name: "Choose folder…", exact: true }))
         .toBeVisible();
@@ -170,10 +168,11 @@ test("moving to an untrusted Project confirms first; cancel sends nothing and fa
         .getByRole("button", { name: "Session actions Fix compiler", exact: true })
         .click();
       await screen.getByRole("menuitem", { name: "Move to Project", exact: true }).hover();
-      // Secondary-directory membership also excludes the Session's current Project.
-      await expect
-        .element(screen.getByRole("menuitem", { name: "Project", exact: true }))
-        .not.toBeInTheDocument();
+      // Secondary-directory membership still marks the Session's current Project.
+      const current = screen.getByRole("menuitem", { name: "Project", exact: true });
+      await expect.element(current).toHaveAttribute("aria-current", "true");
+      await expect.element(current).toHaveAttribute("aria-disabled", "true");
+      expect(current.element().querySelectorAll("svg")).toHaveLength(2);
       await screen.getByRole("menuitem", { name: "Target", exact: true }).click();
     };
     await chooseTarget();
@@ -299,6 +298,84 @@ test.each(["running", "waitingPermission", "worktree"] as const)(
   },
 );
 
+test("context menu move targets open in a hover flyout beside the menu", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  const pointer = (element: Element, x: number, y: number) =>
+    element.dispatchEvent(
+      new PointerEvent("pointermove", {
+        bubbles: true,
+        clientX: x,
+        clientY: y,
+        pointerType: "mouse",
+      }),
+    );
+  try {
+    await publish(connection.port, changed());
+    await screen
+      .getByRole("button", { name: "Fix compiler", exact: true })
+      .click({ button: "right" });
+    const root = screen.getByRole("menu", { name: "Session actions", exact: true }).element();
+    const move = screen.getByRole("menuitem", { name: "Move to Project", exact: true });
+    await move.hover();
+    await expect.element(move).toHaveAttribute("aria-expanded", "true");
+    const flyout = screen.getByRole("menu", { name: "Move to Project", exact: true });
+    await expect.element(flyout).toBeVisible();
+    expect(root.contains(flyout.element())).toBe(false);
+    const panel = flyout.element().getBoundingClientRect();
+    const menu = root.getBoundingClientRect();
+    const trigger = move.element().getBoundingClientRect();
+    expect(panel.left - menu.right).toBeCloseTo(4, 0);
+    expect(panel.top).toBeCloseTo(trigger.top - 4, 0);
+    expect(
+      [...flyout.element().children].map((child) =>
+        child.tagName === "HR" ? "---" : (child.textContent ?? "").trim(),
+      ),
+    ).toEqual(["Project", "Target", "---", "Choose folder…", "Move out of Project"]);
+    const current = flyout.getByRole("menuitem", { name: "Project", exact: true });
+    await expect.element(current).toBeDisabled();
+    await expect.element(current).toHaveAttribute("aria-current", "true");
+    await expect
+      .element(flyout.getByRole("menuitem", { name: "Target", exact: true }))
+      .not.toHaveAttribute("aria-current");
+
+    // Crossing a lower root row on the way to the flyout keeps the flyout open.
+    const remove = screen.getByRole("menuitem", { name: "Delete chat", exact: true }).element();
+    const row = remove.getBoundingClientRect();
+    const y = Math.min(row.top + row.height / 2, panel.bottom - 2);
+    pointer(remove, row.right - 40, y);
+    pointer(remove, row.right - 10, y);
+    await expect.element(flyout).toBeVisible();
+    expect(document.activeElement).not.toBe(remove);
+    // Moving back away from the flyout hands focus to the pointed root row.
+    pointer(remove, row.right - 60, y);
+    await expect.element(remove).toHaveFocus();
+    await expect.element(flyout).not.toBeInTheDocument();
+    await expect.element(move).toHaveAttribute("aria-expanded", "false");
+
+    await move.hover();
+    await flyout.getByRole("menuitem", { name: "Target", exact: true }).hover();
+    await expect.element(flyout).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(move).toHaveFocus();
+    await expect.element(flyout).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("menu", { name: "Session actions" })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect
+      .element(screen.getByRole("menu", { name: "Session actions" }))
+      .not.toBeInTheDocument();
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
 test("keyboard opens nested move targets, preserves narrow geometry and reports localized failure", async () => {
   await page.viewport(420, 700);
   const previous = document.documentElement.className;
@@ -314,7 +391,7 @@ test("keyboard opens nested move targets, preserves narrow geometry and reports 
     await screen.getByRole("button", { name: "切换侧栏", exact: true }).click();
     const row = screen.getByRole("button", { name: "Explore ideas", exact: true });
     await row.click({ button: "right" });
-    const move = screen.getByRole("menuitem", { name: "移动到项目", exact: true });
+    const move = screen.getByRole("menuitem", { name: "移到项目", exact: true });
     move.element().focus();
     await userEvent.keyboard("{ArrowRight}");
     const target = screen.getByRole("menuitem", { name: "Project", exact: true });

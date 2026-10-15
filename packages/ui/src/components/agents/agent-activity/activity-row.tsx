@@ -39,7 +39,7 @@ function StepRow({ item }: { item: AgentActivityStep }) {
         className="mt-0.5 grid size-4 shrink-0 place-items-center text-muted-foreground"
       >
         {state === "complete" ? (
-          <Check className="size-4" strokeWidth={1.8} />
+          <Check className="size-3" strokeWidth={1.8} />
         ) : state === "active" ? (
           <span className="relative grid size-3 place-items-center">
             <motion.span
@@ -120,7 +120,7 @@ function SearchRow({ item }: { item: AgentActivitySearch }) {
   return (
     <div className="space-y-0.5">
       <div className="flex min-h-7 items-center gap-2 rounded-md px-2 py-1 text-muted-foreground">
-        <Search aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.7} />
+        <Search aria-hidden="true" className="size-3 shrink-0" strokeWidth={1.7} />
         <span className="min-w-0 truncate">{item.query}</span>
       </div>
       {item.results?.length ? (
@@ -160,12 +160,12 @@ function SearchRow({ item }: { item: AgentActivitySearch }) {
 }
 
 function ActionIcon({ action }: { action: string }) {
-  if (action === "read") return <FileText className="size-4" />;
+  if (action === "read") return <FileText className="size-3" />;
   if (action === "edit" || action === "write") {
-    return <PencilLine className="size-4" />;
+    return <PencilLine className="size-3" />;
   }
-  if (action === "run") return <SquareTerminal className="size-4" />;
-  return <Wrench className="size-4" />;
+  if (action === "run") return <SquareTerminal className="size-3" />;
+  return <Wrench className="size-3" />;
 }
 
 function ToolRow({ item }: { item: AgentActivityTool }) {
@@ -198,12 +198,12 @@ function ToolRow({ item }: { item: AgentActivityTool }) {
 }
 
 function TraceIcon({ kind }: { kind: AgentActivityTrace["kind"] }) {
-  if (kind === "thinking") return <Sparkles className="size-4" />;
-  if (kind === "message") return <MessageSquare className="size-4" />;
-  if (kind === "write") return <PencilLine className="size-4" />;
-  if (kind === "run") return <SquareTerminal className="size-4" />;
-  if (kind === "read") return <ImageIcon className="size-4" />;
-  return <Wrench className="size-4" />;
+  if (kind === "thinking") return <Sparkles className="size-3" />;
+  if (kind === "message") return <MessageSquare className="size-3" />;
+  if (kind === "write") return <PencilLine className="size-3" />;
+  if (kind === "run") return <SquareTerminal className="size-3" />;
+  if (kind === "read") return <ImageIcon className="size-3" />;
+  return <Wrench className="size-3" />;
 }
 
 function TraceRow({ item }: { item: AgentActivityTrace }) {
@@ -238,7 +238,7 @@ function TraceRow({ item }: { item: AgentActivityTrace }) {
             {item.label}
             <ChevronDown
               aria-hidden="true"
-              className={cn("size-3.5 text-muted-foreground", !open && "-rotate-90")}
+              className={cn("size-3 text-muted-foreground", !open && "-rotate-90")}
             />
           </button>
         ) : (

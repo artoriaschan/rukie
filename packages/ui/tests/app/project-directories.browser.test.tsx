@@ -48,6 +48,16 @@ test("creating a named Project preserves its folders when trust is cancelled", a
     await dialog.getByRole("button", { name: "Create project", exact: true }).click();
     dialog = screen.getByRole("dialog", { name: "Trust these folders?", exact: true });
     await expect.element(dialog.getByText("/second", { exact: true })).toBeVisible();
+    const list = dialog.element().querySelector<HTMLElement>(".project-directory-list")!;
+    expect(getComputedStyle(list).borderTopWidth).toBe("0px");
+    expect(list.querySelector("svg")).toBeNull();
+    for (const row of list.querySelectorAll("li")) {
+      const style = getComputedStyle(row);
+      expect(style.textAlign).toBe("center");
+      expect(style.wordBreak).toBe("break-all");
+      expect(style.fontFamily).not.toMatch(/mono/i);
+      expect(style.borderBottomWidth).toBe("0px");
+    }
     await expect.element(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
     await expect
       .element(
@@ -244,8 +254,16 @@ test("any Project directory groups and names history, and switching primary affe
     expect(await requests(connection.port)).not.toContainEqual(
       expect.objectContaining({ type: "project.create" }),
     );
-    await screen.getByRole("main").getByRole("button", { name: "Cross repo", exact: true }).click();
-    await screen.getByRole("menuitem", { name: "Edit project", exact: true }).click();
+    // The new-chat Project menu (C33) only selects; editing is reached from the Project detail card.
+    const crossRepo = screen
+      .getByRole("region", { name: "Projects", exact: true })
+      .getByRole("button", { name: "Cross repo", exact: true });
+    await expect.element(crossRepo).toBeVisible();
+    crossRepo.element().focus();
+    await screen
+      .getByRole("dialog", { name: "Project details", exact: true })
+      .getByRole("button", { name: "Edit project", exact: true })
+      .click();
     const setPrimary = screen.getByRole("button", { name: "Set as primary /second", exact: true });
     await setPrimary.hover();
     expect(getComputedStyle(setPrimary.element()).opacity).toBe("1");
