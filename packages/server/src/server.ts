@@ -19,7 +19,6 @@ import {
   readSessionToolOutput,
   listModelCatalog,
   loadSettings,
-  type PermissionAskRequest,
   type Session,
   type SessionOptions,
 } from "@rukie/agent";
@@ -27,6 +26,10 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import {
   type WireCommand,
+  type WireInteractionRequest,
+  type WirePermissionReply,
+  type WireQuestionReply,
+  type WirePlanReviewReply,
   type WireErrorCode,
   type WireResponse,
   type WireProject,
@@ -382,10 +385,49 @@ export async function startServer(options: ServerOptions) {
       string,
       {
         sessionId: string;
-        request: Omit<PermissionAskRequest, "signal">;
-        settle: (reply: "allow" | "deny" | "allow-session") => void;
+        request: WireInteractionRequest;
+        settle: (command: Extract<WireCommand, { type: "interaction.reply" }>) => void;
       }
     >();
+    const interaction = <Reply>(
+      sessionId: string,
+      request: WireInteractionRequest,
+      signal: AbortSignal,
+      fallback: Reply,
+      readReply: (
+        command: Extract<WireCommand, { type: "interaction.reply" }>,
+      ) => Reply | undefined,
+    ): Promise<Reply> =>
+      new Promise((resolve) => {
+        const settle = (reply: Reply) => {
+          if (!pending.delete(request.identity.epoch)) return;
+          signal.removeEventListener("abort", cancel);
+          if (active)
+            send(active, { type: "interaction_settled", sessionId, identity: request.identity });
+          void changed().catch((error) => warning(String(error)));
+          resolve(reply);
+        };
+        const cancel = () => settle(fallback);
+        pending.set(request.identity.epoch, {
+          sessionId,
+          request,
+          settle: (command) => {
+            const reply = readReply(command);
+            if (reply === undefined) throw new CommandError("interaction_kind_mismatch");
+            settle(reply);
+          },
+        });
+        void changed().catch((error) => warning(String(error)));
+        signal.addEventListener("abort", cancel, { once: true });
+        if (signal.aborted) cancel();
+        else if (active)
+          send(active, {
+            type: "interaction_requested",
+            sessionId,
+            identity: request.identity,
+            request,
+          });
+      });
     const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
     const observations = new Map<string, () => void>();
     const children = new Map<string, boolean>();
@@ -570,39 +612,42 @@ export async function startServer(options: ServerOptions) {
           resumeId,
           resumeModelSelection,
           onWarning: warning,
-          onPermissionAsk: (request) =>
-            new Promise((resolve) => {
-              const { signal, ...payload } = request;
-              const sessionId = owner?.id ?? resumeId ?? "";
-              const settle = (reply: "allow" | "deny" | "allow-session") => {
-                if (!pending.delete(request.identity.epoch)) return;
-                signal.removeEventListener("abort", cancel);
-                if (active)
-                  send(active, {
-                    type: "interaction_settled",
-                    sessionId,
-                    identity: request.identity,
-                  });
-                void changed().catch((error) => warning(String(error)));
-                resolve(reply);
-              };
-              const cancel = () => settle("deny");
-              pending.set(request.identity.epoch, { sessionId, request: payload, settle });
-              void changed().catch((error) => warning(String(error)));
-              signal.addEventListener("abort", cancel, { once: true });
-              if (signal.aborted) cancel();
-              else if (active)
-                send(active, {
-                  type: "interaction_requested",
-                  sessionId,
-                  identity: request.identity,
-                  request: payload,
-                });
-            }),
+          onPermissionAsk: ({ signal, ...request }) =>
+            interaction<WirePermissionReply>(
+              owner?.id ?? resumeId ?? "",
+              { ...request, kind: "permission" },
+              signal,
+              "deny",
+              (command) => (command.kind === "permission" ? command.reply : undefined),
+            ),
+          onQuestion: ({ signal, ...request }) =>
+            interaction<WireQuestionReply>(
+              owner?.id ?? resumeId ?? "",
+              { ...request, kind: "question" },
+              signal,
+              "declined",
+              (command) => (command.kind === "question" ? command.reply : undefined),
+            ),
+          onPlanReview: ({ signal, ...request }) =>
+            interaction<WirePlanReviewReply>(
+              owner?.id ?? resumeId ?? "",
+              { ...request, kind: "plan_review" },
+              signal,
+              { kind: "takeover" },
+              (command) => (command.kind === "plan_review" ? command.reply : undefined),
+            ),
         });
       })()
-        .then((session) => {
+        .then(async (session) => {
           owner = session;
+          if (initial?.planMode !== undefined) {
+            try {
+              await session.setPlanMode(initial.planMode);
+            } catch (error) {
+              await session.close();
+              throw error;
+            }
+          }
           sessions.set(session.id, session);
           // The opening state is captured before createSession starts configuration loading.
           openedProjects.set(session.id, { cwd, ...openedProject! });
@@ -648,7 +693,7 @@ export async function startServer(options: ServerOptions) {
             worktree: worktree ? { id: worktree.id, branch: worktree.branch } : null,
             projectId: binding?.projectId ?? null,
             running: sessions.get(summary.id)?.running ?? false,
-            waitingPermission: [...pending.values()].some((item) => item.sessionId === summary.id),
+            waitingInteraction: [...pending.values()].some((item) => item.sessionId === summary.id),
           };
         }),
       );
@@ -1341,7 +1386,29 @@ export async function startServer(options: ServerOptions) {
             item.request.identity.conversationId !== command.identity.conversationId
           )
             throw new CommandError("interaction_stale");
-          item.settle(command.reply);
+          if (item.request.kind !== command.kind)
+            throw new CommandError("interaction_kind_mismatch");
+          if (
+            item.request.kind === "question" &&
+            command.kind === "question" &&
+            command.reply !== "declined"
+          ) {
+            const { questions } = item.request;
+            if (
+              command.reply.answers.length !== questions.length ||
+              command.reply.answers.some((answer, index) => {
+                const question = questions[index]!;
+                return (
+                  (!question.multiSelect && answer.selected.length > 1) ||
+                  answer.selected.some(
+                    (label) => !question.options.some((option) => option.label === label),
+                  )
+                );
+              })
+            )
+              throw new CommandError("interaction_invalid_reply");
+          }
+          item.settle(command);
           return {};
         }
         case "models.list": {
@@ -1374,6 +1441,11 @@ export async function startServer(options: ServerOptions) {
           state(socket, session);
           await changed();
           return result;
+        }
+        case "session.set_plan_mode": {
+          const session = await find(command.sessionId);
+          await session.setPlanMode(command.on);
+          return {};
         }
         case "session.set_permission_mode": {
           const session = await find(command.sessionId);

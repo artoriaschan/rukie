@@ -13,7 +13,7 @@ import type {
 import { WireError, type ConnectionState } from "../client";
 import { Value } from "typebox/value";
 import {
-  ToolCallViewSchema,
+  WireInteractionRequestSchema,
   THINKING_LEVELS,
   PERMISSION_MODES,
   PROVIDER_ICONS,
@@ -23,18 +23,19 @@ import { reduceTranscript } from "./transcript";
 import type {
   TranscriptState,
   PermissionDecision,
-  PresentedPermissionRequest,
+  PresentedInteractionRequest,
 } from "../lib/transcript";
 
 type SessionSnapshot = Extract<SessionEvent, { type: "snapshot" }>;
 export interface SessionViewState {
   snapshot?: SessionSnapshot;
   transcript?: TranscriptState;
-  interactions: Record<string, PresentedPermissionRequest>;
+  interactions: Record<string, PresentedInteractionRequest>;
   permissionDecisions?: Record<string, PermissionDecision>;
   busy: boolean;
   running?: boolean;
   permissionMode?: PermissionMode;
+  planMode?: boolean;
   thinkingLevel?: ThinkingLevel;
   contextReport?: ContextReport;
   openingContext?: number;
@@ -170,6 +171,7 @@ export function createDesktopStore() {
       next = {
         ...previous,
         snapshot: message,
+        ...(typeof message.planMode === "boolean" && { planMode: message.planMode }),
         running: Boolean(message.run),
         ...(thinkingLevel !== undefined && { thinkingLevel }),
         ...(permissionMode !== undefined && { permissionMode }),
@@ -183,6 +185,13 @@ export function createDesktopStore() {
             ? { running: false }
             : {}),
       };
+    if (
+      message.type === "tool_state_changed" &&
+      message.name === "plan" &&
+      record(message.value) &&
+      typeof message.value.active === "boolean"
+    )
+      next.planMode = message.value.active;
     if (!["interaction_requested", "interaction_settled", "session_state"].includes(message.type))
       next.transcript = reduceTranscript(previous.transcript, message as SessionEvent);
     store.setState({ views: { ...state.views, [message.sessionId]: next } });
@@ -313,7 +322,7 @@ function validEnvelope(input: unknown): boolean {
           finite(item.updatedAt) &&
           finite(item.messageCount) &&
           (item.running === undefined || typeof item.running === "boolean") &&
-          (item.waitingPermission === undefined || typeof item.waitingPermission === "boolean"),
+          (item.waitingInteraction === undefined || typeof item.waitingInteraction === "boolean"),
       )
     )
       return false;
@@ -366,21 +375,7 @@ function validEnvelope(input: unknown): boolean {
     return (
       identity(input.identity) &&
       record(input.request) &&
-      typeof input.request.toolName === "string" &&
-      typeof input.request.toolCallId === "string" &&
-      (input.request.callView === undefined ||
-        Value.Check(ToolCallViewSchema, input.request.callView)) &&
-      (input.request.reason === undefined || typeof input.request.reason === "string") &&
-      (input.request.origin === undefined ||
-        (record(input.request.origin) &&
-          typeof input.request.origin.agentId === "string" &&
-          typeof input.request.origin.description === "string")) &&
-      PERMISSION_MODES.some((mode) => record(input.request) && mode === input.request.mode) &&
-      record(input.request.sessionAllow) &&
-      ["tool", "command", "directory", "domain"].includes(
-        String(input.request.sessionAllow.kind),
-      ) &&
-      typeof input.request.sessionAllow.rule === "string"
+      Value.Check(WireInteractionRequestSchema, input.request)
     );
   if (input.type === "snapshot")
     return (

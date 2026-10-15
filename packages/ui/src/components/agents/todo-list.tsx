@@ -1,7 +1,7 @@
 import { useComponentText, type ComponentTranslator } from "@/lib/i18n";
 // beui.dev/components/agents/todo-list
 
-import { ChevronDown, ListTodo } from "lucide-react";
+import { ChevronDown, Circle, CircleCheck, Loader, ListTodo } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   type ReactNode,
@@ -29,6 +29,7 @@ export interface TodoItem {
 
 export interface TodoListProps {
   items: TodoItem[];
+  presentation?: "default" | "summary";
   title?: ReactNode;
   open?: boolean;
   defaultOpen?: boolean;
@@ -178,6 +179,7 @@ function TodoStatusIcon({ status, progress }: { status: TodoItemStatus; progress
 
 export function TodoList({
   items,
+  presentation = "default",
   title: titleProp,
   open,
   defaultOpen = true,
@@ -236,6 +238,38 @@ export function TodoList({
     });
     return () => cancelAnimationFrame(frame);
   }, [itemCount, reduce]);
+
+  if (presentation === "summary") {
+    return (
+      <section aria-labelledby={triggerId} className={cn("conversation-summary-card", className)}>
+        <h3 id={triggerId} className="conversation-summary-title">
+          {title}
+        </h3>
+        <ol aria-live="polite" className="flex flex-col gap-1">
+          {items.map((item) => {
+            const status = item.status ?? "pending";
+            const Icon =
+              status === "completed" ? CircleCheck : status === "in-progress" ? Loader : Circle;
+            return (
+              <li key={item.id} className="conversation-summary-row">
+                <span aria-hidden="true" className="grid size-3.5 shrink-0 place-items-center">
+                  <Icon
+                    className={cn(
+                      "size-3 text-muted-foreground",
+                      status === "completed" && "text-success",
+                      status === "in-progress" && "text-foreground motion-safe:animate-spin",
+                    )}
+                  />
+                </span>
+                <span className="sr-only">{statusLabel(componentText, status)}: </span>
+                <span className="min-w-0 flex-1 truncate">{item.title}</span>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+    );
+  }
 
   return (
     <section

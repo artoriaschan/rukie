@@ -1,5 +1,10 @@
 import type { TranscriptMessage, QueuedInput, BackgroundActivity } from "@rukie/agent";
-import type { ToolCallView, ToolResultView, WirePermissionRequest } from "@rukie/shared";
+import type {
+  ToolCallView,
+  ToolResultView,
+  WirePermissionRequest,
+  WireInteractionRequest,
+} from "@rukie/shared";
 export interface SubagentPresentation extends BackgroundActivity {
   outcome?: string;
 }
@@ -9,6 +14,7 @@ export interface TranscriptTool {
   args: unknown;
   callView?: ToolCallView;
   resultView?: ToolResultView;
+  planOutcome?: "approve" | "revise" | "takeover";
   status: "running" | "success" | "error" | "cancelled";
   output: string;
 }
@@ -78,6 +84,9 @@ interface PermissionPlacement {
   blockIndex: number;
   before: boolean;
 }
+export type PresentedInteractionRequest = WireInteractionRequest & {
+  placement?: PermissionPlacement;
+};
 export interface PresentedPermissionRequest extends WirePermissionRequest {
   /** Captured when the request arrives, before later activity can move its position. */
   placement?: PermissionPlacement;

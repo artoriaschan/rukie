@@ -101,12 +101,12 @@ export function Sidebar(props: SidebarProps) {
               className="flex cursor-pointer min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/row:pr-[60px] group-focus-within/row:pr-[60px]"
               aria-current={props.selected === session.id ? "page" : undefined}
             >
-              {session.running && !session.waitingPermission ? (
+              {session.running && !session.waitingInteraction ? (
                 <LoaderCircle
                   aria-label={t("app.running")}
                   className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
                 />
-              ) : session.waitingPermission ? (
+              ) : session.waitingInteraction ? (
                 <span
                   aria-label={t("app.waiting")}
                   className="size-2 shrink-0 rounded-full bg-interaction-confirmation-foreground"

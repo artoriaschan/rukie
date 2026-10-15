@@ -513,7 +513,7 @@ test("removal confirmation cancels back to its draft and deletes bound chats, pi
   }
 });
 
-test.each(["running", "waitingPermission"] as const)(
+test.each(["running", "waitingInteraction"] as const)(
   "a Project with a %s Session cannot be removed",
   async (busy) => {
     const owner = ownProjectBrowserTest();

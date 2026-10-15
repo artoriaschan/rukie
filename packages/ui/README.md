@@ -10,11 +10,11 @@
 
 代理手工浏览器验收使用 `bun run dev:desktop:web --isolated`，打开输出的带 fragment 地址。入口为本次运行分配临时配置与数据，使用 memory 加密与 loopback fake 供应商；模型服务和 Session 经真实 sidecar，固定回复为 `packaged protocol reply`。关闭浏览器后停止启动器，它等待服务退出并删除临时目录；自动 React DOM 测试仍使用模拟 DesktopHost。原生验收边界见 [testing.md](../../docs/testing.md#原生验收授权边界)。
 
-`App` 的可选 `Conversation` 组件接收持续归约的 TranscriptState、snapshot 元数据、pending Interaction、连接事实与请求接口，以及受控 draft / images。窗口层拥有标题栏、侧栏、项目选择与输入框；Conversation 层接收摘要开关并拥有对话与停靠内容。`SessionViewState` 归约 Run 开始与结束，保留每个 Session 的最新 snapshot；snapshot 替换全量消息，message_end 仅按 entryId 更新或追加该提交条目的投影，流式 partial 独立保存；Interaction 以 epoch 归约。组件只读 props，app 接线 client、store 和 host。侧栏状态只读 sessions_changed 的运行和权限汇总，等待确认优先于运行标记，未订阅会话同样更新；不从可能停更的历史视图猜测后台状态。
+`App` 的可选 `Conversation` 组件接收持续归约的 TranscriptState、snapshot 元数据、pending Interaction、连接事实与请求接口，以及受控 draft / images。窗口层拥有标题栏、侧栏、项目选择与输入框；Conversation 层接收摘要开关并拥有对话与停靠内容。`SessionViewState` 归约 Run 开始与结束，保留每个 Session 的最新 snapshot；snapshot 替换全量消息，message_end 仅按 entryId 更新或追加该提交条目的投影，流式 partial 独立保存；Interaction 以 epoch 归约，按 request.kind 保存权限、问题与计划评审的联合类型。组件只读 props，app 接线 client、store 和 host。侧栏状态只读 sessions_changed 的 running 和 waitingInteraction 汇总，等待确认优先于运行标记，未订阅会话同样更新；不从可能停更的历史视图猜测后台状态。
 
 ## 连接与交互
 
-wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `host.getConnection`，重新订阅已打开的 Session；一次网络断开触发重连，失败或 `superseded` 接管后保持断开，等待用户「重试」。Electron 的 `rukie:connection-change` 事件可暂停连接、显示重连或连接重启后的 sidecar。wire 错误与断连失败通过 zh/en 的安全文案展示，未知错误不暴露协议码或原始异常；断连立即拒绝未完成命令并禁用发送；未确认 Interaction 在重新订阅时由 server 补发。关闭 App 释放 socket 与监听，不停止 sidecar 的 Run。
+wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `host.getConnection`，重新订阅已打开的 Session；一次网络断开触发重连，失败或 `superseded` 接管后保持断开，等待用户「重试」。Electron 的 `rukie:connection-change` 事件可暂停连接、显示重连或连接重启后的 sidecar。wire 错误与断连失败通过 zh/en 的安全文案展示，未知错误不暴露协议码或原始异常；断连立即拒绝未完成命令并禁用发送；未确认 Interaction 在重新订阅时由 server 补发。回复用 `interaction.reply` 的 `kind` 匹配请求类型，权限回复沿用允许/拒绝值，问题回复为 answers 或 declined，计划评审回复为 approve/revise/takeover 对象；具体 schema 见 [shared wire](../shared/src/wire.ts)。snapshot 的 `planMode` 与 plan Tool State 更新投影到 SessionViewState.planMode，客户端通过 `session.create.planMode` 预选或 `session.set_plan_mode` 切换。关闭 App 释放 socket 与监听，不停止 sidecar 的 Run。
 
 首次发送才调用 `session.create`，带目标项目、图片、模型选择与 Permission Mode，不先创建空 Session。已有 Session 的输入走 `prompt`，Run 中交给 server 排队；停止返回的 Queued Input 按顺序放在当前 draft 前，保留图片。草稿与附件按 Session 保存并分别记录编辑修订号；成功响应只清理未编辑的已提交版本，新会话创建期间的编辑交接给创建出的 Session，期间切换会话不抢回选择；abort 或撤回响应回填发起请求的 Session，并合并响应时的现有草稿。Session busy 时保留只读 snapshot 并以重试提示替换输入框。权限、推理档次和上下文面板使用 server 的 `session_state`，模型档次来自目录中的原生能力子集。
 

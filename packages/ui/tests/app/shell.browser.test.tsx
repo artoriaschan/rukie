@@ -503,7 +503,7 @@ test("sidebar status follows fresh summaries across unselected permission waits 
       method: "POST",
       body: JSON.stringify(message),
     });
-  const summary = (running: boolean, waitingPermission: boolean) => ({
+  const summary = (running: boolean, waitingInteraction: boolean) => ({
     type: "sessions_changed",
     homeDir: "/fixture-home",
     sessions: [
@@ -519,7 +519,7 @@ test("sidebar status follows fresh summaries across unselected permission waits 
         projectId: "long",
         worktree: null,
         running,
-        waitingPermission,
+        waitingInteraction,
       },
     ],
     projects: [
@@ -1060,7 +1060,7 @@ test("archive is disabled for running and waiting Sessions in all three menu ent
             cwd: "/workspace",
             projectId: null,
             worktree: null,
-            waitingPermission: true,
+            waitingInteraction: true,
           },
         ],
         projects: [

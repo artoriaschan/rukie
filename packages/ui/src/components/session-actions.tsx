@@ -62,7 +62,7 @@ export function sessionActions(
   onMove: (session: WireSessionSummary, project: WireProject | null) => void,
   onChooseFolder: (session: WireSessionSummary) => void,
 ): SessionAction[] {
-  const busy = Boolean(session.running || session.waitingPermission);
+  const busy = Boolean(session.running || session.waitingInteraction);
   return [
     {
       id: "rename",

@@ -21,6 +21,7 @@ test("tool permission dock uses default Tool Approval details and unclipped acti
           requests={[
             {
               identity,
+              kind: "permission",
               toolName: "bash",
               toolCallId: "approval-call",
               args: { command: "printf verified # " + "long/command/path ".repeat(100) },

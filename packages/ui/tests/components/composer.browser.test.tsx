@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -50,6 +51,8 @@ function fixture(
         onImages={vi.fn()}
         disabled={disabled}
         running={false}
+        planMode={false}
+        onPlanMode={vi.fn()}
         permissionMode="ask"
         onPermission={vi.fn()}
         models={catalog}
@@ -430,5 +433,125 @@ test("short wide windows keep enlarged model details scrollable and every reason
     if (font) root.style.setProperty("--ui-font-size", font);
     else root.style.removeProperty("--ui-font-size");
     await page.viewport(1280, 900);
+  }
+});
+
+function PlanComposer() {
+  const [planMode, setPlanMode] = useState(false);
+  const [draft, setDraft] = useState("Keep this draft");
+  return (
+    <Composer
+      draft={draft}
+      images={[]}
+      onDraft={setDraft}
+      onImages={vi.fn()}
+      disabled={false}
+      running={false}
+      permissionMode="ask"
+      onPermission={vi.fn()}
+      models={models}
+      model={models[0]!.spec}
+      onModel={vi.fn()}
+      onSend={vi.fn()}
+      onStop={vi.fn()}
+      planMode={planMode}
+      onPlanMode={setPlanMode}
+    />
+  );
+}
+
+test("C09 toggles plan mode and closes its menu without moving composer controls", async () => {
+  await page.viewport(1280, 900);
+  const screen = await render(
+    <div style={{ width: 752 }}>
+      <PlanComposer />
+    </div>,
+  );
+  try {
+    const attach = screen.getByRole("button", { name: "Attach images", exact: true });
+    const permission = screen.getByRole("button", { name: "Permission mode", exact: true });
+    const model = screen.getByRole("button", { name: "Choose model", exact: true });
+    const baseline = [attach, permission, model].map((item) =>
+      item.element().getBoundingClientRect().toJSON(),
+    );
+    await attach.click();
+    const row = screen.getByRole("menuitem", { name: "Plan mode Off", exact: true });
+    await expect.element(row).toBeVisible();
+    const attachment = screen
+      .getByRole("menuitem", { name: "Attach images", exact: true })
+      .element();
+    expect(row.element().getBoundingClientRect().top).toBeGreaterThan(
+      attachment.getBoundingClientRect().top,
+    );
+    expect(row.element().querySelector(".lucide-list-todo")).not.toBeNull();
+    await row.click();
+    await expect.element(row).not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: "Close plan mode", exact: true }))
+      .toBeVisible();
+    expect(
+      [attach, permission, model].map((item) => item.element().getBoundingClientRect().toJSON()),
+    ).toEqual(baseline);
+    await attach.click();
+    await screen.getByRole("menuitem", { name: "Plan mode • On", exact: true }).click();
+    await expect
+      .element(screen.getByRole("button", { name: "Close plan mode", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toHaveValue("Keep this draft");
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("C39 hover and keyboard close preserve the draft and toolbar geometry", async () => {
+  await page.viewport(1280, 900);
+  const screen = await render(
+    <div style={{ width: 752 }}>
+      <PlanComposer />
+    </div>,
+  );
+  try {
+    await screen.getByRole("button", { name: "Attach images", exact: true }).click();
+    await screen.getByRole("menuitem", { name: "Plan mode Off", exact: true }).click();
+    const close = screen.getByRole("button", { name: "Close plan mode", exact: true });
+    const bounds = close.element().getBoundingClientRect().toJSON();
+    expect(bounds.height).toBe(28);
+    const permission = screen.getByRole("button", { name: "Permission mode", exact: true });
+    expect(bounds.left).toBeGreaterThan(permission.element().getBoundingClientRect().right);
+    await screen.getByRole("textbox", { name: "Prompt", exact: true }).click();
+    expect(
+      getComputedStyle(close.element().querySelector(".conversation-plan-close")!).visibility,
+    ).toBe("hidden");
+    await close.hover();
+    expect(
+      getComputedStyle(close.element().querySelector(".conversation-plan-close")!).visibility,
+    ).toBe("visible");
+    expect(getComputedStyle(close.element().querySelector(".conversation-plan-close")!).color).toBe(
+      "rgb(255, 255, 255)",
+    );
+    expect(
+      close.element().querySelector(".conversation-plan-close")!.getBoundingClientRect().width,
+    ).toBe(12);
+    expect(
+      close.element().querySelector(".conversation-plan-close")!.getBoundingClientRect().height,
+    ).toBe(12);
+    expect(getComputedStyle(close.element()).borderRadius).toBe("999px");
+    expect(getComputedStyle(close.element().querySelector("svg")!).cursor).toBe("pointer");
+    expect(close.element().getBoundingClientRect().toJSON()).toEqual(bounds);
+    permission.element().focus();
+    await userEvent.keyboard("{Tab}");
+    await expect.element(close).toHaveFocus();
+    expect(
+      getComputedStyle(close.element().querySelector(".conversation-plan-close")!).visibility,
+    ).toBe("visible");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(close).not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .toHaveValue("Keep this draft");
+  } finally {
+    await screen.unmount();
   }
 });
