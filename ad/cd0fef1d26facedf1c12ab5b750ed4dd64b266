@@ -1,0 +1,22 @@
+.scratch/desktop-plan-mode/spec.md
+  s_e95034f71a0e09::t_b612b851837de5 1,120,123-130
+  s_e95034f71a0e09::t_0bcd887f37c8a4 116-119,121-122
+.scratch/desktop-plan-mode/issues/07-side-pane-plan-tab.md
+  s_e95034f71a0e09::t_b612b851837de5 3,22,35-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "adcd0fef1d26facedf1c12ab5b750ed4dd64b266",
+  "prompts": {},
+  "sessions": {
+    "s_e95034f71a0e09": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e38-c9bc-7830-8448-c4ee1d481e87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
