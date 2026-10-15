@@ -1,6 +1,6 @@
 # 03：桌面与 Web 目标模式 UI
 
-Status: claimed
+Status: resolved
 Blocked by: 01, 02
 
 **What to build:** 按 [spec](../spec.md) 的「UI」一节以及 rukie.pen 中 C09 和 M03-C（C37、C38、C42、H17、H17-H、H18、H18-P 及浅色版），实现目标模式的开启、执行状态条与操作。
@@ -28,3 +28,9 @@ Blocked by: 01, 02
 - 增量证据：修正后 App12例中10通过；两个原本同步读取弹窗几何的用例改为等待弹窗可见，精确几何断言保持原值，相关2例通过（3.97s）。UI 类型与4文件 lint 通过；完整桌面306结果与未受影响 C38截图继续复用，不重复包级验证。局部手工复验150网络请求无失败，控制台仅开发提示与减少动态效果提示；自有浏览器与隔离启动器已关闭并确认进程退出，临时数据由启动器清理。
 - ADR coverage：核对 spec 已有覆盖，UI 权限选择沿用 ADR-0014，wire 沿用 ADR-0031，组件向下依赖沿用 ADR-0029；C37/C38/C42 和内存草稿交互属于 DESIGN 的局部约束，无新增长期架构取舍。协调者继续负责合并后组合评审与 spec/ticket 一起关闭。
 - 已快进合并集成分支 `b1955bdd88641f2d916ecffc6434da760c190c23` 的 Core 初始准入修复；不改变本票 UI 源码，复用原证据。工单仍 claimed，等待协调者最终评审。
+
+### 最终交付关闭
+
+- C09/C37/C38/C42、图片目标、草稿与实时状态路由、双语文案及 DESIGN/README 完成；焦点交接修复经局部复验通过。两轴评审完成，唯一 UI README 的原子创建文案 P2 已修正为原子接纳 Goal/task 后经 Hook 放置首条人类输入。ADR 覆盖复核完成，见 [spec](../spec.md#adr-coverage)。
+- 复用桌面包 **53 文件、306 测试通过**；随后仅复验失效的 C42/输入路由 App **12 例**（10 pass 加修正同步后的 2 pass），Node 与未受影响 C38 证据继续有效。最终实际浏览器 **0 page errors、150 请求、0 失败**，Light/Dark/窄屏焦点和几何通过，自有浏览器及隔离启动器已关闭；未运行原生 Electron。初始 `check:dev` 及受影响增量静态检查通过。
+- 组合 Core e2e 1510 pass、准入/恢复/时间/runtime 43 pass、wire/client/presenter focused 通过；早先 canonical general 518 pass/10 fail、coding 1512 pass/32 fail、server/shared 107 pass/1 fail 仍记录为失败。后端 `64ea0ef` CI 全绿不是最终 HEAD 验收；最终推送后最新 CI 待核对。三票与 spec 一起 resolved，表示实现、文档、评审和适用本地验收完成，不代表 CI 全绿或合并。

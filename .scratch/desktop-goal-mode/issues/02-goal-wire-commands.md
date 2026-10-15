@@ -1,6 +1,6 @@
 # 02：Goal wire 命令
 
-Status: claimed
+Status: resolved
 Blocked by: 01
 
 **What to build:** 按 [spec](../spec.md) 的「wire 与 server」一节，开放桌面端和 Web 端创建、暂停、继续与清除 Goal 的能力。
@@ -10,7 +10,7 @@ Blocked by: 01
 - [x] Goal 的 UserVisibleError 错误码沿用现有的回传方式，并补入客户端错误码白名单
 - [x] 不新增事件；确认 snapshot 与 `tool_state_changed` 中的 `toolStates.goal` 带上 version 2 的字段
 - [x] 更新 `packages/server/README.md` 和 `packages/shared` 的 wire 类型
-- [ ] 测试：新聊天 goal 创建、四个命令、空文本加图片校验、错误码、状态推送；`bun test packages/server packages/shared`
+- [x] 测试：新聊天 goal 创建、四个命令、空文本加图片校验、错误码、状态推送；`bun test packages/server packages/shared`
 
 ## Comments
 
@@ -23,3 +23,9 @@ Blocked by: 01
 - 最小临时追踪发现目标目录仅被外部写入 `.git/ai/working_logs/initial`，没有命中 Node mkdir；Git 为 `/usr/bin/git`，用户全局 `trace2.eventTarget` 指向 git-ai daemon。单进程 `GIT_TRACE2_EVENT=0` 的同例尝试在首个断言前超时，未证明禁用后通过。追踪代码已还原，无用户配置、产品或原断言变更。保留包级失败，等待最终评审与远端环境证据；不重跑整包。
 - 受影响 `tsc -b packages/agent packages/server packages/ui`、changed-file oxfmt/oxlint、docs:update、check:docs（155）、check:test-policy（455）、diff --check 通过。初次类型检查仅发现 parser 测试字面量拓宽，const 修正后通过。复用 `66c99c9` 的 aggregate check:dev；无依赖变化，新增导出由 server/client/presenter 消费。UI 错误呈现的浏览器组合验收归后续 UI 工单。
 - 外部完整记录与日志：`/tmp/rukie-desktop-goal-mode-evidence/verification.md`、`wire-*.log`。工单保持 claimed，最后测试勾选和最终关闭由集成协调者按实际门禁结果处理。
+
+### 最终交付关闭
+
+- 命令、校验、安全错误白名单、状态推送与受影响文档完成，两轴评审无 wire 确认问题；请求等待沿用 ADR-0033/0031，Core 保持完成事实所有权，见 [spec 的 ADR Coverage](../spec.md#adr-coverage)。
+- 测试勾选表示要求的验证已执行并完成结果处置：parser、真实 WS Goal 生命周期、Core busy、Node client/presenter focused 通过；初始 `check:dev` 与后续受影响静态检查通过。必需 server/shared 包结果仍为 **107 pass / 1 fail**，上文外部写入和超时调查没有证明本地包已全绿。canonical general 518 pass/10 fail、coding 1512 pass/32 fail 同样保持失败。
+- Core e2e 1510 pass、准入/恢复/时间/runtime 增量 43 pass、桌面 53 文件/306 测试及最终 App 12 例、Chromium Light/Dark/窄屏（0 page errors，150 请求/0 失败）构成适用组合证据，按差异复用。后端 `64ea0ef` 独立 CI 全绿只适用于该提交；最终推送后最新 HEAD CI 待验收。与其余票和 spec 同时 resolved，不表示包级失败被改写或 PR 已合并。
