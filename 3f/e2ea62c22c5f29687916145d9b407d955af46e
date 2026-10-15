@@ -1,0 +1,27 @@
+packages/ui/src/theme.css
+  s_e95034f71a0e09::t_e990e83dfc1986 791-794
+packages/ui/tests/app/plan-pane-occlusion.browser.test.tsx
+  s_e95034f71a0e09::t_191dea3b569ba6 78,113,115
+  s_e95034f71a0e09::t_4cb9030813b3aa 1-8,10-22,24-38,40-45,48-58,62-68,73-77,79-87,89-112,114,116-120
+  s_e95034f71a0e09::t_d4be53089c9c74 9,23,69-70,72
+.scratch/desktop-plan-mode/issues/07-side-pane-plan-tab.md
+  s_e95034f71a0e09::t_831a1d21d8d6f7 33-34
+DESIGN.md
+  s_e95034f71a0e09::t_e990e83dfc1986 619
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "3fe2ea62c22c5f29687916145d9b407d955af46e",
+  "prompts": {},
+  "sessions": {
+    "s_e95034f71a0e09": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e38-c9bc-7830-8448-c4ee1d481e87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
