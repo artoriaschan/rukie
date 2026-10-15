@@ -18,7 +18,7 @@ test.each(["en", "zh"] as const)(
     );
     try {
       const action = locale === "en" ? "Session actions" : "会话更多";
-      const remove = locale === "en" ? "Permanently delete" : "永久删除";
+      const remove = locale === "en" ? "Delete chat" : "删除会话";
       const cancel = locale === "en" ? "Cancel" : "取消";
       const description =
         locale === "en"

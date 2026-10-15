@@ -236,7 +236,7 @@ export function AgentActivity({
             style={{ transform: `rotate(${expanded ? 0 : -90}deg)` }}
             className="inline-flex shrink-0 text-muted-foreground group-hover:text-foreground"
           >
-            <ChevronDown className="size-3.5" />
+            <ChevronDown className="size-3" />
           </span>
         </button>
       )}

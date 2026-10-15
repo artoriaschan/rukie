@@ -155,7 +155,7 @@ export function MessageAvatar({
       data-slot="message-avatar"
       aria-hidden={placeholder || undefined}
       className={cn(
-        "grid size-7 shrink-0 place-items-center overflow-hidden rounded-full bg-muted text-ui-sm font-medium text-muted-foreground [&_img]:size-full [&_img]:object-cover [&_svg]:size-3.5",
+        "grid size-7 shrink-0 place-items-center overflow-hidden rounded-full bg-muted text-ui-sm font-medium text-muted-foreground [&_img]:size-full [&_img]:object-cover [&_svg]:size-3",
         placeholder && "invisible",
         className,
       )}

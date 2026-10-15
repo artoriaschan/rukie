@@ -193,7 +193,7 @@ export function SelectTrigger({
         style={{ transform: ctx.open ? "rotate(180deg)" : undefined }}
         className="text-muted-foreground"
       >
-        <ChevronDown className="h-4 w-4" />
+        <ChevronDown className="size-3" />
       </span>
     </button>
   );
@@ -339,7 +339,7 @@ export function SelectItem({ value, disabled = false, className, children }: Sel
         )}
       >
         {children}
-        {selected ? <Check className="size-4 shrink-0" /> : null}
+        {selected ? <Check className="size-3 shrink-0" /> : null}
       </button>
     </li>
   );

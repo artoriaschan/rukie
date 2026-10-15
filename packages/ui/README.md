@@ -66,4 +66,6 @@ The conversation Plus opens the Pencil C09 attachment menu and keeps image picki
 
 侧栏 Project 行以 server 投影的当前 Session `projectId` 显示选中背景；会话数排除归档并包含置顶。悬停 300ms 或键盘聚焦打开受控 beUI 详情卡，卡片以行背景矩形右侧 4px、顶边对齐锚定，按视口夹取且逃逸滚动裁切；指针通道保留该间隙，离开行与卡片 150ms 后关闭。ArrowRight 从项目行进入卡片操作；图钉临时固定详情，其他项目的悬停或聚焦不替换它，再次切换图钉、Escape 或外部点击关闭。编辑入口复用 C29；新聊天、设置及其他弹窗暂停详情卡。App 拥有打开与固定状态，可由后续菜单互斥控制。完整目录路径只按已校验的 `sessions_changed.homeDir` 家目录身份及分隔符边界缩写为 `~`；未收到元数据或不属于家目录时保持完整路径。
 
+新聊天在主输入框上方显示 rukie.pen M03-A 的选择条，Session 创建后隐藏。项目菜单可搜索、勾选当前项目、添加新项目或不使用项目；项目态的 x 只取消本次选择。Git Project 显示分支菜单：`project.git` 的全部可切换本地分支、搜索、`project.checkout` 切换、以搜索内容 `project.createBranch` 新建并检出，以及独立工作树选项。切换失败或 Session 忙碌时错误显示在仍打开的菜单内。几何与交互规则见 [DESIGN.md](../../DESIGN.md#new-chat-worktree-selection)。
+
 设置 → 环境 → 工作树通过 `worktrees.list` 显示独立工作树的分支、仓库目录名与路径；“刷新”调用 `worktrees.refresh` 清理失效记录。删除确认写明完整路径、未提交改动丢弃与分支保留，成功调用 `worktree.delete` 后更新列表，绑定 Session 回到主项目目录。忙碌错误留在弹窗内，取消接收初始焦点，提交期间阻止重复提交和关闭。空列表显示“暂无独立工作树”。界面复用已安装的 beUI Button / MorphingModal 和设置 ScrollArea，颜色、尺寸与窄宽度行为由 [DESIGN.md](../../DESIGN.md#worktree-settings) 定义。

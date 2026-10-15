@@ -141,6 +141,15 @@ test.each([
     expect(getComputedStyle(row).backgroundColor).not.toBe(color);
     expect(getComputedStyle(newChat).opacity).toBe("1");
     expect(newChat.getBoundingClientRect().x).toBe(beforePlus.x);
+    expect([beforePlus.width, beforePlus.height]).toEqual([24, 24]);
+    expect(getComputedStyle(newChat).borderRadius).toBe("6px");
+    expect(newChat.querySelector("svg")!.getBoundingClientRect().width).toBe(12);
+    const rowHover = getComputedStyle(row).backgroundColor;
+    await page.elementLocator(newChat).hover();
+    expect(getComputedStyle(row).backgroundColor).toBe(color);
+    expect(getComputedStyle(newChat).backgroundColor).toBe(rowHover);
+    await disclosure.hover();
+    expect(getComputedStyle(row).backgroundColor).toBe(rowHover);
     expect(row.querySelector('[aria-label^="More"]')).toBeNull();
     disclosure.element().focus();
     const card = screen.getByRole("dialog", {
@@ -156,14 +165,37 @@ test.each([
     const box = card.element().getBoundingClientRect();
     const anchor = row.getBoundingClientRect();
     expect(box.width).toBe(320);
-    expect(getComputedStyle(card.element()).padding).toBe("16px");
+    expect(getComputedStyle(card.element()).padding).toBe("0px");
     expect(getComputedStyle(card.element()).borderRadius).toBe("12px");
+    const separators = card.element().querySelectorAll('[role="separator"]');
+    expect(separators).toHaveLength(2);
+    const inner = card.element().clientLeft;
+    const rows = [...card.element().children].map((child) => ({
+      separator: child.getAttribute("role") === "separator",
+      line: child.getBoundingClientRect(),
+    }));
+    // 6px everywhere: shell edge to first/last row, between rows and around separators.
+    expect(rows[0]!.line.top - (box.top + inner)).toBeCloseTo(6, 0);
+    expect(box.bottom - inner - rows.at(-1)!.line.bottom).toBeCloseTo(6, 0);
+    for (let index = 1; index < rows.length; index++)
+      expect(rows[index]!.line.top - rows[index - 1]!.line.bottom).toBeCloseTo(6, 0);
+    for (const { separator, line } of rows) {
+      if (separator) {
+        expect(line.height).toBe(1);
+        expect(line.left).toBeCloseTo(box.left + inner, 0);
+        expect(line.right).toBeCloseTo(box.right - inner, 0);
+      } else {
+        expect(line.left).toBeCloseTo(box.left + inner + 6, 0);
+        expect(line.right).toBeCloseTo(box.right - inner - 6, 0);
+      }
+    }
+    expect(card.element().scrollWidth).toBe(card.element().clientWidth);
     expect(
       card
         .getByRole("button", { name: dark ? "固定详情" : "Pin details", exact: true })
         .element()
         .getBoundingClientRect().height,
-    ).toBe(28);
+    ).toBe(24);
     expect(card.element().closest('[data-slot="scroll-area-viewport"]')).toBeNull();
     expect(box.right).toBeLessThanOrEqual(width - 8);
     expect(box.top).toBeGreaterThanOrEqual(8);

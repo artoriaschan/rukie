@@ -343,7 +343,7 @@ for (const theme of ["light", "dark"] as const) {
       try {
         const trigger = screen.getByRole("button", { name: "Session actions", exact: true });
         await trigger.click(kind === "context" ? { button: "right" } : undefined);
-        const item = screen.getByRole("menuitem", { name: "Permanently delete", exact: true });
+        const item = screen.getByRole("menuitem", { name: "Delete chat", exact: true });
         await expect.element(item).toBeVisible();
         expect(
           contrast(getComputedStyle(item.element()).color, drawnMenuBackground(item.element())),

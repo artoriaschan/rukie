@@ -83,7 +83,7 @@ function TodoHeaderIcon({ complete }: { complete: boolean }) {
             transition={reduce ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT }}
             className="absolute grid place-items-center text-muted-foreground"
           >
-            <ListTodo className="size-4" />
+            <ListTodo className="size-3" />
           </motion.span>
         )}
       </AnimatePresence>
@@ -274,7 +274,7 @@ export function TodoList({
           style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}
           className="text-muted-foreground/50 group-hover:text-muted-foreground"
         >
-          <ChevronDown className="size-3.5" />
+          <ChevronDown className="size-3" />
         </span>
       </button>
 

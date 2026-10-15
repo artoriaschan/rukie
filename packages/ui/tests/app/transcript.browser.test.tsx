@@ -113,7 +113,10 @@ test("App shows committed and streaming replies, with failed tool output expande
     const thinkingIcon = reasoning.closest('[role="listitem"]')!.querySelector(".lucide-sparkles")!;
     const toolIcon = tool.querySelector(".lucide-square-terminal")!;
     expect(thinkingIcon.getBoundingClientRect().left).toBe(toolIcon.getBoundingClientRect().left);
-    expect(reasoning.getBoundingClientRect().left).toBe(toolIcon.getBoundingClientRect().right + 8);
+    expect(toolIcon.getBoundingClientRect().width).toBe(12);
+    expect(reasoning.getBoundingClientRect().left).toBe(
+      toolIcon.parentElement!.getBoundingClientRect().right + 8,
+    );
     expect(getComputedStyle(reasoning).fontSize).toBe("13px");
     expect(getComputedStyle(tool).fontSize).toBe("13px");
     expect(getComputedStyle(reasoning).color).toBe(

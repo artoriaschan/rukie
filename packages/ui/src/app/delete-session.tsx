@@ -107,7 +107,7 @@ export function DeleteSession({
           disabled={pending}
           onClick={close}
         >
-          <X className="size-4" />
+          <X />
         </Button>
       </div>
     </MorphingModal>

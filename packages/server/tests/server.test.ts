@@ -4188,7 +4188,11 @@ test("legacy alias Project edits synchronize cwd while preserving binding and un
 });
 
 async function gitAt(cwd: string, ...args: string[]) {
-  const child = Bun.spawn(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
+  // Fixture setup must not run the developer's global hooks.
+  const child = Bun.spawn(["git", "-C", cwd, "-c", "core.hooksPath=/dev/null", ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const [stdout, stderr, code] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
@@ -4260,6 +4264,7 @@ test("Git Project queries only repository roots and worktree Sessions retain iso
       repository: true,
       branch: "main",
       head,
+      branches: ["main"],
     });
     const nested = (
       await client.command("project.create", {
@@ -4272,6 +4277,7 @@ test("Git Project queries only repository roots and worktree Sessions retain iso
       repository: false,
       branch: null,
       head: "",
+      branches: [],
     });
     const response = await client.command("session.create", {
       project: project.id,
@@ -4959,6 +4965,107 @@ test("moving into a Project serializes with removal and never publishes a dangli
     expect(removed.error).toBeUndefined();
     expect((await client.command("projects.list")).result).toEqual([]);
     expect((await client.command("sessions.list")).result).toEqual([]);
+  } finally {
+    await owner.close();
+  }
+});
+
+test("Project branch commands list, switch and create local branches in the primary folder", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-branches-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const repository = await realpath(await mkdtemp(join(homeDir, "repo-")));
+    await writeFile(join(repository, "tracked.txt"), "main");
+    await gitAt(repository, "init", "-b", "main");
+    await gitAt(repository, "add", ".");
+    const commit = (message: string) =>
+      gitAt(repository, "-c", "user.name=Test", "-c", "user.email=t@e", "commit", "-am", message);
+    await commit("initial");
+    await gitAt(repository, "branch", "dev/one");
+    await gitAt(repository, "switch", "-q", "-c", "conflict");
+    await writeFile(join(repository, "tracked.txt"), "conflict");
+    await commit("diverge");
+    await gitAt(repository, "switch", "-q", "main");
+    const entered = Promise.withResolvers<void>();
+    const reply = Promise.withResolvers<ReturnType<typeof fauxAssistantMessage>>();
+    const fake = fakeModel([
+      async () => {
+        entered.resolve();
+        return reply.promise;
+      },
+    ]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Repo",
+        directories: [repository],
+        trusted: true,
+      })
+    ).result as { id: string };
+    const head = await gitAt(repository, "rev-parse", "HEAD");
+    expect((await client.command("project.git", { projectId: project.id })).result).toEqual({
+      repository: true,
+      branch: "main",
+      head,
+      branches: ["conflict", "dev/one", "main"],
+    });
+
+    expect(
+      (await client.command("project.checkout", { projectId: project.id, branch: "dev/one" }))
+        .result,
+    ).toMatchObject({ branch: "dev/one" });
+    expect(await gitAt(repository, "branch", "--show-current")).toBe("dev/one");
+
+    const created = await client.command("project.createBranch", {
+      projectId: project.id,
+      branch: "feat/new",
+    });
+    expect(created.result).toMatchObject({
+      branch: "feat/new",
+      branches: ["conflict", "dev/one", "feat/new", "main"],
+    });
+    expect(await gitAt(repository, "branch", "--show-current")).toBe("feat/new");
+
+    for (const branch of ["bad..name", "-x", "main"])
+      expect(
+        (await client.command("project.createBranch", { projectId: project.id, branch })).error,
+      ).toEqual({ code: "branch_invalid", params: { branch } });
+    expect(
+      (await client.command("project.checkout", { projectId: project.id, branch: "missing" }))
+        .error,
+    ).toEqual({ code: "branch_invalid", params: { branch: "missing" } });
+
+    // Git refuses to overwrite a conflicting uncommitted change; the file is preserved.
+    await writeFile(join(repository, "tracked.txt"), "local edit");
+    const refused = await client.command("project.checkout", {
+      projectId: project.id,
+      branch: "conflict",
+    });
+    expect(refused.error).toEqual({ code: "git_failed", params: { message: expect.any(String) } });
+    expect(await gitAt(repository, "branch", "--show-current")).toBe("feat/new");
+    expect(await Bun.file(join(repository, "tracked.txt")).text()).toBe("local edit");
+    await gitAt(repository, "checkout", "--", "tracked.txt");
+
+    // A running Session in the primary folder would observe the checkout.
+    const running = await client.command("session.create", { project: project.id, text: "wait" });
+    const sessionId = (running.result as { sessionId: string }).sessionId;
+    await entered.promise;
+    expect(
+      (await client.command("project.checkout", { projectId: project.id, branch: "main" })).error,
+    ).toEqual({ code: "session_busy" });
+    expect(await gitAt(repository, "branch", "--show-current")).toBe("feat/new");
+    reply.resolve(fauxAssistantMessage("done"));
+    await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+    expect(
+      (await client.command("project.checkout", { projectId: project.id, branch: "main" })).result,
+    ).toMatchObject({ branch: "main" });
   } finally {
     await owner.close();
   }

@@ -21,22 +21,71 @@ async function git(cwd: string, args: string[]) {
 class WorktreeFailure extends Error {}
 
 export async function projectGit(primary: string): Promise<WireProjectGit> {
-  const unavailable = { repository: false, branch: null, head: "" };
+  const unavailable = { repository: false, branch: null, head: "", branches: [] };
   try {
-    const root = await git(primary, ["rev-parse", "--show-toplevel"]);
-    if (root.exitCode !== 0 || (await realpath(root.stdout)) !== (await realpath(primary)))
+    // Each Git process costs tens of milliseconds; independent queries run concurrently.
+    const [root, branch, refs, self] = await Promise.all([
+      git(primary, ["rev-parse", "--show-toplevel", "HEAD"]),
+      git(primary, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
+      git(primary, ["for-each-ref", "--format=%(refname:short)%00%(worktreepath)", "refs/heads"]),
+      realpath(primary),
+    ]);
+    const [top = "", head = ""] = root.stdout.split("\n");
+    if (root.exitCode !== 0 || !head || (await realpath(top)) !== self || refs.exitCode !== 0)
       return unavailable;
-    const head = await git(primary, ["rev-parse", "HEAD"]);
-    if (head.exitCode !== 0) return unavailable;
-    const branch = await git(primary, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
-    return {
-      repository: true,
-      branch: branch.exitCode === 0 ? branch.stdout : null,
-      head: head.stdout,
-    };
+    const current = branch.exitCode === 0 ? branch.stdout : null;
+    const branches: string[] = [];
+    for (const line of refs.stdout.split("\n")) {
+      if (!line) continue;
+      const [name = "", checkedOut = ""] = line.split("\0");
+      // Git refuses to switch to a branch checked out by another worktree.
+      if (name && (!checkedOut || (await realpath(checkedOut).catch(() => checkedOut)) === self))
+        branches.push(name);
+    }
+    branches.sort((a, b) => a.localeCompare(b));
+    return { repository: true, branch: current, head, branches };
   } catch {
     return unavailable;
   }
+}
+
+export class BranchFailure extends Error {
+  constructor(
+    readonly code: "branch_invalid" | "git_failed",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Switch or create a local branch in the primary folder; Git rejects conflicting local changes. */
+export async function checkoutBranch(
+  primary: string,
+  branch: string,
+  create: boolean,
+): Promise<WireProjectGit> {
+  if (branch.startsWith("-") || branch.length > 255)
+    throw new BranchFailure("branch_invalid", branch);
+  const [state, valid, exists] = await Promise.all([
+    projectGit(primary),
+    create ? git(primary, ["check-ref-format", "--branch", branch]) : undefined,
+    create ? git(primary, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]) : undefined,
+  ]);
+  if (!state.repository) throw new BranchFailure("git_failed", "Not a Git repository root.");
+  if (create) {
+    if (valid?.exitCode !== 0 || valid.stdout !== branch || exists?.exitCode === 0)
+      throw new BranchFailure("branch_invalid", branch);
+  } else if (!state.branches.includes(branch)) throw new BranchFailure("branch_invalid", branch);
+  if (!create && state.branch === branch) return state;
+  const result = await git(primary, create ? ["switch", "-c", branch] : ["switch", branch]);
+  const next = await projectGit(primary);
+  // A failing post-checkout hook only changes Git's exit status after the switch has happened.
+  if (result.exitCode !== 0 && next.branch !== branch)
+    throw new BranchFailure(
+      "git_failed",
+      (result.stderr || result.stdout || "Git switch failed.").slice(-2000),
+    );
+  return next;
 }
 
 /** A fresh directory and a separately generated branch id prevent unrelated allocations colliding. */

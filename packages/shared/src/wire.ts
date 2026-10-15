@@ -37,6 +37,8 @@ export const WirePreferencesSchema = Type.Object(
     showProjects: Type.Optional(Type.Boolean()),
     collapsedGroups: Type.Optional(Type.Array(Type.String())),
     collapsedProjects: Type.Optional(Type.Array(Type.String())),
+    /** Project ids shown in Pinned instead of Projects, in pin order. */
+    pinnedProjects: Type.Optional(Type.Array(Type.String())),
   },
   { additionalProperties: false },
 );
@@ -75,6 +77,8 @@ export const WireCommandSchema = Type.Union([
   command("project.remove", { projectId: id }),
   command("project.trust", { projectId: id }),
   command("project.git", { projectId: id }),
+  command("project.checkout", { projectId: id, branch: Type.String({ minLength: 1 }) }),
+  command("project.createBranch", { projectId: id, branch: Type.String({ minLength: 1 }) }),
   command("worktrees.list", {}),
   command("worktrees.refresh", {}),
   command("worktree.delete", { worktreeId: id }),
@@ -136,6 +140,8 @@ export type WireCommand = Static<typeof WireCommandSchema>;
 
 export type WireErrorCode =
   | "worktree_failed"
+  | "branch_invalid"
+  | "git_failed"
   | "worktree_session"
   | "model_services_unavailable"
   | "model_unavailable"
@@ -166,6 +172,8 @@ export interface WireProjectGit {
   repository: boolean;
   branch: string | null;
   head: string;
+  /** Local branches the primary folder can switch to, sorted; excludes those checked out elsewhere. */
+  branches: string[];
 }
 export interface WireWorktree {
   id: string;

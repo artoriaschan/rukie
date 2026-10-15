@@ -94,7 +94,7 @@ export function ProjectCreate({
             disabled={picking}
             onClick={onPick}
           >
-            <FolderPlus className="size-6!" />
+            <FolderPlus className="size-3" />
             {t("app.add-folders-empty")}
           </Button>
         )}

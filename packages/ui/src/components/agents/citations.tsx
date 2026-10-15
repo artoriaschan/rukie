@@ -85,7 +85,7 @@ export function CitationFavicon({ url, className }: { url?: string; className?: 
           className="size-4 rounded-sm object-contain"
         />
       ) : (
-        <Globe2 className="size-3.5" />
+        <Globe2 className="size-3" />
       )}
     </span>
   );
@@ -132,7 +132,7 @@ function CitationRow({
           {index}
         </span>
         {citation.url ? (
-          <ExternalLink className="size-3.5 text-muted-foreground/40 group-hover/citation:text-muted-foreground" />
+          <ExternalLink className="size-3 text-muted-foreground/40 group-hover/citation:text-muted-foreground" />
         ) : null}
       </span>
     </>
@@ -219,7 +219,7 @@ export function Citations({
         onClick={() => setOpen(!currentOpen)}
         className="group -ml-1 flex min-h-7 items-center gap-2 rounded-lg px-1 text-left text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <BookOpenText className="size-4" />
+        <BookOpenText className="size-3" />
         <span className="font-medium">{title}</span>
         <span className="rounded-md bg-muted px-2 py-0.5 text-ui-xs font-semibold tabular-nums">
           {citations.length}
@@ -229,7 +229,7 @@ export function Citations({
           style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}
           className="text-muted-foreground"
         >
-          <ChevronDown className="size-3.5" />
+          <ChevronDown className="size-3" />
         </span>
       </button>
 

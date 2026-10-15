@@ -33,8 +33,10 @@
   gap: 8px;
 }
 .conversation-composer button {
-  min-height: 28px;
   cursor: pointer;
+}
+.conversation-composer button:not([data-size="icon"]) {
+  min-height: 28px;
 }
 .conversation-composer button:disabled {
   pointer-events: auto;
@@ -46,14 +48,8 @@
 .conversation-composer button span {
   cursor: inherit;
 }
-.conversation-composer button[class*="min-w-8"] {
-  min-width: 28px;
-  width: 28px;
-  height: 28px;
-  padding: 4px;
-}
 .conversation-composer button[type="submit"] {
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--conversation-chip);
   color: var(--conversation-chip-text);
 }
@@ -246,9 +242,6 @@
 .conversation-model-trigger svg {
   cursor: inherit;
 }
-.conversation-pencil button:active:not(:disabled) {
-  box-shadow: inset 0 0 0 1px var(--foreground);
-}
 .conversation-pencil button:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
@@ -289,11 +282,8 @@
   padding-left: 4px;
 }
 .conversation-composer .conversation-add-trigger {
-  width: 16px;
-  min-width: 16px;
-  padding: 0;
   color: var(--muted-foreground);
-  margin-right: 8px;
+  margin-right: 4px;
 }
 .conversation-permission-trigger {
   padding: 0;
@@ -332,8 +322,8 @@
   height: 16px;
 }
 .conversation-permission-option [data-slot="dropdown-menu-radio-item-indicator"] svg {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
 }
 .conversation-model-trigger {
   padding: 0;

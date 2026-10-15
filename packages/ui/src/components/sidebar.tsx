@@ -22,6 +22,9 @@ export interface SidebarProps {
   onDetailProject: (id: string, open: boolean) => void;
   onDetailPin: (id: string, pinned: boolean) => void;
   onEditProject: (project: WireProject | null) => void;
+  onRenameProject: (project: WireProject) => void;
+  onRevealProject: (project: WireProject) => void;
+  onRemoveProject: (project: WireProject) => void;
   projects: WireProject[];
   pinned: string[];
   archived: string[];
@@ -65,6 +68,7 @@ export function Sidebar(props: SidebarProps) {
   const [expandedSessions, setExpandedSessions] = useState<string[]>([]);
   const groups = p.collapsedGroups ?? [];
   const projectGroups = p.collapsedProjects ?? [];
+  const pinnedProjects = p.pinnedProjects ?? [];
   const toggle = (id: string) =>
     props.onPreferences({
       ...p,
@@ -90,11 +94,11 @@ export function Sidebar(props: SidebarProps) {
         <ContextMenuTrigger>
           <div
             tabIndex={-1}
-            className="group/row relative flex min-w-0 items-center rounded-lg px-1 outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-hover"
+            className="group/row relative flex min-w-0 items-center rounded-lg px-1 outline-none focus-visible:ring-2 focus-visible:ring-ring row-hover:bg-hover"
           >
             <button
               onClick={() => props.onSelect(session.id)}
-              className="flex cursor-pointer active:bg-muted min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/row:pr-[68px] group-focus-within/row:pr-[68px]"
+              className="flex cursor-pointer min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/row:pr-[60px] group-focus-within/row:pr-[60px]"
               aria-current={props.selected === session.id ? "page" : undefined}
             >
               {session.running && !session.waitingPermission ? (
@@ -118,10 +122,10 @@ export function Sidebar(props: SidebarProps) {
                   variant="ghost"
                   size="icon"
                   aria-label={`${t(pinned ? "app.unpin" : "app.pin")} ${session.title}`}
-                  className="min-h-7 min-w-7 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100"
+                  className="opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100"
                   onClick={() => props.onPin(session.id, !pinned)}
                 >
-                  {pinned ? <PinOff className="size-3" /> : <Pin className="size-3" />}
+                  {pinned ? <PinOff /> : <Pin />}
                 </Button>
               </Tooltip>
               <Menu.DropdownMenu>
@@ -130,9 +134,9 @@ export function Sidebar(props: SidebarProps) {
                     size="icon"
                     variant="ghost"
                     aria-label={`${t("app.more")} ${session.title}`}
-                    className="min-h-7 min-w-7 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 data-[state=open]:opacity-100"
+                    className="opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 data-[state=open]:opacity-100"
                   >
-                    <Ellipsis className="size-4" />
+                    <Ellipsis />
                   </Button>
                 </Menu.DropdownMenuTrigger>
                 <Menu.DropdownMenuContent align="end">
@@ -160,7 +164,7 @@ export function Sidebar(props: SidebarProps) {
         <button
           onClick={() => toggle(id)}
           aria-expanded={!groups.includes(id)}
-          className="flex cursor-pointer active:bg-muted min-w-0 flex-1 items-center gap-1 py-1 min-h-7 text-left text-ui-base text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex cursor-pointer min-w-0 flex-1 items-center gap-1 py-1 min-h-7 text-left text-ui-base text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {t(`app.${id}`)}
           <ChevronDown
@@ -186,7 +190,7 @@ export function Sidebar(props: SidebarProps) {
                   aria-label={t("app.sidebar-options")}
                   className="opacity-0 group-hover/header:opacity-100 group-focus-within/header:opacity-100 data-[state=open]:opacity-100"
                 >
-                  <Ellipsis className="size-4" />
+                  <Ellipsis />
                 </Button>
               </Menu.DropdownMenuTrigger>
             </Tooltip>
@@ -255,7 +259,7 @@ export function Sidebar(props: SidebarProps) {
                 className="opacity-0 group-hover/header:opacity-100 group-focus-within/header:opacity-100"
                 onClick={() => (id === "projects" ? props.onAdd() : props.onNew(null))}
               >
-                <Plus className="size-4" />
+                <Plus />
               </Button>
             </Tooltip>
           ) : null}
@@ -264,7 +268,82 @@ export function Sidebar(props: SidebarProps) {
       {!groups.includes(id) ? children : null}
     </section>
   );
-  const navigation = sessionGroups(props.recent, props.projects, props.pinned, props.archived);
+  const projectGroup = ({
+    project,
+    sessions,
+  }: {
+    project: WireProject;
+    sessions: WireSessionSummary[];
+  }) => (
+    <div key={project.id} role="group" aria-label={project.name}>
+      <ProjectRow
+        resetKey={props.detailEpoch}
+        project={project}
+        homeDir={props.homeDir}
+        count={
+          props.recent.filter(
+            (session) => project.id === session.projectId && !props.archived.includes(session.id),
+          ).length
+        }
+        selected={props.recent.some(
+          (session) => session.id === props.selected && project.id === session.projectId,
+        )}
+        expanded={!projectGroups.includes(project.id)}
+        open={props.detailProject?.id === project.id}
+        pinned={props.detailProject?.id === project.id && props.detailProject.pinned}
+        disabled={
+          props.detailsDisabled ||
+          (Boolean(props.detailProject?.pinned) && props.detailProject?.id !== project.id)
+        }
+        onOpenChange={(open) => props.onDetailProject(project.id, open)}
+        onPinChange={(pinned) => props.onDetailPin(project.id, pinned)}
+        onToggle={() =>
+          props.onPreferences({
+            ...p,
+            collapsedProjects: projectGroups.includes(project.id)
+              ? projectGroups.filter((id) => id !== project.id)
+              : [...projectGroups, project.id],
+          })
+        }
+        onNew={() => props.onNew(project.id)}
+        onEdit={() => props.onEditProject(project)}
+        projectPinned={pinnedProjects.includes(project.id)}
+        onProjectPin={(pin) =>
+          props.onPreferences({
+            ...p,
+            pinnedProjects: pin
+              ? [...pinnedProjects.filter((id) => id !== project.id), project.id]
+              : pinnedProjects.filter((id) => id !== project.id),
+          })
+        }
+        onRename={() => props.onRenameProject(project)}
+        onReveal={() => props.onRevealProject(project)}
+        onRemove={() => props.onRemoveProject(project)}
+      />
+      {!projectGroups.includes(project.id) ? (
+        <div className="pl-3">
+          {(expandedSessions.includes(project.id) ? sessions : sessions.slice(0, 5)).map(row)}
+          {sessions.length > 5 && !expandedSessions.includes(project.id) ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label={t("app.show-more-group", { group: project.name })}
+              onClick={() => setExpandedSessions([...expandedSessions, project.id])}
+            >
+              {t("app.show-more")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+  const navigation = sessionGroups(
+    props.recent,
+    props.projects,
+    props.pinned,
+    props.archived,
+    pinnedProjects,
+  );
   return (
     <aside
       aria-label={t("app.home")}
@@ -278,12 +357,12 @@ export function Sidebar(props: SidebarProps) {
           className="min-w-0 flex-1 justify-start"
           onClick={() => props.onNew(null)}
         >
-          <Plus className="size-4" />
+          <Plus className="size-3" />
           {t("app.new-chat")}
         </Button>
         <Tooltip content={t("app.search")}>
           <Button size="icon" variant="ghost" aria-label={t("app.search")} onClick={props.onSearch}>
-            <Search className="size-4" />
+            <Search />
           </Button>
         </Tooltip>
       </div>
@@ -300,74 +379,26 @@ export function Sidebar(props: SidebarProps) {
         // Prevent Radix's measuring table from adopting a long title's intrinsic width.
         viewportClassName="min-w-0 [contain:inline-size]"
       >
-        {p.showPinned !== false && navigation.pinned.length > 0
-          ? section("pinned", navigation.pinned.map(row), navigation.pinned)
+        {p.showPinned !== false &&
+        (navigation.pinnedProjects.length > 0 || navigation.pinned.length > 0)
+          ? section(
+              "pinned",
+              <>
+                {navigation.pinnedProjects.map(projectGroup)}
+                {navigation.pinned.map(row)}
+              </>,
+              [
+                ...navigation.pinnedProjects.flatMap((group) => group.sessions),
+                ...navigation.pinned,
+              ],
+            )
           : null}
         {p.showProjects !== false
           ? section(
               "projects",
               <>
                 {(expandedProjects ? navigation.projects : navigation.projects.slice(0, 5)).map(
-                  ({ project, sessions }) => (
-                    <div key={project.id} role="group" aria-label={project.name}>
-                      <ProjectRow
-                        resetKey={props.detailEpoch}
-                        project={project}
-                        homeDir={props.homeDir}
-                        count={
-                          props.recent.filter(
-                            (session) =>
-                              project.id === session.projectId &&
-                              !props.archived.includes(session.id),
-                          ).length
-                        }
-                        selected={props.recent.some(
-                          (session) =>
-                            session.id === props.selected && project.id === session.projectId,
-                        )}
-                        expanded={!projectGroups.includes(project.id)}
-                        open={props.detailProject?.id === project.id}
-                        pinned={
-                          props.detailProject?.id === project.id && props.detailProject.pinned
-                        }
-                        disabled={
-                          props.detailsDisabled ||
-                          (Boolean(props.detailProject?.pinned) &&
-                            props.detailProject?.id !== project.id)
-                        }
-                        onOpenChange={(open) => props.onDetailProject(project.id, open)}
-                        onPinChange={(pinned) => props.onDetailPin(project.id, pinned)}
-                        onToggle={() =>
-                          props.onPreferences({
-                            ...p,
-                            collapsedProjects: projectGroups.includes(project.id)
-                              ? projectGroups.filter((id) => id !== project.id)
-                              : [...projectGroups, project.id],
-                          })
-                        }
-                        onNew={() => props.onNew(project.id)}
-                        onEdit={() => props.onEditProject(project)}
-                      />
-                      {!projectGroups.includes(project.id) ? (
-                        <div className="pl-3">
-                          {(expandedSessions.includes(project.id)
-                            ? sessions
-                            : sessions.slice(0, 5)
-                          ).map(row)}
-                          {sessions.length > 5 && !expandedSessions.includes(project.id) ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              aria-label={t("app.show-more-group", { group: project.name })}
-                              onClick={() => setExpandedSessions([...expandedSessions, project.id])}
-                            >
-                              {t("app.show-more")}
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ),
+                  projectGroup,
                 )}
                 {navigation.projects.length > 5 && !expandedProjects ? (
                   <Button

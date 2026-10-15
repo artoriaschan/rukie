@@ -84,9 +84,9 @@ function getStatusClass(status: ToolResultStatus) {
 }
 
 function KindIcon({ kind }: { kind: ToolResultKind }) {
-  if (kind === "terminal") return <SquareTerminal className="size-4" />;
-  if (kind === "request") return <Braces className="size-4" />;
-  return <Wrench className="size-4" />;
+  if (kind === "terminal") return <SquareTerminal className="size-3" />;
+  if (kind === "request") return <Braces className="size-3" />;
+  return <Wrench className="size-3" />;
 }
 
 function StatusIcon({ status, reduce }: { status: ToolResultStatus; reduce: boolean }) {
@@ -267,7 +267,7 @@ export function ToolResult({
           style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}
           className="shrink-0 text-muted-foreground/50 group-hover:text-muted-foreground"
         >
-          <ChevronDown className="size-3.5" />
+          <ChevronDown className="size-3" />
         </span>
       </button>
 
@@ -289,12 +289,12 @@ export function ToolResult({
                     }
                     onClick={handleCopy}
                   >
-                    {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                    {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
                   </ToolResultAction>
                 ) : null}
                 {onRetry ? (
                   <ToolResultAction label={componentText("component.run-again")} onClick={onRetry}>
-                    <RotateCcw className="size-3.5" />
+                    <RotateCcw className="size-3" />
                   </ToolResultAction>
                 ) : null}
                 <span className="ml-auto text-ui-caption text-muted-foreground">

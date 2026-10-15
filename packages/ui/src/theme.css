@@ -2,6 +2,14 @@
 @import "tw-animate-css";
 @custom-variant data-open (&[data-state="open"]);
 @custom-variant data-closed (&[data-state="closed"]);
+/* DESIGN.md: a row drops its hover fill while a nested icon-only action is hovered. */
+@custom-variant row-hover {
+  @media (hover: hover) {
+    &:hover:not(:has([data-size="icon"]:hover)) {
+      @slot;
+    }
+  }
+}
 @custom-variant dark {
   &:where(.dark, .dark *) {
     @slot;
@@ -441,6 +449,11 @@
     color: var(--foreground);
     font-family: var(--font-sans);
   }
+  /* DESIGN.md: every icon renders at 12px; explicit icon utilities in components must match. */
+  svg.lucide {
+    width: 12px;
+    height: 12px;
+  }
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
@@ -607,8 +620,8 @@
 }
 .app-titlebar-navigation {
   width: 196px;
-  padding-left: 88px;
-  gap: 2px;
+  padding-left: 92px;
+  gap: 10px;
 }
 .app-titlebar-navigation > span[aria-hidden="true"] {
   position: absolute;
@@ -616,8 +629,8 @@
   width: 76px;
 }
 .app-titlebar-navigation button {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
 }
 .app-titlebar-navigation button:disabled {
@@ -629,8 +642,8 @@
   outline-offset: -2px;
 }
 .app-titlebar-navigation svg {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
 }
 .app-navigation {
   width: 52px;
@@ -679,9 +692,9 @@
 .project-dialog > div {
   padding: 20px 24px;
 }
-.project-dialog button > svg {
-  width: 16px;
-  height: 16px;
+.project-dialog button:not([data-size="icon"]) > svg {
+  width: 12px;
+  height: 12px;
 }
 .project-directory-list {
   min-height: 0;
@@ -698,27 +711,15 @@
   }
 }
 
-/* Opaque inverse fills keep label contrast; inset edges distinguish pointer states. */
+/* Opaque inverse fills keep label contrast; a 1px inset edge marks hover; pressing adds nothing. */
 .f01-primary:not(:disabled):hover {
   --tw-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-foreground) 25%, transparent);
   box-shadow:
     var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
     var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
-.f01-primary:not(:disabled):active {
-  --tw-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary-foreground) 40%, transparent);
-  box-shadow:
-    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
-    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
-}
 .f01-destructive:not(:disabled):hover {
   --tw-shadow: inset 0 0 0 1px color-mix(in srgb, var(--destructive-foreground) 25%, transparent);
-  box-shadow:
-    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
-    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
-}
-.f01-destructive:not(:disabled):active {
-  --tw-shadow: inset 0 0 0 2px color-mix(in srgb, var(--destructive-foreground) 40%, transparent);
   box-shadow:
     var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
     var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);

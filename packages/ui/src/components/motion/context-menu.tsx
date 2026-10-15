@@ -2,7 +2,7 @@ import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/motion/context-menu
 
-import { Check } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import {
   cloneElement,
   createContext,
@@ -47,9 +47,17 @@ interface ContextMenuContextValue {
   contentRef: React.MutableRefObject<HTMLDivElement | null>;
   activeId: string | null;
   setActiveId: (id: string | null) => void;
+  /** At most one flyout submenu is open; it closes with the root menu. */
+  openSub: string | null;
+  setOpenSub: (id: string | null) => void;
+  /** Side and last pointer x, so a pointer heading for an open flyout keeps it open. */
+  subSide: React.MutableRefObject<"left" | "right">;
+  pointerX: React.MutableRefObject<number | null>;
 }
 
 const ContextMenuContext = createContext<ContextMenuContextValue | null>(null);
+/** True for items rendered inside a flyout submenu. */
+const ContextMenuSubLevelContext = createContext(false);
 
 function useContextMenuContext(component: string) {
   const context = useContext(ContextMenuContext);
@@ -99,17 +107,23 @@ export function ContextMenu({
   const [point, setPoint] = useState<MenuPoint>({ x: 0, y: 0 });
   const [invocation, setInvocation] = useState(0);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [openSub, setOpenSub] = useState<string | null>(null);
   const controlled = controlledOpen !== undefined;
   const open = controlled ? controlledOpen : internalOpen;
   const triggerRef = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const subSide = useRef<"left" | "right">("right");
+  const pointerX = useRef<number | null>(null);
   const menuId = useId();
 
   const setOpen = useCallback(
     (next: boolean) => {
       if (!controlled) setInternalOpen(next);
       onOpenChange?.(next);
-      if (!next) setActiveId(null);
+      if (!next) {
+        setActiveId(null);
+        setOpenSub(null);
+      }
     },
     [controlled, onOpenChange],
   );
@@ -128,7 +142,11 @@ export function ContextMenu({
     if (!open) return;
 
     const onPointerDown = (event: PointerEvent) => {
-      if (!contentRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      const inSub =
+        target instanceof Element &&
+        target.closest(`[data-context-menu-owner="${CSS.escape(menuId)}"]`) !== null;
+      if (!contentRef.current?.contains(target) && !inSub) setOpen(false);
     };
     const onWindowChange = () => setOpen(false);
 
@@ -140,7 +158,7 @@ export function ContextMenu({
       window.removeEventListener("resize", onWindowChange);
       window.removeEventListener("scroll", onWindowChange);
     };
-  }, [open, setOpen]);
+  }, [open, setOpen, menuId]);
 
   const value = useMemo<ContextMenuContextValue>(
     () => ({
@@ -154,8 +172,12 @@ export function ContextMenu({
       contentRef,
       activeId,
       setActiveId,
+      openSub,
+      setOpenSub,
+      subSide,
+      pointerX,
     }),
-    [open, setOpen, openAt, point, invocation, menuId, activeId],
+    [open, setOpen, openAt, point, invocation, menuId, activeId, openSub],
   );
 
   return (
@@ -335,7 +357,7 @@ export function ContextMenuContent({
     setPosition({ x: left, y: top });
   }, [context.open, context.point, context.contentRef, context.invocation]);
 
-  // Nested target groups may grow after opening; keep the existing overlay in the viewport.
+  // Content may grow after opening; keep the existing overlay in the viewport.
   useEffect(() => {
     if (!context.open || !mounted) return;
     const content = context.contentRef.current;
@@ -466,6 +488,43 @@ export interface ContextMenuItemProps {
   textValue?: string;
   ariaHasPopup?: "menu";
   ariaExpanded?: boolean;
+  /** Marks the entry representing the current state, such as a Session's own Project. */
+  ariaCurrent?: boolean;
+}
+
+function itemClassName(tone: ContextMenuItemTone, inset: boolean, className?: string) {
+  return cn(
+    "relative isolate flex w-full select-none items-center min-h-8 gap-2 rounded-md px-2 py-0 text-left text-ui-base leading-[1.5] outline-none",
+    "focus-visible:ring-2 focus-visible:ring-ring",
+    "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:cursor-inherit [&_span]:cursor-inherit",
+    inset && "pl-8",
+    tone === "destructive" ? "text-destructive-soft-foreground" : "text-foreground",
+    className,
+  );
+}
+
+function ItemHighlight({ tone }: { tone: ContextMenuItemTone }) {
+  return (
+    <span
+      className={cn(
+        "absolute inset-0 -z-10 rounded-md",
+        tone === "destructive" ? "bg-destructive-soft" : "bg-menu-hover",
+      )}
+    />
+  );
+}
+
+/**
+ * While a flyout is open, a pointer moving mainly toward it is crossing root items on its way
+ * there; those items must not take focus and close the flyout.
+ */
+function headingForSub(context: ContextMenuContextValue, clientX: number, clientY: number) {
+  const previous = context.pointerX.current;
+  context.pointerX.current = clientX;
+  if (context.openSub === null || previous === null) return false;
+  const dx = context.subSide.current === "right" ? clientX - previous : previous - clientX;
+  const sub = document.getElementById(context.openSub)?.getBoundingClientRect();
+  return Boolean(sub && dx > 0 && clientY >= sub.top && clientY <= sub.bottom);
 }
 
 function ContextMenuItemBase({
@@ -479,6 +538,7 @@ function ContextMenuItemBase({
   textValue,
   ariaHasPopup,
   ariaExpanded,
+  ariaCurrent,
   role = "menuitem",
   ariaChecked,
 }: ContextMenuItemProps & {
@@ -486,6 +546,7 @@ function ContextMenuItemBase({
   ariaChecked?: boolean;
 }) {
   const context = useContextMenuContext("ContextMenuItem");
+  const inSub = useContext(ContextMenuSubLevelContext);
   const id = useId();
   const active = context.activeId === id;
   const checkedProps = role === "menuitem" ? {} : { "aria-checked": ariaChecked };
@@ -497,38 +558,30 @@ function ContextMenuItemBase({
       role={role}
       aria-haspopup={ariaHasPopup}
       aria-expanded={ariaExpanded}
+      aria-current={ariaCurrent ? "true" : undefined}
       {...checkedProps}
       disabled={disabled}
       data-context-menu-item="true"
       data-disabled={disabled ? "true" : undefined}
       data-label={textValue}
       tabIndex={-1}
-      onFocus={() => context.setActiveId(id)}
+      onFocus={() => {
+        context.setActiveId(id);
+        if (!inSub) context.setOpenSub(null);
+      }}
       onPointerMove={(event) => {
-        if (!disabled && event.pointerType !== "touch") event.currentTarget.focus();
+        if (disabled || event.pointerType === "touch") return;
+        if (!inSub && headingForSub(context, event.clientX, event.clientY)) return;
+        event.currentTarget.focus();
       }}
       onClick={() => {
         if (disabled) return;
         onSelect?.();
         if (closeOnSelect) context.setOpen(false);
       }}
-      className={cn(
-        "relative isolate flex w-full select-none items-center min-h-8 gap-2 rounded-md px-2 py-0 text-left text-ui-base leading-[1.5] outline-none",
-        "focus-visible:ring-2 focus-visible:ring-ring",
-        "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:cursor-inherit [&_span]:cursor-inherit",
-        inset && "pl-8",
-        tone === "destructive" ? "text-destructive-soft-foreground" : "text-foreground",
-        className,
-      )}
+      className={itemClassName(tone, inset, className)}
     >
-      {active && !disabled ? (
-        <span
-          className={cn(
-            "absolute inset-0 -z-10 rounded-md",
-            tone === "destructive" ? "bg-destructive-soft" : "bg-menu-hover",
-          )}
-        />
-      ) : null}
+      {active && !disabled ? <ItemHighlight tone={tone} /> : null}
       {children}
     </button>
   );
@@ -536,6 +589,246 @@ function ContextMenuItemBase({
 
 export function ContextMenuItem(props: ContextMenuItemProps) {
   return <ContextMenuItemBase {...props} />;
+}
+
+interface ContextMenuSubValue {
+  /** The flyout panel's element id; also the root `openSub` value while it is open. */
+  id: string;
+  triggerRef: React.MutableRefObject<HTMLButtonElement | null>;
+  /** Set by keyboard opening so the panel focuses its first item once positioned. */
+  focusFirst: React.MutableRefObject<boolean>;
+}
+
+const ContextMenuSubContext = createContext<ContextMenuSubValue | null>(null);
+
+function useContextMenuSub(component: string) {
+  const sub = useContext(ContextMenuSubContext);
+  if (!sub) throw new Error(`${component} must be used within <ContextMenuSub>`);
+  return sub;
+}
+
+/** A flyout submenu: hover or ArrowRight opens it beside its trigger. */
+export function ContextMenuSub({ children }: { children: ReactNode }) {
+  const id = useId();
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const focusFirst = useRef(false);
+  const value = useMemo(() => ({ id, triggerRef, focusFirst }), [id]);
+  return <ContextMenuSubContext.Provider value={value}>{children}</ContextMenuSubContext.Provider>;
+}
+
+export interface ContextMenuSubTriggerProps {
+  children: ReactNode;
+  disabled?: boolean;
+  className?: string;
+  textValue?: string;
+}
+
+export function ContextMenuSubTrigger({
+  children,
+  disabled = false,
+  className,
+  textValue,
+}: ContextMenuSubTriggerProps) {
+  const context = useContextMenuContext("ContextMenuSubTrigger");
+  const sub = useContextMenuSub("ContextMenuSubTrigger");
+  const id = useId();
+  const open = context.openSub === sub.id;
+  const highlighted = (context.activeId === id || open) && !disabled;
+  const openWithFocus = () => {
+    sub.focusFirst.current = true;
+    if (open) document.getElementById(sub.id)?.querySelector<HTMLElement>(ENABLED_ITEM)?.focus();
+    else context.setOpenSub(sub.id);
+  };
+  return (
+    <button
+      ref={sub.triggerRef}
+      type="button"
+      id={id}
+      role="menuitem"
+      aria-haspopup="menu"
+      aria-expanded={open}
+      aria-controls={open ? sub.id : undefined}
+      disabled={disabled}
+      data-context-menu-item="true"
+      data-disabled={disabled ? "true" : undefined}
+      data-label={textValue}
+      tabIndex={-1}
+      onFocus={() => context.setActiveId(id)}
+      onPointerMove={(event) => {
+        if (disabled || event.pointerType === "touch") return;
+        context.pointerX.current = event.clientX;
+        event.currentTarget.focus();
+        if (!open) context.setOpenSub(sub.id);
+      }}
+      onKeyDown={(event) => {
+        if (disabled || event.key !== "ArrowRight") return;
+        event.preventDefault();
+        event.stopPropagation();
+        openWithFocus();
+      }}
+      onClick={(event) => {
+        if (disabled) return;
+        // A keyboard activation (Enter/Space) has no pointer detail and moves into the panel.
+        if (event.detail === 0) openWithFocus();
+        else context.setOpenSub(sub.id);
+      }}
+      className={itemClassName("default", false, className)}
+    >
+      {highlighted ? <ItemHighlight tone="default" /> : null}
+      {children}
+      <ChevronRight aria-hidden="true" className="ml-auto size-3 shrink-0" />
+    </button>
+  );
+}
+
+const ENABLED_ITEM = '[data-context-menu-item="true"]:not([data-disabled="true"])';
+const SUB_GAP = 4;
+
+export interface ContextMenuSubContentProps {
+  children: ReactNode;
+  ariaLabel: string;
+  className?: string;
+}
+
+export function ContextMenuSubContent({
+  children,
+  ariaLabel,
+  className,
+}: ContextMenuSubContentProps) {
+  const context = useContextMenuContext("ContextMenuSubContent");
+  const sub = useContextMenuSub("ContextMenuSubContent");
+  const open = context.open && context.openSub === sub.id;
+  const panel = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState<MenuPoint | null>(null);
+  const typeahead = useRef("");
+  const typeaheadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+    const place = () => {
+      const menu = context.contentRef.current?.getBoundingClientRect();
+      const trigger = sub.triggerRef.current?.getBoundingClientRect();
+      const content = panel.current?.getBoundingClientRect();
+      if (!menu || !trigger || !content) return;
+      const right = menu.right + SUB_GAP;
+      const left = menu.left - SUB_GAP - content.width;
+      const fitsRight = right + content.width <= window.innerWidth - VIEWPORT_PADDING;
+      const fitsLeft = left >= VIEWPORT_PADDING;
+      context.subSide.current = fitsRight || !fitsLeft ? "right" : "left";
+      const x = clamp(
+        fitsRight || !fitsLeft ? right : left,
+        VIEWPORT_PADDING,
+        Math.max(VIEWPORT_PADDING, window.innerWidth - content.width - VIEWPORT_PADDING),
+      );
+      // Align the first row with the trigger row: the panel shell has the same 4px inset.
+      const y = clamp(
+        trigger.top - 4,
+        VIEWPORT_PADDING,
+        Math.max(VIEWPORT_PADDING, window.innerHeight - content.height - VIEWPORT_PADDING),
+      );
+      setPosition((current) => (current?.x === x && current.y === y ? current : { x, y }));
+    };
+    place();
+    const resize = new ResizeObserver(place);
+    if (panel.current) resize.observe(panel.current);
+    if (context.contentRef.current) resize.observe(context.contentRef.current);
+    return () => resize.disconnect();
+  }, [open, context.contentRef, context.subSide, sub.triggerRef]);
+
+  useLayoutEffect(() => {
+    if (!open || !position || !sub.focusFirst.current) return;
+    sub.focusFirst.current = false;
+    panel.current?.querySelector<HTMLElement>(ENABLED_ITEM)?.focus();
+  }, [open, position, sub.focusFirst]);
+
+  useEffect(
+    () => () => {
+      if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
+    },
+    [],
+  );
+
+  if (!open) return null;
+
+  const items = () => getEnabledItems(panel.current);
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    // The panel is a React child of the root menu; its keys must not also move root focus.
+    event.stopPropagation();
+    if (event.key === "Escape" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      context.setOpenSub(null);
+      sub.triggerRef.current?.focus();
+      return;
+    }
+    if (event.key === "Tab") {
+      context.setOpen(false);
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const list = items();
+      if (list.length === 0) return;
+      const current = list.indexOf(document.activeElement as HTMLElement);
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      list[current < 0 ? 0 : (current + step + list.length) % list.length]?.focus();
+      return;
+    }
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      const list = items();
+      list[event.key === "Home" ? 0 : list.length - 1]?.focus();
+      return;
+    }
+    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      typeahead.current += event.key.toLocaleLowerCase();
+      if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
+      typeaheadTimer.current = setTimeout(() => {
+        typeahead.current = "";
+      }, 500);
+      items()
+        .find((item) =>
+          (item.dataset.label ?? item.textContent ?? "")
+            .trim()
+            .toLocaleLowerCase()
+            .startsWith(typeahead.current),
+        )
+        ?.focus();
+    }
+  };
+
+  return createPortal(
+    <div
+      data-context-menu-owner={context.menuId}
+      style={{
+        left: position?.x ?? 0,
+        top: position?.y ?? 0,
+        visibility: position ? "visible" : "hidden",
+      }}
+      className={cn(OVERLAY_LAYER.interactive, "fixed pointer-events-auto")}
+    >
+      <ContextMenuSubLevelContext.Provider value={true}>
+        <div
+          ref={panel}
+          id={sub.id}
+          role="menu"
+          aria-label={ariaLabel}
+          tabIndex={-1}
+          onKeyDown={onKeyDown}
+          onContextMenu={(event) => event.preventDefault()}
+          className={cn(
+            "min-w-56 max-w-[min(320px,calc(100vw-16px))] max-h-[calc(100dvh-16px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-md outline-none",
+            className,
+          )}
+        >
+          {children}
+        </div>
+      </ContextMenuSubLevelContext.Provider>
+    </div>,
+    document.body,
+  );
 }
 
 export interface ContextMenuCheckboxItemProps extends Omit<ContextMenuItemProps, "onSelect"> {
@@ -557,7 +850,7 @@ export function ContextMenuCheckboxItem({
       onSelect={() => onCheckedChange?.(!checked)}
     >
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-        {checked ? <Check aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2.4} /> : null}
+        {checked ? <Check aria-hidden="true" className="size-3" strokeWidth={2.4} /> : null}
       </span>
       {children}
     </ContextMenuItemBase>

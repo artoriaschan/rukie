@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
-import type { WireSessionSummary } from "@rukie/shared";
+import type { WireProject, WireSessionSummary } from "@rukie/shared";
 import { WireError } from "../client";
 import { MorphingModal } from "../components/motion/morphing-modal";
 import { Input } from "../components/motion/input";
@@ -8,19 +8,29 @@ import { Button } from "../components/motion/button/base";
 import { useAppText } from "../lib/i18n";
 import { useErrorText } from "./error";
 
+type RenameCopy = {
+  title: "app.rename-title" | "app.rename-project-title";
+  input: "app.rename-input" | "app.project-name";
+  close: "app.rename-close" | "app.rename-project-close";
+};
+
 /** Compose installed beUI controls; App owns selection and the wire mutation. */
-export function RenameSession({
-  session,
+function RenameDialog({
+  id,
+  value,
+  copy,
   onSave,
   onClose,
 }: {
-  session: WireSessionSummary;
-  onSave: (title: string) => Promise<unknown>;
+  id: string;
+  value: string;
+  copy: RenameCopy;
+  onSave: (value: string) => Promise<unknown>;
   onClose: () => void;
 }) {
   const t = useAppText();
   const errorText = useErrorText();
-  const [title, setTitle] = useState(session.title);
+  const [title, setTitle] = useState(value);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
@@ -32,7 +42,7 @@ export function RenameSession({
     [],
   );
   const normalized = title.trim();
-  const unchanged = normalized === session.title.trim();
+  const unchanged = normalized === value.trim();
   const close = () => {
     if (!submitting.current) onClose();
   };
@@ -57,12 +67,7 @@ export function RenameSession({
     }
   };
   return (
-    <MorphingModal
-      viewId={session.id}
-      label={t("app.rename-title")}
-      onClose={close}
-      placement="center"
-    >
+    <MorphingModal viewId={id} label={t(copy.title)} onClose={close} placement="center">
       <form
         className="relative flex min-h-0 flex-col gap-3 p-2"
         aria-busy={pending}
@@ -72,13 +77,13 @@ export function RenameSession({
         }}
       >
         <div className="shrink-0 pr-8">
-          <h2 className="text-ui-lg font-medium">{t("app.rename-title")}</h2>
+          <h2 className="text-ui-lg font-medium">{t(copy.title)}</h2>
           <p className="text-ui-base text-muted-foreground">{t("app.rename-description")}</p>
         </div>
         <div className="min-h-0 overflow-y-auto">
           <Input
             autoFocus
-            aria-label={t("app.rename-input")}
+            aria-label={t(copy.input)}
             value={title}
             onChange={setTitle}
             disabled={pending}
@@ -101,14 +106,59 @@ export function RenameSession({
         <Button
           variant="ghost"
           size="icon"
-          aria-label={t("app.rename-close")}
+          aria-label={t(copy.close)}
           className="absolute right-0 top-0"
           disabled={pending}
           onClick={close}
         >
-          <X className="size-4" />
+          <X />
         </Button>
       </form>
     </MorphingModal>
+  );
+}
+
+export function RenameSession({
+  session,
+  onSave,
+  onClose,
+}: {
+  session: WireSessionSummary;
+  onSave: (title: string) => Promise<unknown>;
+  onClose: () => void;
+}) {
+  return (
+    <RenameDialog
+      id={session.id}
+      value={session.title}
+      copy={{ title: "app.rename-title", input: "app.rename-input", close: "app.rename-close" }}
+      onSave={onSave}
+      onClose={onClose}
+    />
+  );
+}
+
+/** Renaming keeps the Project's directories and primary; only its name changes. */
+export function RenameProject({
+  project,
+  onSave,
+  onClose,
+}: {
+  project: WireProject;
+  onSave: (name: string) => Promise<unknown>;
+  onClose: () => void;
+}) {
+  return (
+    <RenameDialog
+      id={project.id}
+      value={project.name}
+      copy={{
+        title: "app.rename-project-title",
+        input: "app.project-name",
+        close: "app.rename-project-close",
+      }}
+      onSave={onSave}
+      onClose={onClose}
+    />
   );
 }

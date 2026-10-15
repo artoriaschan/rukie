@@ -348,14 +348,14 @@ export function CommandPalette({
                                 onFocus={() => moveTo(it.id)}
                                 onClick={() => choose(it)}
                                 className={cn(
-                                  "relative isolate flex w-full min-w-0 cursor-pointer items-center min-h-[31px] gap-2 rounded-xl px-[10px] py-1 text-left text-ui-base outline-none hover:bg-menu-hover active:bg-menu-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
+                                  "relative isolate flex w-full min-w-0 cursor-pointer items-center min-h-[31px] gap-2 rounded-xl px-[10px] py-1 text-left text-ui-base outline-none hover:bg-menu-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
                                   isActive
                                     ? "bg-menu-hover text-foreground"
                                     : "text-muted-foreground",
                                 )}
                               >
                                 {Icon ? (
-                                  <Icon className="relative z-10 h-4 w-4" />
+                                  <Icon className="relative z-10 size-3" />
                                 ) : (
                                   <span className="relative z-10 size-3 shrink-0">{it.status}</span>
                                 )}

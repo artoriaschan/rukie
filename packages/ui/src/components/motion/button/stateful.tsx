@@ -52,9 +52,9 @@ export const StatefulButton = forwardRef<HTMLButtonElement, StatefulButtonProps>
           aria-live="polite"
           className="inline-flex min-w-0 items-center justify-center gap-[inherit]"
         >
-          {state === "loading" ? <Loader2 className="size-4 shrink-0 animate-spin" /> : null}
-          {state === "success" ? <Check className="size-4 shrink-0" /> : null}
-          {state === "error" ? <X className="size-4 shrink-0" /> : null}
+          {state === "loading" ? <Loader2 className="size-3 shrink-0 animate-spin" /> : null}
+          {state === "success" ? <Check className="size-3 shrink-0" /> : null}
+          {state === "error" ? <X className="size-3 shrink-0" /> : null}
           <span>{stateText}</span>
           {state === "idle" ? icon : null}
         </span>

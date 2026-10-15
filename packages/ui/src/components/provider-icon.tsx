@@ -24,7 +24,7 @@ export function ProviderIcon({
     <Icon
       aria-hidden="true"
       data-provider-brand={icon}
-      className={cn("size-4 shrink-0", className)}
+      className={cn("size-3 shrink-0", className)}
     />
   );
 }
