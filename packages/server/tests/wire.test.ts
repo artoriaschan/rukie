@@ -114,6 +114,18 @@ test("plan mode commands and discriminated interaction replies validate at the w
       reply: { answers: [{ selected: [1] }] },
     },
     { type: "interaction.reply", identity, kind: "plan_review", reply: { kind: "revise" } },
+    {
+      type: "interaction.reply",
+      identity,
+      kind: "plan_review",
+      reply: { kind: "approve", outputRef: { id: "task-26-result" } },
+    },
+    {
+      type: "interaction.reply",
+      identity,
+      kind: "plan_review",
+      reply: { kind: "revise", feedback: "", outputRef: { id: "task-26-result" } },
+    },
   ])
     expect(parseWireCommand({ id: "1", ...command })).toBeUndefined();
 });
