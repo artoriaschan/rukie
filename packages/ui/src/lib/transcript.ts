@@ -14,6 +14,7 @@ export interface TranscriptTool {
   args: unknown;
   callView?: ToolCallView;
   resultView?: ToolResultView;
+  planOutcome?: "approve" | "revise" | "takeover";
   status: "running" | "success" | "error" | "cancelled";
   output: string;
 }

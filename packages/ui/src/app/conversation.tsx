@@ -1,4 +1,10 @@
-import type { WireQuestionReply, WireQuestionRequest } from "@rukie/shared";
+import type {
+  WirePlanReviewReply,
+  WirePlanReviewRequest,
+  WireQuestionReply,
+  WireQuestionRequest,
+} from "@rukie/shared";
+import { PlanReviewDock } from "../components/plan-review-dock";
 import { QuestionDock } from "../components/question-dock";
 import { Value } from "typebox/value";
 import { Type } from "typebox";
@@ -108,6 +114,27 @@ export function AppConversation({
       setPending(null);
     }
   };
+  const replyPlan = async (plan: WirePlanReviewRequest, answer: WirePlanReviewReply) => {
+    const epoch = plan.identity.epoch;
+    if (!connected || pending) return;
+    setPending(epoch);
+    setError("");
+    try {
+      await request({
+        type: "interaction.reply",
+        kind: "plan_review",
+        identity: plan.identity,
+        reply: answer,
+      });
+      onInteractionResolved(epoch);
+    } catch (reason) {
+      if (reason instanceof WireError && reason.code === "interaction_stale")
+        onInteractionResolved(epoch);
+      else setError(errorText(reason));
+    } finally {
+      setPending(null);
+    }
+  };
   const firstInteraction = Object.values(view.interactions)[0];
   const queue = async (type: "steer_now" | "withdraw", requestId: string) => {
     if (!connected || pending) return;
@@ -200,7 +227,16 @@ export function AppConversation({
             }}
           />
         ) : firstInteraction?.kind === "plan_review" ? (
-          <div role="status">{t("interaction.pending")}</div>
+          <PlanReviewDock
+            key={firstInteraction.identity.epoch}
+            request={firstInteraction}
+            connected={connected}
+            pending={pending}
+            shortcutsEnabled={!summaryOpen}
+            onReply={(plan, answer) => {
+              void replyPlan(plan, answer);
+            }}
+          />
         ) : firstInteraction ? (
           <PermissionDock
             requests={[firstInteraction]}

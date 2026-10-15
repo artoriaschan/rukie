@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Pencil, X } from "lucide-react";
 import { Button } from "../../motion/button/base";
 import { Checkbox } from "../../motion/checkbox";
 import { Input } from "../../motion/input";
@@ -57,6 +57,7 @@ export function InteractionApprovalCard({
     if (!option || option.disabled || busy) return;
     const next = {
       ...answer,
+      ...(question.multiple ? {} : { custom: undefined }),
       selected: question.multiple
         ? answer.selected.includes(option.value)
           ? answer.selected.filter((value) => value !== option.value)
@@ -74,7 +75,7 @@ export function InteractionApprovalCard({
       aria-label={regionLabel}
       aria-busy={status === "submitting"}
       className={cn(
-        "w-full max-w-[752px] rounded-2xl bg-input-surface p-4 text-ui-base outline-none",
+        "flex w-full max-w-[752px] flex-col gap-0.5 rounded-2xl bg-input-surface px-2 pb-2.5 pt-3.5 text-ui-base outline-none",
         className,
       )}
       onCompositionStart={() => {
@@ -117,7 +118,12 @@ export function InteractionApprovalCard({
           const option = question.options?.[index];
           if (option && !option.disabled) {
             if (question.multiple) choose(index);
-            else update({ ...answer, selected: [option.value] });
+            else
+              update({
+                ...answer,
+                ...(answer.custom ? { custom: undefined } : {}),
+                selected: [option.value],
+              });
           }
         } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           const size = question.options?.length ?? 0;
@@ -130,21 +136,33 @@ export function InteractionApprovalCard({
               : (cursor + (event.key === "ArrowDown" ? 1 : -1) + size) % size;
           setCursor(next);
           const option = question.options?.[next];
-          if (option && !question.multiple) update({ ...answer, selected: [option.value] });
+          if (option && !question.multiple)
+            update({
+              ...answer,
+              ...(answer.custom ? { custom: undefined } : {}),
+              selected: [option.value],
+            });
         } else if (event.key === "Enter" && answered) submit();
         else return;
         event.preventDefault();
         event.stopPropagation();
       }}
     >
-      <header className="mb-3 flex items-start gap-2">
+      <header className="flex items-start gap-1 pb-2 pl-3 pr-2">
         {source}
         {questions.length > 1 ? (
           <span className="shrink-0 text-ui-sm text-muted-foreground">
             {step + 1} / {questions.length}
           </span>
         ) : null}
-        <h2 className="min-w-0 flex-1 break-words font-medium">{question.title}</h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="break-words font-medium">{question.title}</h2>
+          {question.description ? (
+            <p className="mt-1 break-words text-ui-sm text-muted-foreground">
+              {question.description}
+            </p>
+          ) : null}
+        </div>
         <Button
           size="icon"
           variant="ghost"
@@ -155,20 +173,17 @@ export function InteractionApprovalCard({
           <X />
         </Button>
       </header>
-      {question.description ? (
-        <p className="mb-3 break-words text-muted-foreground">{question.description}</p>
-      ) : null}
       <div
         role="group"
         aria-label={typeof question.title === "string" ? question.title : regionLabel}
-        className="flex flex-col gap-1"
+        className="flex flex-col gap-0.5"
       >
         {question.options?.map((option, index) =>
           question.multiple ? (
             <div
               key={option.value}
               className={cn(
-                "group flex min-h-12 items-center gap-2 rounded-lg px-3 py-1.5 not-has-[:disabled]:hover:bg-hover focus-within:bg-hover",
+                "group flex min-h-12 items-center gap-3 rounded-xl px-3 py-1.5 not-has-[:disabled]:hover:bg-hover focus-within:bg-hover",
                 cursor === index && "bg-hover",
               )}
             >
@@ -182,13 +197,13 @@ export function InteractionApprovalCard({
               <label
                 htmlFor={`${optionId}-${index}`}
                 className={cn(
-                  "min-w-0 flex-1 break-words",
+                  "flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 break-words",
                   busy || option.disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
                 )}
               >
                 <span className="block leading-5">{option.label}</span>
                 {option.description ? (
-                  <span className="block text-ui-sm leading-4 text-muted-foreground">
+                  <span className="text-ui-sm leading-5 text-muted-foreground">
                     {option.description}
                   </span>
                 ) : null}
@@ -206,17 +221,20 @@ export function InteractionApprovalCard({
               onClick={() => choose(index)}
               aria-pressed={answer.selected.includes(option.value)}
               className={cn(
-                "group h-auto min-h-12 w-full justify-start rounded-lg px-3 py-1.5 text-left hover:bg-hover focus-visible:bg-hover",
+                "group h-auto min-h-12 w-full justify-start gap-3 rounded-xl px-3 py-1.5 text-left hover:bg-hover focus-visible:bg-hover",
                 cursor === index && "bg-hover",
               )}
             >
-              <span aria-hidden="true" className="shrink-0 text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border text-ui-sm text-muted-foreground"
+              >
                 {index + 1}
               </span>
-              <span className="min-w-0 flex-1 whitespace-normal break-words">
+              <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 whitespace-normal break-words">
                 <span className="block leading-5">{option.label}</span>
                 {option.description ? (
-                  <span className="block text-ui-sm leading-4 font-normal text-muted-foreground">
+                  <span className="text-ui-sm leading-5 font-normal text-muted-foreground">
                     {option.description}
                   </span>
                 ) : null}
@@ -232,7 +250,13 @@ export function InteractionApprovalCard({
           ),
         )}
       </div>
-      <div className="mt-3 flex items-center gap-2">
+      <div data-interaction-custom className="flex min-h-[52px] items-center gap-3 px-3">
+        <span
+          aria-hidden="true"
+          className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground"
+        >
+          <Pencil className="size-3" />
+        </span>
         <Input
           aria-label={question.customPlaceholder ?? t("question.custom")}
           placeholder={question.customPlaceholder ?? t("question.custom")}
@@ -254,9 +278,15 @@ export function InteractionApprovalCard({
             }
           }}
           className="min-w-0 flex-1"
+          classNames={{
+            field:
+              "border-transparent bg-transparent hover:border-transparent data-[state=focused]:bg-transparent",
+            input: "px-0",
+          }}
         />
         <Button
           variant={question.multiple || answer.custom?.trim() ? "primary" : "ghost"}
+          className="h-8 rounded-full border border-border px-3"
           disabled={busy || (question.multiple && !answered)}
           onClick={() =>
             question.multiple || answer.custom?.trim() ? submit(answer) : onDismiss?.()

@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { planSubmissions, latestPlan } from "../../src/lib/plans";
 import { createDesktopStore } from "../../src/store";
 
 test("committed entries preserve resumed history and replace streaming partials across microtasks", async () => {
@@ -193,4 +194,98 @@ test("reused provider tool IDs retain each committed call's arguments and output
   expect(store.getState().views.a?.transcript?.tools["assistant-0:reused"]?.output).toBe(
     "output-0",
   );
+});
+
+test("plan outcomes come from validated details for live events and restored Transcript", () => {
+  const store = createDesktopStore();
+  const send = (facts: object) => store.receive({ sessionId: "plan", ...facts });
+  const assistant = {
+    role: "assistant",
+    entryId: "a",
+    timestamp: 2,
+    content: [
+      {
+        type: "toolCall",
+        id: "reused",
+        name: "exit_plan_mode",
+        arguments: { plan: "# Migration" },
+      },
+    ],
+  };
+  const snapshot = (messages: object[]) =>
+    send({ type: "snapshot", messages, model: "test/model", compactions: [] });
+  snapshot([assistant]);
+  for (const kind of ["approve", "revise", "takeover"]) {
+    snapshot([assistant]);
+    const result = {
+      role: "toolResult",
+      entryId: "r",
+      timestamp: 3,
+      toolCallId: "reused",
+      toolName: "exit_plan_mode",
+      isError: true,
+      content: [{ type: "text", text: "Misleading approved text" }],
+      details: kind === "revise" ? { kind, feedback: "Preserve data" } : { kind },
+    };
+    send({ type: "tool_execution_end", toolCallId: "reused", result });
+    expect(store.getState().views.plan!.transcript!.tools["a:reused"]?.planOutcome).toBe(kind);
+    snapshot([assistant, result]);
+    expect(store.getState().views.plan!.transcript!.tools["a:reused"]?.planOutcome).toBe(kind);
+  }
+  snapshot([
+    assistant,
+    {
+      role: "toolResult",
+      entryId: "r",
+      timestamp: 3,
+      toolCallId: "reused",
+      toolName: "exit_plan_mode",
+      isError: false,
+      content: [{ type: "text", text: "Approved" }],
+      details: { kind: "revise", feedback: 42 },
+    },
+  ]);
+  expect(store.getState().views.plan!.transcript!.tools["a:reused"]?.planOutcome).toBeUndefined();
+});
+
+test("plan submissions keep identity across late partials, commits and snapshots with reused call IDs", () => {
+  const store = createDesktopStore();
+  const send = (facts: object) => store.receive({ sessionId: "plan", ...facts });
+  const partial = {
+    role: "assistant",
+    timestamp: 2,
+    content: [
+      {
+        type: "toolCall",
+        id: "same",
+        name: "exit_plan_mode",
+        arguments: { plan: "First line fallback" },
+      },
+    ],
+  };
+  const state = () => store.getState().views.plan!.transcript!;
+  send({ type: "message_update", message: partial });
+  const firstId = latestPlan(state())!.id;
+  const committed = { ...partial, entryId: "first" };
+  send({ type: "message_end", entryId: "first", messages: [committed] });
+  expect(latestPlan(state())!.id).toBe(firstId);
+  send({ type: "message_update", message: partial });
+  expect(planSubmissions(state())).toHaveLength(1);
+  const second = {
+    ...committed,
+    timestamp: 3,
+    entryId: "second",
+    content: [
+      { type: "toolCall", id: "same", name: "exit_plan_mode", arguments: { plan: "## New plan" } },
+    ],
+  };
+  send({ type: "message_end", entryId: "second", messages: [second] });
+  expect(planSubmissions(state()).map((plan) => plan.title)).toEqual([
+    "First line fallback",
+    "New plan",
+  ]);
+  const liveIds = planSubmissions(state()).map((plan) => plan.id);
+  expect(new Set(liveIds).size).toBe(2);
+  send({ type: "snapshot", model: "test/model", compactions: [], messages: [committed, second] });
+  expect(planSubmissions(state()).map((plan) => plan.id)).toEqual(liveIds);
 });

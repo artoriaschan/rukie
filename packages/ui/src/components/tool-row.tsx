@@ -96,7 +96,12 @@ export function ToolRow({
   }, [tool.status]);
   const call = tool.callView;
   const result = tool.resultView;
-  const title = tool.name === "ask_user_question" ? t("tool.ask_user_question") : toolTitle(tool);
+  const title =
+    tool.name === "ask_user_question" ||
+    tool.name === "enter_plan_mode" ||
+    tool.name === "exit_plan_mode"
+      ? t(`tool.${tool.name}`)
+      : toolTitle(tool);
   const diffs = result?.card === "diff" ? result.diffs : call?.card === "diff" ? call.diffs : [];
   const boundedOutput =
     result?.card === "terminal"
