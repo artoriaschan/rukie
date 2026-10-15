@@ -531,6 +531,12 @@ test("C39 hover and keyboard close preserve the draft and toolbar geometry", asy
     expect(getComputedStyle(close.element().querySelector(".conversation-plan-close")!).color).toBe(
       "rgb(255, 255, 255)",
     );
+    expect(
+      close.element().querySelector(".conversation-plan-close")!.getBoundingClientRect().width,
+    ).toBe(12);
+    expect(
+      close.element().querySelector(".conversation-plan-close")!.getBoundingClientRect().height,
+    ).toBe(12);
     expect(getComputedStyle(close.element()).borderRadius).toBe("999px");
     expect(getComputedStyle(close.element().querySelector("svg")!).cursor).toBe("pointer");
     expect(close.element().getBoundingClientRect().toJSON()).toEqual(bounds);

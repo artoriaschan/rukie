@@ -148,21 +148,21 @@ export function InteractionApprovalCard({
         event.stopPropagation();
       }}
     >
-      <header className="flex items-start gap-1 pb-2 pl-3 pr-2">
+      <header className="flex items-start gap-2 pb-2 pl-3 pr-2">
         {source}
-        {questions.length > 1 ? (
-          <span className="shrink-0 text-ui-sm text-muted-foreground">
-            {step + 1} / {questions.length}
-          </span>
-        ) : null}
         <div className="min-w-0 flex-1">
-          <h2 className="break-words font-medium">{question.title}</h2>
+          <h2 className="break-words text-ui-lg leading-[1.5] font-medium">{question.title}</h2>
           {question.description ? (
             <p className="mt-1 break-words text-ui-sm text-muted-foreground">
               {question.description}
             </p>
           ) : null}
         </div>
+        {questions.length > 1 ? (
+          <span className="shrink-0 text-ui-sm text-muted-foreground">
+            {step + 1} / {questions.length}
+          </span>
+        ) : null}
         <Button
           size="icon"
           variant="ghost"

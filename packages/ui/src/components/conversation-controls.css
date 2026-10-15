@@ -497,8 +497,6 @@
   height: 12px;
 }
 .conversation-plan-icon > .conversation-plan-close {
-  width: 10px;
-  height: 10px;
   visibility: hidden;
 }
 .conversation-plan-mode:not(:disabled):is(:hover, :focus) {

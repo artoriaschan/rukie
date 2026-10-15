@@ -45,31 +45,33 @@ export function PlanPreview({
         aria-label={t("plan.preview-label", { title: submission.title })}
         className="min-w-0 overflow-hidden rounded-2xl bg-input-surface ring-1 ring-inset ring-border"
       >
-        <header className="flex h-11 items-center gap-2 px-4 text-ui-sm text-muted-foreground">
+        <header className="flex h-11 items-center gap-2 pl-4 pr-3 text-ui-sm text-muted-foreground">
           <Lightbulb aria-hidden="true" className="size-3" />
           <span className="min-w-0 flex-1">{t("plan.label")}</span>
-          <Button size="icon" variant="ghost" aria-label={t("plan.download")} onClick={download}>
-            <Download />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label={t("plan.copy")}
-            onClick={() => {
-              void copy();
-            }}
-          >
-            <Copy />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label={t("plan.expand")}
-            disabled={!onExpand}
-            onClick={() => onExpand?.(submission)}
-          >
-            <Maximize2 />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button size="icon" variant="ghost" aria-label={t("plan.download")} onClick={download}>
+              <Download />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={t("plan.copy")}
+              onClick={() => {
+                void copy();
+              }}
+            >
+              <Copy />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={t("plan.expand")}
+              disabled={!onExpand}
+              onClick={() => onExpand?.(submission)}
+            >
+              <Maximize2 />
+            </Button>
+          </div>
         </header>
         <div data-plan-body className="relative h-[248px] overflow-hidden px-4">
           <Markdown text={submission.plan} />
