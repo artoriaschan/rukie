@@ -35,11 +35,10 @@ test.each(["initial", "later", "placed"] as const)(
         roundsStarted: 2,
         armed: false,
       });
-      const goalInputs = session.messages.filter(
-        (message) => message.role === "user" && message.source === "goal",
-      );
+      const goalInputs = session.messages.filter((message) => message.role === "user");
       expect(goalInputs).toHaveLength(2);
-      expect(JSON.stringify(goalInputs[0])).toContain("Round: 1/2");
+      expect(goalInputs[0]).not.toHaveProperty("source");
+      expect(JSON.stringify(goalInputs[0])).toContain("Finish exactly two rounds");
       expect(JSON.stringify(goalInputs[1])).toContain("Round: 2/2");
       expect(
         fake.contexts.some((context) => JSON.stringify(context.messages).includes("Round: 2/2")),
@@ -96,8 +95,8 @@ test("an accepted placed round settles its completion after admission acknowledg
       session.messages.filter(
         (message) =>
           message.role === "user" &&
-          message.source === "goal" &&
-          JSON.stringify(message.content).includes("Round: 1/2"),
+          message.source === undefined &&
+          JSON.stringify(message.content).includes("Finish exactly two rounds"),
       ),
     ).toHaveLength(1);
   } finally {
@@ -440,6 +439,10 @@ test("pause after placement accounts that accepted round before explicit resume"
     });
     expect(session.goal).toMatchObject({ phase: "blocked", roundsStarted: 2, armed: false });
     expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("Round: 2/2");
+    const inputs = session.messages.filter((message) => message.role === "user");
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0]).not.toHaveProperty("source");
+    expect(inputs[1]).toHaveProperty("source", "goal");
   } finally {
     acknowledge.resolve();
     await session?.close();

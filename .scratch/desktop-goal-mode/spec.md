@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 桌面与 Web 目标模式
 
@@ -130,11 +130,25 @@ Agent Core、TUI 和 headless 都已支持 Goal，但桌面和 Web 还没有入�
 
 ## ADR Coverage
 
-| 决定或修改                                            | 归属                                                                              | 理由                                                                                            |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 目标消息作为人类来源的第 1 轮输入，允许只发图片的目标 | 更新 [ADR-0018](../../docs/adr/0018-goal-state-and-idle-scheduling.md)            | 改变「Goal 只以目标文本表达、第 1 轮为内部提示」的取舍，图片只存在于目标消息中，不进 Tool State |
-| Goal 持久化已执行时间、停机时间不计入                 | 更新 [ADR-0018](../../docs/adr/0018-goal-state-and-idle-scheduling.md)            | Goal 事实新增时长，与 armed 的进程归属保持一致：未结算的段不跨进程延续                          |
-| 新增 Goal wire 命令和 `session.create` 的 goal 字段   | 沿用 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md)      | 在现有的命令校验与本地认证边界内扩展命令，不改变协议结构                                        |
-| 开启前确认并切换为完全访问                            | 沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md)        | 由用户显式选择 Permission Mode，Goal 本身不扩大权限                                             |
-| Goal 提示与 reminder 的措辞                           | 沿用 [ADR-0046](../../docs/adr/0046-system-prompt-sections-and-reminder-roles.md) | 只改 Goal 自有的 reminder 内容，位置和角色不变                                                  |
-| C37、C38、C42 的视觉与交互                            | 无需 ADR                                                                          | 局部样式与交互，由 DESIGN.md 和 rukie.pen M03-C 维护                                            |
+| 决定或修改                                                   | 归属                                                                                                                                                 | 理由                                                                                                                                                                  |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 目标消息作为人类来源的第 1 轮输入，允许只发图片的目标        | 更新 [ADR-0018](../../docs/adr/0018-goal-state-and-idle-scheduling.md)                                                                               | 扩展原目标输入取舍：外部创建接受人类目标输入，图片只在消息与接纳 task 中保存，不进入 Tool State；模型工具保留内部首轮                                                 |
+| Goal 持久化已执行时间、停机时间不计入                        | 更新 [ADR-0018](../../docs/adr/0018-goal-state-and-idle-scheduling.md)                                                                               | Goal 事实新增已结算时长，活动段受 activation/runtime 约束；未结算历史段不计入恢复后的执行时间                                                                         |
+| 未放置首目标的恢复、继承历史查询与已放置输入去重             | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                                     | Goal runtime 从同一 Goal 的原生 task 及所选 Conversation 的继承前缀恢复初始输入，复用原生 submission 收据判定放置；Session 组合准入、绑定与观测，不另建执行或存储循环 |
+| 图片校验、原生消息与 task 中的图片持久化                     | 沿用 [ADR-0021](../../docs/adr/0021-native-image-input-persistence.md) 与 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)         | 复用图片校验、原生 image block 和 metadata；SQLite 沿用既有外置附件映射保存图片字节，读取还原原生表示，不新增附件存储                                                 |
+| 首目标的 human Checkpoint 与创建前 Goal 回退                 | 沿用 [ADR-0017](../../docs/adr/0017-checkpoint-and-branch-rewind.md)，更新 [ADR-0018](../../docs/adr/0018-goal-state-and-idle-scheduling.md)         | 首目标使用普通人类输入锚点；Rewind 到首目标之前恢复创建前 Goal，原历史保留，原生任务不复制                                                                            |
+| 实时 Goal 与被动历史快照的展示投影                           | 沿用 [ADR-0016](../../docs/adr/0016-tool-state-and-context-projection.md) 与 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md)      | 能力拥有持久化事实；被动读取不取得执行权，投影为未 armed 并省略活动段，不改写拥有 Session 的实时宿主                                                                  |
+| 新增 Goal wire 命令、`session.create` 的 goal 字段与请求等待 | 沿用 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md) 与 [ADR-0033](../../docs/adr/0033-desktop-request-receipt-ownership.md) | 扩展既有命令校验与本地认证边界，不新增事件；server 等待 Core 接受的 requestId，不重复提交输入或合成完成事实                                                           |
+| 开启前确认并切换为完全访问                                   | 沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md)                                                                           | 由用户显式选择 Permission Mode，Goal 本身不扩大权限                                                                                                                   |
+| Goal 提示与 reminder 的措辞                                  | 沿用 [ADR-0046](../../docs/adr/0046-system-prompt-sections-and-reminder-roles.md)                                                                    | 只改 Goal 自有的 reminder 内容，位置和角色不变                                                                                                                        |
+| C37、C38、C42 的视觉与交互                                   | 无需 ADR                                                                                                                                             | 局部样式与交互由 DESIGN.md 和 rukie.pen M03-C 维护，使用现有组件与向下依赖边界                                                                                        |
+
+## Comments
+
+### 交付复核与 ADR Coverage
+
+- 对照最终实现 `a2eb3253`、Implementation Decisions、三张实施票与相关 ADR 完成覆盖复核：模块所有权、依赖、授权与信任、持久化与恢复、资源生命周期、wire 请求等待均有归属。补录原生首输入恢复与去重、图片存储、首目标回退和被动投影；沿用 ADR-0024 对历史决定的替代关系，未发现需要新 ADR 的取舍或未解决冲突，无依赖变更。
+- Standards 与 Spec 两轴独立评审完成。唯一 P2 为 UI README 把首条可见人类消息与 Goal 误写成原子创建；已改为原子接纳 Goal/task 后经普通 Hook 准入放置，链接 Agent README 的取消与重试契约。Spec 轴无确认问题；本次复核修复只改文档。
+- 适用本地证据按最终差异复用：初始 `check:dev` 通过，后续受影响类型、lint、格式、Knip、文档、策略与布局检查增量通过；Core e2e **1510 pass**，初始准入/恢复/时间/runtime 增量 **43 pass**，wire/client/presenter focused 通过。桌面包 **53 文件、306 测试通过**，后续 C42/输入路由以 App **12 例**增量覆盖；实际 Chromium 复验 **0 page errors、150 请求、0 失败**，Light/Dark/窄屏验收通过，未受影响的 C38 截图复用。未运行原生 Electron。
+- 历史本地失败保留：canonical general **518 pass / 10 fail**、canonical coding **1512 pass / 32 fail**、server/shared **107 pass / 1 fail**，均仍为失败，不将 focused 通过改写为包级通过。后端提交 `64ea0ef` 的独立 CI 全绿仅适用于该提交；最终推送后最新 HEAD 的 CI **待验收**，不代表已合并。完整命令、耗时、错误及增量范围见本次协调验证记录。
+- 三票与 spec 按 tracker 的 `resolved` 语义一起关闭：实现、文档、评审修复及适用本地验证完成；复用有效证据，不因合并、复核或文档关闭重跑完整验证。最终 PR 与最新提交的 CI 状态由交付时核对。

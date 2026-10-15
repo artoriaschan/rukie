@@ -14,6 +14,8 @@ test("Goal panel ticks at the one-second boundary, formats minutes and freezes c
     id: "first",
     objective: "migrate",
     phase: "active",
+    attachments: 0,
+    elapsedMs: 0,
     roundsStarted: 1,
     maxRounds: 256,
     armed: true,

@@ -53,6 +53,9 @@ import { DeleteSession } from "./delete-session";
 import { RenameProject, RenameSession } from "./rename-session";
 import { ProjectRemove } from "./project-remove";
 import { useErrorText } from "./error";
+import { GoalStatus } from "../components/goal-status";
+import { readGoal } from "../lib/goal";
+import { GoalConfirmation } from "./goal-confirmation";
 import { NewChatSelector, parseProjectGit } from "./new-chat-selector";
 
 export type AppHost = Pick<DesktopHost, "getConnection" | "modelServices"> &
@@ -88,8 +91,19 @@ interface InputDraft {
   images: PromptImages;
   textRevision: number;
   imageRevision: number;
+  goalEnabled: boolean;
+  goalRevision: number;
+  permissionMode: PermissionMode;
 }
-const emptyDraft: InputDraft = { text: "", images: [], textRevision: 0, imageRevision: 0 };
+const emptyDraft: InputDraft = {
+  text: "",
+  images: [],
+  textRevision: 0,
+  imageRevision: 0,
+  goalEnabled: false,
+  goalRevision: 0,
+  permissionMode: "ask",
+};
 export function App({ locale = "en", ...props }: AppProps) {
   return (
     <UiLocaleProvider locale={locale}>
@@ -237,7 +251,40 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         },
       };
     });
-  const [permission, setPermission] = useState<PermissionMode>("ask");
+  const permission = inputDraft.permissionMode;
+  const setPermission = (permissionMode: PermissionMode) =>
+    setDrafts((previous) => ({
+      ...previous,
+      [draftKey]: { ...(previous[draftKey] ?? emptyDraft), permissionMode },
+    }));
+  const [goalConfirmation, setGoalConfirmation] = useState<{
+    key: string;
+    sessionId: string | null;
+  } | null>(null);
+  const goalConfirmationOwner = useRef(goalConfirmation);
+  const changeGoalConfirmation = (next: typeof goalConfirmation) => {
+    goalConfirmationOwner.current = next;
+    setGoalConfirmation(next);
+  };
+  const setGoalEnabled = (key: string, enabled: boolean) =>
+    setDrafts((previous) => {
+      const current = previous[key] ?? emptyDraft;
+      return {
+        ...previous,
+        [key]: { ...current, goalEnabled: enabled, goalRevision: current.goalRevision + 1 },
+      };
+    });
+  useEffect(() => {
+    if (inputDraft.goalEnabled && !goalConfirmation)
+      document
+        .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+        ?.focus({ preventScroll: true });
+  }, [inputDraft.goalEnabled, goalConfirmation]);
+  const focusPrompt = () =>
+    document
+      .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+      ?.focus({ preventScroll: true });
+
   const [newPlanMode, setNewPlanMode] = useState(false);
   const [model, setModel] = useState<ModelSelection>();
   const catalogDefault = state.models.find((item) => item.authenticated);
@@ -266,6 +313,28 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     [state.sessions, state.archived],
   );
   const view = state.selected ? (state.views[state.selected] ?? emptyView) : emptyView;
+  const goal = readGoal(view.transcript?.toolStates.goal);
+  const unfinishedGoal = goal && goal.phase !== "complete" ? goal : undefined;
+  const hasGoal = Boolean(unfinishedGoal);
+  const goalEnabled = inputDraft.goalEnabled && !hasGoal;
+  useEffect(() => {
+    if (!hasGoal || !inputDraft.goalEnabled) return;
+    // A published Goal consumes any pending local intent, including creation in another window.
+    setDrafts((previous) => {
+      const current = previous[draftKey] ?? emptyDraft;
+      if (!current.goalEnabled) return previous;
+      return {
+        ...previous,
+        [draftKey]: { ...current, goalEnabled: false, goalRevision: current.goalRevision + 1 },
+      };
+    });
+  }, [draftKey, hasGoal, inputDraft.goalEnabled]);
+  const goalDisabledReason =
+    view.running || current?.running
+      ? t("app.goal-mode-running")
+      : unfinishedGoal
+        ? t("app.goal-mode-existing")
+        : undefined;
   const targetProject = state.projects.find((project) => project.id === state.target);
   const [projectGit, setProjectGit] = useState<WireProjectGit | null>(null);
   const [useWorktree, setUseWorktree] = useState(false);
@@ -546,7 +615,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
     };
   }, [recent, state.selected, state.pinned, summary, settingsOpen]);
   const send = async () => {
-    if (!connected || sending || !draft.trim()) return;
+    if (!connected || sending || (!draft.trim() && !(goalEnabled && images.length))) return;
     setSending(true);
     setError("");
     const text = draft.trim();
@@ -556,7 +625,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       let createdSessionId: string | undefined;
       if (state.selected)
         await client.request({
-          type: "prompt",
+          type: goalEnabled ? "session.goal_create" : "prompt",
           sessionId: state.selected,
           text,
           images: attachments,
@@ -569,6 +638,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           images: attachments,
           modelSelection: newSessionModel,
           permissionMode: permission,
+          ...(goalEnabled ? { goal: true } : {}),
           planMode: newPlanMode,
           ...(projectGit?.repository && useWorktree ? { worktree: true } : {}),
         });
@@ -588,6 +658,8 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           ...current,
           text: current.textRevision === inputDraft.textRevision ? "" : current.text,
           images: current.imageRevision === inputDraft.imageRevision ? [] : current.images,
+          goalEnabled:
+            current.goalRevision === inputDraft.goalRevision ? false : current.goalEnabled,
         };
         const updated = { ...previous, [targetKey]: next };
         if (createdSessionId) delete updated[draftKey];
@@ -784,6 +856,18 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             : "";
       })
       .join("\n\n") ?? "";
+  const toggleGoal = () => {
+    if (inputDraft.goalEnabled) {
+      setGoalEnabled(draftKey, false);
+      return;
+    }
+    if ((view.permissionMode ?? permission) !== "full-access")
+      changeGoalConfirmation({ key: draftKey, sessionId: state.selected });
+    else {
+      setGoalEnabled(draftKey, true);
+      focusPrompt();
+    }
+  };
   const composer = (
     <Composer
       draft={draft}
@@ -797,6 +881,20 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       onPlanMode={setPlanMode}
       permissionMode={view.permissionMode ?? permission}
       onPermission={setMode}
+      goalEnabled={goalEnabled}
+      goalDisabledReason={goalDisabledReason}
+      onGoal={toggleGoal}
+      placeholder={
+        goalEnabled
+          ? t("app.goal-placeholder")
+          : unfinishedGoal
+            ? t(
+                view.running && unfinishedGoal.armed
+                  ? "app.goal-steer-placeholder"
+                  : "app.goal-paused-placeholder",
+              )
+            : undefined
+      }
       models={state.models}
       model={
         state.selected
@@ -863,7 +961,31 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             </Button>
           </div>
         ) : state.selected ? (
-          composer
+          <div className="flex min-w-0 flex-col">
+            {unfinishedGoal ? (
+              <GoalStatus
+                key={`${state.selected}:${unfinishedGoal.id}`}
+                goal={unfinishedGoal}
+                disabled={!connected}
+                onAction={async (action) => {
+                  try {
+                    await client.request({
+                      type:
+                        action === "pause"
+                          ? "session.goal_pause"
+                          : action === "resume"
+                            ? "session.goal_resume"
+                            : "session.goal_clear",
+                      sessionId: state.selected!,
+                    });
+                  } catch (reason) {
+                    setError(t("app.error", { message: errorText(reason) }));
+                  }
+                }}
+              />
+            ) : null}
+            <div className="new-chat-composer">{composer}</div>
+          </div>
         ) : (
           <div className="flex min-w-0 flex-col">
             <NewChatSelector
@@ -1190,6 +1312,32 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           request={client.request}
           onChanged={async () => {
             store.setModels(await client.request({ type: "models.list" }));
+          }}
+        />
+      ) : null}
+      {goalConfirmation ? (
+        <GoalConfirmation
+          onClose={() => changeGoalConfirmation(null)}
+          onConfirm={async () => {
+            const origin = goalConfirmation;
+            if (origin.sessionId)
+              await client.request({
+                type: "session.set_permission_mode",
+                sessionId: origin.sessionId,
+                mode: "full-access",
+              });
+            else
+              setDrafts((previous) => ({
+                ...previous,
+                [origin.key]: {
+                  ...(previous[origin.key] ?? emptyDraft),
+                  permissionMode: "full-access",
+                },
+              }));
+            // Closing C42 invalidates its authority to arm the draft, even if permission changes later succeed.
+            if (goalConfirmationOwner.current !== origin) return;
+            setGoalEnabled(origin.key, true);
+            changeGoalConfirmation(null);
           }}
         />
       ) : null}

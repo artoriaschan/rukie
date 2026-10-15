@@ -1,0 +1,199 @@
+.goal-confirmation {
+  max-width: 448px;
+}
+.goal-confirmation-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 8px 20px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.goal-confirmation-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 -16px -16px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.goal-confirmation-footer button {
+  height: 36px;
+  border-radius: 8px;
+}
+@media (max-width: 480px) {
+  .goal-confirmation-footer {
+    flex-wrap: wrap;
+  }
+}
+.conversation-goal-chip {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 6px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.conversation-goal-chip:hover,
+.conversation-goal-chip:focus-visible {
+  color: var(--foreground);
+  background: var(--hover);
+}
+.conversation-goal-chip:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.conversation-goal-chip-icon {
+  display: flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+}
+.conversation-goal-chip-icon svg {
+  width: 12px;
+  height: 12px;
+}
+.conversation-goal-chip .goal-close-icon {
+  display: none;
+  width: 10px;
+  height: 10px;
+}
+.conversation-goal-chip:hover .conversation-goal-chip-icon,
+.conversation-goal-chip:focus-visible .conversation-goal-chip-icon {
+  background: var(--foreground-subtlest);
+  border-radius: 999px;
+  color: var(--background);
+}
+.conversation-goal-chip:hover .goal-close-icon,
+.conversation-goal-chip:focus-visible .goal-close-icon {
+  display: block;
+}
+.conversation-goal-chip:hover .goal-target-icon,
+.conversation-goal-chip:focus-visible .goal-target-icon {
+  display: none;
+}
+.conversation-goal-option > [data-slot="dropdown-menu-checkbox-item-indicator"] {
+  display: none;
+}
+.conversation-goal-option {
+  padding-right: 10px;
+}
+.goal-menu-description {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  font-size: var(--text-ui-sm);
+}
+.goal-menu-switch {
+  display: inline-flex;
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  flex-shrink: 0;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--secondary);
+}
+.goal-menu-switch > span {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--foreground);
+}
+[aria-checked="true"] .goal-menu-switch {
+  justify-content: flex-end;
+  background: var(--primary);
+}
+[aria-checked="true"] .goal-menu-switch > span {
+  background: var(--primary-foreground);
+}
+
+.goal-status-bar {
+  position: relative;
+  display: flex;
+  height: 40px;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px 4px 12px;
+  border-radius: 12px 12px 0 0;
+  background: var(--surface);
+}
+.goal-status-bar::after {
+  position: absolute;
+  inset: 100% 0 auto;
+  height: 16px;
+  background: var(--surface);
+  content: "";
+  pointer-events: none;
+}
+.goal-status-facts {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.goal-status-icon {
+  display: flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.goal-status-icon svg {
+  width: 12px;
+  height: 12px;
+}
+.goal-status-label {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+.goal-status-bar[data-goal-phase="blocked"] .goal-status-icon {
+  color: var(--warning);
+}
+.goal-status-bar[data-goal-phase="limit"] .goal-status-icon {
+  color: var(--muted-foreground);
+}
+.goal-status-objective {
+  min-width: 0;
+  color: var(--muted-foreground);
+}
+.goal-status-objective > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+}
+.goal-status-time {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.goal-status-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+.goal-status-actions [data-round-limit] {
+  opacity: 0.4;
+}
+.goal-status-objective > span:focus-visible,
+.goal-status-icon:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.conversation-goal-option[data-disabled] {
+  cursor: not-allowed;
+}

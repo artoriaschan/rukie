@@ -1,3 +1,4 @@
+import type { UserVisibleErrorCode } from "./errors.ts";
 import type { ProviderIconKey } from "./model-services.ts";
 import { Type, type Static, type TSchema } from "typebox";
 import type { ContextReport } from "./context-report.ts";
@@ -130,6 +131,28 @@ export const WirePreferencesSchema = Type.Object(
   { additionalProperties: false },
 );
 
+// Empty text is accepted only for a Goal with at least one image.
+const imageOnlyGoal = {
+  text: Type.String({ maxLength: 0 }),
+  images: Type.Array(image, { minItems: 1 }),
+};
+const create = {
+  project: Type.Union([id, Type.Null()]),
+  modelSelection: Type.Optional(
+    Type.Object(
+      {
+        provider: id,
+        modelId: id,
+        thinkingLevel: Type.Optional(Type.Enum(["automatic", ...THINKING_LEVELS])),
+      },
+      { additionalProperties: false },
+    ),
+  ),
+  permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
+  planMode: Type.Optional(Type.Boolean()),
+  worktree: Type.Optional(Type.Boolean()),
+};
+
 /** Client commands are untrusted input; server messages use TypeScript types. */
 export const WireCommandSchema = Type.Union([
   command("modelServices.list", {}),
@@ -170,23 +193,13 @@ export const WireCommandSchema = Type.Union([
   command("worktrees.refresh", {}),
   command("worktree.delete", { worktreeId: id }),
   command("sessions.list", {}),
-  command("session.create", {
-    project: Type.Union([id, Type.Null()]),
-    ...prompt,
-    modelSelection: Type.Optional(
-      Type.Object(
-        {
-          provider: id,
-          modelId: id,
-          thinkingLevel: Type.Optional(Type.Enum(["automatic", ...THINKING_LEVELS])),
-        },
-        { additionalProperties: false },
-      ),
-    ),
-    permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
-    planMode: Type.Optional(Type.Boolean()),
-    worktree: Type.Optional(Type.Boolean()),
-  }),
+  command("session.create", { ...create, ...prompt, goal: Type.Optional(Type.Literal(true)) }),
+  command("session.create", { ...create, ...imageOnlyGoal, goal: Type.Literal(true) }),
+  command("session.goal_create", { ...session, ...prompt }),
+  command("session.goal_create", { ...session, ...imageOnlyGoal }),
+  command("session.goal_pause", session),
+  command("session.goal_resume", session),
+  command("session.goal_clear", session),
   command("session.subscribe", session),
   command("session.unsubscribe", session),
   command("tool_output.read", {
@@ -238,7 +251,32 @@ export const WireCommandSchema = Type.Union([
 ]);
 export type WireCommand = Static<typeof WireCommandSchema>;
 
+// Only reviewed public Core errors may cross the authenticated wire boundary.
+const publicErrorCodes = [
+  "goal-child-session",
+  "goal-busy",
+  "goal-objective-empty",
+  "goal-rounds-invalid",
+  "goal-exists",
+  "goal-missing",
+  "goal-pause-invalid",
+  "goal-complete",
+  "goal-already-armed",
+  "goal-round-limit",
+  "image-invalid",
+  "image-too-large",
+  "image-dimensions",
+  "image-mime-mismatch",
+] as const satisfies readonly UserVisibleErrorCode[];
+
+export function isWireUserVisibleErrorCode(
+  code: string,
+): code is (typeof publicErrorCodes)[number] {
+  return publicErrorCodes.some((candidate) => candidate === code);
+}
+
 export type WireErrorCode =
+  | (typeof publicErrorCodes)[number]
   | "worktree_failed"
   | "branch_invalid"
   | "git_failed"

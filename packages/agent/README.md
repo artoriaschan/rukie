@@ -71,9 +71,13 @@ Run 进行中调用 `session.followUp(prompt, { images? })`，返回稳定 `requ
 
 [`Goal runtime`](src/tools/goal/runtime.ts) 管理 Goal facts 与已接受的续跑授权，二者分开。真实用户创建或重新开启 Goal 时，Goal document、激活身份、原生 `rukie.goal-driver` task 和因果请求收据在同一事务中提交；只有顶层 Conversation 拥有该 task。driver 保存下一轮 reservation，使用由 task 和 round 组成的稳定 request id 通过原生 inbox 提交输入，等待该轮及相关 child/reporters 的收据，再保留下一轮 reservation。实际输入被原生放置后才增加一次轮次；reservation、Human 输入、Hook continue 和报告不消费轮次。
 
-`createGoal` 返回已接受激活的 `requestId`，第一条输入尚未提交时也能调用 `waitForRequest`。结算包含全部相关轮次及结果处理，以最终回答和不重复的 usage 返回；Human 模型工具创建的激活纳入该 Human 请求，历史目标与无关任务不纳入。`close` 保留已接受 task，重新打开继续同一轮；输入提交确认丢失时重新取得原生 submission 收据。暂停、受阻、完成、上限、清除、显式 abort 或模型错误停止后续 admission，保留已提交事实。暂停或清除不会取消当前工具结果或其回答；未放置的 reservation 不消费轮次。停止状态的重新开启仍需真实用户授权，历史 Goal facts 或终态 task 不构成授权。
+`createGoal(objective, { images?, maxRounds? })` 将目标文本和图片作为第 1 轮的人类用户消息提交，供对话、标题和 Checkpoint 使用；文本可以为空，但文本与图片不能都为空，图片沿用普通 prompt 的准入与体积限制。第 2 轮起使用隐藏的 `<goal_round>` 输入，模型工具 `create_goal` 仍只接受文本且沿用内部续跑。图片只保存在目标消息和原生接纳任务中，Goal Tool State 的 `attachments` 只记录数量；只发图片时，续跑与 reminder 引导模型查看首条目标消息的附件。
 
-Rewind 要求原生任务已结算；fork 按 document 策略保留 Goal facts，但激活 document 使用 initial 策略，原生 tasks 不复制。轮次执行及恢复规则由 [`tools/goal/driver.ts`](src/tools/goal/driver.ts) 拥有；Session 只提供原生提交、因果收据和观测的组合入口。决定见 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)。
+`createGoal` 返回已接受激活的 `requestId`，第一条输入尚未提交时也能调用 `waitForRequest`。结算包含全部相关轮次及结果处理，以最终回答和不重复的 usage 返回；Human 模型工具创建的激活纳入该 Human 请求，历史目标与无关任务不纳入。`close` 保留已接受 task，重新打开继续同一轮；输入提交确认丢失时重新取得原生 submission 收据。暂停、受阻、完成、上限、清除、显式 abort 或模型错误停止后续 admission，保留已提交事实。暂停或清除不会取消当前工具结果或其回答；未放置的 reservation 不消费轮次。停止状态的重新开启仍需真实用户授权，历史 Goal facts 或终态 task 不构成授权。 首条人类目标尚未放置时，暂停、中止或 `UserPromptSubmit` 阻止仍保留原生 task 中的原始文本、图片、名称与创建前 Goal；显式重新开启会再次执行人类输入 Hook，允许后才提交该消息。重新开启按所选 Conversation 及其继承前缀查找同一 Goal 的输入，已在该历史中放置的首条目标不重复提交。
+
+Goal Tool State version 2 保存 `elapsedMs` 和仅在 armed 时存在的 `activeSince`，不迁移 version 1。推进的墙钟时间包含权限确认和问题等待；每轮结束、暂停、受阻、停止、出错、完成、清除及轮次用尽时结算活动段，继续推进则开启新段。暂停期间的普通消息不计时，也不会自动恢复 Goal；非完全访问时建议切换到完全访问，但不自动更改 Permission Mode。恢复已接受工作时从当前时刻重新计时，未结算的历史段与停机时间不计入。
+
+Rewind 要求原生任务已结算，恢复锚点时的已结算时长并保持未 armed；回退到首条目标消息之前会撤销本次创建，恢复创建前的 Goal（包括空值或被替换的 complete Goal），不会遗留缺少附件的目标；fork 按 document 策略保留 Goal facts，同一 Goal 复制当前 `elapsedMs` 并清除 `activeSince`，激活 document 使用 initial 策略，原生 tasks 不复制。轮次执行及恢复规则由 [`tools/goal/driver.ts`](src/tools/goal/driver.ts) 拥有；Session 只提供原生提交、因果收据和观测的组合入口。决定见 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)。
 
 # Transcript and context
 
@@ -179,7 +183,7 @@ Session 访问范围按真实路径限定文件工具的模式默认值：cwd �
 
 `await listModelCatalog(settings)` 返回内置与自定义 provider 的全部已知聊天模型，以及 provider 显示名、输入能力、reasoning、支持的 Thinking Level、context window、自定义来源和本地凭据是否配置的事实。目录不刷新模型、不刷新 OAuth，也不发送模型请求；无凭据模型仍保留，由 Frontend 决定显示哪些 provider。每次调用重新检测凭据，失败向调用方传播；目录不会改写 settings 或 Session。
 
-`readSessionSnapshot({ cwd, homeDir, id })` 提供不取得写者 lease 的单次已提交快照，可显示其他进程占用的 Session。它复用原生只读 storage kernel 与 Transcript 投影，不启动 Harness 恢复、Hooks 或模型，不修复损坏文件；需要修复时返回错误。快照包括消息、原生 live/inbox 状态、Run Summaries 与 Todo/Plan/Goal/子代理目录，进程内 Job 和子代理活动不由只读访问重建；它不提供订阅或 Interaction 回复能力。
+`readSessionSnapshot({ cwd, homeDir, id })` 提供不取得写者 lease 的单次已提交快照，可显示其他进程占用的 Session。它复用原生只读 storage kernel 与 Transcript 投影，不启动 Harness 恢复、Hooks 或模型，不修复损坏文件；需要修复时返回错误。快照包括消息、原生 live/inbox 状态、Run Summaries 与 Todo/Plan/Goal/子代理目录，进程内 Job 和子代理活动不由只读访问重建；Goal 只呈现已结算时长，投影为 `armed: false` 并省略 `activeSince`，不改写活跃宿主和持久化状态。它不提供订阅或 Interaction 回复能力；执行中的最新 Goal 状态应从拥有 Session 的宿主订阅。
 
 `listSessions` 的 `createdAt` 是 Session store 目录的文件系统出生时间，与持久化元数据里的 `updatedAt` 独立；它支持桌面端按创建时间或更新时间排序，不新增 JSONL 元数据字段。复制或重建存储目录会改变这个时间。
 

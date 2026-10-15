@@ -118,7 +118,7 @@ Session 以公开 extensions、hooks 和 observation 接入模型与工具事实
 
 Hooks 可以向下一次请求提供上下文、阻止工具或结束 Run，也可以在停止阶段要求继续。异步 Hook 的 `asyncRewake` 能向进行中的 Run steer，或在空闲时启动内部 Run；所以 frontend 不能仅以自己调用过的 `run` 判断 Session 是否正在执行。完整 Hook 协议与限制见 [hooks.md](hooks.md)。
 
-Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或模型工具 `create_goal` 设定目标；Goal 能力的原生 driver 在前一轮及相关 child/reporters 结算后提交下一轮；Human 输入、Hook continue 与通知沿原生 inbox 处理。只有带 Goal 来源的内部输入计入轮次，内部 round 与收尾消息不创建 Checkpoint、不用于标题，也不呈现为用户气泡。`update_goal` 完成或受阻会停止自动续跑，并在 Goal round 内向模型提供同一 Run 的收尾指令；出错、中止或 token 超限只停止自动续跑，保留 Goal 供用户恢复。Goal 不改变 Permission Mode。
+Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或模型工具 `create_goal` 设定目标；Goal 能力的原生 driver 在前一轮及相关 child/reporters 结算后提交下一轮；Human 输入、Hook continue 与通知沿原生 inbox 处理。Frontend 创建的目标以可见的人类用户消息作为第 1 轮输入，支持图片，并创建 Checkpoint 和标题；后续带 Goal 来源的内部 round 计入轮次。内部 round 与收尾消息不创建 Checkpoint、不用于标题，也不呈现为用户气泡。`update_goal` 完成或受阻会停止自动续跑，并在 Goal round 内向模型提供同一 Run 的收尾指令；出错、中止或 token 超限只停止自动续跑，保留 Goal 供用户恢复。Goal 不改变 Permission Mode。
 
 ## 工具、权限与交互
 

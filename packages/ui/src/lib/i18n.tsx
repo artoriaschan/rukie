@@ -32,7 +32,7 @@ export function useComponentText(): ComponentTranslator {
 }
 
 export function useAppText(): (
-  key: keyof typeof appCopy.en,
+  key: keyof typeof appCopy.en | keyof typeof common.en,
   params?: Record<string, string | number>,
 ) => string {
   return translations[useContext(UiLocaleContext)];

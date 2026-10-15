@@ -58,6 +58,7 @@ export { ModelCompatSchemas } from "./model-compat.ts";
 
 export {
   WIRE_SUBPROTOCOL,
+  isWireUserVisibleErrorCode,
   WireCommandSchema,
   WirePreferencesSchema,
   type WireCommand,

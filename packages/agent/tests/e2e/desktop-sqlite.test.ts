@@ -179,6 +179,33 @@ test("desktop attachments survive native read-only history and resume while orph
   expect(JSON.stringify(next.contexts[0]!.messages)).toContain(png);
 });
 
+test("desktop Goal attachments roundtrip without inline image bytes in native task storage", async () => {
+  dirs = await tempDirs();
+  const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };
+  const png =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSf8AAAAASUVORK5CYII=";
+  const fake = fakeModel([fauxAssistantMessage("target seen")]);
+  session = await createSession({ ...options, ...fake, permissionMode: "full-access" });
+  const accepted = await session.createGoal("", {
+    images: [{ data: png, mimeType: "image/png", name: "target.png" }],
+    maxRounds: 1,
+  });
+  await session.waitForRequest(accepted.requestId);
+  const id = session.id;
+  await session.close();
+  session = undefined;
+  const database = await Bun.file(join(options.dataRoot, "sessions", id, "session.sqlite")).bytes();
+  expect(Buffer.from(database).includes(Buffer.from(png))).toBe(false);
+  expect((await readdir(join(options.dataRoot, "attachments", id))).length).toBe(1);
+  const snapshot = await readSessionSnapshot({ ...options, id });
+  expect(JSON.stringify(snapshot)).toContain(png);
+  expect(JSON.stringify(snapshot)).toContain("target.png");
+  const next = fakeModel([fauxAssistantMessage("restored target seen")]);
+  session = await createSession({ ...options, ...next, resumeId: id });
+  await session.run("inspect saved target");
+  expect(JSON.stringify(next.contexts[0]!.messages)).toContain(png);
+});
+
 test("desktop rewind keeps abandoned branch backups and reclaims only unreferenced files repeatedly", async () => {
   dirs = await tempDirs();
   const options = { ...dirs, dataRoot: join(dirs.homeDir, "desktop-data") };

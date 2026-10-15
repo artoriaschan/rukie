@@ -1,12 +1,19 @@
 import { createUserVisibleError, type UserVisibleErrorCode } from "@rukie/shared";
 import { Value } from "typebox/value";
-import { goalSchema, goalCompletionAudit, type GoalSnapshot, type GoalView } from "./state.ts";
+import type { PromptImage } from "../../images/index.ts";
+import {
+  goalSchema,
+  goalCompletionAudit,
+  renderGoalObjective,
+  type GoalSnapshot,
+  type GoalView,
+} from "./state.ts";
 
 /** DSH goal-round-driver/src/prompt.ts; removed "read the current goal" (no get_goal tool). */
 export function renderGoalRoundPrompt(goal: GoalView): string {
   return (
     "<goal_round>\n" +
-    `Objective: ${JSON.stringify(goal.objective)}\n` +
+    `${renderGoalObjective(goal)}\n` +
     `Round: ${goal.roundsStarted + 1}/${goal.maxRounds}\n\n` +
     "Continue working toward the objective in this same session. Treat the current workspace, " +
     "tool results, and durable session state as authoritative; inspect them instead of assuming " +
@@ -23,7 +30,11 @@ export function renderGoalRoundPrompt(goal: GoalView): string {
 export function createGoalController(options: {
   isArmed(): boolean;
   getSnapshot(): unknown;
-  persist(value: GoalSnapshot | null, armed: boolean): Promise<void>;
+  persist(
+    value: GoalSnapshot | null,
+    armed: boolean,
+    initialInput?: { text: string; images: PromptImage[] },
+  ): Promise<void>;
   assertAvailable(idle: boolean): void;
   warn(): void;
 }) {
@@ -49,8 +60,12 @@ export function createGoalController(options: {
     if (!current) throw error("goal-missing", "No Goal exists in this Session.");
     return current;
   };
-  const persist = async (snapshot: GoalSnapshot | null, nextArmed = options.isArmed()) => {
-    await options.persist(snapshot, nextArmed);
+  const persist = async (
+    snapshot: GoalSnapshot | null,
+    nextArmed = options.isArmed(),
+    initialInput?: { text: string; images: PromptImage[] },
+  ) => {
+    await options.persist(snapshot, nextArmed, initialInput);
     return snapshot;
   };
   const controller = {
@@ -58,9 +73,14 @@ export function createGoalController(options: {
     settle() {
       return writes;
     },
-    async create(objective: string, { maxRounds = 256 }: { maxRounds?: number } = {}, idle = true) {
+    async create(
+      objective: string,
+      { maxRounds = 256, images = [] }: { maxRounds?: number; images?: PromptImage[] } = {},
+      idle = true,
+    ) {
       options.assertAvailable(idle);
-      if (!objective.trim()) throw error("goal-objective-empty", "Goal objective cannot be empty.");
+      if (!objective.trim() && !images.length)
+        throw error("goal-objective-empty", "Goal objective and images cannot both be empty.");
       if (!Number.isSafeInteger(maxRounds) || maxRounds < 1)
         throw error("goal-rounds-invalid", "Goal maxRounds must be a positive integer.");
       await change(async () => {
@@ -71,11 +91,14 @@ export function createGoalController(options: {
           {
             id: crypto.randomUUID(),
             objective: objective.trim(),
+            attachments: images.length,
+            elapsedMs: 0,
             phase: "active",
             roundsStarted: 0,
             maxRounds,
           },
           true,
+          idle ? { text: objective.trim(), images } : undefined,
         );
       });
       options.warn();

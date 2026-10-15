@@ -996,6 +996,295 @@ async function connect(
   };
 }
 
+test("Goal wire creation and controls preserve the current Run and forward authoritative state", async () => {
+  const owner = ownResources();
+  const entered = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+  const replies = [
+    Promise.withResolvers<ReturnType<typeof fauxAssistantMessage>>(),
+    Promise.withResolvers<ReturnType<typeof fauxAssistantMessage>>(),
+  ];
+  const fake = fakeModel(
+    replies.map((reply, index) => async (_context, options) => {
+      options?.signal?.addEventListener(
+        "abort",
+        () => reply.resolve(fauxAssistantMessage("cleanup")),
+        { once: true },
+      );
+      entered[index]!.resolve();
+      return reply.promise;
+    }),
+  );
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-wire-goal-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const image = {
+      data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSf8AAAAASUVORK5CYII=",
+      mimeType: "image/png",
+      name: "target.png",
+    };
+    const created = await client.command("session.create", {
+      project: null,
+      goal: true,
+      text: "Match this target",
+      images: [image],
+      permissionMode: "full-access",
+    });
+    expect(created.result).toEqual({
+      sessionId: expect.any(String),
+      requestId: expect.any(String),
+    });
+    const { sessionId, requestId } = created.result as { sessionId: string; requestId: string };
+    await entered[0]!.promise;
+    const live = await client.next(
+      (message) => message.type === "tool_state_changed" && message.name === "goal",
+    );
+    expect(live.value).toMatchObject({
+      objective: "Match this target",
+      attachments: 1,
+      elapsedMs: 0,
+      activeSince: expect.any(Number),
+      armed: true,
+    });
+    expect(JSON.stringify(live)).not.toContain(image.data);
+    expect(
+      fake.contexts[0]!.messages.find(
+        (message) =>
+          message.role === "user" &&
+          Array.isArray(message.content) &&
+          message.content.some((part) => part.type === "image"),
+      ),
+    ).toMatchObject({
+      content: [
+        { type: "text", text: "Match this target" },
+        { type: "image", data: image.data, mimeType: "image/png" },
+      ],
+    });
+    expect((await client.command("session.goal_pause", { sessionId })).result).toMatchObject({
+      phase: "paused",
+      armed: false,
+    });
+    replies[0]!.resolve(fauxAssistantMessage("first answer preserved"));
+    await client.next(
+      (message) => message.type === "request_settled" && message.requestId === requestId,
+    );
+    expect(fake.contexts).toHaveLength(1);
+    const resumed = await client.command("session.goal_resume", { sessionId });
+    const resumedRequestId = (resumed.result as { requestId: string }).requestId;
+    expect(resumed.result).toMatchObject({
+      phase: "active",
+      armed: true,
+      requestId: expect.any(String),
+    });
+    await entered[1]!.promise;
+    const replacement = await connect(server, "app://rukie", owner);
+    await replacement.command("session.subscribe", { sessionId });
+    const snapshot = await replacement.next(
+      (message) => message.type === "snapshot" && message.sessionId === sessionId,
+    );
+    expect(snapshot.toolStates).toMatchObject({
+      goal: {
+        attachments: 1,
+        elapsedMs: expect.any(Number),
+        activeSince: expect.any(Number),
+        armed: true,
+      },
+    });
+    expect((await replacement.command("session.goal_clear", { sessionId })).result).toEqual({});
+    replies[1]!.resolve(fauxAssistantMessage("second answer preserved"));
+    const settled = await replacement.next((message) => message.type === "request_settled");
+    expect(settled.requestId).toBe(resumedRequestId);
+    expect(fake.contexts).toHaveLength(2);
+    expect(JSON.stringify(fake.contexts[1])).toContain("Round: 2/256");
+    expect(JSON.stringify(replacement.messages)).toContain("second answer preserved");
+  } finally {
+    for (const reply of replies) reply.resolve(fauxAssistantMessage("cleanup"));
+    await owner.close();
+  }
+});
+
+test("existing Sessions accept image-only Goals and return safe public mutation errors", async () => {
+  const owner = ownResources();
+  const entered = Promise.withResolvers<void>();
+  const reply = Promise.withResolvers<ReturnType<typeof fauxAssistantMessage>>();
+  const fake = fakeModel([
+    fauxAssistantMessage("ready"),
+    async (_context, options) => {
+      options?.signal?.addEventListener(
+        "abort",
+        () => reply.resolve(fauxAssistantMessage("cleanup")),
+        { once: true },
+      );
+      entered.resolve();
+      return reply.promise;
+    },
+  ]);
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-wire-goal-errors-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const initial = (await client.command("session.create", { project: null, text: "hello" }))
+      .result as { sessionId: string; requestId: string };
+    await client.next(
+      (message) => message.type === "request_settled" && message.requestId === initial.requestId,
+    );
+    const { sessionId } = initial;
+    expect((await client.command("session.goal_resume", { sessionId })).error).toEqual({
+      code: "goal-missing",
+      params: {},
+    });
+    const invalid = await client.command("session.goal_create", {
+      sessionId,
+      text: "image",
+      images: [{ data: "bad", mimeType: "image/png" }],
+    });
+    expect(invalid.error).toEqual({ code: "image-invalid", params: {} });
+    const image = {
+      data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSf8AAAAASUVORK5CYII=",
+      mimeType: "image/png",
+    };
+    expect(
+      (
+        await client.command("session.goal_create", {
+          sessionId,
+          text: "image",
+          images: [{ ...image, mimeType: "image/jpeg" }],
+        })
+      ).error,
+    ).toEqual({ code: "image-mime-mismatch", params: { mimeType: "image/png" } });
+    const created = await client.command("session.goal_create", {
+      sessionId,
+      text: "",
+      images: [image],
+    });
+    const requestId = (created.result as { requestId: string }).requestId;
+    expect(created.result).toMatchObject({
+      objective: "",
+      attachments: 1,
+      requestId: expect.any(String),
+    });
+    await entered.promise;
+    for (const type of ["session.goal_create", "session.goal_resume"])
+      expect(
+        (
+          await client.command(type, {
+            sessionId,
+            ...(type === "session.goal_create" ? { text: "another" } : {}),
+          })
+        ).error,
+      ).toEqual({ code: "goal-busy", params: {} });
+    await client.command("session.goal_pause", { sessionId });
+    expect((await client.command("session.goal_pause", { sessionId })).error).toEqual({
+      code: "goal-pause-invalid",
+      params: {},
+    });
+    reply.resolve(fauxAssistantMessage("image answer"));
+    await client.next(
+      (message) => message.type === "request_settled" && message.requestId === requestId,
+    );
+    expect(
+      (await client.command("session.goal_create", { sessionId, text: "another" })).error,
+    ).toEqual({ code: "goal-exists", params: {} });
+    await client.command("session.goal_clear", { sessionId });
+    expect((await client.command("session.goal_create", { sessionId, text: "  " })).error).toEqual({
+      code: "goal-objective-empty",
+      params: {},
+    });
+    expect(fake.contexts).toHaveLength(2);
+    expect(JSON.stringify(fake.contexts[1])).toContain(image.data);
+  } finally {
+    reply.resolve(fauxAssistantMessage("cleanup"));
+    await owner.close();
+  }
+});
+
+test("Goal history preserves v2 facts and explicit resume returns terminal-state errors", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-wire-goal-history-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const dataRoot = join(homeDir, "desktop-data");
+    const limited = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot,
+          cwd: homeDir,
+          ...fakeModel([fauxAssistantMessage("one round")]),
+          permissionMode: "full-access",
+        }),
+      (session) => session.close(),
+    );
+    const first = await limited.createGoal("bounded target", { maxRounds: 1 });
+    await limited.waitForRequest(first.requestId);
+    const limitedId = limited.id;
+    await limited.close();
+    const complete = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot,
+          cwd: homeDir,
+          ...fakeModel([
+            fauxAssistantMessage(fauxToolCall("update_goal", { action: "complete" }), {
+              stopReason: "toolUse",
+            }),
+            fauxAssistantMessage("verified target"),
+          ]),
+          permissionMode: "full-access",
+        }),
+      (session) => session.close(),
+    );
+    const second = await complete.createGoal("completed target");
+    await complete.waitForRequest(second.requestId);
+    const completeId = complete.id;
+    await complete.close();
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fakeModel([]), onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    await client.command("session.subscribe", { sessionId: limitedId });
+    const snapshot = await client.next(
+      (message) => message.type === "snapshot" && message.sessionId === limitedId,
+    );
+    expect(snapshot.toolStates).toMatchObject({
+      goal: {
+        objective: "bounded target",
+        attachments: 0,
+        elapsedMs: expect.any(Number),
+        armed: false,
+        roundsStarted: 1,
+      },
+    });
+    expect((snapshot.toolStates as { goal: object }).goal).not.toHaveProperty("activeSince");
+    expect((await client.command("session.goal_resume", { sessionId: limitedId })).error).toEqual({
+      code: "goal-round-limit",
+      params: {},
+    });
+    expect((await client.command("session.goal_resume", { sessionId: completeId })).error).toEqual({
+      code: "goal-complete",
+      params: {},
+    });
+  } finally {
+    await owner.close();
+  }
+});
+
 test("a new Session streams and can be reopened from the isolated SQLite store", async () => {
   const homeDir = await mkdtemp(join(tmpdir(), "rukie-stream-"));
   const fake = fakeModel(

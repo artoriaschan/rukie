@@ -18,6 +18,10 @@ wire client 用每条命令的 `id` 关联 response。每次重连重新调用 `
 
 首次发送才调用 `session.create`，带目标项目、图片、模型选择与 Permission Mode，不先创建空 Session。已有 Session 的输入走 `prompt`，Run 中交给 server 排队；停止返回的 Queued Input 按顺序放在当前 draft 前，保留图片。草稿与附件按 Session 保存并分别记录编辑修订号；成功响应只清理未编辑的已提交版本，新会话创建期间的编辑交接给创建出的 Session，期间切换会话不抢回选择；abort 或撤回响应回填发起请求的 Session，并合并响应时的现有草稿。Session busy 时保留只读 snapshot 并以重试提示替换输入框。权限、推理档次和上下文面板使用 server 的 `session_state`，模型档次来自目录中的原生能力子集。
 
+“＋”菜单的目标模式把当前草稿作为 Goal。当前 Permission Mode 不是完全访问时，C42 先说明自动续跑与完全访问风险；取消、Esc 和遮罩保留关闭状态，确认等待已有 Session 的权限命令成功，新聊天则写入当前草稿权限后开启。之后手动改变权限仍生效，发送不重复确认或强制改回完全访问。目标开关、权限与文字和图片一起归属各自 Session 或新聊天草稿，导航切换相互独立；C37 的点击、Enter 和 Space 只取消目标开关，保留输入和附件。发送失败保留草稿；成功只清理未被后续编辑替换的已提交版本。
+
+开启后，新聊天发送 `session.create { goal: true }`，已有 Session 发送 `session.goal_create`；目标支持文字、图片或仅图片；Core 在同一事务中接纳 Goal 与原生 task，首条可见人类输入随后经过普通 `UserPromptSubmit` Hook 准入后写入对话。取消、阻止与重新开启的输入保留规则见 [Agent README](../agent/README.md#goal-continuation)。普通输入仍经 `prompt`，运行中的输入继续走既有 Queued Input 路径。C09 在 Run 进行中或存在未完成 Goal 时禁用并显示原因。输入框上方的 C38 只读实时 `transcript.toolStates.goal`，严格校验当前 Goal 结构；active/armed 显示进行中，paused 或 active/未 armed 显示已暂停，blocked 显示原因，未 armed 且轮次用尽优先显示已达上限。完成或清除移除状态条及背景延伸。时间用持久化 `elapsedMs` 加当前活动段每秒刷新，暂停后冻结，刷新不重置。删除、暂停和继续分别发送 `session.goal_clear`、`session.goal_pause`、`session.goal_resume`；删除不确认、不中止当前 Run，轮次用尽禁止继续。目标正文截断但保留完整 tooltip 和可访问名称；图片目标显示附件数量。视觉约束见 [DESIGN.md](../../DESIGN.md#m03-c-目标模式)。
+
 ⌘N 新建对话，⌘K / Ctrl+K 打开搜索，⌃1–⌃9 按当前未归档 Session 的排序选择 Session，⌥⌘P 置顶或取消置顶。分组折叠、显示与排序通过 `preferences.set` 保存。输入框 Enter 发送、Shift+Enter 换行；输入法组合中的 Enter 不发送。纯图标控件带 tooltip 和可访问名称。
 
 Project 按 server 提供的 Session 摘要 `projectId` 分组；该值来自应用库的持久绑定，不按 cwd 推测。新 Session 使用主目录，切换主目录后已有普通 Project Session 在下次空闲打开执行前同步；只读订阅历史不移动，工作树 Session 保留工作树 cwd。添加项目与搜索的“打开文件夹”共用多目录选择、主目录设置和信任确认；取消创建确认不发送命令，确认后发送带必填名称的 `project.create { name, directories, trusted: true }`。所选主目录已登记时直接在原 Project 中新建草稿；未信任 Project 在新建或打开 Session 前补确认，拒绝仍可使用 Session，但不加载项目级配置。目录所有权、真实路径与信任边界见 [server README](../server/README.md#行为与限制)。

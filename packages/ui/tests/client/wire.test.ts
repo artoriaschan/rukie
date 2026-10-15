@@ -162,3 +162,38 @@ test("Project trust failures retain their code for the edit confirmation flow", 
     await server.close();
   }
 });
+
+test("public Goal and image errors retain their codes and safe parameters", async () => {
+  const server = await startWireFixture();
+  const client = createWireClient({ getConnection: async () => server.connection });
+  try {
+    await client.connect();
+    for (const code of [
+      "goal-child-session",
+      "goal-busy",
+      "goal-objective-empty",
+      "goal-rounds-invalid",
+      "goal-exists",
+      "goal-missing",
+      "goal-pause-invalid",
+      "goal-complete",
+      "goal-already-armed",
+      "goal-round-limit",
+      "image-invalid",
+      "image-too-large",
+      "image-dimensions",
+      "image-mime-mismatch",
+    ]) {
+      await fetch(`http://127.0.0.1:${server.connection.port}/error`, {
+        method: "POST",
+        body: JSON.stringify({ type: "session.goal_resume", code, params: { maxBytes: 5242880 } }),
+      });
+      await expect(
+        client.request({ type: "session.goal_resume", sessionId: "one" }),
+      ).rejects.toMatchObject({ code, params: { maxBytes: 5242880 } });
+    }
+  } finally {
+    client.close();
+    await server.close();
+  }
+});

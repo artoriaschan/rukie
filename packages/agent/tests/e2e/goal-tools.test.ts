@@ -89,13 +89,15 @@ test.each(["complete", "blocked"] as const)(
     });
     expect(fake.contexts).toHaveLength(2);
     expect(results).toEqual(["Closing report with verified artifacts"]);
-    expect(session.checkpoints()).toEqual([]);
-    expect(session.title).toBe("");
+    expect(session.checkpoints().map((checkpoint) => checkpoint.preview)).toEqual([
+      "Ship verified release",
+    ]);
+    expect(session.title).not.toBe("");
     await session.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     expect(resumed.goal).toEqual(session.goal);
     expect(resumed.messages.filter((message) => message.role === "user")).toMatchObject([
-      { source: "goal" },
+      { content: [{ type: "text", text: "Ship verified release" }] },
       { source: "goal" },
     ]);
   },
@@ -292,7 +294,7 @@ test("completion after a human pause in the automatic round requires no extra hu
   expect(session.goal).toMatchObject({ phase: "complete", armed: false, roundsStarted: 1 });
   expect(fake.contexts).toHaveLength(2);
   expect(session.messages.filter((message) => message.role === "user")).toMatchObject([
-    { source: "goal" },
+    { content: [{ type: "text", text: "verified work" }] },
     { source: "goal" },
   ]);
 });
