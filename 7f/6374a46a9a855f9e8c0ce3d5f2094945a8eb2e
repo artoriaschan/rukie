@@ -1,0 +1,176 @@
+packages/ui/tests/app/plan-pane-occlusion.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 39,46-47,59-61,71,88
+  s_e95034f71a0e09::t_d4be53089c9c74 9,23,69-70,72
+  s_e95034f71a0e09::t_4cb9030813b3aa 1-8,10-22,24-38,40-45,48-58,62-68,73-77,79-87,89-112,114,116-120
+  s_e95034f71a0e09::t_191dea3b569ba6 78,113,115
+packages/ui/src/components/tool-row.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 99-104
+packages/ui/src/lib/use-plan-actions.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-34
+packages/ui/src/components/conversation-dock.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 2-3,197-198,202-203,233,236,239-263,266-280
+packages/ui/tests/app/summary.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-110,114-117,122-186
+  s_e95034f71a0e09::t_8eb533ae3e51a6 112-113,118-119,121
+  s_e95034f71a0e09::t_f37e9ff36ac885 111,120
+packages/ui/tests/app/plan-review.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-365
+packages/ui/src/lib/transcript.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 2-7,17,87-89
+packages/ui/tests/app/questions.browser.test.tsx
+  s_e95034f71a0e09::t_a84eb8764d5654 199-204,208
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-171,205-207,236
+  s_e95034f71a0e09::t_071027c7ae0f82 172-173,175-198,209-235,237-251
+  s_e95034f71a0e09::t_6bc37a9af24d81 174
+packages/ui/src/app/conversation.tsx
+  s_e95034f71a0e09::t_78c689b553d161 8,10,131-133,135,140-141,253-258,269-274,284-292
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-4,7,68-130,150,176-240,243-252,259-268,275-283,293-307
+.scratch/desktop-plan-mode/issues/04-plan-mode-toggle.md
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 3-5,11,14,17-20,26-32
+  s_254dd3930a6164::t_afa289f51283a8 1-2,6-10,12-13,15-16,21-25
+packages/shared/src/index.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 73-85
+packages/ui/tests/app/project-edit-remove.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 516
+packages/server/src/storage/app-database.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 58
+packages/ui/src/components/plan-review-dock.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-68
+packages/ui/src/components/session-actions.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 65
+packages/ui/src/components/agents/approval-card/types.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 15,37-41
+packages/ui/src/components/sidebar.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 104,109
+packages/ui/tests/app/plan-mode.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-225
+DESIGN.md
+  s_e95034f71a0e09::t_68ae27bab8b636 476-477
+  s_e95034f71a0e09::t_e990e83dfc1986 629
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 469,472-475,609-628
+  s_d7f20f5d95a73c::t_eb8d93778a316c 583,608
+.scratch/desktop-plan-mode/issues/01-pen-design.md
+  s_e95034f71a0e09::t_0b6be7c4dd685f 3,24,30-32
+  s_254dd3930a6164::t_ce71453b6a601d 1-2,4-23,25-29
+packages/ui/src/app/delete-session.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 94
+packages/ui/tests/components/composer.browser.test.tsx
+  s_e95034f71a0e09::t_c1c7ee72abc21d 534-539
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1,54-55,438-533,540-555
+packages/ui/src/components/agents/approval-card/interaction.tsx
+  s_e95034f71a0e09::t_5314c45bc78aaf 113-123,140-144,146-153,156-160,206
+  s_e95034f71a0e09::t_df9e1f901ac20c 172,175,182-186
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-112,124-139,145,154-155,161-171,173-174,176-181,187-205,207-348
+.scratch/desktop-plan-mode/issues/06-c41-session-summary.md
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 3,9-15,22-29
+  s_254dd3930a6164::t_68a497567dde45 1-2,4-8,16-21
+.scratch/desktop-plan-mode/issues/05-c40-plan-review.md
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 3,9-10,14,20-23,30-39,46-51
+  s_e95034f71a0e09::t_edd9dc4c322972 40-45
+  s_254dd3930a6164::t_f5217a618d5a66 1-2,4-8,11-13,15-19,24-29
+packages/ui/tests/app/session-move.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 236
+packages/ui/tests/components/plan-headers.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-147
+packages/server/tests/wire.test.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 110-159
+packages/ui/tests/components/conversation-dock.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 24
+packages/server/README.md
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 25,27-29
+.scratch/desktop-plan-mode/spec.md
+  s_e95034f71a0e09::t_0bcd887f37c8a4 116-119,121-122
+  s_e95034f71a0e09::t_b612b851837de5 1,120,123-130
+  s_254dd3930a6164::t_c53b4983a0ece1 2-115
+packages/ui/src/store/transcript.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 2,185-193,263,413
+packages/ui/src/components/conversation-controls.css
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 478-516
+packages/ui/src/components/agents/approval-card/index.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1,202-210
+.scratch/desktop-plan-mode/issues/02-wire-server-interactions.md
+  s_254dd3930a6164::t_cfea5946046080 1-2,4-8,10-13,15-18,24-29
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 3,9,14,19-23,30-36
+packages/ui/src/components/agents/todo-list.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 4,32,182,242-272
+packages/ui/src/lib/plans.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-67
+packages/server/src/server.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 29-32,388-389,392-430,615-638,641,643-650,696,1389-1411,1445-1448
+packages/ui/src/components/plan-pane.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-116
+packages/ui/README.md
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 13,17
+packages/ui/tests/store/desktop.test.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 85-86,88,99-100,102,244,267,298,458-515
+packages/ui/src/theme.css
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 727-790,795-857
+  s_e95034f71a0e09::t_e990e83dfc1986 791-794
+packages/ui/tests/app/plan-pane.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-377
+packages/ui/src/components/transcript.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-2,27,34,124,229-237,253,393,401,491
+packages/ui/tests/store/transcript.test.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 2,198-315
+packages/ui/tests/app/plan-pane-reading.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-123
+packages/ui/tests/components/plan-review-dock.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-135
+packages/ui/src/components/question-dock.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-50
+packages/ui/tests/app/transcript.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 602,642,746,1107-1108,1113,1418,1503
+packages/ui/tests/components/question-dock.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-358
+.scratch/desktop-plan-mode/issues/03-c43-question-card.md
+  s_254dd3930a6164::t_8fa1acf151ba26 1-2,4-8,10-12,14-16,18-22,28-30
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 3,9,13,17,23-27,31-38
+  s_e95034f71a0e09::t_68ae27bab8b636 39-40
+packages/ui/src/components/plan-preview.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 1-22,24-25,50-71
+  s_e95034f71a0e09::t_6728a61d0d505d 23,26-49
+packages/ui/tests/app/shell.browser.test.tsx
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 506,522,1063
+.scratch/desktop-plan-mode/issues/07-side-pane-plan-tab.md
+  s_254dd3930a6164::t_b3664b2d2952d3 1-2,4-8,17-21
+  s_e95034f71a0e09::t_68ae27bab8b636 31-32
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 9-16,23-30
+  s_e95034f71a0e09::t_b612b851837de5 3,22,35-36
+  s_e95034f71a0e09::t_831a1d21d8d6f7 33-34
+packages/server/tests/server.test.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 2218,2227,2239-2245,2520-2526,2735-2739,2750-2756,2784,3474-3478,4248-4252,5239-5243,5395-5830
+packages/ui/src/store/index.ts
+  s_d7f20f5d95a73c::t_b06fdafd2333f6 16,26,33,38,174,188-194,325,378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "7f6374a46a9a855f9e8c0ce3d5f2094945a8eb2e",
+  "prompts": {},
+  "sessions": {
+    "s_254dd3930a6164": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_uoubqqlefycg",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    },
+    "s_d7f20f5d95a73c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e34-d4b6-73f2-a31e-d136eab09470",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    },
+    "s_e95034f71a0e09": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e38-c9bc-7830-8448-c4ee1d481e87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
