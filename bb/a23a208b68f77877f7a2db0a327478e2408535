@@ -1,0 +1,21 @@
+.scratch/desktop-goal-mode/issues/01-goal-core-message-and-elapsed.md
+  s_d7f20f5d95a73c::t_74e33b89485143 35-37
+packages/coding-agent/tests/headless/e2e/cli.test.ts
+  s_d7f20f5d95a73c::t_757fe54d27165e 370-372,374-377
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "bba23a208b68f77877f7a2db0a327478e2408535",
+  "prompts": {},
+  "sessions": {
+    "s_d7f20f5d95a73c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e34-d4b6-73f2-a31e-d136eab09470",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
