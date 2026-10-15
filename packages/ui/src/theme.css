@@ -788,6 +788,10 @@
   inset: 0;
   width: 100%;
 }
+.conversation-frames[data-plan-overlay="true"] > .conversation-frame {
+  /* Keep measured layout and scroll state while suppressing all descendant paint. */
+  opacity: 0;
+}
 .plan-pane-tabbar {
   display: flex;
   align-items: center;
