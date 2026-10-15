@@ -91,6 +91,8 @@ async function fixture(
   const snapshot = {
     id: "goal",
     objective: "Verify work",
+    attachments: 0,
+    elapsedMs: 0,
     phase: "active" as const,
     roundsStarted: 0,
     maxRounds: 2,

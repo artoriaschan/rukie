@@ -8,7 +8,10 @@ export const goalCompletionAudit =
 export const goalSchema = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
-    objective: Type.String({ minLength: 1 }),
+    objective: Type.String(),
+    attachments: Type.Integer({ minimum: 0 }),
+    elapsedMs: Type.Number({ minimum: 0 }),
+    activeSince: Type.Optional(Type.Number({ minimum: 0 })),
     phase: Type.Union([
       Type.Literal("active"),
       Type.Literal("paused"),
@@ -31,13 +34,14 @@ export const goalState: ToolStateDefinition = defineToolState({
   history: "rewindable",
   fork: "asOf",
   name: "goal",
-  version: 1,
+  version: 2,
   parse(version, value) {
-    if (version !== 1) throw new Error(`Unsupported goal version: ${version}`);
+    if (version !== 2) throw new Error(`Unsupported goal version: ${version}`);
     if (value === null) return null;
     if (
       !Value.Check(goalSchema, value) ||
-      !value.objective.trim() ||
+      (!value.objective.trim() && value.attachments === 0) ||
+      (value.activeSince !== undefined && value.phase !== "active") ||
       value.roundsStarted > value.maxRounds ||
       (value.phase === "blocked" ? !value.blockedReason?.trim() : value.blockedReason !== undefined)
     )
@@ -47,9 +51,26 @@ export const goalState: ToolStateDefinition = defineToolState({
   renderReminder(value) {
     if (!Value.Check(goalSchema, value) || value.phase === "complete") return undefined;
     return (
-      `Current Goal:\nObjective: ${JSON.stringify(value.objective)}\nPhase: ${value.phase}\nround ${value.roundsStarted}/${value.maxRounds}` +
+      `Current Goal:\n${renderGoalObjective(value)}\nPhase: ${value.phase}\nround ${value.roundsStarted}/${value.maxRounds}` +
       (value.blockedReason ? `\nBlocked reason: ${value.blockedReason}` : "") +
       `\n${goalCompletionAudit}`
     );
   },
 });
+
+/** Image bytes belong to the first human Goal message, never to Tool State. */
+export function renderGoalObjective(goal: Pick<GoalSnapshot, "objective" | "attachments">): string {
+  return goal.objective
+    ? `Objective: ${JSON.stringify(goal.objective)}`
+    : `Objective: Follow the target in the first Goal message's attachments (${goal.attachments} images).`;
+}
+
+/** Settle an active wall-clock segment; continuing work starts a fresh segment at this boundary. */
+export function settleGoalTime(goal: GoalSnapshot, now: number, armed: boolean): GoalSnapshot {
+  const { activeSince, ...snapshot } = goal;
+  return {
+    ...snapshot,
+    elapsedMs: goal.elapsedMs + (activeSince === undefined ? 0 : Math.max(0, now - activeSince)),
+    ...(armed ? { activeSince: now } : {}),
+  };
+}

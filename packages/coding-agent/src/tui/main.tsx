@@ -67,7 +67,7 @@ export async function runTui(options: CliOptions, io: TuiIo): Promise<number> {
           // Session's Goal ask-mode warning has no typed diagnostic; translate this known copy.
           const localized =
             warning ===
-            "Goal continuation may wait for permissions in ask mode. Consider switching to auto-review."
+            "Goal continuation may wait for permissions. Consider switching to full-access."
               ? t("goal.permission-warning")
               : warning;
           // MCP and hook diagnostics also arrive as inline SessionEvent notices.

@@ -209,7 +209,7 @@ const zh = {
   "command.clear": "新建会话",
   "command.rewind": "回退消息与文件",
   "command.goal": "设定和管理目标",
-  "goal.permission-warning": "ask 模式下 Goal 续跑可能等待审批，建议切换到 auto-review。",
+  "goal.permission-warning": "Goal 续跑可能等待审批，建议切换到完全访问。",
   "goal.armed": "已启用",
   "goal.disarmed": "已停用",
   "goal.empty": "当前没有 goal。",
@@ -689,7 +689,7 @@ const en = {
   "command.rewind": "Rewind messages and files",
   "command.goal": "Set and manage a goal",
   "goal.permission-warning":
-    "Goal continuation may wait for permissions in ask mode. Consider switching to auto-review.",
+    "Goal continuation may wait for permissions. Consider switching to full-access.",
   "goal.armed": "armed",
   "goal.disarmed": "disarmed",
   "goal.empty": "No goal is currently set.",

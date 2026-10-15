@@ -40,7 +40,39 @@ function goalReminders(events: readonly SessionEvent[]) {
   );
 }
 
-test("creating a Goal immediately runs rounds up to its cap without user prompt anchors", async () => {
+const goalPng =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSf8AAAAASUVORK5CYII=";
+
+test("a Goal starts with its visible human text and images before internal rounds", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  const images = [{ data: goalPng, mimeType: "image/png", name: "target.png" }];
+  const accepted = await session.createGoal("Match this target", { images, maxRounds: 2 });
+  await session.waitForRequest(accepted.requestId);
+  expect(
+    fake.contexts[0]!.messages.find(
+      (message) =>
+        message.role === "user" &&
+        Array.isArray(message.content) &&
+        message.content.some((part) => part.type === "image"),
+    ),
+  ).toMatchObject({
+    content: [
+      { type: "text", text: "Match this target" },
+      { type: "image", data: goalPng, mimeType: "image/png" },
+    ],
+  });
+  expect(JSON.stringify(fake.contexts[0])).not.toContain("<goal_round>");
+  expect(JSON.stringify(fake.contexts[1])).toContain("Round: 2/2");
+  const human = session.messages.find((message) => message.role === "user")!;
+  expect(human).toMatchObject({ imageNames: ["target.png"] });
+  expect(human).not.toHaveProperty("source");
+  expect(session.goal).toMatchObject({ attachments: 1, roundsStarted: 2 });
+  expect(JSON.stringify(session.toolState("goal"))).not.toContain(goalPng);
+});
+
+test("creating a Goal runs its human input and later internal rounds up to its cap", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
   const events: SessionEvent[] = [];
@@ -58,7 +90,8 @@ test("creating a Goal immediately runs rounds up to its cap without user prompt 
   });
   expect(fake.contexts).toHaveLength(2);
   for (const [index, context] of fake.contexts.entries()) {
-    expect(JSON.stringify(context.messages)).toContain(`Round: ${index + 1}/2`);
+    if (index > 0) expect(JSON.stringify(context.messages)).toContain(`Round: ${index + 1}/2`);
+    else expect(JSON.stringify(context.messages)).not.toContain("<goal_round>");
     expect(JSON.stringify(context)).toContain(`round ${index + 1}/2`);
     expect(JSON.stringify(context.messages)).toContain(
       "Audit completion requirement by requirement",
@@ -71,21 +104,27 @@ test("creating a Goal immediately runs rounds up to its cap without user prompt 
     );
   }
   expect(session.messages.filter((message) => message.role === "user")).toMatchObject([
-    { source: "goal" },
+    { content: [{ type: "text", text: "Ship verified support" }] },
     { source: "goal" },
   ]);
-  expect(session.checkpoints()).toEqual([]);
-  expect(session.title).toBe("");
-  expect(
-    events.flatMap((event) =>
-      event.type === "tool_state_changed" && event.name === "goal" ? [event.value] : [],
-    ),
-  ).toMatchObject([
-    { roundsStarted: 0, armed: true },
-    { roundsStarted: 1, armed: true },
-    { roundsStarted: 2, armed: true },
-    { roundsStarted: 2, phase: "blocked", armed: false },
+  expect(session.messages.filter((message) => message.role === "user")[0]).not.toHaveProperty(
+    "source",
+  );
+  expect(session.checkpoints().map((checkpoint) => checkpoint.preview)).toEqual([
+    "Ship verified support",
   ]);
+  expect(session.title).not.toBe("");
+  const changes = events.flatMap((event) =>
+    event.type === "tool_state_changed" && event.name === "goal" ? [event.value] : [],
+  );
+  expect(changes).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ roundsStarted: 0, armed: true }),
+      expect.objectContaining({ roundsStarted: 1, armed: true }),
+      expect.objectContaining({ roundsStarted: 2, armed: true }),
+      expect.objectContaining({ roundsStarted: 2, phase: "blocked", armed: false }),
+    ]),
+  );
 });
 
 test.each(["pause", "clear"] as const)(
@@ -251,7 +290,7 @@ test("resume restores disarmed Goal facts without autorun, and conversation rewi
   });
   expect(resumed.goal).toEqual(session.goal);
   expect(next.contexts).toHaveLength(0);
-  await resumed.rewind(resumed.checkpoints()[1]!.promptEntryId, {
+  await resumed.rewind(resumed.checkpoints()[2]!.promptEntryId, {
     code: false,
     conversation: true,
   });
@@ -321,6 +360,7 @@ test("a queued human Run takes precedence over the next Goal round without incre
   ).toHaveLength(1);
   expect(JSON.stringify(fake.contexts[2]!.messages)).toContain("Round: 2/2");
   expect(session.checkpoints().map((checkpoint) => checkpoint.preview)).toEqual([
+    "finish work",
     "check this detail",
   ]);
 });
@@ -354,28 +394,32 @@ test("Stop hook continuation finishes before the next Goal round and does not co
   expect(session.goal).toMatchObject({ roundsStarted: 2, phase: "blocked" });
 });
 
-test("ask mode warns on create and resume without changing Permission Mode", async () => {
-  dirs = await tempDirs();
-  const warnings: string[] = [];
-  const fake = fakeModel([
-    fauxAssistantMessage("pause", { stopReason: "aborted" }),
-    fauxAssistantMessage("done"),
-  ]);
-  const session = await createSession({
-    ...dirs,
-    ...fake,
-    onWarning: (warning) => warnings.push(warning),
-  });
-  await session.createGoal("warn", { maxRounds: 2 });
-  await session.waitForIdle();
-  await session.resumeGoal();
-  await session.waitForIdle();
-  expect(warnings).toEqual([
-    expect.stringContaining("auto-review"),
-    expect.stringContaining("auto-review"),
-  ]);
-  expect(session.permissionMode).toBe("ask");
-});
+test.each(["ask", "auto-review"] as const)(
+  "%s mode warns on create and resume without changing Permission Mode",
+  async (permissionMode) => {
+    dirs = await tempDirs();
+    const warnings: string[] = [];
+    const fake = fakeModel([
+      fauxAssistantMessage("pause", { stopReason: "aborted" }),
+      fauxAssistantMessage("done"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      onWarning: (warning) => warnings.push(warning),
+      permissionMode,
+    });
+    await session.createGoal("warn", { maxRounds: 2 });
+    await session.waitForIdle();
+    await session.resumeGoal();
+    await session.waitForIdle();
+    expect(warnings).toEqual([
+      expect.stringContaining("full-access"),
+      expect.stringContaining("full-access"),
+    ]);
+    expect(session.permissionMode).toBe(permissionMode);
+  },
+);
 
 async function writeGoalDocument(id: string, value: JsonValue) {
   const lease = await createJsonlStore(dirs).open({ id }, BACKGROUND_CONTEXT);

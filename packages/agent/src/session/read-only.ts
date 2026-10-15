@@ -14,7 +14,7 @@ import { readSessionStorage, SessionMetadataDoc, parseSessionMetadata } from "..
 import { todoState } from "../tools/todo/index.ts";
 import { planState } from "../tools/plan-mode/index.ts";
 import { subagentsState } from "../tools/subagents/index.ts";
-import { goalState } from "../tools/goal/index.ts";
+import { goalState, goalSchema } from "../tools/goal/index.ts";
 import { PendingInputFactsDoc } from "./queued-inputs.ts";
 import { readTranscript, readRunSummaries } from "./history.ts";
 import { transcriptMessages } from "./messages.ts";
@@ -57,6 +57,12 @@ export async function readSessionSnapshot(options: {
         );
         if (state && state.value !== null)
           toolStates[definition.name] = definition.parse(definition.version, state.value);
+      }
+      const goal = toolStates.goal;
+      if (Value.Check(goalSchema, goal)) {
+        // Passive history observes settled facts; it has no live execution authority.
+        const { activeSince: _activeSince, ...snapshot } = goal;
+        toolStates.goal = { ...snapshot, armed: false };
       }
       const plan = toolStates.plan;
       const planMode =

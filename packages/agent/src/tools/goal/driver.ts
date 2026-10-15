@@ -12,7 +12,8 @@ import type { Context } from "@earendil-works/chord";
 import type { RunResult } from "@rukie/shared";
 import { Value } from "typebox/value";
 import { Type } from "typebox";
-import { goalSchema, goalState, type GoalSnapshot } from "./state.ts";
+import type { PromptImage } from "../../images/index.ts";
+import { goalSchema, goalState, settleGoalTime, type GoalSnapshot } from "./state.ts";
 import { renderGoalRoundPrompt } from "./controller.ts";
 
 const activationSchema = Type.Object(
@@ -56,7 +57,11 @@ export function placedGoalRound(value: unknown, round: number) {
 /** Human mutations preserve placement facts committed while their callback awaited admission revocation. */
 export function preservePlacedGoalRounds(current: unknown, next: GoalSnapshot | null) {
   return next && Value.Check(goalSchema, current) && current.id === next.id
-    ? { ...next, roundsStarted: Math.max(next.roundsStarted, current.roundsStarted) }
+    ? {
+        ...next,
+        roundsStarted: Math.max(next.roundsStarted, current.roundsStarted),
+        elapsedMs: Math.max(next.elapsedMs, current.elapsedMs),
+      }
     : next;
 }
 /** Revocation and withdrawal share one native transaction; placed work keeps its result boundary. */
@@ -86,7 +91,17 @@ export async function revokeGoalActivation(tx: Tx, conversationId: ConversationI
 }
 const goalRoundRequest = (requestId: string, taskId: number, round: number) =>
   requestIds.goalRound(requestId, Number(taskId), round);
-type Input = { goalId: string; requestId: string; initialRound: number };
+export type GoalInitialInput = {
+  text: string;
+  images: PromptImage[];
+  previousGoal?: GoalSnapshot | null;
+};
+type Input = {
+  goalId: string;
+  requestId: string;
+  initialRound: number;
+  initialInput?: GoalInitialInput;
+};
 type State =
   | { phase: "admit"; round: number; result: RunResult }
   | { phase: "settle"; round: number; submissionId: SubmissionId; result: RunResult };
@@ -106,14 +121,24 @@ function appendResult(prior: RunResult, answered: RunResult): RunResult {
 
 /** Durable admission and causal settlement; native Generation remains the only model executor. */
 export function createGoalDriver(options: {
-  submit(prompt: string, requestId: string, context: Context): Promise<SubmissionId>;
+  submit(
+    prompt: string,
+    requestId: string,
+    context: Context,
+    initialInput?: GoalInitialInput,
+  ): Promise<SubmissionId>;
+  now?(): number;
   settle(requestId: string, context: Context): Promise<RunResult>;
   settleCancelled(
     requestId: string,
     submissionId: SubmissionId,
     context: Context,
   ): Promise<RunResult>;
-  recoverSubmission(requestId: string, context: Context): Promise<SubmissionId | undefined>;
+  recoverSubmission(
+    requestId: string,
+    context: Context,
+    initialInput?: GoalInitialInput,
+  ): Promise<SubmissionId | undefined>;
 }) {
   return defineTask<Input, State, RunResult>({
     name: "rukie.goal-driver",
@@ -127,7 +152,11 @@ export function createGoalDriver(options: {
           task.state.checkpoint.round,
         );
         // A placed input still needs its receipt even when that round has since paused/completed the Goal.
-        const existing = await options.recoverSubmission(requestId, context);
+        const existing = await options.recoverSubmission(
+          requestId,
+          context,
+          task.state.checkpoint.round === 1 ? task.input.initialInput : undefined,
+        );
         if (existing) {
           await runtime.commit(
             () => ({
@@ -191,7 +220,7 @@ export function createGoalDriver(options: {
             if (task.state.checkpoint.round <= current.maxRounds)
               return { status: "running", checkpoint: task.state.checkpoint };
             owned.value = {
-              ...current,
+              ...settleGoalTime(current, options.now?.() ?? Date.now(), false),
               phase: "blocked",
               blockedReason: `Goal reached its ${current.maxRounds} round limit. Start a new Goal to continue.`,
             };
@@ -208,6 +237,7 @@ export function createGoalDriver(options: {
           renderGoalRoundPrompt({ ...goal, roundsStarted: round - 1, armed: true }),
           requestId,
           context,
+          round === 1 ? task.input.initialInput : undefined,
         );
         await runtime.commit(
           () => ({
@@ -234,6 +264,14 @@ export function createGoalDriver(options: {
           const active = await tx.doc(GoalActivationDoc, runtime.conversationId);
           const snapshot = await tx.doc(goalState.document, runtime.conversationId);
           const goal = snapshot.value;
+          const continuing =
+            answered.success &&
+            !answered.stopReason &&
+            Value.Check(goalSchema, goal) &&
+            goal.phase === "active" &&
+            active.taskId === Number(task.id);
+          if (Value.Check(goalSchema, goal) && goal.id === task.input.goalId)
+            snapshot.value = settleGoalTime(goal, options.now?.() ?? Date.now(), continuing);
           if (
             !answered.success ||
             answered.stopReason ||
@@ -260,7 +298,11 @@ export function createGoalDriver(options: {
       const submission =
         task.state.checkpoint.phase === "settle"
           ? task.state.checkpoint.submissionId
-          : await options.recoverSubmission(requestId, context);
+          : await options.recoverSubmission(
+              requestId,
+              context,
+              task.state.checkpoint.round === 1 ? task.input.initialInput : undefined,
+            );
       const committed = submission
         ? appendResult(
             task.state.checkpoint.result,
@@ -270,7 +312,12 @@ export function createGoalDriver(options: {
       const result = { ...committed, success: false, error: "Goal continuation cancelled" };
       await runtime.commit(async (tx) => {
         const active = await tx.doc(GoalActivationDoc, runtime.conversationId);
-        if (active.taskId === Number(task.id)) active.taskId = null;
+        if (active.taskId === Number(task.id)) {
+          active.taskId = null;
+          const snapshot = await tx.doc(goalState.document, runtime.conversationId);
+          if (Value.Check(goalSchema, snapshot.value))
+            snapshot.value = settleGoalTime(snapshot.value, options.now?.() ?? Date.now(), false);
+        }
         return {
           status: "terminal",
           outcome: { status: "aborted", reason: "Goal continuation cancelled", result },

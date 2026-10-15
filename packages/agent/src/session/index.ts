@@ -256,10 +256,10 @@ export interface Session {
   readonly planMode: boolean;
   /** Persisted Goal facts and authorization from its accepted native continuation task. */
   readonly goal: GoalView | undefined;
-  /** Idle only. Creates and arms a Goal, immediately starting its first internal Run. */
+  /** Idle only. Creates and arms a Goal, immediately starting its first Run with a visible human message. */
   createGoal(
     objective: string,
-    options?: { maxRounds?: number },
+    options?: { maxRounds?: number; images?: PromptImage[] },
   ): Promise<GoalView & { requestId: string }>;
   /** Idle only. Preserves rounds and activation; a complete Goal is replaced with a new one. */
   editGoal(objective: string): Promise<GoalView & { requestId?: string }>;
@@ -1227,24 +1227,42 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       conversation: () => conversation,
       context,
       ledger: () => ledger,
-      submit: async (prompt, requestId, ctx) =>
-        (await awaitWithContext(submit(prompt, [], "followUp", requestId, ctx.abortSignal), ctx))
-          .id,
+      now: () => (options.now?.() ?? new Date()).getTime(),
+      submit: async (prompt, requestId, ctx, initialInput) => {
+        try {
+          return (
+            await awaitWithContext(
+              submit(
+                initialInput?.text ?? prompt,
+                initialInput?.images ?? [],
+                "followUp",
+                requestId,
+                ctx.abortSignal,
+                !!initialInput,
+                initialInput?.previousGoal,
+              ),
+              ctx,
+            )
+          ).id;
+        } catch (error) {
+          if (error instanceof PromptHookBlocked) await goalRuntime.clearActivation(ctx);
+          throw error;
+        }
+      },
       settle: async (requestId, ctx) => awaitWithContext(session.waitForRequest(requestId), ctx),
       settleCancelled: async (requestId, submissionId, ctx) =>
         awaitWithContext(ledger.resultFor(requestId, submissionId), ctx),
     });
     await goalRuntime.restore(state.get("goal"));
+    if (state.get("goal")) await state.refresh();
     const goal = createGoalController({
       isArmed: goalRuntime.isArmed,
       getSnapshot: () => state.get("goal"),
       persist: goalRuntime.persist,
       assertAvailable,
       warn: () => {
-        if (permissionMode === "ask")
-          warn(
-            "Goal continuation may wait for permissions in ask mode. Consider switching to auto-review.",
-          );
+        if (permissionMode !== "full-access")
+          warn("Goal continuation may wait for permissions. Consider switching to full-access.");
       },
     });
     const title = createSessionTitle({
@@ -1664,6 +1682,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           });
           await applyChildHook(result, "hook:Notification");
         };
+        if (firstAttachment && type.name === "fork" && !selection.retained)
+          await goalRuntime.fork(child, context);
         const childState = await createToolState(definitions, harness, child, context);
         const childRecord = await lease.storage.conversation(child.id, context);
         const parentChoice = childRecord?.owner
@@ -2767,7 +2787,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     }, ctx);
                   if (
                     record &&
-                    requestKind(record.requestId) === "human" &&
+                    (requestKind(record.requestId) === "human" ||
+                      goalRuntime.isHumanInput(record.requestId)) &&
                     record.status !== "queued" &&
                     record.entry &&
                     !checkpoints
@@ -3201,11 +3222,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       whenBusy: "reject" | "steer" | "followUp" = "reject",
       requestId = requestIds.human(),
       signal?: AbortSignal,
+      humanGoalInput = false,
+      goalBeforeCreate?: JsonValue,
     ) {
       assertAvailable();
       images.forEach(validateImage);
       const hookResult =
-        requestKind(requestId) === "human"
+        humanGoalInput || requestKind(requestId) === "human"
           ? await hooks.run("UserPromptSubmit", hookInput({ prompt }), { signal })
           : { systemMessages: [], additionalContext: [] };
       signal?.throwIfAborted();
@@ -3243,12 +3266,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         throw new PromptHookBlocked(result);
       }
       const arrivedDuringRun =
-        requestKind(requestId) === "human" &&
+        (humanGoalInput || requestKind(requestId) === "human") &&
         !!(await harness.snapshot(LiveDoc, conversation.id, context))?.run;
       const admissionContext = signal ? withAbortSignal(signal, context) : context;
       await prepareReminders(admissionContext, true, undefined, requestId);
       signal?.throwIfAborted();
-      if (requestKind(requestId) === "human") await title.firstPrompt(prompt);
+      if (humanGoalInput || requestKind(requestId) === "human") await title.firstPrompt(prompt);
       const invocation = skillInvocation(prompt, skills);
       if (invocation)
         await appendReminder({
@@ -3278,11 +3301,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       {
         const facts: Record<string, JsonValue> = {
           requestId,
+          ...(humanGoalInput ? { goalBeforeCreate: goalBeforeCreate ?? null } : {}),
           ...(arrivedDuringRun ? { arrivedDuringRun: true } : {}),
           ...(requestKind(requestId) === "job" ? { displayContent: prompt } : {}),
           ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
           ...(invocation ? { skillInvocation: invocation } : {}),
-          ...(!(requestKind(requestId) === "human")
+          ...(!(humanGoalInput || requestKind(requestId) === "human")
             ? {
                 source:
                   requestKind(requestId) === "goal-round" ||
@@ -3493,6 +3517,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         return goal.view();
       },
       createGoal: async (objective, input) => {
+        input?.images?.forEach(validateImage);
         await goal.create(objective, input);
         const requestId = goalRuntime.activation.requestId;
         if (!requestId) throw new Error("Created Goal has no accepted driver.");
@@ -3705,6 +3730,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           const index = entries.findIndex((entry) => String(entry.id) === id);
           const previous = entries[index - 1];
           if (!previous) throw new Error("Checkpoint has no prior entry anchor.");
+          const targetGoalFacts = entryData(
+            entries.findLast((entry) => {
+              const facts = entryData(entry);
+              return (
+                entry.kind === "rukie.message-facts" &&
+                facts?.entryId === Number(id) &&
+                facts.goalBeforeCreate !== undefined
+              );
+            }),
+          );
           const directory = await subagents.snapshotForRewind(previous.id, context);
           const forkRecord = await conversation.commit(async (tx) => {
             const active = await tx.doc(SessionMetadataDoc);
@@ -3712,6 +3747,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               ownership: { kind: "ownerless" },
             });
             await subagents.restoreFork(tx, fork.id, directory);
+            // The first Goal message rewinds before creation, including a replaced complete Goal.
+            if (targetGoalFacts)
+              (await tx.doc(goalState.document, fork.id)).value = goalState.parse(
+                goalState.version,
+                targetGoalFacts.goalBeforeCreate,
+              );
+
             active.activeConversationId = Number(fork.id);
             active.updatedAt = Date.now();
             return fork;
@@ -3738,6 +3780,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           runSummaries = readRunSummaries(await fullHistory());
           await writeMetadata();
           state = await createToolState(definitions, harness, conversation, context);
+          await goalRuntime.restore(state.get("goal"));
+          if (state.get("goal")) await state.refresh();
           await synchronizeModelState();
           await subagents.rebindParent(conversation, context);
           plan.restore();

@@ -724,7 +724,7 @@ test("Goal preserves SIGINT received while creation is still settling", async ()
       stdout: () => {},
       stderr: (value) => {
         stderr += value;
-        if (value.includes("auto-review")) controller.abort();
+        if (value.includes("full-access")) controller.abort();
       },
       session: {
         cwd: root,
@@ -836,12 +836,9 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
       expect(await running).toBe(0);
       expect(contexts).toHaveLength(2);
       expect(contexts[1]).toContain("actual human task");
-      if (source === "goal")
-        expect(await Bun.file(join(root, "human-prompts")).exists()).toBe(false);
-      else
-        expect(
-          (await Bun.file(join(root, "human-prompts")).text()).match(/hook_event_name/g),
-        ).toHaveLength(1);
+      expect(
+        (await Bun.file(join(root, "human-prompts")).text()).match(/hook_event_name/g),
+      ).toHaveLength(1);
       if (source === "stdin-stream-json") {
         const events = stdout
           .trim()

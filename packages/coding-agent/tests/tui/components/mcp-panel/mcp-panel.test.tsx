@@ -517,6 +517,8 @@ test("a 40 by 12 allocation keeps MCP, Goal, Todo, Subagent previews and prompt 
             id: "goal",
             objective: "goal",
             phase: "active",
+            attachments: 0,
+            elapsedMs: 0,
             roundsStarted: 0,
             maxRounds: 10,
             armed: true,
