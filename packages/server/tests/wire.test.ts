@@ -26,6 +26,34 @@ test("wire preserves an optional image name in prompt input", () => {
   expect(parseWireCommand(command)).toEqual(command);
 });
 
+test("Goal commands accept text or images without weakening ordinary input validation", () => {
+  const image = { data: "base64", mimeType: "image/png", name: "target.png" };
+  const create = { id: "goal", type: "session.create", project: null } as const;
+  const existing = { id: "goal", type: "session.goal_create", sessionId: "s" } as const;
+  for (const base of [{ ...create, goal: true as const }, existing]) {
+    for (const input of [{ text: "target" }, { text: "", images: [image] }]) {
+      const command = { ...base, ...input };
+      expect(parseWireCommand(command)).toEqual(command);
+    }
+    for (const input of [
+      { text: "" },
+      { text: "", images: [] },
+      { text: "", images: [{ ...image, secret: "extra" }] },
+      { text: "target", extra: true },
+    ])
+      expect(parseWireCommand({ ...base, ...input })).toBeUndefined();
+  }
+  expect(parseWireCommand({ ...create, text: "hello" })).toBeDefined();
+  expect(parseWireCommand({ ...create, text: "", images: [image] })).toBeUndefined();
+  expect(parseWireCommand({ ...create, goal: false, text: "target" })).toBeUndefined();
+  for (const type of ["session.goal_pause", "session.goal_resume", "session.goal_clear"] as const) {
+    const command = { id: "goal", type, sessionId: "s" };
+    expect(parseWireCommand(command)).toEqual(command);
+    expect(parseWireCommand({ id: "goal", type })).toBeUndefined();
+    expect(parseWireCommand({ ...command, text: "extra" })).toBeUndefined();
+  }
+});
+
 test("model service wire accepts bounded plaintext replacement and rejects private ciphertext and extra fields", () => {
   const provider = {
     id: "fixture",

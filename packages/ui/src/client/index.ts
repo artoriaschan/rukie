@@ -1,4 +1,9 @@
-import { WIRE_SUBPROTOCOL, type WireCommand, type WireErrorCode } from "@rukie/shared";
+import {
+  isWireUserVisibleErrorCode,
+  WIRE_SUBPROTOCOL,
+  type WireCommand,
+  type WireErrorCode,
+} from "@rukie/shared";
 import type { DesktopHost } from "../host";
 
 export type ConnectionState = "connected" | "reconnecting" | "disconnected";
@@ -189,6 +194,7 @@ export function createWireClient(host: Pick<DesktopHost, "getConnection">) {
 
 function isErrorCode(code: string): code is WireErrorCode {
   return (
+    isWireUserVisibleErrorCode(code) ||
     code === "worktree_failed" ||
     code === "worktree_session" ||
     code === "branch_invalid" ||

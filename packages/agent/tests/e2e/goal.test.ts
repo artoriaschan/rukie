@@ -134,7 +134,8 @@ test.each(["pause", "clear"] as const)(
     const started = Promise.withResolvers<void>();
     const finish = Promise.withResolvers<void>();
     const fake = fakeModel([
-      async () => {
+      async (_context, options) => {
+        options?.signal?.addEventListener("abort", () => finish.resolve(), { once: true });
         started.resolve();
         await finish.promise;
         return fauxAssistantMessage("current answer finished");
@@ -143,9 +144,9 @@ test.each(["pause", "clear"] as const)(
     const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
     await session.createGoal("finish safely");
     await started.promise;
-    await expect(session.createGoal("other")).rejects.toThrow("idle");
-    await expect(session.editGoal("other")).rejects.toThrow("idle");
-    await expect(session.resumeGoal()).rejects.toThrow("idle");
+    await expect(session.createGoal("other")).rejects.toMatchObject({ code: "goal-busy" });
+    await expect(session.editGoal("other")).rejects.toMatchObject({ code: "goal-busy" });
+    await expect(session.resumeGoal()).rejects.toMatchObject({ code: "goal-busy" });
     if (action === "pause") await session.pauseGoal();
     else await session.clearGoal();
     expect(session.running).toBe(true);

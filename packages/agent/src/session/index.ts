@@ -1259,7 +1259,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       isArmed: goalRuntime.isArmed,
       getSnapshot: () => state.get("goal"),
       persist: goalRuntime.persist,
-      assertAvailable,
+      assertAvailable: (idle) => {
+        assertAvailable();
+        if (
+          idle &&
+          (mcpManager.busy ||
+            selectingModel ||
+            foregroundAdmission ||
+            manualCompaction ||
+            observation?.running())
+        )
+          throw createUserVisibleError("Session is busy; it must be idle to operate Goal.", {
+            code: "goal-busy",
+            params: {},
+          });
+      },
       warn: () => {
         if (permissionMode !== "full-access")
           warn("Goal continuation may wait for permissions. Consider switching to full-access.");

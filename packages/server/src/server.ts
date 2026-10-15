@@ -33,6 +33,7 @@ import {
   type WireSessionSummary,
   type WireWorktree,
   WIRE_SUBPROTOCOL,
+  isWireUserVisibleErrorCode,
   ModelServiceSchema,
   ModelPriceRequestSchema,
   parseModelServiceSave,
@@ -83,6 +84,26 @@ class CommandError extends Error {
   ) {
     super(code);
   }
+}
+function publicWireError(error: unknown) {
+  if (
+    !(error instanceof Error) ||
+    !("code" in error) ||
+    typeof error.code !== "string" ||
+    !isWireUserVisibleErrorCode(error.code)
+  )
+    return undefined;
+  const code = error.code;
+  const value = "params" in error ? error.params : undefined;
+  const params: Record<string, string | number> = {};
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    for (const [key, item] of Object.entries(value)) {
+      if (typeof item !== "string" && typeof item !== "number") return { code };
+      params[key] = item;
+    }
+    return { code, params };
+  }
+  return { code };
 }
 class ModelServiceFailure extends CommandError {
   constructor(
@@ -734,15 +755,16 @@ export async function startServer(options: ServerOptions) {
           });
       }
     };
-    const startRun = async (
+    const startRequest = async <Result extends { requestId?: string }>(
       session: Session,
-      text: string,
-      images?: Extract<WireCommand, { type: "prompt" }>["images"],
-    ) => {
+      accept: () => Promise<Result>,
+    ): Promise<Result> => {
       admissions.set(session.id, (admissions.get(session.id) ?? 0) + 1);
       refreshIdle(session);
       try {
-        const requestId = await session.followUp(text, { images });
+        const accepted = await accept();
+        const { requestId } = accepted;
+        if (!requestId) return accepted;
         await runtime.runPromise(
           Effect.gen(function* () {
             yield* FiberMap.run(
@@ -771,7 +793,7 @@ export async function startServer(options: ServerOptions) {
             );
           }),
         );
-        return requestId;
+        return accepted;
       } finally {
         admissions.set(session.id, (admissions.get(session.id) ?? 1) - 1);
         refreshIdle(session);
@@ -1190,7 +1212,11 @@ export async function startServer(options: ServerOptions) {
             if (command.project !== null)
               await localDatabase.bindSession(session.id, command.project, worktree?.id);
             subscribe(socket, session);
-            const requestId = await startRun(session, command.text, command.images);
+            const { requestId } = await startRequest(session, async () =>
+              command.goal
+                ? session.createGoal(command.text, { images: command.images })
+                : { requestId: await session.followUp(command.text, { images: command.images }) },
+            );
             await changed();
             return { sessionId: session.id, requestId };
           });
@@ -1255,7 +1281,9 @@ export async function startServer(options: ServerOptions) {
           subscriptions.get(socket.raw)?.delete(command.sessionId);
           if (sessions.has(command.sessionId)) refreshIdle(sessions.get(command.sessionId)!);
           return {};
-        case "prompt": {
+        case "prompt":
+        case "session.goal_create":
+        case "session.goal_resume": {
           await refreshModels();
           const session = await find(command.sessionId);
           if (!options.sessionOptions?.models) {
@@ -1270,8 +1298,23 @@ export async function startServer(options: ServerOptions) {
           }
           subscribe(socket, session);
           state(socket, session);
-          const requestId = await startRun(session, command.text, command.images);
-          return { requestId };
+          return startRequest(session, async () => {
+            if (command.type === "session.goal_resume") return session.resumeGoal();
+            if (command.type === "session.goal_create")
+              return session.createGoal(command.text, { images: command.images });
+            return { requestId: await session.followUp(command.text, { images: command.images }) };
+          });
+        }
+        case "session.goal_pause": {
+          const session = await find(command.sessionId);
+          subscribe(socket, session);
+          return session.pauseGoal();
+        }
+        case "session.goal_clear": {
+          const session = await find(command.sessionId);
+          subscribe(socket, session);
+          await session.clearGoal();
+          return {};
         }
         case "abort": {
           const session = await find(command.sessionId);
@@ -1673,20 +1716,23 @@ export async function startServer(options: ServerOptions) {
               (result) =>
                 send(socket, { type: "response", id: command.id, result } satisfies WireResponse),
               (error) => {
+                const publicError = publicWireError(error);
                 const code =
                   error instanceof CommandError || error instanceof HostError
                     ? error.code
-                    : error instanceof Error && "code" in error && error.code === "session-busy"
-                      ? "session_busy"
-                      : error instanceof Error &&
-                          "code" in error &&
-                          error.code === "session-not-found"
-                        ? "session_not_found"
+                    : publicError
+                      ? publicError.code
+                      : error instanceof Error && "code" in error && error.code === "session-busy"
+                        ? "session_busy"
                         : error instanceof Error &&
                             "code" in error &&
-                            error.code === "session-title-empty"
-                          ? "invalid_command"
-                          : "internal";
+                            error.code === "session-not-found"
+                          ? "session_not_found"
+                          : error instanceof Error &&
+                              "code" in error &&
+                              error.code === "session-title-empty"
+                            ? "invalid_command"
+                            : "internal";
                 if (code === "internal") warning(String(error));
                 send(socket, {
                   type: "response",
@@ -1695,7 +1741,9 @@ export async function startServer(options: ServerOptions) {
                     code,
                     ...(error instanceof CommandError && error.params
                       ? { params: error.params }
-                      : {}),
+                      : publicError?.params
+                        ? { params: publicError.params }
+                        : {}),
                   },
                 });
               },
