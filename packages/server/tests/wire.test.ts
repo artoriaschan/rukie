@@ -79,3 +79,53 @@ test("model service schema validates optional enablement and a closed provider i
   expect(save({ ...provider, enabled: "false" })).toBeUndefined();
   expect(save({ ...provider, icon: "unknown" })).toBeUndefined();
 });
+
+test("plan mode commands and discriminated interaction replies validate at the wire boundary", () => {
+  const identity = { requestId: "r", taskId: 1, conversationId: 2, epoch: "e" };
+  const commands = [
+    { type: "session.create", project: null, text: "plan", planMode: true },
+    { type: "session.set_plan_mode", sessionId: "s", on: false },
+    { type: "interaction.reply", identity, kind: "permission", reply: "allow" },
+    {
+      type: "interaction.reply",
+      identity,
+      kind: "question",
+      reply: { answers: [{ selected: ["A"], custom: "note" }] },
+    },
+    { type: "interaction.reply", identity, kind: "question", reply: "declined" },
+    {
+      type: "interaction.reply",
+      identity,
+      kind: "plan_review",
+      reply: { kind: "revise", feedback: "simplify" },
+    },
+  ];
+  for (const command of commands) {
+    const parsed: unknown = parseWireCommand({ id: "1", ...command });
+    expect(parsed).toEqual({ id: "1", ...command });
+  }
+  for (const command of [
+    { type: "interaction.reply", identity, reply: "allow" },
+    { type: "interaction.reply", identity, kind: "permission", reply: "declined" },
+    {
+      type: "interaction.reply",
+      identity,
+      kind: "question",
+      reply: { answers: [{ selected: [1] }] },
+    },
+    { type: "interaction.reply", identity, kind: "plan_review", reply: { kind: "revise" } },
+    {
+      type: "interaction.reply",
+      identity,
+      kind: "plan_review",
+      reply: { kind: "approve", outputRef: { id: "task-26-result" } },
+    },
+    {
+      type: "interaction.reply",
+      identity,
+      kind: "plan_review",
+      reply: { kind: "revise", feedback: "", outputRef: { id: "task-26-result" } },
+    },
+  ])
+    expect(parseWireCommand({ id: "1", ...command })).toBeUndefined();
+});

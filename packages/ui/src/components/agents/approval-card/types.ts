@@ -12,6 +12,7 @@ export interface ApprovalCardOption {
   value: string;
   label: string;
   disabled?: boolean;
+  description?: string;
 }
 
 export interface ApprovalCardQuestion {
@@ -33,6 +34,11 @@ export interface ApprovalCardAnswer {
 export type ApprovalCardAnswers = Record<string, ApprovalCardAnswer>;
 
 export interface ApprovalCardProps {
+  /** C43 is opt-in so existing Approval Card consumers retain their geometry. */
+  variant?: "default" | "interaction";
+  regionLabel?: string;
+  source?: ReactNode;
+  shortcutsEnabled?: boolean;
   title?: ReactNode;
   description?: ReactNode;
   children?: ReactNode;

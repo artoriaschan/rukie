@@ -55,7 +55,7 @@ const SessionIndexSchema = Type.Object({
   projectId: Type.Union([Type.String(), Type.Null()]),
   worktree: Type.Union([Type.Object({ id: Type.String(), branch: Type.String() }), Type.Null()]),
   running: Type.Optional(Type.Boolean()),
-  waitingPermission: Type.Optional(Type.Boolean()),
+  waitingInteraction: Type.Optional(Type.Boolean()),
 });
 export type ApplicationRegistry = Static<typeof RegistrySchema>;
 export type CredentialChange =

@@ -82,7 +82,10 @@ test("Session snapshots replace deltas, preserve busy presentation and expire on
     sessionId: "a",
     identity: { epoch: "old", requestId: "r", taskId: 1, conversationId: 1 },
     request: {
+      kind: "permission",
+      identity: { epoch: "old", requestId: "r", taskId: 1, conversationId: 1 },
       toolName: "bash",
+      args: {},
       toolCallId: "call",
       mode: "ask",
       sessionAllow: { kind: "tool", rule: "bash" },
@@ -93,7 +96,10 @@ test("Session snapshots replace deltas, preserve busy presentation and expire on
     sessionId: "a",
     identity: { epoch: "new", requestId: "r", taskId: 1, conversationId: 1 },
     request: {
+      kind: "permission",
+      identity: { epoch: "new", requestId: "r", taskId: 1, conversationId: 1 },
       toolName: "read",
+      args: {},
       toolCallId: "call",
       mode: "ask",
       sessionAllow: { kind: "tool", rule: "read" },
@@ -235,6 +241,7 @@ test("permission placement captures the current partial call without rebinding r
     sessionId: "a",
     identity,
     request: {
+      kind: "permission",
       identity,
       toolName: "bash",
       toolCallId: "same",
@@ -257,6 +264,7 @@ test("permission placement captures the current partial call without rebinding r
     entryId: "new",
     messages: [assistant("new", 20)],
   });
+  if (request.kind !== "permission") throw new Error("Expected permission request");
   store.resolveInteraction("a", "p", { request, reply: "allow" });
   expect(store.getState().views.a!.permissionDecisions!.p!.request.placement?.timestamp).toBe(20);
 });
@@ -287,6 +295,7 @@ test("subagent permissions retain their parent activity position instead of matc
     sessionId: "a",
     identity,
     request: {
+      kind: "permission",
       identity,
       toolName: "bash",
       toolCallId: "same",
@@ -445,4 +454,63 @@ test("Project edit and removal snapshots preserve Session membership facts, pin 
     pinned: ["s"],
     archived: ["archived"],
   });
+});
+
+test("store validates and queues question and plan review envelopes alongside permissions and projects plan mode", () => {
+  const store = createDesktopStore();
+  const identity = { epoch: "q", requestId: "r", taskId: 1, conversationId: 1 };
+  const question = {
+    kind: "question",
+    identity,
+    toolCallId: "ask",
+    questions: [
+      {
+        header: "Scope",
+        question: "Which scope?",
+        options: [
+          { label: "Small", description: "One file" },
+          { label: "Large", description: "All files" },
+        ],
+      },
+    ],
+    origin: { agentId: "child", description: "Research" },
+  };
+  store.receive({ type: "interaction_requested", sessionId: "a", identity, request: question });
+  const planIdentity = { ...identity, epoch: "p", taskId: 2 };
+  store.receive({
+    type: "interaction_requested",
+    sessionId: "a",
+    identity: planIdentity,
+    request: { kind: "plan_review", identity: planIdentity, toolCallId: "review", plan: "# Plan" },
+  });
+  expect(Object.values(store.getState().views.a!.interactions).map((item) => item.kind)).toEqual([
+    "question",
+    "plan_review",
+  ]);
+  store.receive({
+    type: "interaction_requested",
+    sessionId: "a",
+    identity: { ...identity, epoch: "bad" },
+    request: { ...question, questions: [{ header: "Scope" }] },
+  });
+  expect(Object.keys(store.getState().views.a!.interactions)).toEqual(["q", "p"]);
+  store.receive({ type: "interaction_settled", sessionId: "a", identity });
+  expect(Object.keys(store.getState().views.a!.interactions)).toEqual(["p"]);
+  store.receive({
+    type: "snapshot",
+    sessionId: "a",
+    model: "test/script",
+    messages: [],
+    compactions: [],
+    planMode: true,
+    toolStates: { plan: { active: true } },
+  });
+  expect(store.getState().views.a!.planMode).toBe(true);
+  store.receive({
+    type: "tool_state_changed",
+    sessionId: "a",
+    name: "plan",
+    value: { active: false },
+  });
+  expect(store.getState().views.a!.planMode).toBe(false);
 });

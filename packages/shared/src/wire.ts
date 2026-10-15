@@ -1,7 +1,7 @@
 import type { ProviderIconKey } from "./model-services.ts";
 import { Type, type Static, type TSchema } from "typebox";
 import type { ContextReport } from "./context-report.ts";
-import type { ToolCallView } from "./tool-view.ts";
+import { ToolCallViewSchema } from "./tool-view.ts";
 import {
   PERMISSION_MODES,
   THINKING_LEVELS,
@@ -23,6 +23,93 @@ const identity = Type.Object(
   { requestId: id, taskId: Type.Integer(), conversationId: Type.Integer(), epoch: id },
   { additionalProperties: false },
 );
+const interactionOrigin = Type.Optional(
+  Type.Object({ agentId: id, description: Type.String() }, { additionalProperties: false }),
+);
+const interactionBase = { identity, toolCallId: Type.String(), origin: interactionOrigin };
+export const WirePermissionRequestSchema = Type.Object(
+  {
+    ...interactionBase,
+    kind: Type.Literal("permission"),
+    toolName: Type.String(),
+    args: Type.Unknown(),
+    callView: Type.Optional(ToolCallViewSchema),
+    mode: Type.Enum([...PERMISSION_MODES]),
+    reason: Type.Optional(Type.String()),
+    sessionAllow: Type.Object(
+      { kind: Type.Enum(["command", "directory", "domain", "tool"]), rule: Type.String() },
+      { additionalProperties: false },
+    ),
+  },
+  { additionalProperties: false },
+);
+export const WireQuestionRequestSchema = Type.Object(
+  {
+    ...interactionBase,
+    kind: Type.Literal("question"),
+    questions: Type.Array(
+      Type.Object(
+        {
+          question: Type.String(),
+          header: Type.String(),
+          multiSelect: Type.Optional(Type.Boolean()),
+          options: Type.Array(
+            Type.Object(
+              { label: Type.String(), description: Type.String() },
+              { additionalProperties: false },
+            ),
+            { minItems: 2, maxItems: 4 },
+          ),
+        },
+        { additionalProperties: false },
+      ),
+      { minItems: 1, maxItems: 4 },
+    ),
+  },
+  { additionalProperties: false },
+);
+export const WirePlanReviewRequestSchema = Type.Object(
+  { ...interactionBase, kind: Type.Literal("plan_review"), plan: Type.String() },
+  { additionalProperties: false },
+);
+export const WireInteractionRequestSchema = Type.Union([
+  WirePermissionRequestSchema,
+  WireQuestionRequestSchema,
+  WirePlanReviewRequestSchema,
+]);
+export const WirePermissionReplySchema = Type.Enum(["deny", "allow-session", "allow"]);
+export const WireQuestionReplySchema = Type.Union([
+  Type.Literal("declined"),
+  Type.Object(
+    {
+      answers: Type.Array(
+        Type.Object(
+          {
+            selected: Type.Array(Type.String(), { uniqueItems: true }),
+            custom: Type.Optional(Type.String()),
+          },
+          { additionalProperties: false },
+        ),
+        { minItems: 1, maxItems: 4 },
+      ),
+    },
+    { additionalProperties: false },
+  ),
+]);
+export const WirePlanReviewReplySchema = Type.Union([
+  Type.Object({ kind: Type.Literal("approve") }, { additionalProperties: false }),
+  Type.Object(
+    { kind: Type.Literal("revise"), feedback: Type.String() },
+    { additionalProperties: false },
+  ),
+  Type.Object({ kind: Type.Literal("takeover") }, { additionalProperties: false }),
+]);
+export type WireInteractionRequest = Static<typeof WireInteractionRequestSchema>;
+export type WireQuestionRequest = Static<typeof WireQuestionRequestSchema>;
+export type WirePlanReviewRequest = Static<typeof WirePlanReviewRequestSchema>;
+export type WirePermissionReply = Static<typeof WirePermissionReplySchema>;
+export type WireQuestionReply = Static<typeof WireQuestionReplySchema>;
+export type WirePlanReviewReply = Static<typeof WirePlanReviewReplySchema>;
 function command<const Name extends string, Fields extends Record<string, TSchema>>(
   name: Name,
   fields: Fields,
@@ -97,6 +184,7 @@ export const WireCommandSchema = Type.Union([
       ),
     ),
     permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
+    planMode: Type.Optional(Type.Boolean()),
     worktree: Type.Optional(Type.Boolean()),
   }),
   command("session.subscribe", session),
@@ -128,9 +216,21 @@ export const WireCommandSchema = Type.Union([
     ...session,
     mode: Type.Enum([...PERMISSION_MODES]),
   }),
+  command("session.set_plan_mode", { ...session, on: Type.Boolean() }),
   command("interaction.reply", {
     identity,
-    reply: Type.Union([Type.Literal("deny"), Type.Literal("allow-session"), Type.Literal("allow")]),
+    kind: Type.Literal("permission"),
+    reply: WirePermissionReplySchema,
+  }),
+  command("interaction.reply", {
+    identity,
+    kind: Type.Literal("question"),
+    reply: WireQuestionReplySchema,
+  }),
+  command("interaction.reply", {
+    identity,
+    kind: Type.Literal("plan_review"),
+    reply: WirePlanReviewReplySchema,
   }),
   command("preferences.set", {
     preferences: WirePreferencesSchema,
@@ -155,6 +255,8 @@ export type WireErrorCode =
   | "invalid_command"
   | "not_queued"
   | "interaction_stale"
+  | "interaction_kind_mismatch"
+  | "interaction_invalid_reply"
   | "unsupported"
   | "internal";
 export type WireResponse<Result = unknown> = { type: "response"; id: string } & (
@@ -196,7 +298,7 @@ export interface WireSessionSummary {
   projectId: string | null;
   worktree: { id: string; branch: string } | null;
   running?: boolean;
-  waitingPermission?: boolean;
+  waitingInteraction?: boolean;
 }
 
 export interface WireInteractionIdentity {
@@ -205,17 +307,7 @@ export interface WireInteractionIdentity {
   conversationId: number;
   epoch: string;
 }
-export interface WirePermissionRequest {
-  identity: WireInteractionIdentity;
-  toolCallId: string;
-  toolName: string;
-  args: unknown;
-  callView?: ToolCallView;
-  mode: PermissionMode;
-  reason?: string;
-  sessionAllow: { kind: "command" | "directory" | "domain" | "tool"; rule: string };
-  origin?: { agentId: string; description: string };
-}
+export type WirePermissionRequest = Static<typeof WirePermissionRequestSchema>;
 export type WirePreferences = Extract<WireCommand, { type: "preferences.set" }>["preferences"];
 export interface WireModelCatalogEntry {
   spec: string;
@@ -246,7 +338,7 @@ export type WireServerMessage<Event> =
       type: "interaction_requested";
       sessionId: string;
       identity: WireInteractionIdentity;
-      request: WirePermissionRequest;
+      request: WireInteractionRequest;
     }
   | { type: "interaction_settled"; sessionId: string; identity: WireInteractionIdentity }
   | {

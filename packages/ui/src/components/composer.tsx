@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Paperclip,
   Square,
+  ListTodo,
 } from "lucide-react";
 import {
   PERMISSION_MODES,
@@ -44,6 +45,8 @@ export interface ComposerProps {
   running: boolean;
   permissionMode: PermissionMode;
   onPermission: (mode: PermissionMode) => void;
+  planMode: boolean;
+  onPlanMode: (on: boolean) => void;
   models: WireModelCatalogEntry[];
   model?: string;
   thinkingLevel?: ThinkingLevel;
@@ -188,14 +191,26 @@ export function Composer(props: ComposerProps) {
                 className="conversation-tools-menu conversation-pencil"
               >
                 <ScrollArea className="conversation-tools-scroll" viewportLabel={t("app.add")}>
-                  <Menu.DropdownMenuLabel>{t("app.add")}</Menu.DropdownMenuLabel>
-                  <Menu.DropdownMenuItem
-                    className="conversation-tool-option"
-                    onSelect={() => file.current?.click()}
-                  >
-                    <Paperclip className="size-3" aria-hidden="true" />
-                    <span>{t("app.attach")}</span>
-                  </Menu.DropdownMenuItem>
+                  <Menu.DropdownMenuGroup>
+                    <Menu.DropdownMenuLabel>{t("app.add")}</Menu.DropdownMenuLabel>
+                    <Menu.DropdownMenuItem
+                      className="conversation-tool-option"
+                      onSelect={() => file.current?.click()}
+                    >
+                      <Paperclip className="size-3" aria-hidden="true" />
+                      <span>{t("app.attach")}</span>
+                    </Menu.DropdownMenuItem>
+                    <Menu.DropdownMenuItem
+                      className="conversation-tool-option"
+                      onSelect={() => props.onPlanMode(!props.planMode)}
+                    >
+                      <ListTodo className="size-3" aria-hidden="true" />
+                      <span>{t("planMode.label")}</span>
+                      <span className="ml-auto text-ui-sm text-muted-foreground">
+                        {t(props.planMode ? "planMode.on" : "planMode.off")}
+                      </span>
+                    </Menu.DropdownMenuItem>
+                  </Menu.DropdownMenuGroup>
                 </ScrollArea>
               </Menu.DropdownMenuContent>
             </Menu.DropdownMenu>
@@ -251,6 +266,22 @@ export function Composer(props: ComposerProps) {
                 </Menu.DropdownMenuRadioGroup>
               </Menu.DropdownMenuContent>
             </Menu.DropdownMenu>
+            {props.planMode && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={props.disabled}
+                className="conversation-plan-mode"
+                aria-label={t("planMode.close")}
+                onClick={() => props.onPlanMode(false)}
+              >
+                <span className="conversation-plan-icon" aria-hidden="true">
+                  <ListTodo className="conversation-plan-rest" />
+                  <X className="conversation-plan-close" />
+                </span>
+                <span>{t("planMode.label")}</span>
+              </Button>
+            )}
           </>
         }
         trailingAction={

@@ -58,7 +58,7 @@ import { NewChatSelector, parseProjectGit } from "./new-chat-selector";
 export type AppHost = Pick<DesktopHost, "getConnection" | "modelServices"> &
   Partial<Omit<DesktopHost, "getConnection" | "modelServices">>;
 export interface ConversationProps {
-  footer: (approval?: ReactNode) => ReactNode;
+  footer: (approval?: ReactNode, interaction?: boolean) => ReactNode;
   sessionId: string;
   view: SessionViewState;
   connected: boolean;
@@ -238,6 +238,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       };
     });
   const [permission, setPermission] = useState<PermissionMode>("ask");
+  const [newPlanMode, setNewPlanMode] = useState(false);
   const [model, setModel] = useState<ModelSelection>();
   const catalogDefault = state.models.find((item) => item.authenticated);
   const newSessionModel =
@@ -319,7 +320,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       (session) =>
         projectId === session.projectId &&
         (session.running ||
-          session.waitingPermission ||
+          session.waitingInteraction ||
           state.views[session.id]?.running ||
           state.views[session.id]?.busy ||
           Object.keys(state.views[session.id]?.interactions ?? {}).length > 0),
@@ -568,6 +569,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           images: attachments,
           modelSelection: newSessionModel,
           permissionMode: permission,
+          planMode: newPlanMode,
           ...(projectGit?.repository && useWorktree ? { worktree: true } : {}),
         });
         if (
@@ -648,6 +650,13 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         setPermission(mode);
       });
     else setPermission(mode);
+  };
+  const setPlanMode = (on: boolean) => {
+    if (state.selected)
+      safe(async () => {
+        await client.request({ type: "session.set_plan_mode", sessionId: state.selected!, on });
+      });
+    else setNewPlanMode(on);
   };
   const setSelection = (selection: ModelSelection) => {
     if (state.selected)
@@ -784,6 +793,8 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       disabled={!connected}
       submitting={sending}
       running={Boolean(view.running)}
+      planMode={state.selected ? (view.planMode ?? false) : newPlanMode}
+      onPlanMode={setPlanMode}
       permissionMode={view.permissionMode ?? permission}
       onPermission={setMode}
       models={state.models}
@@ -803,11 +814,11 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       onStop={() => safe(stop)}
     />
   );
-  const footer = (approval?: ReactNode) => (
+  const footer = (approval?: ReactNode, interaction = false) => (
     <div
       className={cn(
         "mx-auto flex w-full min-w-0 flex-col gap-2 px-3 pb-4 sm:px-6",
-        approval ? "max-w-3xl" : "max-w-[800px]",
+        approval && !interaction ? "max-w-3xl" : "max-w-[800px]",
       )}
     >
       {!connected ? (

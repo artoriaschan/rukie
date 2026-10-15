@@ -1,5 +1,5 @@
 import type { SessionEvent, TranscriptMessage } from "@rukie/agent";
-import { ToolCallViewSchema, ToolResultViewSchema } from "@rukie/shared";
+import { ToolCallViewSchema, ToolResultViewSchema, WirePlanReviewReplySchema } from "@rukie/shared";
 import { Value } from "typebox/value";
 import type { TranscriptState, TranscriptTool, PromptGroup } from "../lib/transcript";
 import { messageText, presentationCallId } from "../lib/transcript";
@@ -182,6 +182,15 @@ function validEvent(event: unknown): event is SessionEvent {
   }
 }
 
+function planOutcome(name: string, details: unknown): TranscriptTool["planOutcome"] {
+  if (name !== "exit_plan_mode" || !record(details)) return undefined;
+  // Core adds result facts such as outputRef; only the review fields form the reply.
+  const reply =
+    details.kind === "revise"
+      ? { kind: details.kind, feedback: details.feedback }
+      : { kind: details.kind };
+  return Value.Check(WirePlanReviewReplySchema, reply) ? reply.kind : undefined;
+}
 function project(state: TranscriptState): TranscriptState {
   const tools: Record<string, TranscriptTool> = {};
   const activeTools: Record<string, string> = {};
@@ -251,6 +260,7 @@ function project(state: TranscriptState): TranscriptState {
         status: msg.outcomeUnknown ? "cancelled" : msg.isError ? "error" : "success",
         output: messageText(msg),
         resultView: msg.view,
+        planOutcome: planOutcome(msg.toolName, msg.details),
       };
     }
   }
@@ -400,6 +410,7 @@ export function reduceTranscript(
             status: event.result?.isError ? "error" : "success",
             output: event.result ? messageText(event.result) : tool.output,
             resultView: event.view ?? event.result?.view,
+            planOutcome: planOutcome(tool.name, event.result?.details),
           },
         },
       };

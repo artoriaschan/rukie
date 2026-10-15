@@ -1,3 +1,5 @@
+import { planSubmissions, type PlanSubmission } from "../lib/plans";
+import { PlanPreview } from "./plan-preview";
 import { createPortal } from "react-dom";
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { FileText, Sparkles, SquareTerminal, Wrench } from "lucide-react";
@@ -22,12 +24,14 @@ function Group({
   decisions,
   waiting,
   readOutput,
+  onExpandPlan,
 }: {
   group: PromptGroup;
   state: TranscriptState;
   decisions: PermissionDecision[];
   waiting: boolean;
   readOutput?: ReadToolOutput;
+  onExpandPlan?: (submission: PlanSubmission) => void;
 }) {
   const t = useAppText();
   const failed =
@@ -117,6 +121,7 @@ function Group({
     if (last?.type === "trace") last.items.push(activity);
     else sections.push({ id: item.id, type: "trace", items: [activity] });
   };
+  const plans = planSubmissions(state);
   const approvals = decisions
     .filter((item) => item.reply === "deny" && item.request.placement?.groupId === group.id)
     .map((item) => {
@@ -221,7 +226,15 @@ function Group({
         });
       else if (block.type === "toolCall") {
         const tool = state.tools[presentationCallId(message, block.id)];
-        if (tool)
+        if (tool?.name === "exit_plan_mode") {
+          const submission = plans.find((plan) => plan.toolId === tool.id);
+          if (submission)
+            sections.push({
+              id,
+              type: "message",
+              content: <PlanPreview submission={submission} onExpand={onExpandPlan} />,
+            });
+        } else if (tool)
           appendActivity(
             {
               id,
@@ -237,7 +250,7 @@ function Group({
             },
             {
               active: group.status === "running" && tool.status === "running",
-              headerDetail: `${t(tool.status === "running" ? `conversation.active-${tool.callView?.kind ?? "other"}` : `conversation.action-${tool.callView?.kind ?? "other"}`)} · ${toolTitle(tool).replace(/\s+/g, " ").trim()}`,
+              headerDetail: `${t(tool.status === "running" ? `conversation.active-${tool.callView?.kind ?? "other"}` : `conversation.action-${tool.callView?.kind ?? "other"}`)} · ${(tool.name === "ask_user_question" || tool.name === "enter_plan_mode" || tool.name === "exit_plan_mode" ? t(`tool.${tool.name}`) : toolTitle(tool)).replace(/\s+/g, " ").trim()}`,
             },
           );
       }
@@ -377,6 +390,7 @@ export function Transcript({
   decisions,
   waiting,
   readOutput,
+  onExpandPlan,
 }: {
   viewportRef?: RefObject<HTMLDivElement | null>;
   navigationContainer?: HTMLElement | null;
@@ -384,6 +398,7 @@ export function Transcript({
   decisions: PermissionDecision[];
   waiting: boolean;
   readOutput?: ReadToolOutput;
+  onExpandPlan?: (submission: PlanSubmission) => void;
 }) {
   const t = useAppText();
   const ownViewport = useRef<HTMLDivElement>(null);
@@ -473,6 +488,7 @@ export function Transcript({
                   decisions={decisions}
                   waiting={waiting}
                   readOutput={readOutput}
+                  onExpandPlan={onExpandPlan}
                 />
               </article>
             );

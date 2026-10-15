@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { X } from "lucide-react";
+import { Bot, Lightbulb } from "lucide-react";
+import type { PlanSubmission } from "../lib/plans";
 import type { PresentedPermissionRequest } from "../lib/transcript";
 import type { QueuedInput } from "@rukie/agent";
 import type { SubagentPresentation } from "../lib/transcript";
@@ -193,11 +194,13 @@ export function QueuedInputs({
 export function Summary({
   toolStates,
   background,
-  onClose,
+  plan,
+  onOpenPlan,
 }: {
   toolStates: Readonly<Record<string, unknown>>;
   background: readonly SubagentPresentation[];
-  onClose: () => void;
+  plan?: PlanSubmission;
+  onOpenPlan?: (plan: PlanSubmission) => void;
 }) {
   const t = useAppText();
   const raw = toolStates.todo;
@@ -227,43 +230,54 @@ export function Summary({
   return (
     <aside
       aria-label={t("conversation.summary")}
-      className="absolute inset-x-4 top-4 z-20 max-h-[calc(100%-32px)] overflow-y-auto rounded-xl border border-border-strong bg-popover p-4 shadow-md md:inset-x-auto md:right-4 md:top-4 md:w-72"
+      className="conversation-summary absolute right-4 top-3 z-20 flex max-h-[calc(100%-24px)] w-[300px] max-w-[calc(100%-32px)] flex-col gap-3 overflow-y-auto"
     >
-      <div className="flex items-center justify-between">
-        <h2 className="text-ui-base font-medium">{t("conversation.summary")}</h2>
-        <Button size="icon" variant="ghost" onClick={onClose} aria-label={t("conversation.close")}>
-          <X />
-        </Button>
-      </div>
       {todos.length ? (
-        <TodoList
-          items={todos}
-          title={t("conversation.todos")}
-          defaultOpen
-          collapseOnComplete={false}
-        />
+        <TodoList items={todos} title={t("conversation.todos")} presentation="summary" />
       ) : null}
       {background.length ? (
-        <section>
-          <h3 className="my-3 text-ui-sm font-medium">{t("conversation.subagents")}</h3>
-          {background.map((agent) => (
-            <p key={agent.id} className="my-2 text-ui-sm">
-              {agent.description} ·{" "}
-              {t(
-                agent.active
-                  ? "conversation.running"
-                  : agent.outcome === "aborted"
-                    ? "conversation.aborted"
-                    : agent.outcome === "error"
-                      ? "conversation.failed"
-                      : "conversation.complete",
-              )}
-            </p>
-          ))}
+        <section aria-label={t("conversation.subagents")} className="conversation-summary-card">
+          <h3 className="conversation-summary-title">{t("conversation.subagents")}</h3>
+          <ul className="flex flex-col gap-1">
+            {background.map((agent) => (
+              <li key={agent.id} className="conversation-summary-row">
+                <span aria-hidden="true" className="grid size-3.5 shrink-0 place-items-center">
+                  <Bot className="size-3 text-muted-foreground" />
+                </span>
+                <span className="min-w-0 flex-1 truncate" title={agent.description}>
+                  {agent.description}
+                </span>
+                <span className="shrink-0 text-ui-sm text-muted-foreground">
+                  {t(
+                    agent.active
+                      ? "conversation.running"
+                      : agent.outcome === "aborted"
+                        ? "conversation.aborted"
+                        : agent.outcome === "error"
+                          ? "conversation.failed"
+                          : "conversation.complete",
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
-      {!todos.length && !background.length ? (
-        <p className="my-3 text-ui-sm text-muted-foreground">{t("conversation.empty")}</p>
+      {plan ? (
+        <section aria-label={t("conversation.plan")} className="conversation-summary-card">
+          <h3 className="conversation-summary-title">{t("conversation.plan")}</h3>
+          <Button
+            variant="ghost"
+            className="conversation-summary-row w-full justify-start text-foreground focus-visible:ring-inset focus-visible:ring-offset-0"
+            onClick={() => onOpenPlan?.(plan)}
+            title={plan.title}
+          >
+            <span aria-hidden="true" className="grid size-3.5 shrink-0 place-items-center">
+              <Lightbulb className="size-3 text-muted-foreground" />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-left">{plan.title}</span>
+          </Button>
+        </section>
       ) : null}
     </aside>
   );

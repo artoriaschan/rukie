@@ -599,6 +599,7 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
       type: "interaction_requested",
       identity: identity(epoch),
       request: {
+        kind: "permission",
         identity: identity(epoch),
         toolName: "bash",
         toolCallId: "call",
@@ -638,6 +639,7 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
     expect(wire).toContainEqual(
       expect.objectContaining({
         type: "interaction.reply",
+        kind: "permission",
         identity: identity("first"),
         reply: "allow-session",
       }),
@@ -741,6 +743,7 @@ test.each(["allow", "allow-session"] as const)(
         type: "interaction_requested",
         identity,
         request: {
+          kind: "permission",
           identity,
           toolName: "bash",
           toolCallId: "reused",
@@ -1101,14 +1104,13 @@ test("virtualized response groups follow streaming height, preserve upward readi
     const toggle = screen.getByRole("button", { name: "Session summary", exact: true });
     await toggle.click();
     await expect.element(screen.getByText("Review parser", { exact: true })).toBeVisible();
-    await expect.element(screen.getByText("Check parser · Failed", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Check parser", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Failed", { exact: true })).toBeVisible();
     expect(feed.getBoundingClientRect().width).toBeLessThan(width);
     await expect.element(toggle).toHaveFocus();
     await page.viewport(480, 800);
     const summary = screen.getByRole("complementary", { name: "Session summary", exact: true });
-    await expect
-      .poll(() => summary.element().getBoundingClientRect().width)
-      .toBe(feed.getBoundingClientRect().width - 32);
+    await expect.poll(() => summary.element().getBoundingClientRect().width).toBe(300);
     await userEvent.keyboard("{Escape}");
     await expect.element(summary).not.toBeInTheDocument();
   } finally {
@@ -1413,6 +1415,7 @@ test("navigation uses equal resting ticks and highlights only the previewed resp
           conversationId: 1,
         },
         request: {
+          kind: "permission",
           identity: {
             epoch: "rail-approval",
             requestId: "rail-approval",
@@ -1497,6 +1500,7 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
       type: "interaction_requested",
       identity: identity(epoch),
       request: {
+        kind: "permission",
         identity: identity(epoch),
         toolName: "bash",
         toolCallId: epoch,

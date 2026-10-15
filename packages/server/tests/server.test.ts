@@ -1926,6 +1926,7 @@ test("permission epochs survive takeover and settle once, with session rules app
       expect(
         (
           await second.command("interaction.reply", {
+            kind: "permission",
             identity: { ...(asked.identity as object), epoch: "expired" },
             reply: "allow",
           })
@@ -1934,6 +1935,7 @@ test("permission epochs survive takeover and settle once, with session rules app
       expect(
         (
           await second.command("interaction.reply", {
+            kind: "permission",
             identity: asked.identity,
             reply: "allow-session",
           })
@@ -1945,8 +1947,13 @@ test("permission epochs survive takeover and settle once, with session rules app
         second.messages.filter((message) => message.type === "interaction_requested"),
       ).toHaveLength(1);
       expect(
-        (await second.command("interaction.reply", { identity: asked.identity, reply: "allow" }))
-          .error,
+        (
+          await second.command("interaction.reply", {
+            kind: "permission",
+            identity: asked.identity,
+            reply: "allow",
+          })
+        ).error,
       ).toEqual({ code: "interaction_stale" });
     } finally {
       second.socket.close();
@@ -2221,8 +2228,13 @@ test("aborting a permission request broadcasts settlement and rejects its late e
       identity: asked.identity,
     });
     expect(
-      (await client.command("interaction.reply", { identity: asked.identity, reply: "allow" }))
-        .error,
+      (
+        await client.command("interaction.reply", {
+          kind: "permission",
+          identity: asked.identity,
+          reply: "allow",
+        })
+      ).error,
     ).toEqual({ code: "interaction_stale" });
   } finally {
     client.socket.close();
@@ -2431,7 +2443,11 @@ test("a session grant settles other pending permission cards covered by its rule
         (message.identity as { epoch: string }).epoch !==
           (first.identity as { epoch: string }).epoch,
     );
-    await client.command("interaction.reply", { identity: first.identity, reply: "allow-session" });
+    await client.command("interaction.reply", {
+      kind: "permission",
+      identity: first.identity,
+      reply: "allow-session",
+    });
     expect(
       await client.next(
         (message) =>
@@ -2442,8 +2458,13 @@ test("a session grant settles other pending permission cards covered by its rule
     ).toBeDefined();
     await client.next((message) => message.type === "result");
     expect(
-      (await client.command("interaction.reply", { identity: second.identity, reply: "allow" }))
-        .error,
+      (
+        await client.command("interaction.reply", {
+          kind: "permission",
+          identity: second.identity,
+          reply: "allow",
+        })
+      ).error,
     ).toEqual({ code: "interaction_stale" });
   } finally {
     client.socket.close();
@@ -2471,7 +2492,7 @@ test("unsubscribed Sessions publish permission creation, reconnect state and can
     message.type === "sessions_changed" &&
     Array.isArray(message.sessions) &&
     message.sessions.some(
-      (item) => item.id === id && item.waitingPermission === waiting && item.running === running,
+      (item) => item.id === id && item.waitingInteraction === waiting && item.running === running,
     );
   try {
     const created = await first.command("session.create", { project: null, text: "write file" });
@@ -3161,7 +3182,11 @@ test("archive refuses running and waiting Sessions but accepts a subscribed idle
       (await client.command("session.move", { sessionId, projectId: moveProject.id })).error,
     ).toEqual({ code: "session_busy" });
     expect((await client.command("session.pin", { sessionId })).error).toBeUndefined();
-    await client.command("interaction.reply", { identity: asked.identity, reply: "allow" });
+    await client.command("interaction.reply", {
+      kind: "permission",
+      identity: asked.identity,
+      reply: "allow",
+    });
     await client.next((message) => message.type === "result");
     expect((await client.command("session.archive", { sessionId })).error).toBeUndefined();
     expect(
@@ -3931,7 +3956,11 @@ test("project.remove rejects running and waiting Sessions in any directory and d
     expect((await client.command("project.remove", { projectId: "p" })).error).toEqual({
       code: "session_busy",
     });
-    await client.command("interaction.reply", { identity: asked.identity, reply: "allow" });
+    await client.command("interaction.reply", {
+      kind: "permission",
+      identity: asked.identity,
+      reply: "allow",
+    });
     await client.next((message) => message.type === "result");
     await client.command("session.pin", { sessionId });
     const external = await owner.acquire(
@@ -4918,7 +4947,11 @@ test("worktree deletion rejects a Session waiting for permission without changin
     expect((await client.command("sessions.list")).result).toContainEqual(
       expect.objectContaining({ id: sessionId, worktree: { id: tree!.id, branch: tree!.branch } }),
     );
-    await client.command("interaction.reply", { identity: asked.identity, reply: "deny" });
+    await client.command("interaction.reply", {
+      kind: "permission",
+      identity: asked.identity,
+      reply: "deny",
+    });
     await client.next((message) => message.type === "result" && message.sessionId === sessionId);
     expect(
       (await client.command("worktree.delete", { worktreeId: tree!.id })).error,
@@ -5066,6 +5099,446 @@ test("Project branch commands list, switch and create local branches in the prim
     expect(
       (await client.command("project.checkout", { projectId: project.id, branch: "main" })).result,
     ).toMatchObject({ branch: "main" });
+  } finally {
+    await owner.close();
+  }
+});
+
+test("desktop questions replay, reject mismatched or malformed answers and settle with selected labels", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-question-wire-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("ask_user_question", {
+          questions: [
+            {
+              header: "Scope",
+              question: "Which scope?",
+              options: [
+                { label: "Small", description: "One file" },
+                { label: "Large", description: "All files" },
+              ],
+            },
+          ],
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("done"),
+    ]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const first = await connect(server, "app://rukie", owner);
+    const created = await first.command("session.create", { project: null, text: "ask" });
+    const { sessionId } = created.result as { sessionId: string };
+    const asked = await first.next((message) => message.type === "interaction_requested");
+    expect(asked.request).toMatchObject({
+      kind: "question",
+      questions: [{ question: "Which scope?" }],
+    });
+    const second = await connect(server, "app://rukie", owner);
+    await second.command("session.subscribe", { sessionId });
+    expect(await second.next((message) => message.type === "interaction_requested")).toEqual(asked);
+    expect((await second.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, waitingInteraction: true }),
+    );
+    expect(
+      (
+        await second.command("interaction.reply", {
+          identity: asked.identity,
+          kind: "permission",
+          reply: "allow",
+        })
+      ).error,
+    ).toEqual({ code: "interaction_kind_mismatch" });
+    for (const answers of [
+      [{ selected: ["Unknown"] }],
+      [{ selected: ["Small", "Large"] }],
+      [{ selected: ["Small"] }, { selected: [] }],
+    ]) {
+      expect(
+        (
+          await second.command("interaction.reply", {
+            identity: asked.identity,
+            kind: "question",
+            reply: { answers },
+          })
+        ).error,
+      ).toEqual({ code: "interaction_invalid_reply" });
+    }
+    expect(
+      (
+        await second.command("interaction.reply", {
+          identity: { ...(asked.identity as object), epoch: "old" },
+          kind: "question",
+          reply: "declined",
+        })
+      ).error,
+    ).toEqual({ code: "interaction_stale" });
+    expect(
+      (
+        await second.command("interaction.reply", {
+          identity: asked.identity,
+          kind: "question",
+          reply: { answers: [{ selected: ["Small"], custom: "Keep it focused" }] },
+        })
+      ).result,
+    ).toEqual({});
+    await second.next((message) => message.type === "result");
+    expect(fake.contexts.at(-1)?.messages).toContainEqual(
+      expect.objectContaining({
+        role: "toolResult",
+        content: [{ type: "text", text: '"Which scope?" → Small; Keep it focused' }],
+      }),
+    );
+    expect(
+      (
+        await second.command("interaction.reply", {
+          identity: asked.identity,
+          kind: "question",
+          reply: "declined",
+        })
+      ).error,
+    ).toEqual({ code: "interaction_stale" });
+  } finally {
+    await owner.close();
+  }
+});
+
+test.each([
+  [{ kind: "approve" }, "The plan is approved. Begin execution.", false],
+  [
+    { kind: "revise", feedback: "Use fewer steps" },
+    "The user requested continued planning. Feedback: Use fewer steps Revise the plan and submit it again.",
+    true,
+  ],
+  [
+    { kind: "takeover" },
+    "The user wants to take over. Stop and wait for their next message.",
+    true,
+  ],
+] as const)(
+  "desktop plan review %j preserves permission mode and exposes plan state",
+  async (reply, text, active) => {
+    const owner = ownResources();
+    try {
+      const homeDir = await owner.acquire(
+        () => mkdtemp(join(tmpdir(), "rukie-plan-review-wire-")),
+        (path) => rm(path, { recursive: true, force: true }),
+      );
+      const fake = fakeModel([
+        fauxAssistantMessage(
+          fauxToolCall("exit_plan_mode", { plan: "# Safe plan\nInspect first." }),
+          { stopReason: "toolUse" },
+        ),
+        fauxAssistantMessage("done"),
+      ]);
+      const server = await owner.acquire(
+        () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+        (resource) => resource.close(),
+      );
+      const client = await connect(server, "app://rukie", owner);
+      const created = await client.command("session.create", {
+        project: null,
+        text: "plan",
+        planMode: true,
+        permissionMode: "ask",
+      });
+      const { sessionId } = created.result as { sessionId: string };
+      const asked = await client.next((message) => message.type === "interaction_requested");
+      expect(asked.request).toMatchObject({
+        kind: "plan_review",
+        plan: "# Safe plan\nInspect first.",
+      });
+      expect(JSON.stringify(fake.contexts[0]?.messages)).toContain(
+        "When ready, submit the plan with exit_plan_mode for user review.",
+      );
+      expect((await client.command("sessions.list")).result).toContainEqual(
+        expect.objectContaining({ id: sessionId, waitingInteraction: true }),
+      );
+      await client.command("session.unsubscribe", { sessionId });
+      const replayAt = client.messages.length;
+      await client.command("session.subscribe", { sessionId });
+      expect(
+        client.messages
+          .slice(replayAt)
+          .filter((message) => message.type === "interaction_requested"),
+      ).toEqual([asked]);
+      expect(
+        (
+          await client.command("interaction.reply", {
+            identity: asked.identity,
+            kind: "question",
+            reply: "declined",
+          })
+        ).error,
+      ).toEqual({ code: "interaction_kind_mismatch" });
+      expect(
+        (
+          await client.command("interaction.reply", {
+            identity: asked.identity,
+            kind: "plan_review",
+            reply,
+          })
+        ).result,
+      ).toEqual({});
+      expect(
+        (
+          await client.command("interaction.reply", {
+            identity: asked.identity,
+            kind: "plan_review",
+            reply,
+          })
+        ).error,
+      ).toEqual({ code: "interaction_stale" });
+      await client.next((message) => message.type === "request_settled");
+      client.messages.length = 0;
+      await client.command("session.unsubscribe", { sessionId });
+      await client.command("session.subscribe", { sessionId });
+      const snapshot = await client.next((message) => message.type === "snapshot");
+      expect(snapshot.planMode).toBe(active);
+      expect(snapshot.messages).toContainEqual(
+        expect.objectContaining({
+          role: "toolResult",
+          toolName: "exit_plan_mode",
+          content: [{ type: "text", text }],
+        }),
+      );
+      expect(await client.next((message) => message.type === "session_state")).toMatchObject({
+        permissionMode: "ask",
+      });
+      const wanted = !active;
+      expect(
+        (await client.command("session.set_plan_mode", { sessionId, on: wanted })).result,
+      ).toEqual({});
+      expect(
+        await client.next(
+          (message) => message.type === "tool_state_changed" && message.name === "plan",
+        ),
+      ).toMatchObject({ value: { active: wanted } });
+    } finally {
+      await owner.close();
+    }
+  },
+);
+
+test("desktop question queue replays in order, supports declined and cancels remaining epochs", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-question-queue-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const questions = [
+      {
+        header: "Scope",
+        question: "Which scope?",
+        multiSelect: true,
+        options: [
+          { label: "A", description: "One" },
+          { label: "B", description: "Two" },
+        ],
+      },
+    ];
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("ask_user_question", { questions }),
+          fauxToolCall("ask_user_question", { questions }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("done"),
+    ]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const created = await client.command("session.create", { project: null, text: "ask twice" });
+    const { sessionId } = created.result as { sessionId: string };
+    const first = await client.next((message) => message.type === "interaction_requested");
+    const second = await client.next(
+      (message) =>
+        message.type === "interaction_requested" &&
+        (message.identity as { epoch: string }).epoch !==
+          (first.identity as { epoch: string }).epoch,
+    );
+    const replacement = await connect(server, "app://rukie", owner);
+    await replacement.command("session.subscribe", { sessionId });
+    await replacement.next(
+      (message) =>
+        message.type === "interaction_requested" &&
+        (message.identity as { epoch: string }).epoch ===
+          (second.identity as { epoch: string }).epoch,
+    );
+    expect(
+      replacement.messages.filter((message) => message.type === "interaction_requested"),
+    ).toEqual([first, second]);
+    expect(
+      (await replacement.command("session.set_plan_mode", { sessionId, on: true })).result,
+    ).toEqual({});
+    expect(
+      await replacement.next(
+        (message) => message.type === "tool_state_changed" && message.name === "plan",
+      ),
+    ).toMatchObject({ value: { active: true } });
+    expect(
+      (
+        await replacement.command("interaction.reply", {
+          identity: first.identity,
+          kind: "question",
+          reply: "declined",
+        })
+      ).result,
+    ).toEqual({});
+    await replacement.next(
+      (message) =>
+        message.type === "tool_execution_end" && message.toolName === "ask_user_question",
+    );
+    await replacement.command("abort", { sessionId });
+    await replacement.next(
+      (message) =>
+        message.type === "interaction_settled" &&
+        (message.identity as { epoch: string }).epoch ===
+          (second.identity as { epoch: string }).epoch,
+    );
+    await replacement.next((message) => message.type === "request_settled");
+    expect(
+      (
+        await replacement.command("interaction.reply", {
+          identity: second.identity,
+          kind: "question",
+          reply: "declined",
+        })
+      ).error,
+    ).toEqual({ code: "interaction_stale" });
+    expect((await replacement.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, waitingInteraction: false }),
+    );
+  } finally {
+    await owner.close();
+  }
+});
+
+test("aborting a pending desktop plan review removes its epoch without approving the plan", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-plan-cancel-wire-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("exit_plan_mode", { plan: "# Unapproved plan" }), {
+        stopReason: "toolUse",
+      }),
+    ]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const created = await client.command("session.create", {
+      project: null,
+      text: "plan",
+      planMode: true,
+    });
+    const { sessionId } = created.result as { sessionId: string };
+    const asked = await client.next((message) => message.type === "interaction_requested");
+    await client.command("abort", { sessionId });
+    await client.next((message) => message.type === "interaction_settled");
+    await client.next((message) => message.type === "request_settled");
+    expect(
+      (
+        await client.command("interaction.reply", {
+          identity: asked.identity,
+          kind: "plan_review",
+          reply: { kind: "approve" },
+        })
+      ).error,
+    ).toEqual({ code: "interaction_stale" });
+    client.messages.length = 0;
+    await client.command("session.unsubscribe", { sessionId });
+    await client.command("session.subscribe", { sessionId });
+    expect(await client.next((message) => message.type === "snapshot")).toMatchObject({
+      planMode: true,
+    });
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, waitingInteraction: false }),
+    );
+  } finally {
+    await owner.close();
+  }
+});
+
+test("desktop child questions retain origin and settle under the parent Session", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-child-question-wire-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Inspect",
+          prompt: "Ask about scope",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("ask_user_question", {
+          questions: [
+            {
+              header: "Scope",
+              question: "Which scope?",
+              options: [
+                { label: "A", description: "One" },
+                { label: "B", description: "Two" },
+              ],
+            },
+          ],
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("child done"),
+      fauxAssistantMessage("parent done"),
+    ]);
+    const server = await owner.acquire(
+      () => startServer({ homeDir, sessionOptions: fake, onHandshake: () => {} }),
+      (resource) => resource.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const created = await client.command("session.create", { project: null, text: "delegate" });
+    const { sessionId } = created.result as { sessionId: string };
+    const asked = await client.next((message) => message.type === "interaction_requested");
+    expect(asked).toMatchObject({
+      sessionId,
+      request: {
+        kind: "question",
+        origin: { agentId: expect.any(String), description: "Inspect" },
+      },
+    });
+    expect((await client.command("sessions.list")).result).toContainEqual(
+      expect.objectContaining({ id: sessionId, waitingInteraction: true }),
+    );
+    expect(
+      (
+        await client.command("interaction.reply", {
+          identity: asked.identity,
+          kind: "question",
+          reply: "declined",
+        })
+      ).result,
+    ).toEqual({});
+    await client.next((message) => message.type === "request_settled");
+    expect(JSON.stringify(fake.contexts)).toContain("The user declined to answer.");
   } finally {
     await owner.close();
   }

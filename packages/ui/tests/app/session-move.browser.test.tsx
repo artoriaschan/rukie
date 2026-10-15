@@ -233,7 +233,7 @@ test("moving to an untrusted Project confirms first; cancel sends nothing and fa
   }
 });
 
-test.each(["running", "waitingPermission", "worktree"] as const)(
+test.each(["running", "waitingInteraction", "worktree"] as const)(
   "%s Sessions disable moving from all three menus",
   async (status) => {
     await page.viewport(1280, 900);
