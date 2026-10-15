@@ -1,6 +1,6 @@
 # 07：Side Pane 与计划标签
 
-Status: claimed
+Status: resolved
 
 Blocked by: 05, 06
 
@@ -19,7 +19,7 @@ Blocked by: 05, 06
   - 会话区左移与恢复
   - 窄宽度下的表现
   - Light/Dark 两种主题
-- [ ] 全部完成后用 agent-browser 验收一次，覆盖 H19–H23 的流程，使用 loopback fake provider。
+- [x] 全部完成后用 agent-browser 验收一次，覆盖 H19–H23 的流程，使用 loopback fake provider。
 
 ## Comments
 
@@ -32,3 +32,5 @@ Status intentionally remains claimed with the spec until the root completes fina
 Final review updates the earlier Summary consumer assertion for the integrated wide layout: dismissing Summary retains the open plan pane and its exact composer rectangle; explicitly closing the pane restores the baseline composer. Production pane behavior is unchanged. The root package failure and the focused corrected-case pass are preserved separately in external `review-fix-verification.md`; this ticket and spec remain claimed until root acceptance.
 
 Isolated acceptance found that the inert conversation's response ticks and scrollbar could still paint above the narrow Plan overlay. The narrow conversation frame now suppresses descendant paint while retaining its mounted DOM, measured geometry and reading position. A public App/browser regression with eight real responses and native wheel input reproduces the prior painted ticks, then covers narrow concealment, wide visibility, resize, close restoration and usable response navigation. The focused case passes; scoped UI types, lint, formatting, test policy and docs pass. Exact RED/GREEN history and preserved fixture failures are in external `occlusion-fix-verification.md`. The root owns the incremental Light/Dark narrow screenshot check; status remains claimed.
+
+Root completed the independent Standards/Spec review and actual isolated Chromium acceptance, including incremental checks after both runtime repairs. In Light/Dark at 420px the pane conceals the underlying rail/scrollbar without horizontal overflow; PageDown/PageUp scroll the full document, and closing restores visible navigation and the exact feed reading position. Real persisted approve/revise/takeover outcomes display correctly. The original desktop package result remains 327 pass / 1 fail, supplemented by the corrected Summary focused pass and subsequent scoped regressions; no new full-package pass is claimed. Manual clipboard content read remains blocked by headless permissions, with exact copy payload covered by automated tests and Markdown download verified in-browser. Browser/services/temp data were cleaned up. Full evidence is in external `browser-acceptance.md` and `verification.md`. ADR coverage was reviewed and completed in the spec. This ticket and the spec are resolved together before the final push; latest-commit CI and PR review remain separate gates.

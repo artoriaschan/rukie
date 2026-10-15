@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端计划模式与交互卡
 
@@ -113,9 +113,18 @@ UI 这边也不完整：
 
 ## ADR Coverage
 
-| 决定或修改                                                       | 归属                                                                         | 理由                                                                         |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| 桌面 Frontend 提供问题与计划评审回调，选项语义由 Core 固定       | 沿用 [ADR-0015](../../docs/adr/0015-frontend-interactions-and-plan-mode.md)  | 按交互种类提供回调；计划评审仍由 `exit_plan_mode` 决定，不改为由模型生成问题 |
-| Interaction 联合类型、`set_plan_mode`、按种类的回复与安全默认    | 沿用 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md) | 沿用同一 WS、TypeBox 命令校验、`epoch` 关联与重连回放，只扩充消息种类        |
-| 计划模式状态由 Tool State 投影，Side Pane 内容从 Transcript 重建 | 沿用 [ADR-0016](../../docs/adr/0016-tool-state-and-context-projection.md)    | 不新增持久化状态；Side Pane 是展示状态                                       |
-| C39 / C40 / C41 / C43 / C44 的样式与几何                         | 无需 ADR                                                                     | 属于局部展示，由 rukie.pen M03-D 和 DESIGN.md 维护                           |
+| 决定或修改                                                       | 归属                                                                                                                                     | 理由                                                                                           |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 桌面 Frontend 提供问题与计划评审回调，选项语义由 Core 固定       | 沿用 [ADR-0015](../../docs/adr/0015-frontend-interactions-and-plan-mode.md)                                                              | 按交互种类提供回调；计划评审仍由 `exit_plan_mode` 决定，不改为由模型生成问题                   |
+| Interaction 联合类型、`set_plan_mode`、按种类的回复与安全默认    | 沿用 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md)                                                             | 沿用同一 WS、TypeBox 命令校验、`epoch` 关联与重连回放，只扩充消息种类                          |
+| 计划模式状态由 Tool State 投影，Side Pane 内容从 Transcript 重建 | 沿用 [ADR-0016](../../docs/adr/0016-tool-state-and-context-projection.md) 与 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md) | 沿用能力事实归属及 durable documents、交互重新发起与恢复规则；Side Pane 标签仅保留本地展示状态 |
+| UI 展示、server 接线与 shared wire schema 的包边界               | 沿用 [ADR-0029](../../docs/adr/0029-desktop-package-structure.md)                                                                        | UI 不增加 Electron 或运行时依赖，server 组合现有 Core 回调；复用已安装组件且不新增存储         |
+| C39 / C40 / C41 / C43 / C44 的样式与几何                         | 无需 ADR                                                                                                                                 | 属于局部展示，由 rukie.pen M03-D 和 DESIGN.md 维护                                             |
+
+## Delivery Evidence
+
+七张实施票已完成。双路独立审阅的三项发现已统一修复；实际隔离验收发现的结果事实读取和窄屏遮挡缺陷也已复现并修复。ADR Coverage 已对照最终实现审阅，无新架构决定或既有 ADR 冲突。
+
+`bun run check:dev` 通过，后续修复的类型、lint、格式、文档及测试策略检查按受影响范围增量通过。首次 `bun run test:desktop` 为 327 通过、1 失败：旧 Summary 消费者断言未考虑新面板；修正后该用例及相关行为通过。保留原包级失败记录，不将局部复验表述为新一次全包通过。
+
+实际 Chromium 隔离验收覆盖 H19–H23、问题与计划评审、刷新恢复、权限独立性、下载、摘要、完整计划、深浅色及 420px 窄屏。复制按钮的准确 payload 由通过的自动化测试覆盖；无头浏览器的剪贴板读取权限阻止了手工内容核对。隔离服务和临时数据已清理，未启动真实 Electron 或访问系统钥匙串。完整记录位于本次任务外部证据目录的 `verification.md`、`review.md`、`browser-acceptance.md` 及各修复记录；CI 留待最终推送后的 PR checks 验收，当前关闭状态不表示 PR 已合并。
