@@ -288,3 +288,78 @@ test("restored repeated plan calls render separate cards with structured review 
     await screen.unmount();
   }
 });
+
+test("Core result facts show plan review outcomes live and after App snapshot restoration", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  const send = async (facts: object) => {
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "one", ...facts }),
+    });
+  };
+  try {
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    const messages: object[] = [
+      { role: "user", timestamp: 1, entryId: "user", content: "Plan it" },
+    ];
+    const outcomes = [
+      ["approve", "Plan approved"],
+      ["revise", "Continue planning"],
+      ["takeover", "User took over"],
+    ] as const;
+    for (const [index, [kind, label]] of outcomes.entries()) {
+      const callId = `call_${index}|fc_${index}`;
+      messages.push({
+        role: "assistant",
+        timestamp: index + 2,
+        entryId: `a${index}`,
+        content: [
+          {
+            type: "toolCall",
+            id: callId,
+            name: "exit_plan_mode",
+            arguments: { plan: `# Runtime plan ${index + 1}` },
+          },
+        ],
+      });
+      await send({ type: "snapshot", model: "test/script", compactions: [], messages });
+      await expect
+        .element(screen.getByRole("region", { name: `Plan preview: Runtime plan ${index + 1}` }))
+        .toBeVisible();
+      const result = {
+        role: "toolResult",
+        timestamp: index + 3,
+        entryId: `r${index}`,
+        toolCallId: callId,
+        toolName: "exit_plan_mode",
+        isError: kind !== "approve",
+        content: [{ type: "text", text: "Result text is not the review outcome" }],
+        details: {
+          ...(kind === "revise" ? { kind, feedback: "补充离线验收步骤" } : { kind }),
+          outputRef: { id: `task-${index}-result` },
+        },
+      };
+      await send({ type: "tool_execution_end", toolCallId: callId, result });
+      await expect.element(screen.getByText(label, { exact: true })).toBeVisible();
+      await send({ type: "snapshot", model: "test/script", compactions: [], messages });
+      await expect.element(screen.getByText(label, { exact: true })).not.toBeInTheDocument();
+      messages.push(result);
+      await send({ type: "snapshot", model: "test/script", compactions: [], messages });
+      await expect.element(screen.getByText(label, { exact: true })).toBeVisible();
+    }
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});

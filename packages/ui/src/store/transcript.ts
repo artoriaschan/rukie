@@ -183,9 +183,13 @@ function validEvent(event: unknown): event is SessionEvent {
 }
 
 function planOutcome(name: string, details: unknown): TranscriptTool["planOutcome"] {
-  return name === "exit_plan_mode" && Value.Check(WirePlanReviewReplySchema, details)
-    ? details.kind
-    : undefined;
+  if (name !== "exit_plan_mode" || !record(details)) return undefined;
+  // Core adds result facts such as outputRef; only the review fields form the reply.
+  const reply =
+    details.kind === "revise"
+      ? { kind: details.kind, feedback: details.feedback }
+      : { kind: details.kind };
+  return Value.Check(WirePlanReviewReplySchema, reply) ? reply.kind : undefined;
 }
 function project(state: TranscriptState): TranscriptState {
   const tools: Record<string, TranscriptTool> = {};

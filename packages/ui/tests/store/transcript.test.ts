@@ -206,7 +206,7 @@ test("plan outcomes come from validated details for live events and restored Tra
     content: [
       {
         type: "toolCall",
-        id: "reused",
+        id: "call_4472a733|fc_4472a733",
         name: "exit_plan_mode",
         arguments: { plan: "# Migration" },
       },
@@ -215,37 +215,62 @@ test("plan outcomes come from validated details for live events and restored Tra
   const snapshot = (messages: object[]) =>
     send({ type: "snapshot", messages, model: "test/model", compactions: [] });
   snapshot([assistant]);
-  for (const kind of ["approve", "revise", "takeover"]) {
+  for (const details of [
+    { kind: "approve" },
+    { kind: "revise", feedback: "" },
+    { kind: "revise", feedback: "Preserve data" },
+    { kind: "takeover" },
+  ]) {
     snapshot([assistant]);
     const result = {
       role: "toolResult",
       entryId: "r",
       timestamp: 3,
-      toolCallId: "reused",
+      toolCallId: "call_4472a733|fc_4472a733",
       toolName: "exit_plan_mode",
       isError: true,
       content: [{ type: "text", text: "Misleading approved text" }],
-      details: kind === "revise" ? { kind, feedback: "Preserve data" } : { kind },
+      details: {
+        ...details,
+        outputRef: { id: "task-26-result" },
+      },
     };
-    send({ type: "tool_execution_end", toolCallId: "reused", result });
-    expect(store.getState().views.plan!.transcript!.tools["a:reused"]?.planOutcome).toBe(kind);
+    send({ type: "tool_execution_end", toolCallId: "call_4472a733|fc_4472a733", result });
+    expect(
+      store.getState().views.plan!.transcript!.tools["a:call_4472a733|fc_4472a733"]?.planOutcome,
+    ).toBe(details.kind);
     snapshot([assistant, result]);
-    expect(store.getState().views.plan!.transcript!.tools["a:reused"]?.planOutcome).toBe(kind);
+    expect(
+      store.getState().views.plan!.transcript!.tools["a:call_4472a733|fc_4472a733"]?.planOutcome,
+    ).toBe(details.kind);
   }
-  snapshot([
-    assistant,
-    {
+  for (const details of [
+    { kind: "revise", feedback: 42 },
+    { kind: "revise" },
+    { kind: "approved" },
+    { feedback: "approve" },
+    null,
+  ]) {
+    const result = {
       role: "toolResult",
       entryId: "r",
       timestamp: 3,
-      toolCallId: "reused",
+      toolCallId: "call_4472a733|fc_4472a733",
       toolName: "exit_plan_mode",
       isError: false,
       content: [{ type: "text", text: "Approved" }],
-      details: { kind: "revise", feedback: 42 },
-    },
-  ]);
-  expect(store.getState().views.plan!.transcript!.tools["a:reused"]?.planOutcome).toBeUndefined();
+      details: details === null ? null : { ...details, outputRef: { id: "task-26-result" } },
+    };
+    snapshot([assistant]);
+    send({ type: "tool_execution_end", toolCallId: result.toolCallId, result });
+    expect(
+      store.getState().views.plan!.transcript!.tools["a:call_4472a733|fc_4472a733"]?.planOutcome,
+    ).toBeUndefined();
+    snapshot([assistant, result]);
+    expect(
+      store.getState().views.plan!.transcript!.tools["a:call_4472a733|fc_4472a733"]?.planOutcome,
+    ).toBeUndefined();
+  }
 });
 
 test("plan submissions keep identity across late partials, commits and snapshots with reused call IDs", () => {
