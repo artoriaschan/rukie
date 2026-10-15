@@ -169,3 +169,83 @@ test("mixed interactions keep insertion order, settled questions disappear and p
     await commands.stopWire(connection.port);
   }
 });
+
+test("a failed question reply stays retryable, pending replies disable activation and stale replies settle", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  const send = async (path: string, facts?: object) => {
+    await fetch(`http://127.0.0.1:${connection.port}/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(facts ?? {}),
+    });
+  };
+  const ask = (epoch: string) => {
+    const identity = { epoch, requestId: epoch, taskId: 1, conversationId: 1 };
+    return send("message", {
+      type: "interaction_requested",
+      sessionId: "one",
+      identity,
+      request: {
+        kind: "question",
+        identity,
+        toolCallId: epoch,
+        questions: [
+          {
+            header: "Retry",
+            question: "Continue?",
+            options: [
+              { label: "Yes", description: "Continue" },
+              { label: "No", description: "Stop" },
+            ],
+          },
+        ],
+      },
+    });
+  };
+  try {
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    const draft = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    await draft.fill("Preserve on retry");
+    await ask("retry");
+    const region = screen.getByRole("region", { name: "Question required" });
+    const yes = screen.getByRole("button", { name: /Yes Continue/ });
+    await expect.element(region).toBeVisible();
+    await send("error", { type: "interaction.reply", code: "internal" });
+    await yes.click();
+    await expect.element(screen.getByRole("alert")).toBeVisible();
+    await expect.element(region).toBeVisible();
+    await expect.element(yes).toBeEnabled();
+    await send("hold");
+    await yes.click();
+    await expect.element(region).toHaveAttribute("aria-busy", "true");
+    await expect.element(yes).toBeDisabled();
+    await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
+    await userEvent.keyboard("1{Enter}");
+    const wire = await (await fetch(`http://127.0.0.1:${connection.port}/commands`)).json();
+    expect(
+      wire.filter((command: { type: string }) => command.type === "interaction.reply"),
+    ).toHaveLength(2);
+    await send("flush");
+    await expect.element(draft).toHaveValue("Preserve on retry");
+    await ask("stale");
+    await expect.element(region).toBeVisible();
+    await send("error", { type: "interaction.reply", code: "interaction_stale" });
+    await yes.click();
+    await expect.element(region).not.toBeInTheDocument();
+    await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
+    await expect.element(draft).toHaveValue("Preserve on retry");
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});

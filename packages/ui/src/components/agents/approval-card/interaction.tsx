@@ -110,6 +110,17 @@ export function InteractionApprovalCard({
             target.closest('[role="dialog"],[role="menu"]'))
         )
           return;
+        if (
+          event.key === "Enter" &&
+          question.multiple &&
+          target instanceof HTMLElement &&
+          target.closest('[role="checkbox"]')
+        ) {
+          if (answered) submit();
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         if (event.key === "Enter" && target instanceof HTMLElement && target.closest("button"))
           return;
         if (/^[1-4]$/.test(event.key) && Number(event.key) <= (question.options?.length ?? 0)) {
@@ -126,17 +137,27 @@ export function InteractionApprovalCard({
               });
           }
         } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          const size = question.options?.length ?? 0;
-          if (!size) return;
+          const enabled = (question.options ?? []).flatMap((option, index) =>
+            option.disabled ? [] : [index],
+          );
+          if (!enabled.length) return;
+          const position = enabled.indexOf(cursor);
           const next =
-            cursor < 0
-              ? event.key === "ArrowDown"
-                ? 0
-                : size - 1
-              : (cursor + (event.key === "ArrowDown" ? 1 : -1) + size) % size;
+            enabled[
+              position < 0
+                ? event.key === "ArrowDown"
+                  ? 0
+                  : enabled.length - 1
+                : (position + (event.key === "ArrowDown" ? 1 : -1) + enabled.length) %
+                  enabled.length
+            ]!;
           setCursor(next);
           const option = question.options?.[next];
-          if (option && !question.multiple)
+          if (question.multiple)
+            region.current
+              ?.querySelectorAll<HTMLButtonElement>('[role="checkbox"]')
+              [next]?.focus({ preventScroll: true });
+          else if (option)
             update({
               ...answer,
               ...(answer.custom ? { custom: undefined } : {}),
@@ -182,6 +203,7 @@ export function InteractionApprovalCard({
           question.multiple ? (
             <div
               key={option.value}
+              onFocus={() => setCursor(index)}
               className={cn(
                 "group flex min-h-12 items-center gap-3 rounded-xl px-3 py-1.5 not-has-[:disabled]:hover:bg-hover focus-within:bg-hover",
                 cursor === index && "bg-hover",

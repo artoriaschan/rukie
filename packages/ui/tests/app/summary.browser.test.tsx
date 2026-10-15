@@ -108,10 +108,17 @@ test("restored Summary shows C41 cards in order without moving shell or composer
     await expect.element(toggle).toHaveFocus();
     await plan.click();
     await expect.element(summary).not.toBeInTheDocument();
+    const pane = screen.getByRole("complementary", { name: "Plan side pane", exact: true });
+    await expect.element(pane).toBeVisible();
+    const withPane = rect(composer);
     await toggle.click();
     await expect.element(summary).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await expect.element(summary).not.toBeInTheDocument();
+    await expect.element(pane).toBeVisible();
+    expect(rect(composer)).toEqual(withPane);
+    await pane.getByRole("button", { name: "Close side pane" }).click();
+    await expect.element(pane).not.toBeInTheDocument();
     expect(rect(composer)).toEqual(before.composer);
   } finally {
     await screen.unmount();

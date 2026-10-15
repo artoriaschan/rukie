@@ -3,6 +3,7 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { ToolRow } from "../../src/components/tool-row";
 import { QuestionDock } from "../../src/components/question-dock";
+import { ApprovalCard } from "../../src/components/agents/approval-card";
 import { UiLocaleProvider } from "../../src/lib/i18n";
 import type { WireQuestionRequest } from "@rukie/shared";
 import "../../src/theme.css";
@@ -273,6 +274,84 @@ test("initial ArrowUp selects the final answer before Enter submits", async () =
   try {
     await userEvent.keyboard("{ArrowUp}{Enter}");
     expect(onReply).toHaveBeenCalledWith(single, { answers: [{ selected: ["Memory"] }] });
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("multiple-choice arrows focus checkboxes without selecting, Space toggles and Enter submits", async () => {
+  const onReply = vi.fn();
+  const multiple = { ...request, questions: [request.questions[1]!] };
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <QuestionDock
+        request={multiple}
+        connected
+        pending={null}
+        shortcutsEnabled
+        onReply={onReply}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    const search = screen.getByRole("checkbox", { name: "Search" });
+    const exp = screen.getByRole("checkbox", { name: "Export" });
+    await userEvent.keyboard("{ArrowDown}");
+    await expect.element(search).toHaveFocus();
+    expect(search.element().matches(":focus-visible")).toBe(true);
+    expect(getComputedStyle(search.element()).boxShadow).not.toBe("none");
+    await expect.element(search).not.toBeChecked();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(search).not.toBeChecked();
+    expect(onReply).not.toHaveBeenCalled();
+    await userEvent.keyboard(" ");
+    await expect.element(search).toBeChecked();
+    await userEvent.keyboard("{ArrowUp}");
+    await expect.element(exp).toHaveFocus();
+    await expect.element(exp).not.toBeChecked();
+    await expect.element(search).toBeChecked();
+    await userEvent.keyboard("{ArrowDown}{ArrowDown} ");
+    await expect.element(exp).toHaveFocus();
+    await expect.element(exp).toBeChecked();
+    await userEvent.keyboard("{Enter}");
+    expect(onReply).toHaveBeenCalledExactlyOnceWith(multiple, {
+      answers: [{ selected: ["Search", "Export"] }],
+    });
+    await expect.element(exp).toBeChecked();
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("multiple-choice arrow focus wraps through enabled options only", async () => {
+  const screen = await render(
+    <UiLocaleProvider locale="en">
+      <ApprovalCard
+        variant="interaction"
+        regionLabel="Choose features"
+        questions={[
+          {
+            id: "features",
+            title: "Features",
+            multiple: true,
+            options: [
+              { value: "disabled", label: "Unavailable", disabled: true },
+              { value: "search", label: "Search" },
+              { value: "export", label: "Export" },
+            ],
+          },
+        ]}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    await expect.element(screen.getByRole("checkbox", { name: "Unavailable" })).toBeDisabled();
+    await userEvent.keyboard("{ArrowUp}");
+    await expect.element(screen.getByRole("checkbox", { name: "Export" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}");
+    await expect.element(screen.getByRole("checkbox", { name: "Search" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}");
+    await expect.element(screen.getByRole("checkbox", { name: "Export" })).toHaveFocus();
   } finally {
     await screen.unmount();
   }

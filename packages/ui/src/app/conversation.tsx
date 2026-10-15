@@ -1,9 +1,3 @@
-import type {
-  WirePlanReviewReply,
-  WirePlanReviewRequest,
-  WireQuestionReply,
-  WireQuestionRequest,
-} from "@rukie/shared";
 import { latestPlan, planSubmissions, type PlanSubmission } from "../lib/plans";
 import { PlanPane } from "../components/plan-pane";
 import { PlanReviewDock } from "../components/plan-review-dock";
@@ -11,9 +5,9 @@ import { QuestionDock } from "../components/question-dock";
 import { Value } from "typebox/value";
 import { Type } from "typebox";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { PresentedPermissionRequest } from "../lib/transcript";
+import type { PermissionDecision } from "../lib/transcript";
 import type { ConversationProps } from "./index";
-import { WireError } from "../client";
+import { WireError, type ClientCommand } from "../client";
 import { TranscriptScrollbar } from "../components/transcript-scrollbar";
 import { Transcript } from "../components/transcript";
 import { PermissionDock, QueuedInputs, Summary } from "../components/conversation-dock";
@@ -134,64 +128,17 @@ export function AppConversation({
       );
     setFocusRequest((previous) => previous + 1);
   };
-  const reply = async (
-    permission: PresentedPermissionRequest,
-    answer: "allow" | "deny" | "allow-session",
+  const replyInteraction = async (
+    command: Extract<ClientCommand, { type: "interaction.reply" }>,
+    decision?: PermissionDecision,
   ) => {
-    const epoch = permission.identity.epoch;
+    const epoch = command.identity.epoch;
     if (!connected || pending) return;
     setPending(epoch);
     setError("");
     try {
-      await request({
-        type: "interaction.reply",
-        kind: "permission",
-        identity: permission.identity,
-        reply: answer,
-      });
-      onInteractionResolved(epoch, { reply: answer, request: permission });
-    } catch (reason) {
-      if (reason instanceof WireError && reason.code === "interaction_stale")
-        onInteractionResolved(epoch);
-      else setError(errorText(reason));
-    } finally {
-      setPending(null);
-    }
-  };
-  const replyQuestion = async (question: WireQuestionRequest, answer: WireQuestionReply) => {
-    const epoch = question.identity.epoch;
-    if (!connected || pending) return;
-    setPending(epoch);
-    setError("");
-    try {
-      await request({
-        type: "interaction.reply",
-        kind: "question",
-        identity: question.identity,
-        reply: answer,
-      });
-      onInteractionResolved(epoch);
-    } catch (reason) {
-      if (reason instanceof WireError && reason.code === "interaction_stale")
-        onInteractionResolved(epoch);
-      else setError(errorText(reason));
-    } finally {
-      setPending(null);
-    }
-  };
-  const replyPlan = async (plan: WirePlanReviewRequest, answer: WirePlanReviewReply) => {
-    const epoch = plan.identity.epoch;
-    if (!connected || pending) return;
-    setPending(epoch);
-    setError("");
-    try {
-      await request({
-        type: "interaction.reply",
-        kind: "plan_review",
-        identity: plan.identity,
-        reply: answer,
-      });
-      onInteractionResolved(epoch);
+      await request(command);
+      onInteractionResolved(epoch, decision);
     } catch (reason) {
       if (reason instanceof WireError && reason.code === "interaction_stale")
         onInteractionResolved(epoch);
@@ -303,7 +250,12 @@ export function AppConversation({
               pending={pending}
               shortcutsEnabled={!summaryOpen && !paneOpen}
               onReply={(question, answer) => {
-                void replyQuestion(question, answer);
+                void replyInteraction({
+                  type: "interaction.reply",
+                  kind: "question",
+                  identity: question.identity,
+                  reply: answer,
+                });
               }}
             />
           ) : firstInteraction?.kind === "plan_review" ? (
@@ -314,7 +266,12 @@ export function AppConversation({
               pending={pending}
               shortcutsEnabled={!summaryOpen && !paneOpen}
               onReply={(plan, answer) => {
-                void replyPlan(plan, answer);
+                void replyInteraction({
+                  type: "interaction.reply",
+                  kind: "plan_review",
+                  identity: plan.identity,
+                  reply: answer,
+                });
               }}
             />
           ) : firstInteraction ? (
@@ -324,7 +281,15 @@ export function AppConversation({
               pending={pending}
               shortcutsEnabled={!summaryOpen && !paneOpen}
               onReply={(permission, answer) => {
-                void reply(permission, answer);
+                void replyInteraction(
+                  {
+                    type: "interaction.reply",
+                    kind: "permission",
+                    identity: permission.identity,
+                    reply: answer,
+                  },
+                  { reply: answer, request: permission },
+                );
               }}
             />
           ) : undefined,
