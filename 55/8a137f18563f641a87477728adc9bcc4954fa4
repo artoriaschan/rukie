@@ -1,0 +1,29 @@
+packages/ui/tests/components/composer.browser.test.tsx
+  s_e95034f71a0e09::t_c1c7ee72abc21d 534-539
+.scratch/desktop-plan-mode/issues/05-c40-plan-review.md
+  s_e95034f71a0e09::t_edd9dc4c322972 40-45
+packages/ui/tests/components/plan-headers.browser.test.tsx
+  s_e95034f71a0e09::t_b3ea19644f4459 6,56,106-111,116-128,133-145
+  s_e95034f71a0e09::t_59927d94cb0980 19-21,23-26,28,33-39,60-69,79-92,94-96,98-101,112-115,129-132
+  s_e95034f71a0e09::t_d9a3c4b62f3ee7 1-5,7-18,29-32,40-55,57-59,70-78,93,97,102-105,146-147
+packages/ui/src/components/plan-preview.tsx
+  s_e95034f71a0e09::t_6728a61d0d505d 48,51-74
+packages/ui/src/components/agents/approval-card/interaction.tsx
+  s_e95034f71a0e09::t_df9e1f901ac20c 151,154,161-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "558a137f18563f641a87477728adc9bcc4954fa4",
+  "prompts": {},
+  "sessions": {
+    "s_e95034f71a0e09": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e38-c9bc-7830-8448-c4ee1d481e87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
