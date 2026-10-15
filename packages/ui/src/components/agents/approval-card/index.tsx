@@ -1,3 +1,4 @@
+import { InteractionApprovalCard } from "./interaction";
 import { useComponentText, type ComponentTranslator } from "@/lib/i18n";
 // beui.dev/components/agents/approval-card
 
@@ -198,7 +199,15 @@ function ProgressDots({ current, ids }: { current: number; ids: string[] }) {
   );
 }
 
-export function ApprovalCard({
+export function ApprovalCard(props: ApprovalCardProps) {
+  return props.variant === "interaction" ? (
+    <InteractionApprovalCard {...props} />
+  ) : (
+    <DefaultApprovalCard {...props} />
+  );
+}
+
+function DefaultApprovalCard({
   disabled = false,
   rejectLabel,
   secondaryAction,

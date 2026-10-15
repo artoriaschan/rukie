@@ -237,7 +237,7 @@ function Group({
             },
             {
               active: group.status === "running" && tool.status === "running",
-              headerDetail: `${t(tool.status === "running" ? `conversation.active-${tool.callView?.kind ?? "other"}` : `conversation.action-${tool.callView?.kind ?? "other"}`)} · ${toolTitle(tool).replace(/\s+/g, " ").trim()}`,
+              headerDetail: `${t(tool.status === "running" ? `conversation.active-${tool.callView?.kind ?? "other"}` : `conversation.action-${tool.callView?.kind ?? "other"}`)} · ${(tool.name === "ask_user_question" ? t("tool.ask_user_question") : toolTitle(tool)).replace(/\s+/g, " ").trim()}`,
             },
           );
       }

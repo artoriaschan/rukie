@@ -1,3 +1,5 @@
+import type { WireQuestionReply, WireQuestionRequest } from "@rukie/shared";
+import { QuestionDock } from "../components/question-dock";
 import { Value } from "typebox/value";
 import { Type } from "typebox";
 import { useEffect, useRef, useState } from "react";
@@ -85,6 +87,28 @@ export function AppConversation({
       setPending(null);
     }
   };
+  const replyQuestion = async (question: WireQuestionRequest, answer: WireQuestionReply) => {
+    const epoch = question.identity.epoch;
+    if (!connected || pending) return;
+    setPending(epoch);
+    setError("");
+    try {
+      await request({
+        type: "interaction.reply",
+        kind: "question",
+        identity: question.identity,
+        reply: answer,
+      });
+      onInteractionResolved(epoch);
+    } catch (reason) {
+      if (reason instanceof WireError && reason.code === "interaction_stale")
+        onInteractionResolved(epoch);
+      else setError(errorText(reason));
+    } finally {
+      setPending(null);
+    }
+  };
+  const firstInteraction = Object.values(view.interactions)[0];
   const queue = async (type: "steer_now" | "withdraw", requestId: string) => {
     if (!connected || pending) return;
     setPending(requestId);
@@ -164,9 +188,22 @@ export function AppConversation({
         />
       ) : null}
       {footer(
-        Object.keys(view.interactions).length ? (
+        firstInteraction?.kind === "question" ? (
+          <QuestionDock
+            key={firstInteraction.identity.epoch}
+            request={firstInteraction}
+            connected={connected}
+            pending={pending}
+            shortcutsEnabled={!summaryOpen}
+            onReply={(question, answer) => {
+              void replyQuestion(question, answer);
+            }}
+          />
+        ) : firstInteraction?.kind === "plan_review" ? (
+          <div role="status">{t("interaction.pending")}</div>
+        ) : firstInteraction ? (
           <PermissionDock
-            requests={Object.values(view.interactions).filter((item) => item.kind === "permission")}
+            requests={[firstInteraction]}
             connected={connected}
             pending={pending}
             shortcutsEnabled={!summaryOpen}
@@ -175,6 +212,7 @@ export function AppConversation({
             }}
           />
         ) : undefined,
+        firstInteraction?.kind === "question" || firstInteraction?.kind === "plan_review",
       )}
       {state ? <TranscriptScrollbar viewport={viewport} /> : null}
     </div>
