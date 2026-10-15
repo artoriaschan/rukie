@@ -1,0 +1,29 @@
+packages/server/tests/wire.test.ts
+  s_d7f20f5d95a73c::t_221e49ed377d55 29-30,34-48,50-56
+packages/ui/tests/client/wire.test.ts
+  s_d7f20f5d95a73c::t_6aab80d66132da 165-191,193-199
+packages/ui/tests/app/error.test.ts
+  s_d7f20f5d95a73c::t_7ab45a23f79efb 1-8,10-16,19-20
+packages/server/tests/server.test.ts
+  s_d7f20f5d95a73c::t_552386285fbe90 1079,1101-1102,1108-1121,1123-1130,1132-1134,1136-1140,1142-1145,1147-1150,1152-1155,1157,1167-1169,1171-1175,1177-1183,1185,1187-1190,1192-1194,1196-1197,1199-1202,1204-1208
+  s_d7f20f5d95a73c::t_ff87cfc4336a37 999-1010,1012-1014,1016-1045,1047-1052,1054-1060,1063-1065,1072-1074,1076-1078,1080-1082,1084-1088,1090-1095,1098-1100,1103-1107,1284-1287
+  s_d7f20f5d95a73c::t_3d701b4beeeb02 1158-1162,1164,1166,1209-1217,1219-1227,1229,1231-1243,1245-1247,1249,1251-1257,1259-1262,1264-1270,1273-1276,1278-1280,1282-1283
+packages/agent/tests/e2e/goal.test.ts
+  s_d7f20f5d95a73c::t_83b255cacea44b 147-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "c37adcccbe71129a1af5b905f6618d39dd30c009",
+  "prompts": {},
+  "sessions": {
+    "s_d7f20f5d95a73c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e34-d4b6-73f2-a31e-d136eab09470",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
