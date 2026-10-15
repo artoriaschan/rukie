@@ -1,6 +1,11 @@
 import { modelServiceCopy } from "./model-service-copy";
 export const appCopy = {
   en: {
+    "plan.pane": "Plan side pane",
+    "plan.tabs": "Plan tabs",
+    "plan.close-tab": "Close plan tab: {{title}}",
+    "plan.close-pane": "Close side pane",
+    "plan.document": "Full plan",
     "plan.download": "Download plan",
     "plan.copy": "Copy plan",
     "plan.expand": "Expand plan",
@@ -298,6 +303,11 @@ export const appCopy = {
     "app.max": "Maximum",
   },
   zh: {
+    "plan.pane": "计划侧栏",
+    "plan.tabs": "计划标签页",
+    "plan.close-tab": "关闭计划标签：{{title}}",
+    "plan.close-pane": "关闭侧栏",
+    "plan.document": "完整计划",
     "plan.download": "下载计划",
     "plan.copy": "复制计划",
     "plan.expand": "展开计划",
