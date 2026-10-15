@@ -32,3 +32,6 @@ Status: claimed
 - 完整历史、命令、耗时与日志：`/tmp/rukie-desktop-goal-mode-evidence/verification.md`，失败日志保留原名，后续通过不覆盖失败事实。
 
 - 补充 SQLite 图片持久化 red/green：Goal driver 初始图片补原生 `type: image` 标记，复用既有外部附件映射；关闭后数据库不含 base64，只有一份外部图片，历史读取与恢复后的模型上下文均保留图片和名称（1 pass、5 assertions）。
+
+- 协调代理 canonical coding 消费者阶段发现 CLI E2E 遗漏的 `auto-review` 提示断言；新代理在独立分支修正为完整 `full-access` 建议，并精确断言第一轮模型输入包含目标用户消息。全文件 Goal 断言审计未发现 version 1 fixture 或其他过时合同。
+- 一次串行 `cli.test.ts -t "goal|Goal"`：19 pass、5 fail、3 errors，55.19s；修正用例通过（2.832s，真实 CLI 子进程及 HTTP 传输）。其余失败均为未修改的恢复、拒绝、信号和 wrapup 用例 5s 超时，之前 canonical coding 中它们均通过；保留失败事实，不扩大 timeout、不重跑。canonical coding 本身仍为失败：1512 pass、32 fail、2 errors，787.98s。格式、scoped lint 与 diff 检查通过；本票继续 claimed 等待协调门禁与评审。

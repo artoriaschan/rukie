@@ -367,9 +367,14 @@ test("--goal prints its round and exits 1 when its round limit blocks continuati
   });
   expect(result.exitCode).toBe(1);
   expect(result.stdout).toBe("hello from fake\n");
-  expect(result.stderr).toContain("auto-review");
+  expect(result.stderr).toContain(
+    "Goal continuation may wait for permissions. Consider switching to full-access.",
+  );
   expect(server.requests).toHaveLength(1);
-  expect(JSON.stringify(server.requests[0]!.body.messages)).toContain("finish migration");
+  expect(server.requests[0]!.body.messages).toContainEqual({
+    role: "user",
+    content: [{ type: "text", text: "finish migration" }],
+  });
 });
 
 test.each(["complete", "blocked"])(
