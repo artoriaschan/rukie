@@ -1104,14 +1104,13 @@ test("virtualized response groups follow streaming height, preserve upward readi
     const toggle = screen.getByRole("button", { name: "Session summary", exact: true });
     await toggle.click();
     await expect.element(screen.getByText("Review parser", { exact: true })).toBeVisible();
-    await expect.element(screen.getByText("Check parser · Failed", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Check parser", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Failed", { exact: true })).toBeVisible();
     expect(feed.getBoundingClientRect().width).toBeLessThan(width);
     await expect.element(toggle).toHaveFocus();
     await page.viewport(480, 800);
     const summary = screen.getByRole("complementary", { name: "Session summary", exact: true });
-    await expect
-      .poll(() => summary.element().getBoundingClientRect().width)
-      .toBe(feed.getBoundingClientRect().width - 32);
+    await expect.poll(() => summary.element().getBoundingClientRect().width).toBe(300);
     await userEvent.keyboard("{Escape}");
     await expect.element(summary).not.toBeInTheDocument();
   } finally {

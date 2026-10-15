@@ -4,6 +4,7 @@ import type {
   WireQuestionReply,
   WireQuestionRequest,
 } from "@rukie/shared";
+import { latestPlan } from "../lib/plans";
 import { PlanReviewDock } from "../components/plan-review-dock";
 import { QuestionDock } from "../components/question-dock";
 import { Value } from "typebox/value";
@@ -163,7 +164,7 @@ export function AppConversation({
   return (
     <div ref={setPanel} className="relative flex min-h-0 flex-1 flex-col">
       {state ? (
-        <div className={summaryOpen ? "flex min-h-0 flex-1 md:pr-80" : "flex min-h-0 flex-1"}>
+        <div className={summaryOpen ? "flex min-h-0 flex-1 md:pr-[332px]" : "flex min-h-0 flex-1"}>
           <Transcript
             viewportRef={viewport}
             navigationContainer={panel}
@@ -199,7 +200,8 @@ export function AppConversation({
         <Summary
           toolStates={state.toolStates}
           background={state.background}
-          onClose={onCloseSummary}
+          plan={latestPlan(state)}
+          onOpenPlan={() => onCloseSummary()}
         />
       ) : null}
       {state ? (
