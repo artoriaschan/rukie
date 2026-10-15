@@ -1,0 +1,38 @@
+packages/ui/tests/app/questions.browser.test.tsx
+  s_e95034f71a0e09::t_a84eb8764d5654 199-204,208
+  s_e95034f71a0e09::t_071027c7ae0f82 172-173,175-198,209-235,237-251
+  s_e95034f71a0e09::t_6bc37a9af24d81 174
+.scratch/desktop-plan-mode/issues/03-c43-question-card.md
+  s_e95034f71a0e09::t_68ae27bab8b636 39-40
+packages/ui/src/app/conversation.tsx
+  s_e95034f71a0e09::t_78c689b553d161 8,10,131-133,135,140-141,253-258,269-274,284-292
+packages/ui/tests/components/question-dock.browser.test.tsx
+  s_e95034f71a0e09::t_ea175c1e1ae44b 281-303,307-320,355-358
+  s_e95034f71a0e09::t_a84eb8764d5654 6,321-341,343-354
+  s_e95034f71a0e09::t_071027c7ae0f82 304-306
+packages/ui/tests/app/summary.browser.test.tsx
+  s_e95034f71a0e09::t_f37e9ff36ac885 111,120
+  s_e95034f71a0e09::t_8eb533ae3e51a6 112-113,118-119,121
+packages/ui/src/components/agents/approval-card/interaction.tsx
+  s_e95034f71a0e09::t_5314c45bc78aaf 113-123,140-144,146-153,156-160,206
+.scratch/desktop-plan-mode/issues/07-side-pane-plan-tab.md
+  s_e95034f71a0e09::t_68ae27bab8b636 31-32
+DESIGN.md
+  s_e95034f71a0e09::t_68ae27bab8b636 476-477
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "849e314ab498d335a2e48b89fdffc8adadac64fe",
+  "prompts": {},
+  "sessions": {
+    "s_e95034f71a0e09": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e38-c9bc-7830-8448-c4ee1d481e87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
