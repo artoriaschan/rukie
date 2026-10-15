@@ -1,0 +1,19 @@
+.scratch/desktop-plan-mode/issues/01-pen-design.md
+  s_e95034f71a0e09::t_0b6be7c4dd685f 3,24,30-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "cdb7f0be3a724e960e04b3da0f66af85acba4649",
+  "prompts": {},
+  "sessions": {
+    "s_e95034f71a0e09": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e38-c9bc-7830-8448-c4ee1d481e87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
