@@ -91,7 +91,7 @@ export function DeleteSession({
           </Button>
           <Button
             variant="destructive"
-            disabled={pending || session.running || session.waitingPermission}
+            disabled={pending || session.running || session.waitingInteraction}
             onClick={() => {
               void remove();
             }}

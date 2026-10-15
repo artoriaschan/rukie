@@ -319,7 +319,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       (session) =>
         projectId === session.projectId &&
         (session.running ||
-          session.waitingPermission ||
+          session.waitingInteraction ||
           state.views[session.id]?.running ||
           state.views[session.id]?.busy ||
           Object.keys(state.views[session.id]?.interactions ?? {}).length > 0),

@@ -599,6 +599,7 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
       type: "interaction_requested",
       identity: identity(epoch),
       request: {
+        kind: "permission",
         identity: identity(epoch),
         toolName: "bash",
         toolCallId: "call",
@@ -638,6 +639,7 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
     expect(wire).toContainEqual(
       expect.objectContaining({
         type: "interaction.reply",
+        kind: "permission",
         identity: identity("first"),
         reply: "allow-session",
       }),
@@ -741,6 +743,7 @@ test.each(["allow", "allow-session"] as const)(
         type: "interaction_requested",
         identity,
         request: {
+          kind: "permission",
           identity,
           toolName: "bash",
           toolCallId: "reused",
@@ -1413,6 +1416,7 @@ test("navigation uses equal resting ticks and highlights only the previewed resp
           conversationId: 1,
         },
         request: {
+          kind: "permission",
           identity: {
             epoch: "rail-approval",
             requestId: "rail-approval",
@@ -1497,6 +1501,7 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
       type: "interaction_requested",
       identity: identity(epoch),
       request: {
+        kind: "permission",
         identity: identity(epoch),
         toolName: "bash",
         toolCallId: epoch,

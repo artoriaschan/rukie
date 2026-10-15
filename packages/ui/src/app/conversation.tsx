@@ -70,7 +70,12 @@ export function AppConversation({
     setPending(epoch);
     setError("");
     try {
-      await request({ type: "interaction.reply", identity: permission.identity, reply: answer });
+      await request({
+        type: "interaction.reply",
+        kind: "permission",
+        identity: permission.identity,
+        reply: answer,
+      });
       onInteractionResolved(epoch, { reply: answer, request: permission });
     } catch (reason) {
       if (reason instanceof WireError && reason.code === "interaction_stale")
@@ -161,7 +166,7 @@ export function AppConversation({
       {footer(
         Object.keys(view.interactions).length ? (
           <PermissionDock
-            requests={Object.values(view.interactions)}
+            requests={Object.values(view.interactions).filter((item) => item.kind === "permission")}
             connected={connected}
             pending={pending}
             shortcutsEnabled={!summaryOpen}
