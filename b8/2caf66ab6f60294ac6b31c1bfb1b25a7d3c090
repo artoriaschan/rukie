@@ -1,0 +1,19 @@
+.scratch/desktop-goal-mode/spec.md
+  s_d7f20f5d95a73c::t_0278bb5907837a 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "b82caf66ab6f60294ac6b31c1bfb1b25a7d3c090",
+  "prompts": {},
+  "sessions": {
+    "s_d7f20f5d95a73c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e34-d4b6-73f2-a31e-d136eab09470",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
