@@ -1,0 +1,26 @@
+.scratch/desktop-goal-mode/issues/01-goal-core-message-and-elapsed.md
+  s_0a4aa54defd464::t_b68a19f4889322 1-17
+.scratch/desktop-goal-mode/issues/03-desktop-goal-mode-ui.md
+  s_0a4aa54defd464::t_f4aada71348234 1-19
+.scratch/desktop-goal-mode/issues/02-goal-wire-commands.md
+  s_0a4aa54defd464::t_3692f1a9eb8812 1-15
+.scratch/desktop-goal-mode/spec.md
+  s_0a4aa54defd464::t_d698320ed9bd96 90-96,133-140
+  s_0a4aa54defd464::t_9162c5824062e3 1-89,97-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "cc5d278e08016f2640bb850849d3a9ba565ffcbd",
+  "prompts": {},
+  "sessions": {
+    "s_0a4aa54defd464": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_ze8ea84keisi",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
