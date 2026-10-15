@@ -1,6 +1,10 @@
 import { modelServiceCopy } from "./model-service-copy";
 export const appCopy = {
   en: {
+    "planMode.label": "Plan mode",
+    "planMode.on": "• On",
+    "planMode.off": "Off",
+    "planMode.close": "Close plan mode",
     "app.current-branch": "Current branch: {{branch}}",
     "app.use-worktree": "Use an independent worktree",
     "app.worktree-hint":
@@ -265,6 +269,10 @@ export const appCopy = {
     "app.max": "Maximum",
   },
   zh: {
+    "planMode.label": "计划模式",
+    "planMode.on": "• 已开启",
+    "planMode.off": "已关闭",
+    "planMode.close": "关闭计划模式",
     "app.current-branch": "当前分支：{{branch}}",
     "app.use-worktree": "使用独立工作树",
     "app.worktree-hint": "下一个新会话将从 {{branch}} 创建独立工作树，不影响主目录。",

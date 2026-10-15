@@ -475,3 +475,44 @@
 .conversation-tool-option svg {
   color: var(--muted-foreground);
 }
+
+.conversation-plan-mode {
+  min-height: 28px;
+  padding: 0 10px 0 6px;
+  gap: 6px;
+  border-radius: 999px;
+  font-size: var(--text-ui-base);
+  flex-shrink: 0;
+}
+.conversation-plan-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+}
+.conversation-plan-icon > svg {
+  grid-area: 1 / 1;
+  width: 12px;
+  height: 12px;
+}
+.conversation-plan-icon > .conversation-plan-close {
+  width: 10px;
+  height: 10px;
+  visibility: hidden;
+}
+.conversation-plan-mode:not(:disabled):is(:hover, :focus) {
+  background: var(--hover);
+  color: var(--foreground);
+}
+.conversation-plan-mode:not(:disabled):is(:hover, :focus) .conversation-plan-icon {
+  background: var(--muted-foreground);
+  color: var(--menu);
+}
+.conversation-plan-mode:not(:disabled):is(:hover, :focus) .conversation-plan-rest {
+  visibility: hidden;
+}
+.conversation-plan-mode:not(:disabled):is(:hover, :focus) .conversation-plan-close {
+  visibility: visible;
+  color: var(--menu);
+}
