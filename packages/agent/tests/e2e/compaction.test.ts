@@ -250,6 +250,8 @@ test("manual Compaction after cold reopen refreshes current project, skill, Plan
   session.subscribe((event) => events.push(event));
   await session.run("continue");
   expect(JSON.stringify(fake.contexts.at(-1))).not.toContain("git branch:");
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain(`cwd: ${dirs.cwd}`);
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("instruction-priority");
   expect(publishedReminders(events)).toEqual([]);
   frontend = "Updated frontend state.";
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Latest project contract.");
@@ -412,7 +414,7 @@ test.each(["normal prompt", "oversized Skill Invocation"] as const)(
     for (const text of [
       "Summary of old work.",
       "Preserve the widget contract.",
-      "Current date: 2026-10-01",
+      "Current time: 2026-10-01",
       "Describe active work.",
       prompt,
     ])
@@ -577,4 +579,29 @@ test("threshold Compaction keeps large parallel Tool Calls paired with their Too
   });
   expect(restored.messages).toEqual(restoredMessages);
   expect(next.contexts).toHaveLength(0);
+});
+
+test("Compaction supplies a fresh time snapshot from the Session clock", async () => {
+  const originalTZ = process.env.TZ;
+  process.env.TZ = "America/St_Johns";
+  try {
+    dirs = await tempDirs();
+    let now = new Date("2026-01-01T12:00:00Z");
+    const fake = historyModel([fauxAssistantMessage("Summary of old work.")]);
+    const session = await createSession({ ...dirs, ...fake, now: () => now });
+    await seedHistory(session);
+    now = new Date("2026-01-01T12:01:00Z");
+    await session.compact();
+    const reminders = session.messages.filter(
+      (m) => m.role === "system-reminder" && m.source === "time",
+    );
+    expect(reminders).toHaveLength(2);
+    expect(reminders.at(-1)).toMatchObject({
+      content:
+        "Current time: 2026-01-01 Thursday 08:31:00 (system time zone America/St_Johns, UTC-03:30). This snapshot does not update automatically.",
+    });
+  } finally {
+    if (originalTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTZ;
+  }
 });

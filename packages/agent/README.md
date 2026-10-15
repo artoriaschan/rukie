@@ -79,7 +79,7 @@ Rewind 要求原生任务已结算；fork 按 document 策略保留 Goal facts�
 
 `Session.messages` 是当前选中对话的完整已提交消息投影，保留 Compaction 前的消息、原始图片和按时间顺序追加的 Compaction notice。原生当前模型上下文从最新 head、摘要、保留尾部和新消息构造，可以排除仍可观察的旧消息；相同内容在保留尾部再次出现时仍然可见。底层 Storage 的公开 entries 和 Conversation 查询保留被 Rewind 放弃的原对话。原生 reset 接收 handoff 并更新上下文 head，既不删除旧 entries，也不清空 Tool State documents；Session 不另外提供一条 reset 执行路径。
 
-状态 reminders 按来源比较当前内容与已持久化贡献，Compaction 后按当前 document 重建；未经确认的提醒不推进模型已知状态。文件变化提醒与最终基线或删除事实同事务提交。冷恢复不保留进程内已读文件内容；检测到变化后要求重读，再允许覆盖。
+状态 reminders 按来源比较当前内容与已持久化贡献，Compaction 后按当前 document 重建；未经确认的提醒不推进模型已知状态。Todo 额外检查实际模型上下文，清单缺失时立即重发；存在未完成项且八个 Turn 未更新时提醒，提醒之间至少八个 Turn，更新年龄与提醒间隔均由已提交 Transcript 重建，Resume、Rewind 与 Compaction 保留其相应历史。运行中到达的用户输入只在实际放入后追加说明，撤回不会产生说明，普通 steer 不打断输出。Resume 只在继续已接受的 Run 且精确原生工具回执表明 Unknown Tool Outcome 时提醒核实效果，空闲重开或新 Run 不因旧未知结果触发。文件变化提醒与最终基线或删除事实同事务提交。冷恢复不保留进程内已读文件内容；检测到变化后要求重读，再允许覆盖。
 
 # Checkpoint and Rewind
 
@@ -121,7 +121,7 @@ Session 持有一个 registry；所有 bash 使用同一条进程组启动路径
 
 `job_list` 列出当前 Session 的后台任务。`job_output { job_id, wait?, timeout_ms? }` 消费模型游标之后的 stdout，再返回独立的 `[stderr]` 段与状态行；没有新输出时显示 `(no new output)`。`wait` 等待新输出或完成，默认 30 秒，最长 10 分钟；取消等待不杀进程、不移动游标。完成后的 `wait` 收集和模型 `job_kill` 会标记结束通知已被抑制。未知 id 的错误说明后台任务不跨 Session 重启。这三个工具直接通过 Permission Mode，仍经过权限规则与 hooks；bash 的后台参数沿用普通 bash 的授权路径。
 
-后台任务完成后，Session 将 `background job <id> (bash: <label>) finished [status: …]. Read its output with job_output.` 提交为原生会话输入。正在运行时通知追加到当前上下文，供后续模型请求读取；空闲时提交 follow-up，开启内部 Run。使用 `session.subscribe` 观察跨 Run 的任务通知。新输出不触发通知，父 Run 不等待后台任务；完成后的 `wait` 收集、模型停止和 teardown 抑制通知，取消等待仍保留通知资格。内部通知不触发 `UserPromptSubmit`。
+后台任务完成后，Session 将 `background job <id> (bash: <label>) finished [status: …]. Read its output with job_output.` 包裹为 System Reminder 提交给模型，并声明它是自动事件、不是用户输入，不能视为确认或授权。Transcript 通过消息事实保留通知正文与 `source: "job"`，Frontend 直接使用投影，不解析包裹文本。正在运行时通知追加到当前上下文，供后续模型请求读取；空闲时提交 follow-up，开启内部 Run。使用 `session.subscribe` 观察跨 Run 的任务通知。新输出不触发通知，父 Run 不等待后台任务；完成后的 `wait` 收集、模型停止和 teardown 抑制通知，取消等待仍保留通知资格。内部通知不触发 `UserPromptSubmit`。
 
 Frontend 使用 `session.jobs()` 获取本 Session 的后台任务快照，包括已结束的记录；`session.readJob(id, offset)` 从 stdout 与 stderr 共用的绝对 UTF-8 字节偏移读取，返回 `stdout`、`stderr`、`nextOffset`、`dropped`，不消费模型游标。首次读取传 `0`，后续增量读取传上次 `nextOffset`；多个观察者分别保存自己的偏移。偏移必须是非负安全整数；未知 id 报错。`JobView`、`JobOutput`、`JobEvent` 由 `@rukie/shared` 定义，`@rukie/agent` 同时导出。
 
@@ -130,6 +130,10 @@ Frontend 使用 `session.jobs()` 获取本 Session 的后台任务快照，包�
 `await session.killJob(id)` 请求终止后台任务，先抑制结束通知，再发送信号；重复停止或停止已结束任务是 no-op。正在执行 Run 时，`User stopped background job <id> (<label>).` 作为 steer 输入交给模型；空闲时消息排队到下一条人类 prompt 前，不唤醒模型。尚未投递的停止消息在取消 Run 后仍保留。Headless CLI 原样输出 stream-json 任务事件，text 只输出正常结果；普通 prompt 或 Goal 的因果请求结算后调用 `session.close()`，终止所有后台任务。
 
 stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保留 256 KiB；任务结束后合计保留 16 KiB，始终在 UTF-8 字符边界截断。完整原始输出写入 Session 专属的 0700 临时目录，日志权限为 0600。发生内存丢弃时，模型输出附带完整日志路径。宿主关闭移除这些输出资源；恢复后仍能读取已提交的工具结果文本和 details，历史路径不表示日志文件仍存在。
+
+后台子代理完成、失败与中止时，reporter 也提交带同一自动事件声明的 System Reminder；消息事实保留 Frontend 原有通知正文与来源。
+
+运行中通过 `send_message` 或保留委派插入子代理的消息，在原生 harness 实际放入上下文后追加到达提醒；提醒说明它是父 Session 对委派任务的补充或修正，不构成人类的直接确认或授权。普通 steer 不打断当前输出；只有已提交的中止输出才触发中断与未完成工具调用丢弃的说明。根与子对话在每次已提交 Compaction 后发布一次完整时间快照，即使保留尾部已有最近的时间提醒。
 
 子 Session 拥有独立 registry 与 10 个后台任务名额，`job_*` 只操作自己的任务，完成通知只交给子模型；`job_event` 沿现有 `subagent_event` 转给父观察者，父 `jobs()` 与 `job_list` 不含子任务。子 Run 成功、失败或中止时，在发布 `result` 与解除运行占用前清理自己的任务；父任务继续运行。清理不发送任务事件、结束通知或唤醒输入，`send_message` 续跑同一子 Session 时旧任务 id 已不存在，新编号继续递增。
 

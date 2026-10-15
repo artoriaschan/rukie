@@ -148,7 +148,7 @@ export function skillsReminder(
     return undefined;
   if (entries.length === 0 && previous === undefined) return undefined;
   return [
-    "Available skills: this complete catalog replaces every earlier skill catalog.",
+    "Available skills: this complete catalog replaces every earlier skill catalog. Listed skills may be unrelated to the current task; select only relevant skills.",
     "<available_skills>",
     ...lines,
     "</available_skills>",

@@ -1,3 +1,7 @@
+import { inputArrivalContent, todoReminderSources } from "./input-todo-reminders.ts";
+import { planModeExitReminder } from "../tools/plan-mode/index.ts";
+import { automaticEventContent, automaticEventMessage } from "../reminders/index.ts";
+import { createRunCorrections } from "./run-corrections.ts";
 import { readTranscript, readRunSummaries } from "./history.ts";
 import { PendingInputFactsDoc, queuedInputProjection, type QueuedInput } from "./queued-inputs.ts";
 export type { QueuedInput } from "./queued-inputs.ts";
@@ -22,12 +26,14 @@ import {
   type Models,
   type Message,
   type UserMessage,
+  getCurrentSystemPrompt,
 } from "@earendil-works/pi-ai";
 import {
   Harness,
   ProviderDoc,
   type Cursor,
   type ConversationId,
+  type Conversation,
   configure,
   createRegistry,
   defineDoc,
@@ -39,6 +45,7 @@ import {
   InboxDoc,
   type TaskId,
   type EntryDraft,
+  type EntryId,
   type Storage,
   type EntryRecord,
   ROOT_CONVERSATION_ID,
@@ -135,11 +142,12 @@ import type { QuestionReply, QuestionRequest } from "../tools/question.ts";
 import { mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 import type { WebFetchOptions } from "../tools/web-fetch/index.ts";
 import { validateImage, type PromptImage } from "../images/index.ts";
-import { SYSTEM_PROMPT } from "./prompt.ts";
+import { SYSTEM_PROMPT, systemPrompt } from "./prompt.ts";
+import { userDataDirectory } from "../config/paths.ts";
 import { createThinkingTiming } from "./thinking.ts";
 import { createSubagentController } from "../tools/subagents/index.ts";
 import { createToolLoadout } from "./tools.ts";
-import { createConversationObservation } from "./observation.ts";
+import { createConversationObservation, projectCommittedOutcomeFacts } from "./observation.ts";
 
 type RequestResult = RunResult & { requestId: string };
 interface RunSummaryFact {
@@ -195,7 +203,7 @@ export interface SessionOptions {
   onMcpAuth?: OnMcpAuth;
   /** Load this project's .mcp.json even when it is not in the user trust list. */
   trustProjectMcp?: boolean;
-  /** Clock used for reminder dates and backup retention; defaults to the local current date. */
+  /** Clock used for message timestamps, time reminders and backup retention; defaults to local time. */
   now?: () => Date;
   /** Additional content sources, compared with the latest persisted reminder per source. */
   reminderSources?: ReminderSource[];
@@ -446,6 +454,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const failedCleanup: (() => Promise<void>)[] = [lease.release];
   try {
     await validateSessionDocuments(lease.storage, context);
+    let configuredSystemPrompt = SYSTEM_PROMPT;
+    let configuredSystemSections: Record<string, string> = { instructions: SYSTEM_PROMPT };
     const registry = createRegistry();
     const env = new NodeExecutionEnv({ cwd });
     failedCleanup.push(() => env.cleanup(context));
@@ -571,6 +581,132 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       } while (cursor !== undefined && count <= configured);
       return { count, limit: configured };
     };
+    const corrections = new Map<number, ReturnType<typeof createRunCorrections>>();
+    const runCorrections = async (target: typeof conversation, ctx: Context) => {
+      const live = await harness.snapshot(LiveDoc, target.id, ctx);
+      const view = await target.context(ctx);
+      const epoch = Math.max(
+        0,
+        ...view.entries
+          .filter((entry) => entry.kind === "pi.compaction")
+          .map((entry) => Number(entry.id)),
+      );
+      const controller = corrections.get(Number(target.id)) ?? createRunCorrections();
+      corrections.set(Number(target.id), controller);
+      const todos = await harness.snapshot(todoState.document, target.id, ctx);
+      const completed = Array.isArray(todos?.value)
+        ? todos.value.filter(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              !Array.isArray(item) &&
+              item.status === "completed",
+          ).length
+        : 0;
+      controller.enter(`${live?.run?.inputs[0]}:${epoch}`, completed);
+      return controller;
+    };
+    const correctionTools = async (
+      target: typeof conversation,
+      assistant: EntryId,
+      results: readonly EntryId[],
+      ctx: Context,
+    ) => {
+      const controller = await runCorrections(target, ctx);
+      const committed = await lease.storage.entry(assistant, ctx);
+      const outputs = await Promise.all(results.map((id) => lease.storage.entry(id, ctx)));
+      for (const message of committed?.entry.model ?? []) {
+        if (message.role !== "assistant") continue;
+        for (const part of message.content) {
+          if (part.type !== "toolCall") continue;
+          const result = outputs
+            .flatMap((output) => output?.entry.model ?? [])
+            .find((output) => output.role === "toolResult" && output.toolCallId === part.id);
+          // A completed review or admitted delegation is progress even when its
+          // reply requests revision or the delegated child later reports failure.
+          const details = result?.role === "toolResult" ? result.details : undefined;
+          const actionCompleted =
+            result?.role === "toolResult" &&
+            (!result.isError ||
+              (details &&
+                typeof details === "object" &&
+                !Array.isArray(details) &&
+                ((part.name === "exit_plan_mode" &&
+                  "kind" in details &&
+                  ["approve", "revise", "takeover"].includes(String(details.kind))) ||
+                  (["subagent", "subagent_fork"].includes(part.name) &&
+                    "childSessionId" in details &&
+                    typeof details.childSessionId === "string"))));
+          for (const content of controller.tool(
+            part.name,
+            part.arguments,
+            Boolean(actionCompleted),
+          ))
+            await target.commit(
+              (tx) =>
+                tx.appendEntry(
+                  target.id,
+                  reminderEntry({
+                    role: "system-reminder",
+                    source: "run-correction",
+                    content,
+                    timestamp: options.now?.().getTime() ?? Date.now(),
+                  }),
+                ),
+              ctx,
+            );
+        }
+      }
+    };
+    const correctionLimit = async (target: typeof conversation, ctx: Context) => {
+      const rounds = await toolRounds(target.id, ctx);
+      const content = (await runCorrections(target, ctx)).limit(
+        Boolean(rounds && rounds.count >= rounds.limit),
+      );
+      if (content)
+        await target.commit(
+          (tx) =>
+            tx.appendEntry(
+              target.id,
+              reminderEntry({
+                role: "system-reminder",
+                source: "tool-limit",
+                content,
+                timestamp: options.now?.().getTime() ?? Date.now(),
+              }),
+            ),
+          ctx,
+        );
+    };
+    const lengthContinuation = async (
+      target: typeof conversation,
+      answer: Message,
+      taskId: TaskId,
+      ctx: Context,
+    ) => {
+      if (answer.role !== "assistant" || answer.stopReason !== "length") return undefined;
+      const content = (await runCorrections(target, ctx)).length(
+        answer.content.some((part) => part.type === "text" && part.text.trim().length > 0),
+      );
+      if (!content) return undefined;
+      await target.commit(
+        (tx) =>
+          tx.appendEntry(target.id, {
+            kind: "rukie.message-facts",
+            data: {
+              taskId: Number(taskId),
+              content,
+              reminderContent: content.slice(
+                "<system-reminder>\n".length,
+                -"\n</system-reminder>".length,
+              ),
+              source: "output-length",
+            },
+          }),
+        ctx,
+      );
+      return { continue: content };
+    };
     const providerConversation = async (sessionId: string) => {
       const known = providerConversations.get(sessionId);
       if (known !== undefined) return known;
@@ -626,6 +762,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               : undefined,
         ),
         registry,
+        now: () => (options.now?.() ?? new Date()).getTime(),
         env: () => env,
         settings: {
           retry: { enabled: false },
@@ -954,6 +1091,90 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       );
     };
     const fullHistory = (id = conversation.id) => readTranscript(lease.storage, id, context);
+    const resumedRunAnchors = new Map<number, number>();
+    async function prepareAcceptedInputReminders(owner: Conversation, ctx: Context) {
+      const history = await fullHistory(owner.id);
+      const remindedInputs = new Set<number>();
+      for (const entry of history) {
+        const inputEntry =
+          entry.kind === "rukie.reminder" ? entryData(entry)?.arrivalEntryId : undefined;
+        if (typeof inputEntry === "number") remindedInputs.add(inputEntry);
+      }
+      for (const entry of history) {
+        const facts = entry.kind === "rukie.message-facts" ? entryData(entry) : undefined;
+        if (Number(entry.conversationId) !== Number(owner.id) || facts?.arrivedDuringRun !== true)
+          continue;
+        const submission =
+          typeof facts.requestId === "string"
+            ? await lease.storage.submissionByRequest(owner.id, facts.requestId, ctx)
+            : undefined;
+        const inputEntry = typeof facts.entryId === "number" ? facts.entryId : submission?.entry;
+        if (inputEntry === undefined) continue;
+        if (remindedInputs.has(Number(inputEntry))) continue;
+        const content = inputArrivalContent(
+          history,
+          Number(inputEntry),
+          facts.arrivalOrigin === "parent" ? "parent" : "user",
+        );
+        const timestamp = (options.now?.() ?? new Date()).getTime();
+        await owner.commit(
+          (tx) =>
+            tx.appendEntry(owner.id, {
+              ...reminderEntry({
+                role: "system-reminder",
+                source: "input-arrival",
+                content,
+                timestamp,
+              }),
+              data: {
+                source: "input-arrival",
+                content,
+                timestamp,
+                arrivalEntryId: inputEntry,
+              },
+            }),
+          ctx,
+        );
+        // Replayed pre-admission facts can resolve to the same native placement.
+        remindedInputs.add(Number(inputEntry));
+      }
+      const anchor = resumedRunAnchors.get(Number(owner.id));
+      if (anchor === undefined) return;
+      const live = await harness.snapshot(LiveDoc, owner.id, ctx);
+      const submissionId = live?.run?.inputs[0];
+      if (submissionId === undefined || Number(submissionId) !== anchor) {
+        resumedRunAnchors.delete(Number(owner.id));
+        return;
+      }
+      const input = await lease.storage.submission(submissionId, ctx);
+      const activeHistory = history.filter(
+        (entry) => Number(entry.id) >= Number(input?.entry ?? Number.MAX_SAFE_INTEGER),
+      );
+      const messages = await projectCommittedOutcomeFacts(
+        transcriptMessages(activeHistory),
+        activeHistory,
+        harness,
+        ctx,
+      );
+      if (!messages.some((message) => message.role === "toolResult" && message.outcomeUnknown))
+        return;
+      resumedRunAnchors.delete(Number(owner.id));
+      await owner.commit(
+        (tx) =>
+          tx.appendEntry(
+            owner.id,
+            reminderEntry({
+              role: "system-reminder",
+              source: "resume-tool-outcome",
+              content:
+                "This Session is resuming already accepted work with an Unknown Tool Outcome. The interrupted tool may have produced effects without a committed success receipt. Inspect actual state before deciding whether to repeat it. Continue the accepted task. Do not ask the user whether to continue.",
+              timestamp: (options.now?.() ?? new Date()).getTime(),
+            }),
+          ),
+        ctx,
+      );
+    }
+
     const promptFacts = new Map<string, string>();
     const rememberPrompts = (entries: readonly EntryRecord[]) => {
       for (const entry of entries) {
@@ -1108,14 +1329,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   model: [
                     {
                       role: "user",
-                      content: [{ type: "text", text: content }],
-                      timestamp: Date.now(),
+                      content: [{ type: "text", text: automaticEventMessage(content) }],
+                      timestamp: (options.now?.() ?? new Date()).getTime(),
                     },
                   ],
                 });
                 await tx.appendEntry(conversation.id, {
                   kind: "rukie.message-facts",
-                  data: { entryId: Number(entry.id), source: "job" },
+                  data: { entryId: Number(entry.id), source: "job", displayContent: content },
                 });
               }, context);
             } else {
@@ -1372,6 +1593,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       }
     >();
     const subagents = createSubagentController({
+      now: () => (options.now?.() ?? new Date()).getTime(),
       onWarning: warn,
       harness,
       parent: conversation,
@@ -1507,7 +1729,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                       reminderEntry({
                         role: "system-reminder",
                         source: `job:${job.id}`,
-                        content: `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
+                        content: automaticEventContent(
+                          `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
+                        ),
                         timestamp: Date.now(),
                       }),
                     ),
@@ -1646,7 +1870,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             jobs: childJobs,
             getSkill: (name) => skills.get(name),
             setTodo: async (todos) => {
-              await childState.set("todo", todos, context);
+              await childState.set("todo", todos, context, { kind: "rukie.todo-update", data: {} });
             },
             onQuestion: options.onQuestion
               ? (request) =>
@@ -1705,14 +1929,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     );
                   pending.pending = [];
                 }, ctx);
+                await prepareAcceptedInputReminders(child, ctx);
+                await correctionLimit(child, ctx);
                 const view = await child.context(ctx);
+                const childHistory = await fullHistory(child.id);
+                const compacted = childHistory.findLast(
+                  (entry) =>
+                    entry.kind === "pi.compaction" &&
+                    Number(entry.conversationId) === Number(child.id),
+                );
+                const freshTime =
+                  compacted &&
+                  !childHistory.some(
+                    (entry) =>
+                      entry.kind === "rukie.reminder" &&
+                      entryData(entry)?.source === "time" &&
+                      entryData(entry)?.afterCompactionId === Number(compacted.id),
+                  );
                 const reminders = await collectReminders({
                   messages: transcriptMessages(
                     view.entries.filter(
                       (entry) =>
-                        entry.kind !== "rukie.reminder" ||
-                        entryData(entry)?.source !== "deferred-tools" ||
-                        Number(entry.conversationId) === Number(child.id),
+                        !(
+                          freshTime &&
+                          entry.kind === "rukie.reminder" &&
+                          entryData(entry)?.source === "time"
+                        ) &&
+                        (entry.kind !== "rukie.reminder" ||
+                          entryData(entry)?.source !== "deferred-tools" ||
+                          Number(entry.conversationId) === Number(child.id)),
                     ),
                   ),
                   cwd,
@@ -1721,7 +1966,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   dataRoot: options.dataRoot,
                   now: options.now?.() ?? new Date(),
                   sources: [
-                    ...childState.reminderSources,
+                    ...childState.reminderSources.filter((source) => source.source !== "todo"),
+                    ...todoReminderSources(
+                      await fullHistory(child.id),
+                      view.entries,
+                      await childState.reminderSources
+                        .find((source) => source.source === "todo")
+                        ?.currentContent(),
+                    ),
                     childDeferredSource,
                     {
                       source: "skills",
@@ -1745,13 +1997,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   if (reminder.source === "file-changes")
                     await childTracking.persistReminder(reminder);
                   else
-                    await child.commit(
-                      (tx) => tx.appendEntry(child.id, reminderEntry(reminder)),
-                      ctx,
-                    );
+                    await child.commit((tx) => {
+                      const entry = reminderEntry(reminder);
+                      return tx.appendEntry(child.id, {
+                        ...entry,
+                        data: {
+                          source: reminder.source,
+                          content: reminder.content,
+                          timestamp: reminder.timestamp,
+                          ...(freshTime && reminder.source === "time"
+                            ? { afterCompactionId: Number(compacted.id) }
+                            : {}),
+                        },
+                      });
+                    }, ctx);
                 return { messages: modelContextMessages(await child.context(ctx)) };
               },
               afterResponse: async (message, _api, ctx) => {
+                message.timestamp = (options.now?.() ?? new Date()).getTime();
                 childTracking.finishRequest();
                 if (await guardToolResponse(message, child.id, ctx)) {
                   warn("Model exceeded the configured tool iteration limit");
@@ -1760,6 +2023,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }
               },
               onYield: async (answer, api, ctx) => {
+                const length = await lengthContinuation(child, answer, api.taskId, ctx);
+                if (length) return length;
                 if (answer.stopReason !== "stop") return undefined;
                 const live = await harness.snapshot(LiveDoc, child.id, ctx);
                 const anchor = Number(live?.run?.inputs[0]);
@@ -1855,6 +2120,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return { continue: result.reason };
               },
               afterTools: async (_assistant, results, _api, ctx) => {
+                await correctionTools(child, _assistant, results, ctx);
                 const committed = await Promise.all(
                   results.map((id) => lease.storage.entry(id, ctx)),
                 );
@@ -1936,7 +2202,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           model: { provider: selected.provider, modelId: selected.id },
           thinkingLevel: nativeThinkingLevel(childThinking),
           cwd,
-          instructions: SYSTEM_PROMPT,
+          instructions: systemPrompt({
+            cwd,
+            additionalDirectories,
+            userDataDirectory: userDataDirectory(options),
+            tools: childLoadout.registrations,
+          }).text,
           extensions: [extension],
           tools: (await childLoadout.plan(!selection.retained)).tools,
         };
@@ -2104,30 +2375,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             plan.getActive()
               ? planModeReminder(!!options.onPlanReview)
               : plan.hasEntered()
-                ? entryData(lastPlanReminder)?.content === "You have exited Plan Mode."
+                ? entryData(lastPlanReminder)?.content === planModeExitReminder
                   ? undefined
-                  : "You have exited Plan Mode."
+                  : planModeExitReminder
                 : undefined,
         },
-        ...state.reminderSources,
+        ...state.reminderSources.filter((source) => source.source !== "todo"),
+        ...todoReminderSources(
+          await fullHistory(),
+          afterCompactionId === undefined ? visibleContext.entries : [],
+          await state.reminderSources.find((source) => source.source === "todo")?.currentContent(),
+        ),
         tracking.reminderSource,
         ...(options.reminderSources ?? []),
       ];
       const unannouncedMove =
         afterCompactionId === undefined && sessionMove.entryId > sessionMove.notifiedEntryId;
-      const latestEnvironment = observation
-        ?.messages()
-        .findLast(
-          (message) => message.role === "system-reminder" && message.source === "environment",
-        );
-      // Conversation Rewind can retain an old cwd snapshot while Session scope keeps the move.
-      const staleEnvironment =
-        afterCompactionId === undefined &&
-        sessionMove.entryId > 0 &&
-        latestEnvironment?.role === "system-reminder" &&
-        !latestEnvironment.content.startsWith(`cwd: ${cwd}\n`);
       const reminders = await collectReminders({
-        refreshEnvironment: unannouncedMove || staleEnvironment,
+        refreshEnvironment: unannouncedMove,
         messages:
           afterCompactionId === undefined
             ? observation
@@ -2146,7 +2411,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const moveReminder = reminderEntry({
           role: "system-reminder",
           source: "session-move",
-          content: `Working directory changed from ${sessionMove.oldCwd} to ${sessionMove.newCwd}. Use the new working directory for subsequent work.`,
+          content: `Working directory changed from ${sessionMove.oldCwd} to ${sessionMove.newCwd}. Use the new working directory for subsequent work. Historical output tied to the old paths is stale; reread files and recheck relevant state in the new directory before relying on it. The old directory remains accessible by absolute path: ${sessionMove.oldCwd}.`,
           timestamp: (options.now?.() ?? new Date()).getTime(),
         });
         await conversation.commit(async (tx) => {
@@ -2258,7 +2523,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           jobs,
           getSkill: (name) => skills.get(name),
           setTodo: async (todos: TodoItem[]) => {
-            await state.set("todo", todos, context);
+            await state.set("todo", todos, context, { kind: "rukie.todo-update", data: {} });
           },
           onQuestion: options.onQuestion,
           onInteractionStart: notifyInteraction,
@@ -2309,8 +2574,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         },
       },
       install: async (_registrations, offered, ctx) => {
+        const prompt = systemPrompt({
+          cwd,
+          additionalDirectories,
+          userDataDirectory: userDataDirectory(options),
+          tools: toolLoadout.registrations,
+        });
+        configuredSystemPrompt = prompt.text;
+        configuredSystemSections = prompt.rendered;
         const extension = {
           name: "rukie.session",
+          sections: prompt.sections,
           tools: toolLoadout.registrations,
           hooks: [
             hook(CompactionTask, {
@@ -2459,6 +2733,27 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }
                 for (const id of live?.run?.inputs ?? []) {
                   const record = await lease.storage.submission(id, ctx);
+                  if (record?.entry && requestKind(record.requestId) === "subagent-report") {
+                    const presentation = (await fullHistory()).findLast(
+                      (entry) =>
+                        entry.kind === "rukie.message-facts" &&
+                        entryData(entry)?.requestId === record.requestId &&
+                        typeof entryData(entry)?.displayContent === "string",
+                    );
+                    if (presentation && entryData(presentation)?.entryId !== Number(record.entry))
+                      await conversation.commit(
+                        (tx) =>
+                          tx.appendEntry(conversation.id, {
+                            kind: "rukie.message-facts",
+                            data: {
+                              entryId: Number(record.entry),
+                              requestId: record.requestId!,
+                              displayContent: entryData(presentation)!.displayContent!,
+                            },
+                          }),
+                        ctx,
+                      );
+                  }
                   if (record?.entry)
                     await conversation.commit(async (tx) => {
                       const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
@@ -2484,6 +2779,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     await checkpoints.start(String(record.entry));
                   }
                 }
+                await prepareAcceptedInputReminders(conversation, ctx);
+                await correctionLimit(conversation, ctx);
                 await goalRuntime.prepareWrapup(ctx);
                 await prepareReminders(ctx);
                 await toolLoadout.publish(ctx);
@@ -2493,6 +2790,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return { messages: contextMessages };
               },
               afterResponse: async (message, api, ctx) => {
+                message.timestamp = (options.now?.() ?? new Date()).getTime();
                 tracking.finishRequest();
                 if (await guardToolResponse(message, conversation.id, ctx)) {
                   warn("Model exceeded the configured tool iteration limit");
@@ -2546,6 +2844,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   );
               },
               afterTools: async (_assistant, results, _api, ctx) => {
+                await correctionTools(conversation, _assistant, results, ctx);
                 const committed = await Promise.all(
                   results.map((id) => lease.storage.entry(id, ctx)),
                 );
@@ -2596,6 +2895,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 // A caller may start steering before releasing an in-flight model.
                 // Complete host admission before the native final boundary selects its inbox.
                 await Promise.allSettled(steeringAdmissions);
+                const length = await lengthContinuation(conversation, _answer, api.taskId, ctx);
+                if (length) return length;
                 if (_answer.stopReason !== "stop") {
                   await goalRuntime.clearActivation(ctx);
                   return undefined;
@@ -2941,6 +3242,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await writeHookTranscript(hookTranscriptPath(lease.id), await fullHistory());
         throw new PromptHookBlocked(result);
       }
+      const arrivedDuringRun =
+        requestKind(requestId) === "human" &&
+        !!(await harness.snapshot(LiveDoc, conversation.id, context))?.run;
       const admissionContext = signal ? withAbortSignal(signal, context) : context;
       await prepareReminders(admissionContext, true, undefined, requestId);
       signal?.throwIfAborted();
@@ -2954,7 +3258,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           timestamp: Date.now(),
         });
       const content: UserMessage["content"] = [
-        { type: "text", text: prompt },
+        {
+          type: "text",
+          text: requestKind(requestId) === "job" ? automaticEventMessage(prompt) : prompt,
+        },
         ...images.map((image) => ({
           type: "image" as const,
           data: image.data,
@@ -2971,6 +3278,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       {
         const facts: Record<string, JsonValue> = {
           requestId,
+          ...(arrivedDuringRun ? { arrivedDuringRun: true } : {}),
+          ...(requestKind(requestId) === "job" ? { displayContent: prompt } : {}),
           ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
           ...(invocation ? { skillInvocation: invocation } : {}),
           ...(!(requestKind(requestId) === "human")
@@ -3215,7 +3524,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       runSummaries: () => structuredClone(runSummaries),
       contextUsage: () =>
         contextUsage(modelMessages(), model.contextWindow, latestInputTokens(), {
-          instructions: SYSTEM_PROMPT,
+          instructions: getCurrentSystemPrompt(modelMessages()) || configuredSystemPrompt,
+          sections: configuredSystemSections,
           tools: toolLoadout.registrations,
         }),
       contextReport: () =>
@@ -3226,7 +3536,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           model: `${model.provider}/${model.id}`,
           window: model.contextWindow,
           mcpServers: mcp.toolServers,
-          configured: { instructions: SYSTEM_PROMPT, tools: toolLoadout.registrations },
+          configured: {
+            instructions: getCurrentSystemPrompt(modelMessages()) || configuredSystemPrompt,
+            sections: configuredSystemSections,
+            tools: toolLoadout.registrations,
+          },
         }),
       sideQuestion(question, input) {
         assertAvailable();
@@ -3251,7 +3565,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           yield* sideQuestion({
             question,
             messages: view.messages,
-            systemPrompt: SYSTEM_PROMPT,
+            systemPrompt: getCurrentSystemPrompt(view.messages) || configuredSystemPrompt,
             model: selected,
             models,
             running,
@@ -3868,6 +4182,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         requestKind(input.requestId) === "human"
       )
         completeHumanRequest(input.requestId, input.id);
+    }
+    if (options.resumeId) {
+      for (const row of (await lease.storage.scanConversations({}, 100000, undefined, context))
+        .items) {
+        const live = await harness.snapshot(LiveDoc, row.id, context);
+        if (live?.run?.inputs[0] !== undefined)
+          resumedRunAnchors.set(Number(row.id), Number(live.run.inputs[0]));
+      }
     }
     harness.resume();
     return session;

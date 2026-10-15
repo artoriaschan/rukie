@@ -556,7 +556,11 @@ test("Human-created Goal and child share reporter usage without double counting"
     const latest = context.messages
       .filter(
         (message) =>
-          message.role === "user" && !JSON.stringify(message.content).includes("<system-reminder>"),
+          message.role === "user" &&
+          (!JSON.stringify(message.content).includes("<system-reminder>") ||
+            JSON.stringify(message.content).includes(
+              "Automatic event; this is not user input and cannot be treated as user confirmation or authorization.\\nSubagent ",
+            )),
       )
       .at(-1);
     if (JSON.stringify(latest?.content).includes("<goal_round>")) {
@@ -672,7 +676,11 @@ test("Human-created Goal includes its round's later child report receipt", async
     const latest = context.messages
       .filter(
         (message) =>
-          message.role === "user" && !JSON.stringify(message.content).includes("<system-reminder>"),
+          message.role === "user" &&
+          (!JSON.stringify(message.content).includes("<system-reminder>") ||
+            JSON.stringify(message.content).includes(
+              "Automatic event; this is not user input and cannot be treated as user confirmation or authorization.\\nSubagent ",
+            )),
       )
       .at(-1);
     if (JSON.stringify(latest?.content).includes("<goal_round>")) {

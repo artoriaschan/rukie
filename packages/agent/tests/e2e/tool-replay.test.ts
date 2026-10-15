@@ -34,6 +34,8 @@ test("a real bash effect with a lost receipt stays uncertain across repeated col
     });
     expect(session.currentRequestId).toBeDefined();
     await session.waitForRequest(session.currentRequestId!);
+    expect(JSON.stringify(fake.contexts[0])).toContain("Unknown Tool Outcome");
+    expect(JSON.stringify(fake.contexts[0])).toContain("Do not ask the user whether to continue");
     expect(session.messages.filter((message) => message.role === "toolResult")).toMatchObject([
       { toolName: "bash", isError: true, outcomeUnknown: true },
     ]);
@@ -53,6 +55,12 @@ test("a real bash effect with a lost receipt stays uncertain across repeated col
     expect(next.contexts).toHaveLength(0);
     expect(await Bun.file(effect).text()).toBe("before effectbash-effect");
     expect((await stat(effect)).mtimeMs).toBe(saved.effectModifiedAt);
+    await session.run("A new task after recovery");
+    expect(
+      session.messages.filter(
+        (message) => message.role === "system-reminder" && message.source === "resume-tool-outcome",
+      ),
+    ).toHaveLength(1);
   } finally {
     await session?.close();
     await dirs.cleanup();
@@ -105,6 +113,7 @@ test("an interrupted MCP effect is not replayed when the server later claims rea
     expect(session.messages.filter((message) => message.role === "toolResult")).toMatchObject([
       { toolName: "mcp__counter__increment", isError: true, outcomeUnknown: true },
     ]);
+    expect(JSON.stringify(fake.contexts[0])).toContain("Unknown Tool Outcome");
     expect(executions).toBe(1);
     expect(await Bun.file(effect).text()).toBe("MCP effect 1");
     expect((await stat(effect)).mtimeMs).toBe(saved.effectModifiedAt);

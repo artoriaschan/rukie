@@ -73,9 +73,28 @@ test("Resume announces a move and refreshes environment once, and blocks code ac
     ...fake,
   });
   await session.run("new prompt");
+  const systemUpdates = fake.contexts[0]!.messages.filter(
+    (message) => message.role === "system" && message.sections?.environment,
+  );
+  expect(systemUpdates).toHaveLength(2);
+  expect(systemUpdates[0]!.role === "system" && systemUpdates[0]!.sections!.environment).toContain(
+    `cwd: ${dirs.cwd}`,
+  );
+  expect(systemUpdates[1]!.role === "system" && systemUpdates[1]!.sections!.environment).toContain(
+    `cwd: ${target}`,
+  );
+  expect(systemUpdates[1]!.role === "system" && Object.keys(systemUpdates[1]!.sections!)).toEqual([
+    "environment",
+  ]);
   expect(JSON.stringify(fake.contexts[0])).toContain(`additional directories:\\n${dirs.cwd}`);
   expect(JSON.stringify(fake.contexts[0])).toContain(
     `Working directory changed from ${dirs.cwd} to ${target}`,
+  );
+  expect(JSON.stringify(fake.contexts[0])).toContain(
+    "Historical output tied to the old paths is stale",
+  );
+  expect(JSON.stringify(fake.contexts[0])).toContain(
+    "old directory remains accessible by absolute path",
   );
   expect(
     session.messages.filter((m) => m.role === "system-reminder" && m.source === "environment"),

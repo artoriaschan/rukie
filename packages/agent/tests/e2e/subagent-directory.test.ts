@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, onTestFinished, test } from "bun:test";
+import type { EntryId } from "@earendil-works/pi-durable";
 import {
   fauxAssistantMessage,
   fauxToolCall,
@@ -6,7 +7,11 @@ import {
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
-import { createSession as createSessionImpl, type Session } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  createSessionStore,
+  type Session,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -229,59 +234,136 @@ test.each(["explore", "custom", "deleted", "fork"])(
   },
 );
 
-test("send_message steers the active child before its next model request and list_agents reports running", async () => {
-  dirs = await tempDirs();
-  const release = Promise.withResolvers<void>();
-  let id = "";
-  let childCalls = 0;
-  const childStarted = Promise.withResolvers<void>();
-  const reply = async (context: TranscriptContext) => {
-    if (!getCurrentTools(context.messages).some((tool) => tool.name === "subagent")) {
-      if (++childCalls === 1) {
-        childStarted.resolve();
-        await release.promise;
-        return call("todo_write", { todos: [] });
-      }
-      expect(
-        context.messages.some(
+test.each([false, true])(
+  "send_message steers the active child before its next model request and list_agents reports running (persisted pre-admission replay: %s)",
+  async (replayed) => {
+    dirs = await tempDirs();
+    const release = Promise.withResolvers<void>();
+    let id = "";
+    let childCalls = 0;
+    const childStarted = Promise.withResolvers<void>();
+    onTestFinished(() => release.resolve());
+    const reply = async (context: TranscriptContext) => {
+      if (!getCurrentTools(context.messages).some((tool) => tool.name === "subagent")) {
+        if (++childCalls === 1) {
+          childStarted.resolve();
+          await release.promise;
+          return call("todo_write", { todos: [] });
+        }
+        expect(
+          context.messages.some(
+            (message) =>
+              message.role === "user" &&
+              JSON.stringify(message.content).includes("adjust investigation"),
+          ),
+        ).toBe(true);
+        const arrival = context.messages.filter(
           (message) =>
             message.role === "user" &&
-            JSON.stringify(message.content).includes("adjust investigation"),
-        ),
-      ).toBe(true);
-      return fauxAssistantMessage("adjusted conclusion");
-    }
-    const result = context.messages.findLast((message) => message.role === "toolResult")!;
-    if (result.role === "toolResult" && result.toolName === "subagent") {
-      await childStarted.promise;
-      id = agentId(result.details);
-      return call("list_agents");
-    }
-    if (result.role === "toolResult" && result.toolName === "list_agents") {
-      expect(JSON.stringify(result)).toContain(`${id} [running] — Active`);
-      return call("send_message", { agent_id: id, message: "adjust investigation" });
-    }
-    if (result.role === "toolResult") {
-      expect(JSON.stringify(result)).toContain(`delivered to ${id}`);
-      expect(result.details).toEqual({});
+            JSON.stringify(message.content).includes("A parent message arrived"),
+        );
+        expect(arrival).toHaveLength(1);
+        expect(JSON.stringify(arrival)).toContain(
+          "The current output was not interrupted by this input.",
+        );
+        expect(JSON.stringify(arrival)).toContain("not direct human confirmation or authorization");
+        expect(JSON.stringify(arrival)).not.toContain("A user message arrived");
+        return fauxAssistantMessage("adjusted conclusion");
+      }
+      const result = context.messages.findLast((message) => message.role === "toolResult")!;
+      if (result.role === "toolResult" && result.toolName === "subagent") {
+        await childStarted.promise;
+        id = agentId(result.details);
+        return call("list_agents");
+      }
+      if (result.role === "toolResult" && result.toolName === "list_agents") {
+        expect(JSON.stringify(result)).toContain(`${id} [running] — Active`);
+        return call("send_message", { agent_id: id, message: "adjust investigation" });
+      }
+      if (result.role === "toolResult") {
+        expect(JSON.stringify(result)).toContain(`delivered to ${id}`);
+        expect(result.details).toEqual({});
+        release.resolve();
+      }
+      return fauxAssistantMessage("parent done");
+    };
+    const fake = fakeModel([
+      call("subagent", { description: "Active", prompt: "first" }),
+      ...Array.from({ length: 8 }, () => reply),
+    ]);
+    fake.model.contextWindow = 100_000;
+    const store = createSessionStore(dirs);
+    let replayedFacts = false;
+    const replayStore: typeof store = {
+      ...store,
+      async open(...args) {
+        const lease = await store.open(...args);
+        return {
+          ...lease,
+          storage: new Proxy(lease.storage, {
+            get(target, key) {
+              if (key === "commit")
+                return async (...args: Parameters<typeof target.commit>) => {
+                  const [writes, context] = args;
+                  const seq = await target.commit(writes, context);
+                  const fact = writes.find(
+                    (write) =>
+                      write.type === "entry" &&
+                      write.value.kind === "rukie.message-facts" &&
+                      write.value.data !== null &&
+                      typeof write.value.data === "object" &&
+                      !Array.isArray(write.value.data) &&
+                      write.value.data.arrivalOrigin === "parent",
+                  );
+                  if (replayed && !replayedFacts && fact?.type === "entry") {
+                    const data = fact.value.data;
+                    if (
+                      !data ||
+                      typeof data !== "object" ||
+                      Array.isArray(data) ||
+                      typeof data.requestId !== "string"
+                    )
+                      throw new Error("Expected admission identity");
+                    expect(
+                      await target.submissionByRequest(
+                        fact.value.conversationId,
+                        data.requestId,
+                        context,
+                      ),
+                    ).toBeUndefined();
+                    // Reproduce persisted crash/retry state before native admission: replay
+                    // appended the same facts under a fresh EntryId, with no submission yet.
+                    replayedFacts = true;
+                    await target.commit(
+                      [
+                        {
+                          type: "entry",
+                          value: { ...fact.value, id: await target.mintId<EntryId>() },
+                        },
+                      ],
+                      context,
+                    );
+                  }
+                  return seq;
+                };
+              const value = Reflect.get(target, key);
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          }),
+        };
+      },
+    };
+    const session = await createSession({ ...dirs, ...fake, store: replayStore });
+    try {
+      await runRequest(session, "delegate");
+    } finally {
       release.resolve();
     }
-    return fauxAssistantMessage("parent done");
-  };
-  const fake = fakeModel([
-    call("subagent", { description: "Active", prompt: "first" }),
-    ...Array.from({ length: 8 }, () => reply),
-  ]);
-  fake.model.contextWindow = 100_000;
-  const session = await createSession({ ...dirs, ...fake });
-  try {
-    await runRequest(session, "delegate");
-  } finally {
-    release.resolve();
-  }
-  expect(childCalls).toBe(2);
-  expect(JSON.stringify(session.messages)).toContain("adjusted conclusion");
-});
+    expect(replayedFacts).toBe(replayed);
+    expect(childCalls).toBe(2);
+    expect(JSON.stringify(session.messages)).toContain("adjusted conclusion");
+  },
+);
 
 test("send_message cannot address a child belonging to another parent session", async () => {
   dirs = await tempDirs();
@@ -391,6 +473,13 @@ test("parallel messages to an idle cold child start one Run and steer the follow
         return call("todo_write", { todos: [] });
       }
       expect(JSON.stringify(context.messages)).toContain("second instruction");
+      const arrivals = context.messages.filter(
+        (message) =>
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("A parent message arrived"),
+      );
+      expect(arrivals).toHaveLength(1);
+      expect(JSON.stringify(arrivals)).toContain("not direct human confirmation or authorization");
       return fauxAssistantMessage("combined done");
     }
     const results = context.messages.filter(

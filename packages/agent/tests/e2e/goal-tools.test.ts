@@ -143,7 +143,7 @@ test("human steering inside a Goal round authorizes an edit and continuation ret
     call("update_goal", { action: "edit", objective: "corrected objective" }),
     (context) => {
       expect(context.messages.at(-1)).toMatchObject({ isError: false });
-      return fauxAssistantMessage("corrected", { stopReason: "length" });
+      return fauxAssistantMessage("corrected", { stopReason: "aborted" });
     },
   ]);
   const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
@@ -202,7 +202,7 @@ test.each(invalidUpdates)(
   async (args) => {
     dirs = await tempDirs();
     const fake = fakeModel([
-      fauxAssistantMessage("idle", { stopReason: "length" }),
+      fauxAssistantMessage("idle", { stopReason: "aborted" }),
       call("update_goal", args),
       (context) => {
         expect(context.messages.at(-1)).toMatchObject({ isError: true });
@@ -222,7 +222,7 @@ test.each(invalidUpdates)(
 test("human model controls edit, pause and resume a disarmed active Goal without resetting its rounds", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage("idle", { stopReason: "length" }),
+    fauxAssistantMessage("idle", { stopReason: "aborted" }),
     call("update_goal", { action: "edit", objective: "edited" }),
     call("update_goal", { action: "resume" }),
     call("update_goal", { action: "pause" }),
@@ -245,7 +245,7 @@ test("human model controls edit, pause and resume a disarmed active Goal without
 test("a human pause racing model resume cannot be reversed by that tool", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage("idle", { stopReason: "length" }),
+    fauxAssistantMessage("idle", { stopReason: "aborted" }),
     call("update_goal", { action: "resume" }),
     fauxAssistantMessage("pause respected"),
   ]);

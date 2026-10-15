@@ -209,9 +209,14 @@ test("select ignores result limit, reports unknown names and marks already avail
   const reminders = session.messages.filter(
     (message) => message.role === "system-reminder" && message.source === "deferred-tools",
   );
+  const firstReminder = reminders[0];
+  if (firstReminder?.role !== "system-reminder") throw new Error("Missing deferred tool reminder");
+  expect(firstReminder.content).toContain(
+    "A schema not yet loaded does not mean the capability is unavailable",
+  );
   expect(reminders.map((message) => ("content" in message ? message.content : ""))).toEqual([
-    "Deferred MCP tools (use ToolSearch to load their definitions):\n- mcp__local__echo\n- mcp__local__keep",
-    "Deferred MCP tools changed:\nRemoved:\n- mcp__local__echo\n- mcp__local__keep",
+    "Deferred MCP tools (use ToolSearch to load their definitions):\nUse ToolSearch to load a listed tool definition before calling it. A schema not yet loaded does not mean the capability is unavailable.\n- mcp__local__echo\n- mcp__local__keep",
+    "Deferred MCP tools changed:\nUse ToolSearch to load a listed tool definition before calling it. A schema not yet loaded does not mean the capability is unavailable.\nRemoved:\n- mcp__local__echo\n- mcp__local__keep",
   ]);
 });
 test("loaded MCP still obeys deny rules while ToolSearch is read-only", async () => {
@@ -320,10 +325,10 @@ test("remove discovered MCP and reappearance returns to deferred with repeated i
       : [],
   );
   expect(deferred).toEqual([
-    "Deferred MCP tools (use ToolSearch to load their definitions):\n- mcp__local__echo",
-    "Deferred MCP tools changed:\nRemoved:\n- mcp__local__echo",
-    "Deferred MCP tools changed:\nAdded:\n- mcp__local__echo",
-    "Deferred MCP tools changed:\nRemoved:\n- mcp__local__echo",
+    "Deferred MCP tools (use ToolSearch to load their definitions):\nUse ToolSearch to load a listed tool definition before calling it. A schema not yet loaded does not mean the capability is unavailable.\n- mcp__local__echo",
+    "Deferred MCP tools changed:\nUse ToolSearch to load a listed tool definition before calling it. A schema not yet loaded does not mean the capability is unavailable.\nRemoved:\n- mcp__local__echo",
+    "Deferred MCP tools changed:\nUse ToolSearch to load a listed tool definition before calling it. A schema not yet loaded does not mean the capability is unavailable.\nAdded:\n- mcp__local__echo",
+    "Deferred MCP tools changed:\nUse ToolSearch to load a listed tool definition before calling it. A schema not yet loaded does not mean the capability is unavailable.\nRemoved:\n- mcp__local__echo",
   ]);
 });
 test("resume retains discovery and rewind restores the pre-discovery branch", async () => {

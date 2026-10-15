@@ -27,7 +27,7 @@ _Avoid_: CLI, REPL
 _Avoid_: conversation, thread, chat
 
 **Session Move**:
-在写者租约内将 SQLite Session 的 cwd 改绑到新目录的组织操作。Transcript 追加旧、新 cwd 记录，并原子更新 Session 元数据；不创建 Session、不调度 Resume、不解析模型或凭据，不复制或删除工作目录文件。下一次 Run 从最近尚未告知的移动记录追加 system reminder 与新目录环境快照，恢复后不重复告知。最近移动之前的 Checkpoint 只允许对话 Rewind，不能恢复代码；见 [ADR-0040](docs/adr/0040-session-move-transcript-boundary.md)。
+在写者租约内将 SQLite Session 的 cwd 改绑到新目录的组织操作。Transcript 追加旧、新 cwd 记录，并原子更新 Session 元数据；不创建 Session、不调度 Resume、不解析模型或凭据，不复制或删除工作目录文件。下一次 Run 从最近尚未告知的移动记录追加 System Reminder 与新目录的 Git 分支、状态快照；System Prompt 追加新 cwd、附加目录与平台的环境节，恢复后不重复告知。最近移动之前的 Checkpoint 只允许对话 Rewind，不能恢复代码；见 [ADR-0040](docs/adr/0040-session-move-transcript-boundary.md)。
 _Avoid_: copy session, workspace migration
 
 **Transcript**:

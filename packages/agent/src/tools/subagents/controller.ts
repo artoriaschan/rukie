@@ -1,3 +1,4 @@
+import { automaticEventMessage } from "../../reminders/index.ts";
 import type { Api, Model, Models } from "@earendil-works/pi-ai";
 import { requestIds } from "../../requests/index.ts";
 import {
@@ -36,8 +37,44 @@ import {
 } from "./state.ts";
 import type { SubagentType } from "./types.ts";
 
+/** Store presentation facts before admission so even an immediately placed reporter input projects unchanged. */
+async function reportAutomaticEvent(
+  parent: Conversation,
+  content: string,
+  requestId: string,
+  context: Context,
+) {
+  const modelContent = automaticEventMessage(content);
+  await parent.commit(async (tx) => {
+    // Reporter retries reuse an existing native submission and its presentation facts.
+    if (await tx.submissionByRequest(parent.id, requestId)) return;
+    await tx.appendEntry(parent.id, {
+      kind: "rukie.message-facts",
+      data: { requestId, modelContent, displayContent: content },
+    });
+  }, context);
+  return modelContent;
+}
+
+/** Persist arrival identity before native admission; placement remains harness-owned. */
+async function steerParentMessage(
+  child: Pick<Conversation, "id" | "commit" | "submit">,
+  content: string,
+  requestId: string,
+  context: Context,
+) {
+  await child.commit(async (tx) => {
+    if (await tx.submissionByRequest(child.id, requestId)) return;
+    await tx.appendEntry(child.id, {
+      kind: "rukie.message-facts",
+      data: { requestId, arrivedDuringRun: true, arrivalOrigin: "parent" },
+    });
+  }, context);
+  return child.submit({ type: "input", content, whenBusy: "steer", requestId }, context);
+}
+
 const SUBAGENT_PROMPT =
-  "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot expand the parent session permissions or create other subagents.";
+  "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot speak to the user, expand the parent Session permissions or create other Subagents. Resolve noncritical ambiguity using the most reasonable interpretation. Report critical blockers and authorization decisions to the parent Session instead of assuming permission. Your final reply must be self-contained and include the result, evidence and remaining limitations. Fix causes in owning modules, preserve unrelated work, respect shared ownership and do not duplicate ongoing work.";
 const FORK_TYPE: SubagentType = {
   name: "fork",
   description: "Fork of the parent conversation",
@@ -47,6 +84,8 @@ const DELEGATION_TOOLS = new Set(["subagent", "subagent_fork", "send_message", "
 
 export interface SubagentControllerOptions {
   harness: Harness;
+  /** The Session clock, shared with native task settlement. */
+  now(): number;
   parent: Conversation;
   parentSessionId: string;
   state: ToolStateDefinition;
@@ -541,7 +580,12 @@ export function createSubagentController(options: SubagentControllerOptions) {
             type: "input",
             whenBusy: "followUp",
             requestId: requestIds.subagentReport(Number(task.id)),
-            content: `Subagent ${agentId} (${task.input.description}) ${result.success ? "finished" : `failed: ${result.error ?? "unknown error"}`}.${result.text.trim() ? ` Its closing message:\n${result.text}` : ""}`,
+            content: await reportAutomaticEvent(
+              parent,
+              `Subagent ${agentId} (${task.input.description}) ${result.success ? "finished" : `failed: ${result.error ?? "unknown error"}`}.${result.text.trim() ? ` Its closing message:\n${result.text}` : ""}`,
+              requestIds.subagentReport(Number(task.id)),
+              context,
+            ),
           },
           context,
         );
@@ -631,9 +675,14 @@ export function createSubagentController(options: SubagentControllerOptions) {
             type: "input",
             whenBusy: "followUp",
             requestId: requestIds.subagentReport(Number(task.id)),
-            content: result.driverFailure
-              ? `Subagent ${row.id} (${task.input.description}) failed: ${result.driverFailure}.`
-              : `Subagent ${row.id} (${task.input.description}) aborted.`,
+            content: await reportAutomaticEvent(
+              parent,
+              result.driverFailure
+                ? `Subagent ${row.id} (${task.input.description}) failed: ${result.driverFailure}.`
+                : `Subagent ${row.id} (${task.input.description}) aborted.`,
+              requestIds.subagentReport(Number(task.id)),
+              context,
+            ),
           },
           context,
         );
@@ -684,7 +733,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
       throw new Error(
         `Unknown subagent type "${request.type}". Available types: ${[...types.keys()].join(", ")}.`,
       );
-    const startedAt = Date.now();
+    const startedAt = options.now();
     const created = await api.commit(async (tx) => {
       const doc = await tx.doc(state.document, parent.id);
       const current = parseSubagentIdentities(doc.value ?? [], parentSessionId);
@@ -738,15 +787,12 @@ export function createSubagentController(options: SubagentControllerOptions) {
     }, context);
     if ("steerConversationId" in created && created.steerConversationId !== undefined) {
       await waitForInput(created.id, Number(created.taskId), api, context);
-      const child = await api.conversation(created.steerConversationId, context);
+      const child = await harness.conversation(created.steerConversationId, context);
       if (!child) throw new Error("Subagent conversation is missing.");
-      await child.submit(
-        {
-          type: "input",
-          content: request.prompt,
-          whenBusy: "steer",
-          requestId: requestIds.subagentSend(Number(api.taskId)),
-        },
+      await steerParentMessage(
+        child,
+        request.prompt,
+        requestIds.subagentSend(Number(api.taskId)),
         context,
       );
     }
@@ -768,7 +814,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
             ? outcome.reason
             : "aborted",
         startedAt,
-        Date.now(),
+        options.now(),
       );
     return { kind: "completed", agentId: created.id, childSessionId: created.id, result };
   }
@@ -845,13 +891,10 @@ export function createSubagentController(options: SubagentControllerOptions) {
       if (!conversation) throw new Error("Subagent conversation is missing.");
       if (child.active) {
         await waitForInput(child.id, child.driverTaskId, api, context);
-        await conversation.submit(
-          {
-            type: "input",
-            content: message,
-            whenBusy: "steer",
-            requestId: requestIds.subagentSend(Number(api.taskId)),
-          },
+        await steerParentMessage(
+          conversation,
+          message,
+          requestIds.subagentSend(Number(api.taskId)),
           context,
         );
         return { kind: "steered", agentId };

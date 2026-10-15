@@ -120,6 +120,13 @@ test("Plan Mode persists outside a Run and injects changed guidance once", async
   await session.run("plan");
   expect(JSON.stringify(fake.contexts[1])).toContain("You are in Plan Mode");
   expect(JSON.stringify(fake.contexts[1])).toContain("markdown");
+  expect(JSON.stringify(fake.contexts[1])).toContain("Read-only research is available");
+  expect(JSON.stringify(fake.contexts[1])).toContain("change files or external state must wait");
+  expect(JSON.stringify(fake.contexts[1])).toContain("risks and validation");
+  expect(JSON.stringify(fake.contexts[1])).toContain("Approval ends Plan Mode");
+  expect(JSON.stringify(fake.contexts[1])).toContain(
+    "does not restrict tools or change Permission Mode",
+  );
   expect(JSON.stringify(fake.contexts[1])).toContain("Permissions still apply");
   const next = fakeModel(Array.from({ length: 3 }, () => fauxAssistantMessage("resumed")));
   await session.close();

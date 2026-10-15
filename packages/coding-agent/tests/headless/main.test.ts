@@ -655,12 +655,15 @@ test.each(["error", "length"] as const)(
   async (stopReason) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-outcome-"));
     const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
-    faux.setResponses([
-      fauxAssistantMessage("partial work", {
-        stopReason,
-        ...(stopReason === "error" ? { errorMessage: "Goal failed" } : {}),
-      }),
-    ]);
+    faux.setResponses(
+      Array.from({ length: stopReason === "length" ? 4 : 1 }, () =>
+        fauxAssistantMessage("partial work", {
+          stopReason,
+          ...(stopReason === "error" ? { errorMessage: "Goal failed" } : {}),
+        }),
+      ),
+    );
+    let requests = 0;
     let stdout = "";
     let stderr = "";
     try {
@@ -677,11 +680,24 @@ test.each(["error", "length"] as const)(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            models: auxiliaryModels(faux.provider.streamSimple),
+            models: auxiliaryModels((model, context, options) => {
+              requests++;
+              expect(
+                context.messages.filter(
+                  (message) =>
+                    message.role === "user" &&
+                    JSON.stringify(message.content).includes(
+                      "Your output was truncated by the output limit.",
+                    ),
+                ),
+              ).toHaveLength(stopReason === "length" ? requests - 1 : 0);
+              return faux.provider.streamSimple(model, context, options);
+            }),
           },
         }),
       ).toBe(1);
       expect(stdout).toBe("partial work\n");
+      expect(requests).toBe(stopReason === "length" ? 4 : 1);
       if (stopReason === "error") expect(stderr).toContain("Goal failed");
     } finally {
       await rm(root, { recursive: true, force: true });

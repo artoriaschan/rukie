@@ -1,7 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { readdir } from "node:fs/promises";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import {
+  getCurrentSystemPrompt,
+  getCurrentSystemMessage,
+  fauxAssistantMessage,
+  fauxToolCall,
+} from "@earendil-works/pi-ai";
 import {
   createSession,
   type SessionEvent,
@@ -68,15 +73,17 @@ test("the first Run supplies static identity, environment and both levels of Pro
   const reminders = publishedReminders(events);
   expect(reminders.map((event) => event.source)).toEqual([
     "environment",
-    "date",
+    "time",
     "user-instructions",
     "project-instructions",
   ]);
-  expect(reminders[0]!.content).toContain(`cwd: ${dirs.cwd}`);
-  expect(reminders[0]!.content).toContain(`platform: ${process.platform}`);
+  expect(getCurrentSystemPrompt(messages)).toContain(`cwd: ${dirs.cwd}`);
+  expect(reminders[0]!.content).not.toContain("cwd:");
+  expect(getCurrentSystemPrompt(messages)).toContain(`platform: ${process.platform}`);
   expect(reminders[0]!.content).toContain("git branch: reminder-test");
   expect(reminders[0]!.content).toContain("?? AGENTS.md");
-  expect(reminders[1]!.content).toBe("Current date: 2026-10-01");
+  expect(reminders[1]!.content).toContain("Current time: 2026-10-01");
+  expect(reminders[2]!.content).toStartWith("User Instructions (");
   expect(reminders[2]!.content).toContain("Personal coding preferences");
   expect(reminders[3]!.content).toContain("Project coding conventions");
   expect(JSON.stringify(messages)).not.toContain("Ignored fallback instructions");
@@ -104,7 +111,7 @@ async function transcript() {
   return Bun.file(join(root, file)).text();
 }
 
-test("resume preserves the model and Transcript prefix and appends changed date and Project Instructions", async () => {
+test("resume preserves the model and Transcript prefix and appends changed time and Project Instructions", async () => {
   dirs = await tempDirs();
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Original project instructions");
   let date = new Date("2026-10-01T12:00:00Z");
@@ -125,7 +132,7 @@ test("resume preserves the model and Transcript prefix and appends changed date 
   expect(storedMessages[0]).toMatchObject({ role: "system-reminder", source: "environment" });
   expect(storedMessages.filter((message) => message.role === "system-reminder")).toMatchObject([
     { source: "environment" },
-    { source: "date", content: "Current date: 2026-10-01" },
+    { source: "time", content: expect.stringContaining("Current time: 2026-10-01") },
     {
       source: "project-instructions",
       content: expect.stringContaining("Original project instructions"),
@@ -164,9 +171,7 @@ test("resume preserves the model and Transcript prefix and appends changed date 
     { role: "assistant", content: [{ type: "text", text: "second reply" }] },
     {
       role: "user",
-      content: [
-        { type: "text", text: "<system-reminder>\nCurrent date: 2026-10-02\n</system-reminder>" },
-      ],
+      content: [{ type: "text", text: expect.stringContaining("Current time: 2026-10-02") }],
     },
     {
       role: "user",
@@ -181,8 +186,8 @@ test("resume preserves the model and Transcript prefix and appends changed date 
   ]);
   expect(publishedReminders(events)).toEqual([
     {
-      source: "date",
-      content: "Current date: 2026-10-02",
+      source: "time",
+      content: expect.stringContaining("Current time: 2026-10-02"),
     },
     {
       source: "project-instructions",
@@ -228,7 +233,7 @@ test.each(["CLAUDE.md", "absent", "empty AGENTS.md"])(
   },
 );
 
-test("System Prompt is identical across projects, dates and Sessions", async () => {
+test("System Prompt keeps stable sections across dates and changes only environment across projects", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([fauxAssistantMessage("done")]);
   await (await openSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake })).run("hi");
@@ -242,7 +247,14 @@ test("System Prompt is identical across projects, dates and Sessions", async () 
       now: () => new Date("2030-01-01T12:00:00Z"),
     })
   ).run("different prompt");
-  expect(identity(other.contexts[0]!.messages)).toEqual(identity(fake.contexts[0]!.messages));
+  const first = getCurrentSystemMessage(fake.contexts[0]!.messages)!.sections!;
+  const second = getCurrentSystemMessage(other.contexts[0]!.messages)!.sections!;
+  const { environment: firstEnvironment, ...firstStable } = first;
+  const { environment: secondEnvironment, ...secondStable } = second;
+  expect(firstStable).toEqual(secondStable);
+  expect(firstEnvironment).toContain(dirs.cwd);
+  expect(secondEnvironment).toContain(dirs.homeDir);
+  expect(getCurrentSystemPrompt(fake.contexts[0]!.messages)).toContain("Reply in the language");
   const prompt = identity(fake.contexts[0]!.messages);
   expect(prompt).not.toContain(dirs.cwd);
   expect(prompt).not.toContain("2026-10-01");
@@ -322,14 +334,9 @@ test("additional directories appear once in the environment without changing cwd
     additionalDirectories: [extra, extra, dirs.cwd],
   });
   await session.run("inspect projects");
-  const environment = session.messages.find(
-    (message) => message.role === "system-reminder" && message.source === "environment",
+  expect(getCurrentSystemPrompt(fake.contexts[0]!.messages)).toContain(
+    `cwd: ${dirs.cwd}\nadditional directories:\n${extra}\nplatform:`,
   );
-  expect(environment).toMatchObject({
-    content: expect.stringContaining(
-      `cwd: ${dirs.cwd}\nadditional directories:\n${extra}\nplatform:`,
-    ),
-  });
 });
 
 test("additional Project Instructions compare changes independently and rebuild after Resume", async () => {
@@ -429,4 +436,47 @@ test("additional directory options reject relative paths before opening a Sessio
   await expect(
     createSession({ ...dirs, ...fakeModel([]), additionalDirectories: ["relative-project"] }),
   ).rejects.toThrow("Additional directories must be absolute paths.");
+});
+
+test("pre-generation reporting and Side Question use the rendered sections including tool guidance", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage("side answer"),
+    fauxAssistantMessage("main answer"),
+  ]);
+  const session = await openSession({ ...dirs, ...fake });
+  const initial = session.contextUsage().segments.system;
+  for await (const _ of session.sideQuestion("what environment?")) {
+    /* consume to completion */
+  }
+  const sidePrompt = getCurrentSystemPrompt(fake.contexts[0]!.messages);
+  expect(sidePrompt).toContain(`<environment>\ncwd: ${dirs.cwd}`);
+  expect(sidePrompt).toContain("<instructions>");
+  expect(sidePrompt).not.toContain("Use ask_user_question");
+  expect(session.contextReport().categories.find((c) => c.name === "system-prompt")!.tokens).toBe(
+    initial,
+  );
+  await session.run("main");
+  expect(getCurrentSystemPrompt(fake.contexts[1]!.messages)).toBe(sidePrompt);
+  expect(session.contextUsage().segments.system).toBe(initial);
+});
+
+test("registered interaction tools determine guidance and shell identifies the actual command runtime", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("done")]);
+  const session = await openSession({ ...dirs, ...fake, onQuestion: async () => "declined" });
+  await session.run("hi");
+  const prompt = getCurrentSystemPrompt(fake.contexts[0]!.messages);
+  expect(prompt).toContain("Use ask_user_question");
+  expect(prompt).toContain("Use todo_write");
+  expect(prompt).toContain("shell: bash");
+  const other = fakeModel([fauxAssistantMessage("done")]);
+  const same = await openSession({
+    ...dirs,
+    ...other,
+    onQuestion: async () => "declined",
+    now: () => new Date("2030-01-02T12:00:00Z"),
+  });
+  await same.run("hi again");
+  expect(getCurrentSystemPrompt(other.contexts[0]!.messages)).toBe(prompt);
 });
