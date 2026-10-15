@@ -56,6 +56,8 @@ export interface PromptInputProps extends Omit<
   onSubmit?: (value: string, model?: string) => void | Promise<void>;
   loading?: boolean;
   submitting?: boolean;
+  /** Explicit opt-in when the controlled owner has content outside the textarea. */
+  hasExternalContent?: boolean;
   onStop?: () => void;
   minRows?: number;
   maxRows?: number;
@@ -77,6 +79,7 @@ export function PromptInput({
   onSubmit,
   loading = false,
   submitting = false,
+  hasExternalContent = false,
   onStop,
   minRows = 2,
   maxRows = 8,
@@ -102,7 +105,8 @@ export function PromptInput({
   const currentValue = value ?? internalValue;
   const currentModelValue = model ?? internalModel;
   const currentModel = models.find((option) => option.value === currentModelValue);
-  const canSubmit = Boolean(currentValue.trim()) && !disabled && !loading && !submitting;
+  const canSubmit =
+    (Boolean(currentValue.trim()) || hasExternalContent) && !disabled && !loading && !submitting;
 
   const resizeTextarea = useCallback(() => {
     const textarea = textareaRef.current;
@@ -154,7 +158,7 @@ export function PromptInput({
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     const prompt = currentValue.trim();
-    if (!prompt || disabled || loading || submitting) return;
+    if ((!prompt && !hasExternalContent) || disabled || loading || submitting) return;
 
     onSubmit?.(prompt, currentModelValue);
     if (value === undefined) setInternalValue("");

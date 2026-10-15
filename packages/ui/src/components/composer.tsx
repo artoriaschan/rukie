@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   Plus,
   X,
@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Paperclip,
   Square,
+  Target,
 } from "lucide-react";
 import {
   PERMISSION_MODES,
@@ -27,6 +28,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { formatCapacity } from "../lib/format-capacity";
 import { cn } from "../lib/utils";
 import { ModelPicker } from "./model-picker";
+import "./goal-mode.css";
 
 export type PromptImages = NonNullable<Extract<WireCommand, { type: "prompt" }>["images"]>;
 export interface ModelSelection {
@@ -50,6 +52,10 @@ export interface ComposerProps {
   onModel: (selection: ModelSelection) => void;
   onSend: () => void;
   onStop: () => void;
+  goalEnabled?: boolean;
+  goalDisabledReason?: string;
+  onGoal?: () => void;
+  placeholder?: string;
   contextReport?: ContextReport;
   compactionPoints?: number;
   openingContext?: number;
@@ -57,6 +63,8 @@ export interface ComposerProps {
 export function Composer(props: ComposerProps) {
   const t = useAppText();
   const componentText = useComponentText();
+  const goalDescriptionId = useId();
+  const goalMenuSelection = useRef(false);
   const file = useRef<HTMLInputElement>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const selected = props.models.find((model) => model.spec === props.model);
@@ -159,10 +167,11 @@ export function Composer(props: ComposerProps) {
             void addImages(event.dataTransfer.files);
           }
         }}
-        placeholder={t("app.prompt-placeholder")}
+        placeholder={props.placeholder ?? t("app.prompt-placeholder")}
         aria-label={t("app.prompt")}
         disabled={props.disabled}
         submitting={props.submitting}
+        hasExternalContent={Boolean(props.goalEnabled && props.images.length)}
         loading={props.running && !props.draft.trim()}
         onStop={props.onStop}
         onSubmit={props.onSend}
@@ -186,16 +195,55 @@ export function Composer(props: ComposerProps) {
                 side="top"
                 collisionPadding={16}
                 className="conversation-tools-menu conversation-pencil"
+                onCloseAutoFocus={(event) => {
+                  if (goalMenuSelection.current) {
+                    // Radix dispatches selection before closing its FocusScope. Hand off only after unmount.
+                    goalMenuSelection.current = false;
+                    event.preventDefault();
+                    props.onGoal?.();
+                    document
+                      .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+                      ?.focus();
+                  } else if (props.goalEnabled) {
+                    event.preventDefault();
+                    document
+                      .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+                      ?.focus();
+                  }
+                }}
               >
                 <ScrollArea className="conversation-tools-scroll" viewportLabel={t("app.add")}>
                   <Menu.DropdownMenuLabel>{t("app.add")}</Menu.DropdownMenuLabel>
-                  <Menu.DropdownMenuItem
-                    className="conversation-tool-option"
-                    onSelect={() => file.current?.click()}
-                  >
-                    <Paperclip className="size-3" aria-hidden="true" />
-                    <span>{t("app.attach")}</span>
-                  </Menu.DropdownMenuItem>
+                  <Menu.DropdownMenuGroup>
+                    <Menu.DropdownMenuItem
+                      className="conversation-tool-option"
+                      onSelect={() => file.current?.click()}
+                    >
+                      <Paperclip className="size-3" aria-hidden="true" />
+                      <span>{t("app.attach")}</span>
+                    </Menu.DropdownMenuItem>
+                    {props.onGoal ? (
+                      <Menu.DropdownMenuCheckboxItem
+                        className="conversation-tool-option conversation-goal-option"
+                        aria-label={t("app.goal-mode")}
+                        aria-describedby={goalDescriptionId}
+                        checked={props.goalEnabled}
+                        disabled={Boolean(props.goalDisabledReason) || props.submitting}
+                        onCheckedChange={() => {
+                          goalMenuSelection.current = true;
+                        }}
+                      >
+                        <Target className="size-3" aria-hidden="true" />
+                        <span>{t("app.goal-mode")}</span>
+                        <span id={goalDescriptionId} className="goal-menu-description">
+                          {props.goalDisabledReason ?? t("app.goal-mode-description")}
+                        </span>
+                        <span aria-hidden="true" className="goal-menu-switch">
+                          <span />
+                        </span>
+                      </Menu.DropdownMenuCheckboxItem>
+                    ) : null}
+                  </Menu.DropdownMenuGroup>
                 </ScrollArea>
               </Menu.DropdownMenuContent>
             </Menu.DropdownMenu>
@@ -251,6 +299,26 @@ export function Composer(props: ComposerProps) {
                 </Menu.DropdownMenuRadioGroup>
               </Menu.DropdownMenuContent>
             </Menu.DropdownMenu>
+            {props.goalEnabled ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="conversation-goal-chip text-ui-base"
+                aria-label={t("app.goal-close")}
+                onClick={() => {
+                  props.onGoal?.();
+                  document
+                    .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+                    ?.focus();
+                }}
+              >
+                <span className="conversation-goal-chip-icon">
+                  <Target className="goal-target-icon" aria-hidden="true" />
+                  <X className="goal-close-icon" aria-hidden="true" />
+                </span>
+                <span>{t("app.goal-label")}</span>
+              </Button>
+            ) : null}
           </>
         }
         trailingAction={
