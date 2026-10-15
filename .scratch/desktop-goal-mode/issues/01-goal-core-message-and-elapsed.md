@@ -35,3 +35,12 @@ Status: claimed
 
 - 协调代理 canonical coding 消费者阶段发现 CLI E2E 遗漏的 `auto-review` 提示断言；新代理在独立分支修正为完整 `full-access` 建议，并精确断言第一轮模型输入包含目标用户消息。全文件 Goal 断言审计未发现 version 1 fixture 或其他过时合同。
 - 一次串行 `cli.test.ts -t "goal|Goal"`：19 pass、5 fail、3 errors，55.19s；修正用例通过（2.832s，真实 CLI 子进程及 HTTP 传输）。其余失败均为未修改的恢复、拒绝、信号和 wrapup 用例 5s 超时，之前 canonical coding 中它们均通过；保留失败事实，不扩大 timeout、不重跑。canonical coding 本身仍为失败：1512 pass、32 fail、2 errors，787.98s。格式、scoped lint 与 diff 检查通过；本票继续 claimed 等待协调门禁与评审。
+
+### 首条目标准入修复（01，复核中）
+
+- 新分支 `fix/desktop-goal-initial-admission` 从集成 `64ea0ef1` 建立。公开 HTTP `UserPromptSubmit` barrier 重现：图片目标被 Hook 阻止后继续，原实现跳过 Hook，实测第二次准入 Hook 调用仍为 1（预期 2）。
+- Goal runtime 在用户显式继续时，从同一 Goal 的原生接纳 task 恢复尚未放置的人类目标输入，保留图片、名称及创建前 Goal，重新绑定人类 Request。查询只沿顶层 Conversation 及其原生父历史，父分支继承锚点之后的放置不属于当前分支；已有原生放置事实优先于滞后轮次数，避免重复目标。图片仍不进入 Tool State。
+- Rewind 后的 Session observation 补上 Goal activation 观测，修复新分支目标已到上限但仍呈现 armed 的遗漏；没有重构观察或原生 Harness。
+- 新增 4 个公开 Session 回归：图片目标反复 Hook 阻止直到允许、首条放置前暂停、首条放置前 abort 后关闭重开、Rewind 到尚未放置目标的继承历史。暂停例同时验证替换 complete Goal 后重放再 Rewind 恢复原 Goal；继承例验证父分支稍后已放置的消息不阻止新分支重新准入。既有放置确认竞态加强为首人类输入与第 2 轮内部输入各一次。
+- 最小相关验证：`bun test --parallel=1` 的 initial-admission、goal-recovery、goal-message-time、Goal runtime 4 文件合计 **43 pass、195 assertions、12.30s**，无失败。新例各 96–402ms；2 个超过 1s 的既有恢复例保留真实子进程 crash/JSONL reopen 合同成本（3.01s、1.91s），未加入等待或扩大 timeout。原 Core 1510 和后端精确提交 CI 证据按差异复用，不重跑包级或完整验收。
+- 本票保持 claimed；完整 red/green、Rewind 观察遗漏及增量静态证据见协调验证记录，最终整体复核与门禁由协调代理负责。

@@ -17,7 +17,20 @@ import {
   type GoalInitialInput,
 } from "./driver.ts";
 import { Value } from "typebox/value";
+import { Type } from "typebox";
 import { goalState, goalSchema, settleGoalTime, type GoalSnapshot } from "./state.ts";
+
+const initialInputSchema = Type.Object({
+  text: Type.String(),
+  images: Type.Array(
+    Type.Object({
+      data: Type.String(),
+      mimeType: Type.String(),
+      name: Type.Optional(Type.String()),
+    }),
+  ),
+  previousGoal: Type.Optional(Type.Union([goalSchema, Type.Null()])),
+});
 
 /** Goal owns continuation facts; Session supplies admission and receipt adapters at its fixed hook positions. */
 export function createGoalRuntime(
@@ -175,30 +188,71 @@ export function createGoalRuntime(
           value && settleGoalTime(value, options.now?.() ?? Date.now(), armed),
         );
         if (armed && value && active.taskId === null) {
+          let pendingInput: GoalInitialInput | undefined = initialInput && {
+            ...initialInput,
+            // Native image tags let desktop storage reuse its external attachment mapping.
+            images: initialInput.images.map((image) => ({ ...image, type: "image" })),
+            previousGoal,
+          };
+          let roundsStarted = Value.Check(goalSchema, snapshot.value)
+            ? snapshot.value.roundsStarted
+            : value.roundsStarted;
+          if (!initialInput && roundsStarted === 0) {
+            // Disarming ends admission authority, but the accepted task retains the original human payload.
+            let provenance = await tx.conversation(conversation().id);
+            let inheritedThrough = Infinity;
+            while (provenance && !provenance.owner) {
+              const tasks = await tx.scanTasks(
+                { conversationId: provenance.id, kind: "rukie.goal-driver" },
+                100000,
+              );
+              for (const task of tasks.items) {
+                const input = task.input;
+                if (
+                  task.owner ||
+                  !input ||
+                  typeof input !== "object" ||
+                  Array.isArray(input) ||
+                  input.goalId !== value.id ||
+                  typeof input.requestId !== "string" ||
+                  !Value.Check(initialInputSchema, input.initialInput)
+                )
+                  continue;
+                const placed = await tx.submissionByRequest(
+                  task.conversationId,
+                  requestIds.goalRound(input.requestId, Number(task.id), 1),
+                );
+                if (placed?.entry && Number(placed.entry) <= inheritedThrough) {
+                  roundsStarted = 1;
+                  snapshot.value = placedGoalRound(snapshot.value, 1);
+                  pendingInput = undefined;
+                  break;
+                }
+                pendingInput = input.initialInput;
+              }
+              if (roundsStarted || !provenance.parent) break;
+              // Rewind inherits only the selected parent prefix, never a later placed target.
+              inheritedThrough = Math.min(inheritedThrough, Number(provenance.parent.at));
+              provenance = await tx.conversation(provenance.parent.conversationId);
+            }
+          }
           const requestId = requestIds.goalActivation(value.id);
           const taskId = await tx.createTask(
             driver,
             {
               goalId: value.id,
               requestId,
-              initialRound: value.roundsStarted + 1,
-              ...(initialInput
-                ? {
-                    initialInput: {
-                      ...initialInput,
-                      // Native image tags let desktop storage reuse its external attachment mapping.
-                      images: initialInput.images.map((image) => ({ ...image, type: "image" })),
-                      previousGoal,
-                    },
-                  }
-                : {}),
+              initialRound: roundsStarted + 1,
+              ...(pendingInput ? { initialInput: pendingInput } : {}),
             },
             { ownership: { kind: "conversation" }, conversationId: conversation().id },
           );
           active.taskId = Number(taskId);
-          if (initialInput) humanRequest = requestIds.goalRound(requestId, Number(taskId), 1);
+          humanRequest = pendingInput
+            ? requestIds.goalRound(requestId, Number(taskId), 1)
+            : undefined;
           active.requestId = requestId;
-          active.countedRound = value.roundsStarted;
+          active.countedRound = roundsStarted;
           await ledger.bind(tx, requestId, { taskId: Number(taskId), replace: true });
           if (humanCause)
             await ledger.bind(tx, humanCause, { taskId: Number(taskId), onlyExisting: true });

@@ -73,7 +73,7 @@ Run 进行中调用 `session.followUp(prompt, { images? })`，返回稳定 `requ
 
 `createGoal(objective, { images?, maxRounds? })` 将目标文本和图片作为第 1 轮的人类用户消息提交，供对话、标题和 Checkpoint 使用；文本可以为空，但文本与图片不能都为空，图片沿用普通 prompt 的准入与体积限制。第 2 轮起使用隐藏的 `<goal_round>` 输入，模型工具 `create_goal` 仍只接受文本且沿用内部续跑。图片只保存在目标消息和原生接纳任务中，Goal Tool State 的 `attachments` 只记录数量；只发图片时，续跑与 reminder 引导模型查看首条目标消息的附件。
 
-`createGoal` 返回已接受激活的 `requestId`，第一条输入尚未提交时也能调用 `waitForRequest`。结算包含全部相关轮次及结果处理，以最终回答和不重复的 usage 返回；Human 模型工具创建的激活纳入该 Human 请求，历史目标与无关任务不纳入。`close` 保留已接受 task，重新打开继续同一轮；输入提交确认丢失时重新取得原生 submission 收据。暂停、受阻、完成、上限、清除、显式 abort 或模型错误停止后续 admission，保留已提交事实。暂停或清除不会取消当前工具结果或其回答；未放置的 reservation 不消费轮次。停止状态的重新开启仍需真实用户授权，历史 Goal facts 或终态 task 不构成授权。
+`createGoal` 返回已接受激活的 `requestId`，第一条输入尚未提交时也能调用 `waitForRequest`。结算包含全部相关轮次及结果处理，以最终回答和不重复的 usage 返回；Human 模型工具创建的激活纳入该 Human 请求，历史目标与无关任务不纳入。`close` 保留已接受 task，重新打开继续同一轮；输入提交确认丢失时重新取得原生 submission 收据。暂停、受阻、完成、上限、清除、显式 abort 或模型错误停止后续 admission，保留已提交事实。暂停或清除不会取消当前工具结果或其回答；未放置的 reservation 不消费轮次。停止状态的重新开启仍需真实用户授权，历史 Goal facts 或终态 task 不构成授权。 首条人类目标尚未放置时，暂停、中止或 `UserPromptSubmit` 阻止仍保留原生 task 中的原始文本、图片、名称与创建前 Goal；显式重新开启会再次执行人类输入 Hook，允许后才提交该消息。重新开启按所选 Conversation 及其继承前缀查找同一 Goal 的输入，已在该历史中放置的首条目标不重复提交。
 
 Goal Tool State version 2 保存 `elapsedMs` 和仅在 armed 时存在的 `activeSince`，不迁移 version 1。推进的墙钟时间包含权限确认和问题等待；每轮结束、暂停、受阻、停止、出错、完成、清除及轮次用尽时结算活动段，继续推进则开启新段。暂停期间的普通消息不计时，也不会自动恢复 Goal；非完全访问时建议切换到完全访问，但不自动更改 Permission Mode。恢复已接受工作时从当前时刻重新计时，未结算的历史段与停机时间不计入。
 

@@ -3817,6 +3817,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             adopt: (publication) => {
               state.adopt(publication);
               for (const change of publication.changes) {
+                goalRuntime.observe(change);
                 if (
                   change.type === "document" &&
                   change.conversationId === conversation.id &&

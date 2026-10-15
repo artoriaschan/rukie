@@ -439,6 +439,10 @@ test("pause after placement accounts that accepted round before explicit resume"
     });
     expect(session.goal).toMatchObject({ phase: "blocked", roundsStarted: 2, armed: false });
     expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("Round: 2/2");
+    const inputs = session.messages.filter((message) => message.role === "user");
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0]).not.toHaveProperty("source");
+    expect(inputs[1]).toHaveProperty("source", "goal");
   } finally {
     acknowledge.resolve();
     await session?.close();
