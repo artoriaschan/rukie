@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { DesktopHost } from "@rukie/ui";
 
 const host: DesktopHost = {
+  setThemeSource: (source) => ipcRenderer.invoke("rukie:setThemeSource", source),
   getConnection: () => ipcRenderer.invoke("rukie:getConnection"),
   pickProjectFolder: (multiple) =>
     ipcRenderer.invoke("rukie:pickProjectFolder", ...(multiple === undefined ? [] : [multiple])),

@@ -77,3 +77,9 @@ The conversation Plus opens the Pencil C09 attachment menu and keeps image picki
 新聊天在主输入框上方显示 rukie.pen M03-A 的选择条，Session 创建后隐藏。项目菜单可搜索、勾选当前项目、添加新项目或不使用项目；项目态的 x 只取消本次选择。Git Project 显示分支菜单：`project.git` 的全部可切换本地分支、搜索、`project.checkout` 切换、以搜索内容 `project.createBranch` 新建并检出，以及独立工作树选项。切换失败或 Session 忙碌时错误显示在仍打开的菜单内。几何与交互规则见 [DESIGN.md](../../DESIGN.md#new-chat-worktree-selection)。
 
 设置 → 环境 → 工作树通过 `worktrees.list` 显示独立工作树的分支、仓库目录名与路径；“刷新”调用 `worktrees.refresh` 清理失效记录。删除确认写明完整路径、未提交改动丢弃与分支保留，成功调用 `worktree.delete` 后更新列表，绑定 Session 回到主项目目录。忙碌错误留在弹窗内，取消接收初始焦点，提交期间阻止重复提交和关闭。空列表显示“暂无独立工作树”。界面复用已安装的 beUI Button / MorphingModal 和设置 ScrollArea，颜色、尺寸与窄宽度行为由 [DESIGN.md](../../DESIGN.md#worktree-settings) 定义。
+
+## 外观偏好
+
+设置中的「外观」提供跟随系统、浅色和深色三种主题。偏好只保存在当前 renderer 的 `localStorage`（`rukie.appearance`），刷新或重启后恢复；缺失或非法值按跟随系统处理，存储受限时当前页面仍可切换。入口在 React 首次绘制前应用明确的主题类，跟随系统时持续响应系统变化，强制浅色或深色时忽略系统变化。此偏好不进入 Agent Core 或 user settings。
+
+Electron 通过枚举限定的 `setThemeSource` host 能力同步原生界面主题，窗口底色跟随壳层表面；浏览器 host 对应方法为空操作。renderer 初始化前的原生窗口仍采用系统主题，首帧前应用保证针对产品内容。外观 owner 在 renderer 热替换时释放系统监听；原生宿主在关闭或启动失败时释放窗口主题监听。
