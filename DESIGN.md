@@ -460,6 +460,14 @@ These are acceptance obligations for implementation changes, not claims that the
 | Reader at top/middle/live edge; expand, resize and complete               | Stable visual anchor, deliberate following and accurate shared scrollbar/Preview Rail mapping.             |
 | Light/Dark, narrow/low height, enlarged text, zh/en and reduced motion    | Readable hierarchy, accessible controls, static alternatives and no process-internal vertical scroll trap. |
 
+### Composer skill insertion
+
+The composer insertion list uses the installed beUI Popover shell anchored 4px above the whole composer, matching its width. It preserves editor focus and owns a grouped listbox with active-descendant keyboard navigation. Use the existing menu surface, 12px shell radius, 4px inset, 32px selectable rows, 8px inline gaps, 12px Lucide glyphs, control text and muted descriptions. Group headings use the existing secondary role; empty groups disappear. The viewport holds at most ten selectable rows plus group headings and scrolls the highlighted row into view.
+
+Skill names precede descriptions and use at most 40% of a wide row; scope labels occupy a nonshrinking trailing slot. Description takes remaining width with ellipsis and a full-text hint. Under the existing 672px narrow breakpoint, hide descriptions before truncating names; trailing labels truncate only after the name shrinks to zero and the 12px glyph plus 8px join consume the remaining width. Selection uses menu-hover and the existing focus/selected roles. Pointer targets and nested icons retain the shared pointer cursor; the editor remains a text cursor.
+
+Skill tokens use accent/link text with an inline 12px glyph and the base composer text role. They add no vertical padding or extra line height, and preserve the composer baseline and dock geometry. The token is indivisible and only appears at the beginning; the following ordinary space owns the caret. Its icon is decorative CSS and does not enter serialized or selected text. These local roles authorize the insertion panel and token only.
+
 ### Conversation model controls
 
 Keep the established model trigger and independent list/detail panels. The trigger is 28px high; model and reasoning labels remain separate. The list is 332px wide, with 4px inset, 32px rows and a 312px scrolling maximum; it attaches 4px above the trigger at its right edge. The 280px detail panel sits independently 4px beside the list and flips/clamps with 16px viewport clearance, without repositioning the list.

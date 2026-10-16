@@ -1,6 +1,7 @@
 import { OVERLAY_LAYER } from "@/lib/overlay";
 import {
   useEffect,
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -30,6 +31,7 @@ import type {
   WireSessionSummary,
   WireProjectGit,
   WireProject,
+  WireSkill,
 } from "@rukie/shared";
 import { createWireClient, WireError, type ClientCommand } from "../client";
 import { createDesktopStore, recentSessions, type SessionViewState } from "../store";
@@ -924,8 +926,46 @@ function DesktopApp({
       focusPrompt();
     }
   };
+  const skillErrorText = useRef(errorText);
+  skillErrorText.current = errorText;
+  const skillRefreshEpochs = useRef(new Map<string, number>());
+  const skillScope = state.selected ? `session:${state.selected}` : `project:${state.target ?? ""}`;
+  const [skillCatalogs, setSkillCatalogs] = useState<Record<string, WireSkill[]>>({});
+  const refreshSkills = useCallback(() => {
+    const epoch = (skillRefreshEpochs.current.get(skillScope) ?? 0) + 1;
+    skillRefreshEpochs.current.set(skillScope, epoch);
+    const command: ClientCommand = state.selected
+      ? { type: "skills.list", sessionId: state.selected }
+      : { type: "skills.list", ...(state.target ? { projectId: state.target } : {}) };
+    void client
+      .request(command)
+      .then((result) => {
+        if (skillRefreshEpochs.current.get(skillScope) !== epoch || !Array.isArray(result)) return;
+        const skills = result.filter((item: unknown): item is WireSkill =>
+          Boolean(
+            item &&
+            typeof item === "object" &&
+            "name" in item &&
+            typeof item.name === "string" &&
+            "description" in item &&
+            typeof item.description === "string" &&
+            "filePath" in item &&
+            typeof item.filePath === "string" &&
+            "scope" in item &&
+            (item.scope === "user" || item.scope === "project"),
+          ),
+        );
+        setSkillCatalogs((previous) => ({ ...previous, [skillScope]: skills }));
+      })
+      .catch((cause: unknown) => setError(skillErrorText.current(cause)));
+  }, [client, state.selected, state.target, skillScope]);
+  useEffect(() => {
+    if (connected) refreshSkills();
+  }, [connected, refreshSkills]);
   const composer = (
     <Composer
+      skills={skillCatalogs[skillScope] ?? []}
+      onSkillsOpen={refreshSkills}
       draft={draft}
       images={images}
       onDraft={setDraft}

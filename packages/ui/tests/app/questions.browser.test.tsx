@@ -33,7 +33,7 @@ test("a question replaces the composer and submits the numbered answer without l
       .getByRole("button", { name: /Fix compiler/ })
       .first()
       .click();
-    const draft = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const draft = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await draft.fill("Keep this draft");
     await send({
       type: "interaction_requested",
@@ -119,7 +119,7 @@ test("mixed interactions keep insertion order, settled questions disappear and p
       .getByRole("button", { name: /Fix compiler/ })
       .first()
       .click();
-    const draft = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const draft = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await draft.fill("Queued draft survives");
     await question("First question");
     await question("Second question");
@@ -215,7 +215,7 @@ test("a failed question reply stays retryable, pending replies disable activatio
       .getByRole("button", { name: /Fix compiler/ })
       .first()
       .click();
-    const draft = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const draft = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await draft.fill("Preserve on retry");
     await ask("retry");
     const region = screen.getByRole("region", { name: "Question required" });

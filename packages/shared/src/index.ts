@@ -85,6 +85,7 @@ export {
   type WirePlanReviewReply,
   type WirePreferences,
   type WireModelCatalogEntry,
+  type WireSkill,
   type WireServerMessage,
   type WireSessionState,
 } from "./wire.ts";

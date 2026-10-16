@@ -17,6 +17,7 @@ import {
   type ThinkingLevel,
   type WireModelCatalogEntry,
   type WireCommand,
+  type WireSkill,
   type ContextReport,
 } from "@rukie/shared";
 import { PromptInput } from "./agents/prompt-input";
@@ -39,6 +40,8 @@ export interface ModelSelection {
 }
 export interface ComposerProps {
   draft: string;
+  skills?: readonly WireSkill[];
+  onSkillsOpen?: () => void;
   images: PromptImages;
   onDraft: (text: string) => void;
   onImages: (images: PromptImages | ((previous: PromptImages) => PromptImages)) => void;
@@ -152,6 +155,8 @@ export function Composer(props: ComposerProps) {
       <PromptInput
         className="conversation-composer conversation-pencil"
         value={props.draft}
+        skills={props.skills}
+        onSkillsOpen={props.onSkillsOpen}
         onValueChange={props.onDraft}
         onPaste={(event) => {
           if (

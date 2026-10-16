@@ -219,6 +219,7 @@ export const WireCommandSchema = Type.Union([
   command("session.archive", session),
   command("session.delete", session),
   command("models.list", {}),
+  command("skills.list", { projectId: Type.Optional(id), sessionId: Type.Optional(id) }),
   command("session.set_model", {
     ...session,
     provider: id,
@@ -391,3 +392,10 @@ export type WireServerMessage<Event> =
       archived: string[];
       preferences: WirePreferences;
     };
+
+export interface WireSkill {
+  name: string;
+  description: string;
+  scope: "user" | "project";
+  filePath: string;
+}

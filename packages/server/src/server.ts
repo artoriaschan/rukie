@@ -20,6 +20,7 @@ import {
   readSessionSnapshot,
   readSessionToolOutput,
   listModelCatalog,
+  listSkills,
   loadSettings,
   type Session,
   type SessionOptions,
@@ -1424,6 +1425,23 @@ export async function startServer(options: ServerOptions) {
           item.settle(command);
           return {};
         }
+        case "skills.list": {
+          if (command.projectId && command.sessionId) throw new CommandError("invalid_command");
+          let cwd: string | undefined;
+          if (command.sessionId) {
+            const summary = (await summaries()).find((item) => item.id === command.sessionId);
+            if (!summary) throw new CommandError("session_not_found");
+            cwd = summary.cwd;
+          } else if (command.projectId) {
+            cwd = registry.projects.find((item) => item.id === command.projectId)?.primary;
+            if (!cwd) throw new CommandError("project_not_found");
+          }
+          return listSkills({
+            homeDir: options.homeDir,
+            dataRoot: options.configurationRoot ?? directory,
+            cwd,
+          });
+        }
         case "models.list": {
           const settings = await presentationSettings(workspace);
           await refreshModels();
@@ -1666,7 +1684,7 @@ export async function startServer(options: ServerOptions) {
     // Reserve each Session before the first await, including model/auth/open preparation.
     // Archive/delete exclude other commands until storage/registry publication completes.
     const dispatch = async (command: WireCommand, socket: WSContext): Promise<unknown> => {
-      if (!("sessionId" in command)) return executeCommand(command, socket);
+      if (!("sessionId" in command) || !command.sessionId) return executeCommand(command, socket);
       const id = command.sessionId;
       if (organizing.has(id)) throw new CommandError("session_busy");
       if (

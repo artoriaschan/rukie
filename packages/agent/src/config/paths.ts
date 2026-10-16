@@ -16,7 +16,7 @@ export function userDataDirectory(options: UserDataOptions): string {
 }
 
 export function contentDirectories(
-  cwd: string,
+  cwd: string | undefined,
   options: UserDataOptions,
   kind: "skills" | "agents",
 ): string[] {
@@ -25,6 +25,6 @@ export function contentDirectories(
     ...(options.dataRoot === undefined
       ? namespaces.map((namespace) => join(options.homeDir, namespace, kind))
       : [join(userDataDirectory(options), kind)]),
-    ...namespaces.map((namespace) => join(cwd, namespace, kind)),
+    ...(cwd ? namespaces.map((namespace) => join(cwd, namespace, kind)) : []),
   ];
 }

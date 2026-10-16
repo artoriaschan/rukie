@@ -679,7 +679,7 @@ test("settings returns keyboard focus and preserves chat geometry and draft", as
     <App host={{ getConnection: async () => connection, modelServices: services }} />,
   );
   try {
-    const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await prompt.fill("preserved draft");
     const main = screen.getByRole("main").element();
     const baseline = main.getBoundingClientRect();

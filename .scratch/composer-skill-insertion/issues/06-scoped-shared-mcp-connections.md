@@ -45,3 +45,5 @@ Blocked by: 02
 - 严格配置审阅新增 cwd 空字符串/数字公开回归，先红灯 0 pass / 2 fail，222ms（错误地启动 executable），再保留无效原值交给 schema 校验；补同两例验证 2 pass / 0 fail，2 expects，211ms；focused lint/format 通过。
 
 - 提交 hooks 的 lint-staged 格式与 lint 通过；首次 commitlint 因 body 单行超过 100 字符拒绝，改短正文后正常重提，没有跳过 hooks。提交前已将最新集成 `62124c8a` 快进到本票分支，新增差异仅是其他票 UI 与验证记录；本票 MCP 源码未被改写，复用上述行为证据。
+
+- 最新集成 `54b2c693` 的合并仅在 server 测试尾部追加处冲突；按 resolving-merge-conflicts 流程保留 MCP startup 与 skills.list 两个完整用例，server 生产接线自动合并。增量 `rtk proxy env -u NO_COLOR bun test packages/server/tests/server.test.ts -t 'startup warms only|MCP Host startup|skills.list works'`：3 pass / 0 fail，29 expects，342ms，日志 `/tmp/rukie-06-merge-server.log`；affected agent/server tsc 通过，日志 `/tmp/rukie-06-merge-types.log`。复用其他有效证据，未扩大为 aggregate。

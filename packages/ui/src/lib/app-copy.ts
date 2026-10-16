@@ -1,6 +1,9 @@
 import { modelServiceCopy } from "./model-service-copy";
 export const appCopy = {
   en: {
+    "app.skills": "Skills",
+    "app.skill-project": "Project",
+    "app.skill-user": "Global",
     "app.goal-mode": "Goal mode",
     "app.goal-mode-description": "Continue until the goal is complete or blocked",
     "app.goal-mode-running": "Unavailable while a Run is in progress",
@@ -338,6 +341,9 @@ export const appCopy = {
     "app.max": "Maximum",
   },
   zh: {
+    "app.skills": "技能",
+    "app.skill-project": "项目",
+    "app.skill-user": "全局",
     "app.goal-mode": "目标模式",
     "app.goal-mode-description": "持续推进，直到目标完成或受阻",
     "app.goal-mode-running": "Run 进行中，暂时无法开启目标模式",

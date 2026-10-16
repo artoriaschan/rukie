@@ -159,7 +159,7 @@ test("sidebar searches projects, selects a welcome target and creates a Session 
       .toBeVisible();
     await userEvent.keyboard("{Escape}");
     await expect.element(welcome).toHaveFocus();
-    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Build a compiler");
+    await screen.getByRole("combobox", { name: "Prompt", exact: true }).fill("Build a compiler");
     await userEvent.keyboard("{Enter}");
     await expect
       .element(screen.getByRole("heading", { name: "Build a compiler", exact: true }))
@@ -192,7 +192,7 @@ test("search is a modal keyboard surface and restores focus after selecting with
     const trigger = screen.getByRole("button", { name: "Search chats", exact: true });
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
     await trigger.click();
-    const input = screen.getByRole("combobox");
+    const input = screen.getByRole("combobox", { name: "Search chats", exact: true });
     await expect.element(input).toHaveFocus();
     await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
     expect(
@@ -234,7 +234,7 @@ test("composer selects reasoning from native capabilities, keeps IME input and u
     await screen.getByRole("button", { name: "High", exact: true }).click();
     await screen.getByRole("button", { name: "Permission mode" }).click();
     await screen.getByRole("menuitemradio", { name: /Full access/ }).click();
-    const input = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const input = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await input.fill("编译器");
     input
       .element()
@@ -309,11 +309,11 @@ test("narrow layout retains new-chat shortcuts, selected project folders and fin
     window.dispatchEvent(new CustomEvent("rukie:connection-change", { detail: "disconnected" }));
     await expect.element(screen.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
       .toBeDisabled();
     await screen.getByRole("button", { name: "Retry", exact: true }).click();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
       .toBeEnabled();
     await userEvent.keyboard("{Meta>}n{/Meta}");
     await expect.element(screen.getByRole("heading", { name: /What would you/ })).toBeVisible();
@@ -335,7 +335,7 @@ test("paste and drop preserve named image attachments across final disconnect", 
     />,
   );
   try {
-    const input = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const input = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await expect.element(input).toBeEnabled();
     await input.fill("Keep my draft");
     const png = Uint8Array.from(
@@ -415,7 +415,7 @@ test("sidebar preferences, native context facts and readonly-busy Retry remain u
       .element(screen.getByText("This Session is open elsewhere. Close it there, then retry."))
       .toBeVisible();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
       .not.toBeInTheDocument();
     await expect.element(screen.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
   } finally {
@@ -448,7 +448,7 @@ test("stopping hands queued text and named images back before the current draft"
         run: { id: "run" },
       }),
     });
-    const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await prompt.fill("Current draft");
     await screen.getByRole("button", { name: "Stop generating", exact: true }).click();
     await expect.poll(() => promptText(prompt.element())).toBe("Queued draft\n\nCurrent draft");
@@ -496,7 +496,7 @@ test("Chinese project errors and disconnected pending sends present localized ac
     await expect.element(screen.getByRole("alert")).toHaveTextContent("无法处理此操作，请重试。");
     await screen.getByRole("button", { name: "取消", exact: true }).click();
     await fetch(`${url}/hold`);
-    await screen.getByRole("textbox", { name: "输入消息", exact: true }).fill("等待回复");
+    await screen.getByRole("combobox", { name: "输入消息", exact: true }).fill("等待回复");
     await userEvent.keyboard("{Enter}");
     await expect
       .poll(async () =>
@@ -600,7 +600,7 @@ test("missing model errors remain actionable and preserve the current draft", as
       method: "POST",
       body: JSON.stringify({ type: "session.create", code: "model_unavailable" }),
     });
-    const input = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const input = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await input.fill("Preserve this draft");
     await userEvent.keyboard("{Enter}");
     await expect
@@ -645,16 +645,16 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
     await expect.element(back).toBeDisabled();
     await expect.element(forward).toBeDisabled();
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
-    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Welcome draft");
+    await screen.getByRole("combobox", { name: "Prompt", exact: true }).fill("Welcome draft");
     await userEvent.keyboard("{Control>}1{/Control}");
     await expect
       .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
       .toBeVisible();
-    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Session draft");
+    await screen.getByRole("combobox", { name: "Prompt", exact: true }).fill("Session draft");
     await back.click();
     await expect
       .poll(() =>
-        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
       )
       .toBe("Welcome draft");
     await forward.click();
@@ -663,21 +663,23 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
       .toBeVisible();
     await expect
       .poll(() =>
-        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
       )
       .toBe("Session draft");
     await userEvent.keyboard("{Control>}2{/Control}");
     await expect
       .element(screen.getByRole("heading", { name: "Explore ideas", exact: true }))
       .toBeVisible();
-    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Second Session draft");
+    await screen
+      .getByRole("combobox", { name: "Prompt", exact: true })
+      .fill("Second Session draft");
     await back.click();
     await expect
       .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
       .toBeVisible();
     await expect
       .poll(() =>
-        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
       )
       .toBe("Session draft");
     await forward.click();
@@ -686,7 +688,7 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
       .toBeVisible();
     await expect
       .poll(() =>
-        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
       )
       .toBe("Second Session draft");
     await screen.getByRole("button", { name: "Model services", exact: true }).click();
@@ -711,7 +713,7 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
       .toBeVisible();
     await expect
       .poll(() =>
-        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
       )
       .toBe("Second Session draft");
     await forward.click();
@@ -1255,7 +1257,7 @@ test("permanent delete confirms from all Session menus, cancellation sends nothi
     await expect.element(screen.getByText("Open one", { exact: true })).not.toBeInTheDocument();
     await expect.element(row).not.toBeInTheDocument();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
       .toBeVisible();
     expect(
       (await sent()).filter((command: { type: string }) => command.type === "session.delete"),

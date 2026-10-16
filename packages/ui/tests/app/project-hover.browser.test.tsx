@@ -295,7 +295,7 @@ test("fixed Project detail survives another Project intent and App transitions s
       .element(card.getByRole("button", { name: "Pin details", exact: true }))
       .toHaveFocus();
     expect(card.element().textContent).toContain("Beta");
-    await screen.getByRole("textbox", { name: "Prompt", exact: true }).click();
+    await screen.getByRole("combobox", { name: "Prompt", exact: true }).click();
     await expect.element(card).not.toBeInTheDocument();
     alpha.element().focus();
     await expect.element(card).toBeVisible();
@@ -479,7 +479,7 @@ test.each(["light", "dark"] as const)(
         .element(screen.getByRole("button", { name: "Unpin details", exact: true }))
         .toHaveAttribute("aria-pressed", "true");
       // Move keyboard focus out too: pin persistence must not rely on focus retention.
-      screen.getByRole("textbox", { name: "Prompt", exact: true }).element().focus();
+      screen.getByRole("combobox", { name: "Prompt", exact: true }).element().focus();
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       await event(card, "pointerout");
       await event(window, "pointermove", { clientX: 1200, clientY: 800 });
