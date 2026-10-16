@@ -90,6 +90,9 @@ test.each([
       dark ? "rgb(26, 26, 26)" : "rgb(250, 250, 250)",
     );
     const row = document.querySelector<HTMLElement>(".worktree-settings-row")!;
+    expect(getComputedStyle(row).borderRadius).toBe("12px");
+    expect(getComputedStyle(row).padding).toBe("12px 16px");
+    expect(getComputedStyle(row).gap).toBe("12px");
     expect(getComputedStyle(row).backgroundColor).toBe(
       dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)",
     );
@@ -109,6 +112,7 @@ test.each([
       document.documentElement.style.removeProperty("--ui-font-size");
     }
     const refresh = screen.getByRole("button", { name: labels.refresh, exact: true });
+    expect(refresh.element().getBoundingClientRect().height).toBe(32);
     expect(getComputedStyle(refresh.element()).cursor).toBe("pointer");
     expect(getComputedStyle(refresh.element().querySelector("svg")!).cursor).toBe("pointer");
     await refresh.click();
@@ -118,6 +122,9 @@ test.each([
     expect(getComputedStyle(dialog.element()).backgroundColor).toBe(
       dark ? "rgb(47, 47, 47)" : "rgb(255, 255, 255)",
     );
+    await expect.poll(() => getComputedStyle(dialog.element()).transform).toBe("none");
+    expect(dialog.element().getBoundingClientRect().width).toBe(Math.min(448, width - 32));
+    expect(getComputedStyle(dialog.element()).borderRadius).toBe("16px");
     const confirm = dialog.getByRole("button", { name: labels.remove, exact: true });
     // C36 uses the solid destructive role, not the scoped soft variant of Project removal.
     const background = dark ? "rgb(255, 92, 92)" : "rgb(224, 49, 49)";

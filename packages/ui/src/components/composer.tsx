@@ -279,6 +279,7 @@ export function Composer(props: ComposerProps) {
               </Menu.DropdownMenuTrigger>
               <Menu.DropdownMenuContent
                 side="top"
+                collisionPadding={16}
                 className="conversation-permission-menu conversation-pencil"
               >
                 <Menu.DropdownMenuRadioGroup

@@ -189,7 +189,9 @@ export function AppConversation({
       >
         {state ? (
           <div
-            className={summaryOpen ? "flex min-h-0 flex-1 md:pr-[332px]" : "flex min-h-0 flex-1"}
+            className={
+              summaryOpen ? "flex min-h-0 flex-1 md:pr-summary-reserve" : "flex min-h-0 flex-1"
+            }
           >
             <Transcript
               reader={traceReader}

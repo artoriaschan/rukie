@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { AppearanceSettings } from "./appearance-settings";
 import { createAppearance, type Appearance } from "../lib/appearance";
 import { useEffect, useRef, useState } from "react";
@@ -520,7 +521,7 @@ export function ModelServices({
       ref={surface}
       tabIndex={-1}
       aria-label={t("services.title")}
-      className="model-services fixed inset-x-0 bottom-0 top-11 z-30 flex min-h-0 text-foreground text-ui-base"
+      className={`model-services fixed inset-x-0 bottom-0 top-11 ${OVERLAY_LAYER.settings} flex min-h-0 text-foreground text-ui-base`}
     >
       <p id="settings-unavailable" className="sr-only">
         {t("services.unavailable")}
@@ -535,7 +536,7 @@ export function ModelServices({
           disabled
           placeholder={t("services.search")}
           aria-label={t("services.search")}
-          leftIcon={<Search className="size-4" />}
+          leftIcon={<Search />}
         />
         {(
           [

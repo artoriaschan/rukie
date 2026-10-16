@@ -97,11 +97,11 @@ test("Pencil model panels preserve the composer layout and show catalog facts", 
     expect(panel.height).toBe(184);
     const facts = detail.element().querySelectorAll("dt");
     expect(facts[0]!.getBoundingClientRect().top - panel.top).toBe(56);
-    expect(facts[1]!.getBoundingClientRect().top - panel.top).toBe(80);
+    expect(facts[1]!.getBoundingClientRect().top - panel.top).toBe(78);
     expect(
       detail.element().querySelector("[data-model-reasoning] button")!.getBoundingClientRect().top -
         panel.top,
-    ).toBe(146);
+    ).toBe(140);
     expect(panel.left - list.getBoundingClientRect().right).toBe(4);
     // A short list near the window bottom keeps its anchor while the taller detail shifts to fit.
     expect(panel.top).toBeLessThanOrEqual(list.getBoundingClientRect().top);
@@ -198,7 +198,7 @@ test("Pencil composer, permission and context controls retain their real actions
     expect(form.getBoundingClientRect().width).toBe(736);
     expect(form.getBoundingClientRect().height).toBe(100);
     expect(getComputedStyle(form.querySelector('button[type="submit"]')!).borderRadius).toBe("6px");
-    expect(getComputedStyle(prompt, "::placeholder").color).toBe("rgba(38, 38, 38, 0.4)");
+    expect(getComputedStyle(prompt, "::placeholder").color).toBe("rgb(107, 107, 107)");
     const trigger = screen.getByRole("button", { name: "Permission mode", exact: true });
     expect(trigger.element().getBoundingClientRect().height).toBe(28);
     await trigger.click();
@@ -215,7 +215,7 @@ test("Pencil composer, permission and context controls retain their real actions
     expect(iconBounds.left - menuBounds.left).toBe(10);
     expect(iconBounds.top - menuBounds.top).toBe(16);
     const full = screen.getByRole("menuitemradio", { name: /Allow tools without asking/ });
-    expect(getComputedStyle(full.element()).color).toBe("rgb(224, 123, 0)");
+    expect(getComputedStyle(full.element()).color).toBe("rgb(166, 91, 0)");
     await userEvent.keyboard("{Escape}");
     await expect.element(trigger).toHaveFocus();
     await screen.getByRole("button", { name: "Context usage 25%", exact: true }).click();
@@ -229,7 +229,7 @@ test("Pencil composer, permission and context controls retain their real actions
     expect(context.querySelector("h2 svg")).toBeNull();
     expect(
       context.querySelector("[data-context-bar]")!.getBoundingClientRect().top - contextBounds.top,
-    ).toBe(108);
+    ).toBe(105);
     expect(context.querySelectorAll("[data-context-legend]").length).toBe(3);
     expect(context.textContent).toContain("Opening context");
     await userEvent.keyboard("{Escape}");
@@ -555,3 +555,86 @@ test("C39 hover and keyboard close preserve the draft and toolbar geometry", asy
     await screen.unmount();
   }
 });
+
+test.each([671, 672])(
+  "model detail changes arrangement at exact672px breakpoint (%i)",
+  async (width) => {
+    await page.viewport(width, 900);
+    const screen = await render(fixture());
+    try {
+      await screen.getByRole("button", { name: "Choose model", exact: true }).click();
+      const row = screen.getByRole("menuitem", { name: /First model/ });
+      await row.hover();
+      const detail = screen.getByRole("region", { name: "First model", exact: true });
+      await expect.element(detail).toBeVisible();
+      const list = row.element().closest("[data-model-list]")!;
+      expect(list.getBoundingClientRect().width).toBe(332);
+      expect(detail.element().getBoundingClientRect().width).toBe(width < 672 ? 332 : 280);
+      const box = detail.element().getBoundingClientRect();
+      expect(box.left).toBeGreaterThanOrEqual(16);
+      expect(box.right).toBeLessThanOrEqual(width - 16);
+      if (width < 672)
+        expect(Math.abs(list.getBoundingClientRect().top - box.bottom - 4)).toBeLessThanOrEqual(1);
+    } finally {
+      await screen.unmount();
+    }
+  },
+);
+
+test.each(["en", "zh"] as const)(
+  "permission and context remain usable at420px/18px (%s)",
+  async (locale) => {
+    await page.viewport(420, 700);
+    const root = document.documentElement;
+    const prior = root.getAttribute("style");
+    root.style.setProperty("--ui-font-size", "18px");
+    const report: ContextReport = {
+      model: models[0]!.spec,
+      window: 1000000,
+      used: 250000,
+      categories: [{ name: "system-prompt", tokens: 250000 }],
+      memoryFiles: [],
+      mcpTools: [],
+      skills: [],
+      agentTypes: [],
+    };
+    const screen = await render(
+      <UiLocaleProvider locale={locale}>
+        {fixture(vi.fn(), models, false, report)}
+      </UiLocaleProvider>,
+    );
+    try {
+      for (const dark of [false, true]) {
+        root.classList.toggle("dark", dark);
+        await screen
+          .getByRole("button", {
+            name: locale === "en" ? "Permission mode" : "权限模式",
+            exact: true,
+          })
+          .click();
+        const menu = screen.getByRole("menu").element();
+        expect(menu.getBoundingClientRect().width).toBe(376);
+        expect(menu.getBoundingClientRect().left).toBeGreaterThanOrEqual(16);
+        expect(menu.getBoundingClientRect().right).toBeLessThanOrEqual(404);
+        for (const row of screen.getByRole("menuitemradio").elements())
+          expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
+        await userEvent.keyboard("{Escape}");
+        await screen
+          .getByRole("button", {
+            name: locale === "en" ? "Context usage 25%" : "上下文用量 25%",
+            exact: true,
+          })
+          .click();
+        const panel = document.querySelector<HTMLElement>(".conversation-context-panel")!;
+        await expect.poll(() => Math.round(panel.getBoundingClientRect().width)).toBe(348);
+        expect(panel.scrollWidth).toBeLessThanOrEqual(panel.clientWidth);
+        await userEvent.keyboard("{Escape}");
+      }
+    } finally {
+      await screen.unmount();
+      root.classList.remove("dark");
+      if (prior === null) root.removeAttribute("style");
+      else root.setAttribute("style", prior);
+    }
+  },
+);

@@ -21,6 +21,9 @@ export const appCopy = {
     "app.goal-limit": "Round limit reached",
     "app.goal-images": "Image goal · {{count}} images",
     "app.goal-delete": "Delete goal",
+    "app.goal-remove-title": "Delete goal?",
+    "app.goal-remove-description":
+      "Remove this goal and stop its automatic continuation. Your conversation and files are kept.",
     "app.goal-pause": "Pause goal",
     "app.goal-resume": "Resume goal",
     "app.goal-limit-description":
@@ -354,6 +357,8 @@ export const appCopy = {
     "app.goal-limit": "已达上限",
     "app.goal-images": "图片目标 · {{count}} 张图片",
     "app.goal-delete": "删除目标",
+    "app.goal-remove-title": "删除目标？",
+    "app.goal-remove-description": "移除此目标并停止自动续跑。对话和文件会保留。",
     "app.goal-pause": "暂停目标",
     "app.goal-resume": "继续目标",
     "app.goal-limit-description": "目标轮次已用尽。删除后可开启新目标。",

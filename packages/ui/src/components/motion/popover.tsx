@@ -295,7 +295,10 @@ export function PopoverTrigger({ children }: PopoverTriggerProps) {
     ref: mergeRefs(childRef, (node: HTMLElement | null) => {
       ctx.triggerRef.current = node;
     }),
-    className: cn("relative z-0", childProps.className as string | undefined),
+    className: cn(
+      `relative ${OVERLAY_LAYER.localBase}`,
+      childProps.className as string | undefined,
+    ),
     "aria-haspopup": "dialog",
     "aria-expanded": ctx.open,
     "aria-controls": ctx.open ? ctx.contentId : undefined,

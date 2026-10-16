@@ -13,7 +13,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuTrigger,
 } from "../../src/components/ui/dropdown-menu";
-import { Citation } from "../../src/components/agents/citations";
+import { Citation, CitationList } from "../../src/components/agents/citations";
 import "../../src/theme.css";
 
 test("permission actions expose Chinese copy and invoke caller decisions", async () => {
@@ -83,10 +83,27 @@ test("registry citation accessible name uses the injected locale", async () => {
   const screen = await render(
     <UiLocaleProvider locale="zh">
       <Citation citationId="source" index={2} idPrefix="sources" />
+      <CitationList
+        idPrefix="sources"
+        citations={[
+          { id: "source", title: "Source link", url: "https://example.com" },
+          { id: "plain", title: "Plain source" },
+        ]}
+      />
     </UiLocaleProvider>,
   );
   try {
-    await expect.element(screen.getByRole("link", { name: "查看引用 2" })).toBeVisible();
+    const inline = screen.getByRole("link", { name: "查看引用 2" });
+    await expect.element(inline).toBeVisible();
+    expect(getComputedStyle(inline.element()).cursor).toBe("pointer");
+    const external = document.querySelector<HTMLAnchorElement>("a#sources-source")!;
+    for (const target of [external, ...external.querySelectorAll("span,svg")])
+      expect(getComputedStyle(target).cursor).toBe("pointer");
+    expect(getComputedStyle(document.getElementById("sources-plain")!).cursor).not.toBe("pointer");
+    inline.element().focus();
+    await userEvent.keyboard("{Enter}");
+    expect(location.hash).toBe("#sources-source");
+    history.replaceState(null, "", location.pathname + location.search);
   } finally {
     await screen.unmount();
   }

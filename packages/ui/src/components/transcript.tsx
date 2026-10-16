@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { planSubmissions, type PlanSubmission } from "../lib/plans";
 import { PlanPreview } from "./plan-preview";
 import { createPortal } from "react-dom";
@@ -514,7 +515,9 @@ export function Transcript({
   const items = virtual.getVirtualItems();
   const navigation =
     state.groups.length > 1 ? (
-      <div className="pointer-events-none absolute left-5 top-1/2 z-10 max-h-full w-6 -translate-y-1/2 overflow-y-auto">
+      <div
+        className={`pointer-events-none absolute left-5 top-1/2 ${OVERLAY_LAYER.previewRail} max-h-full w-6 -translate-y-1/2 overflow-y-auto`}
+      >
         <PreviewRail
           className="pointer-events-auto min-h-0"
           railClassName="w-6 [&_[data-slot=preview-rail-item]]:w-6 [&_[data-slot=preview-rail-tick]]:w-6 [&_[data-slot=preview-rail-tick]]:text-foreground/25 [&_[data-slot=preview-rail-tick][data-highlighted]]:text-foreground"

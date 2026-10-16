@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Pencil, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Pencil, X } from "lucide-react";
 import { Button } from "../../motion/button/base";
 import { Checkbox } from "../../motion/checkbox";
 import { Input } from "../../motion/input";
@@ -252,7 +252,7 @@ export function InteractionApprovalCard({
                 aria-hidden="true"
                 className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border text-ui-sm text-muted-foreground"
               >
-                {index + 1}
+                {answer.selected.includes(option.value) ? <Check aria-hidden="true" /> : null}
               </span>
               <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 whitespace-normal break-words">
                 <span className="block leading-5">{option.label}</span>
@@ -273,7 +273,10 @@ export function InteractionApprovalCard({
           ),
         )}
       </div>
-      <div data-interaction-custom className="flex min-h-[52px] items-center gap-3 px-3">
+      <div
+        data-interaction-custom
+        className="flex min-h-interaction-custom items-center gap-3 px-3"
+      >
         <span
           aria-hidden="true"
           className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground"

@@ -93,7 +93,7 @@ export function ProjectCreate({
           <Button
             size="standard"
             variant="outline"
-            className="h-[104px] shrink-0 flex-col gap-3 rounded-xl"
+            className="h-project-empty shrink-0 flex-col gap-3 rounded-xl"
             disabled={picking}
             onClick={onPick}
           >

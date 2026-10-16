@@ -11,7 +11,7 @@ const request = {
   plan: "# Migration **plan**",
 };
 
-test("C43 plan review matches source number circles, inline descriptions and custom row", async () => {
+test("C43 plan review keeps selection circles without shortcut hints, inline descriptions and custom row", async () => {
   await page.viewport(1280, 900);
   const screen = await render(
     <UiLocaleProvider locale="en">
@@ -29,13 +29,18 @@ test("C43 plan review matches source number circles, inline descriptions and cus
   try {
     const region = screen.getByRole("region", { name: "Plan review required" }).element();
     const approve = screen.getByRole("button", { name: /Approve and execute/ }).element();
-    const number = approve.querySelector("span[aria-hidden=true]")!;
+    const indicator = approve.querySelector("span[aria-hidden=true]")!;
     expect(region.getBoundingClientRect().width).toBe(752);
     expect(getComputedStyle(region).borderRadius).toBe("16px");
     expect(approve.getBoundingClientRect().height).toBe(48);
-    expect(number.getBoundingClientRect().width).toBe(28);
-    expect(number.getBoundingClientRect().height).toBe(28);
-    expect(parseFloat(getComputedStyle(number).borderRadius)).toBeGreaterThanOrEqual(14);
+    expect(indicator.textContent).toBe("");
+    expect(indicator.getBoundingClientRect().width).toBe(28);
+    expect(indicator.getBoundingClientRect().height).toBe(28);
+    expect(parseFloat(getComputedStyle(indicator).borderRadius)).toBeGreaterThanOrEqual(14);
+    region.focus();
+    await userEvent.keyboard("1");
+    await expect.poll(() => indicator.querySelector("svg")?.getBoundingClientRect().width).toBe(12);
+    expect(approve.getAttribute("aria-pressed")).toBe("true");
     const label = screen
       .getByText("Approve and execute", { exact: true })
       .element()

@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useEffect, useRef } from "react";
 import { Bot, Lightbulb } from "lucide-react";
 import type { PlanSubmission } from "../lib/plans";
@@ -230,7 +231,7 @@ export function Summary({
   return (
     <aside
       aria-label={t("conversation.summary")}
-      className="conversation-summary absolute right-4 top-3 z-20 flex max-h-[calc(100%-24px)] w-[300px] max-w-[calc(100%-32px)] flex-col gap-3 overflow-y-auto"
+      className={`conversation-summary absolute right-4 top-3 ${OVERLAY_LAYER.summary} flex max-h-[calc(100%-24px)] w-[300px] max-w-[calc(100%-32px)] flex-col gap-3 overflow-y-auto`}
     >
       {todos.length ? (
         <TodoList items={todos} title={t("conversation.todos")} presentation="summary" />

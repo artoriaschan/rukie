@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { expect, test, vi, onTestFinished } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { App } from "../../src/app";
 import { NewChatSelector } from "../../src/app/new-chat-selector";
@@ -76,13 +76,17 @@ test.each([
         locale={locale}
       />,
     );
+    document.documentElement.style.setProperty("--ui-font-size", "18px");
+    onTestFinished(() => {
+      document.documentElement.style.removeProperty("--ui-font-size");
+    });
     const text = copy[locale];
     const main = screen.getByRole("main");
     const projectTrigger = main.getByRole("button", { name: text.conversation, exact: true });
     await expect.element(projectTrigger).toBeEnabled();
     expect(projectTrigger.element().getBoundingClientRect().height).toBe(32);
     expect(getComputedStyle(projectTrigger.element()).borderRadius).toBe("8px");
-    expect(getComputedStyle(projectTrigger.element()).fontSize).toBe("14px");
+    expect(getComputedStyle(projectTrigger.element()).fontSize).toBe("18px");
     expect(getComputedStyle(projectTrigger.element()).cursor).toBe("pointer");
     for (const child of projectTrigger.element().querySelectorAll("svg, span"))
       expect(getComputedStyle(child).cursor).toBe("pointer");
@@ -105,6 +109,7 @@ test.each([
     await projectTrigger.click();
     const projectSearch = screen.getByRole("textbox", { name: text.searchProjects, exact: true });
     await expect.element(projectSearch).toHaveFocus();
+    expect(screen.getByRole("menu").element().getBoundingClientRect().width).toBe(288);
     await userEvent.keyboard("zz");
     await expect.element(screen.getByText(text.noProjects, { exact: true })).toBeVisible();
     await userEvent.keyboard("{Backspace}{Backspace}proj");
@@ -125,12 +130,15 @@ test.each([
     // C34: all local branches, search and switching.
     const branchTrigger = main.getByRole("button", { name: text.branch("main"), exact: true });
     expect(branchTrigger.element().getBoundingClientRect().height).toBe(32);
+    const branchLabel = branchTrigger.element().querySelector("span")!;
+    expect(branchLabel.getBoundingClientRect().width).toBeGreaterThan(24);
     expect(getComputedStyle(branchTrigger.element()).cursor).toBe("pointer");
     for (const child of branchTrigger.element().querySelectorAll("svg, span"))
       expect(getComputedStyle(child).cursor).toBe("pointer");
     await branchTrigger.click();
     const branchSearch = screen.getByRole("textbox", { name: text.searchBranches, exact: true });
     await expect.element(branchSearch).toHaveFocus();
+    expect(screen.getByRole("menu").element().getBoundingClientRect().width).toBe(320);
     for (const name of ["dev/2026-0521", "main", "release/very-long-branch-name-for-truncation"])
       await expect.element(screen.getByRole("menuitem", { name, exact: true })).toBeVisible();
     await userEvent.keyboard("dev");
@@ -170,8 +178,8 @@ test.each([
       .toBeVisible();
     for (const menu of document.querySelectorAll('[role="menu"]')) {
       const box = menu.getBoundingClientRect();
-      expect(box.left).toBeGreaterThanOrEqual(0);
-      expect(box.right).toBeLessThanOrEqual(width);
+      expect(box.left).toBeGreaterThanOrEqual(16);
+      expect(box.right).toBeLessThanOrEqual(width - 16);
     }
     await userEvent.keyboard("{Escape}");
     const echoed = main.getByRole("button", {
@@ -218,6 +226,7 @@ test.each([
     await expect.poll(() => document.querySelector(".new-chat-selector")).toBeNull();
     const after = document.querySelector(".conversation-composer")!.getBoundingClientRect();
     expect(Math.abs(after.width - before.width)).toBeLessThanOrEqual(1);
+    document.documentElement.style.removeProperty("--ui-font-size");
   },
 );
 

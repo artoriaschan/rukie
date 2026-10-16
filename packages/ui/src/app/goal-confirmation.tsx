@@ -7,8 +7,10 @@ import "../components/goal-mode.css";
 
 export function GoalConfirmation({
   onClose,
+  intent = "enable",
   onConfirm,
 }: {
+  intent?: "enable" | "remove";
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }) {
@@ -20,19 +22,27 @@ export function GoalConfirmation({
   useEffect(() => {
     cancel.current?.focus();
   }, [pending]);
+  const removing = intent === "remove";
+  const title = t(removing ? "app.goal-remove-title" : "app.goal-confirm-title");
   return (
     <MorphingModal
       padding="goal"
-      viewId="goal"
+      viewId={intent}
       placement="center"
-      label={t("app.goal-confirm-title")}
+      label={title}
       initialFocus={cancel}
       onClose={onClose}
       className="goal-confirmation"
     >
-      <div className="goal-confirmation-content">
-        <h2 className="text-ui-lg font-medium">{t("app.goal-confirm-title")}</h2>
-        <p className="text-ui-base text-muted-foreground">{t("app.goal-confirm-description")}</p>
+      <div
+        className={
+          removing ? "goal-confirmation-content goal-removal-content" : "goal-confirmation-content"
+        }
+      >
+        <h2 className="text-ui-lg font-medium">{title}</h2>
+        <p className="text-ui-base text-muted-foreground">
+          {t(removing ? "app.goal-remove-description" : "app.goal-confirm-description")}
+        </p>
         {error ? (
           <p role="alert" className="text-ui-sm text-danger">
             {error}
@@ -40,7 +50,13 @@ export function GoalConfirmation({
         ) : null}
       </div>
       <div className="goal-confirmation-footer">
-        <Button geometry="goal" size="standard" ref={cancel} variant="secondary" onClick={onClose}>
+        <Button
+          geometry="goal"
+          size={removing ? "compact" : "standard"}
+          ref={cancel}
+          variant="secondary"
+          onClick={onClose}
+        >
           {t("app.cancel")}
         </Button>
         <Button
@@ -56,7 +72,7 @@ export function GoalConfirmation({
               .finally(() => setPending(false));
           }}
         >
-          {t("app.goal-confirm")}
+          {t(removing ? "app.goal-delete" : "app.goal-confirm")}
         </Button>
       </div>
     </MorphingModal>

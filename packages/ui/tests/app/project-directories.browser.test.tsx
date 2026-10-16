@@ -419,6 +419,7 @@ test.each([
     await page.viewport(width, 700);
     await commands.reducedMotion(true);
     document.documentElement.classList.toggle("dark", dark);
+
     document.documentElement.classList.toggle("light", !dark);
     const connection = await owner.startWire();
     const directories = Array.from(
@@ -464,6 +465,7 @@ test.each([
         exact: true,
       });
       expect(name.element().parentElement!.getBoundingClientRect().height).toBe(32);
+      document.documentElement.style.setProperty("--ui-font-size", "18px");
       name.element().focus();
       await expect
         .poll(() => getComputedStyle(name.element().parentElement!).boxShadow)
