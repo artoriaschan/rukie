@@ -191,8 +191,12 @@ _Avoid_: function, command
 _Avoid_: plugin, recipe
 
 **MCP Server**:
-通过 Model Context Protocol 提供工具的外部进程或 endpoint。它的工具命名为 `mcp__<server>__<tool>`。远程 server 可能要求 OAuth 授权：未授权时它的真实工具不可用，只暴露一个 `authenticate` 工具供模型发起授权。
+通过 Model Context Protocol 提供工具的外部进程或 endpoint。它的工具命名为 `mcp__<server>__<tool>`。远程 server 可能要求 OAuth 授权：未授权时它的真实工具不可用，只暴露一个 `authenticate` 工具供模型发起授权。用户级配置的 server 默认是全局单例；项目 `.mcp.json` 中的 server，以及引用 `${RUKIE_PROJECT_DIR}` 的用户级 server，按项目各运行一份。
 _Avoid_: connector, integration
+
+**MCP Host**:
+进程内唯一持有 MCP Server 连接、工具列表、状态与授权状态的所有者。它按项目解析生效的 server，Session 只租用连接；同一连接被所有租用它的 Session 与子代理共用，Frontend 不经 Session 也能读取某个项目的 MCP 状态。决定见 [ADR-0047](docs/adr/0047-host-owned-mcp-connections.md)。
+_Avoid_: MCP manager, connection pool
 
 **Deferred Tool**:
 尚未向模型提供定义、需要先经 Tool Search 找到才能调用的工具。只有 MCP 工具（不含 authenticate）会成为 Deferred Tool，内置工具不延迟。一旦被找到，只要工具仍存在，它在该对话后续轮次中保持可调用；当前可见集由该分支的 Transcript 推导，子 Session 独立维护。
