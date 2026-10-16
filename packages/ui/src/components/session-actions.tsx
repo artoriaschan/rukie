@@ -147,7 +147,7 @@ export function SessionDropdownItems({ actions }: { actions: SessionAction[] }) 
       {action.separator ? <Menu.DropdownMenuSeparator /> : null}
       {action.targets ? (
         <Menu.DropdownMenuSub>
-          <Menu.DropdownMenuSubTrigger disabled={action.disabled}>
+          <Menu.DropdownMenuSubTrigger size="session" disabled={action.disabled}>
             <action.icon />
             {t(action.label)}
           </Menu.DropdownMenuSubTrigger>
@@ -157,6 +157,7 @@ export function SessionDropdownItems({ actions }: { actions: SessionAction[] }) 
                 <Fragment key={target.id}>
                   {target.separator ? <Menu.DropdownMenuSeparator /> : null}
                   <Menu.DropdownMenuItem
+                    size="session"
                     disabled={action.disabled || target.current}
                     aria-current={target.current ? "true" : undefined}
                     onSelect={target.onSelect}
@@ -172,6 +173,7 @@ export function SessionDropdownItems({ actions }: { actions: SessionAction[] }) 
         </Menu.DropdownMenuSub>
       ) : (
         <Menu.DropdownMenuItem
+          size="session"
           disabled={action.disabled}
           variant={action.destructive ? "destructive" : "default"}
           onSelect={action.onSelect}
@@ -192,8 +194,12 @@ export function SessionContextItems({ actions }: { actions: SessionAction[] }) {
       {action.separator ? <ContextMenuSeparator /> : null}
       {action.targets ? (
         <ContextMenuSub>
-          <ContextMenuSubTrigger disabled={action.disabled} textValue={t(action.label)}>
-            <action.icon aria-hidden="true" className="size-4 shrink-0" />
+          <ContextMenuSubTrigger
+            size="session"
+            disabled={action.disabled}
+            textValue={t(action.label)}
+          >
+            <action.icon aria-hidden="true" className="size-3 shrink-0" />
             {t(action.label)}
           </ContextMenuSubTrigger>
           <ContextMenuSubContent ariaLabel={t(action.label)}>
@@ -201,12 +207,13 @@ export function SessionContextItems({ actions }: { actions: SessionAction[] }) {
               <Fragment key={target.id}>
                 {target.separator ? <ContextMenuSeparator /> : null}
                 <ContextMenuItem
+                  size="session"
                   disabled={action.disabled || target.current}
                   ariaCurrent={target.current}
                   onSelect={target.onSelect}
                   textValue={label(target)}
                 >
-                  <target.icon aria-hidden="true" className="size-4 shrink-0" />
+                  <target.icon aria-hidden="true" className="size-3 shrink-0" />
                   <span className="min-w-0 flex-1 truncate">{label(target)}</span>
                   {target.current ? <Check aria-hidden="true" className="size-3 shrink-0" /> : null}
                 </ContextMenuItem>
@@ -216,11 +223,12 @@ export function SessionContextItems({ actions }: { actions: SessionAction[] }) {
         </ContextMenuSub>
       ) : (
         <ContextMenuItem
+          size="session"
           disabled={action.disabled}
           tone={action.destructive ? "destructive" : "default"}
           onSelect={action.onSelect}
         >
-          <action.icon aria-hidden="true" className="size-4 shrink-0" />
+          <action.icon aria-hidden="true" className="size-3 shrink-0" />
           {t(action.label)}
         </ContextMenuItem>
       )}

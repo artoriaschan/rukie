@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Button, type ButtonProps } from "./button/base";
+import { Button, type ButtonSize, type ButtonProps } from "./button/base";
 
 export type ActionSwapItem = {
   id: string;
@@ -11,7 +11,7 @@ export type ActionSwapItem = {
 };
 
 export type ActionSwapButtonVariant = "primary" | "secondary" | "outline" | "ghost";
-export type ActionSwapButtonSize = "sm" | "md" | "lg" | "icon";
+export type ActionSwapButtonSize = ButtonSize;
 
 export interface ActionSwapButtonProps extends Omit<ButtonProps, "children" | "onChange"> {
   items: ActionSwapItem[];
@@ -63,7 +63,7 @@ export function ActionSwapButton({
   defaultValue,
   onValueChange,
   variant = "secondary",
-  size = "md",
+  size = "standard",
   iconOnly = size === "icon",
   cycle = true,
   className,
@@ -92,11 +92,7 @@ export function ActionSwapButton({
       variant={variant}
       size={size}
       disabled={disabled}
-      className={cn(
-        "min-w-0",
-        "disabled:pointer-events-none disabled:text-muted-foreground",
-        className,
-      )}
+      className={cn("min-w-0", "disabled:text-muted-foreground", className)}
       aria-label={accessibleLabel}
       onClick={(event) => {
         onClick?.(event);

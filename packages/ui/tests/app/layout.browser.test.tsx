@@ -475,10 +475,10 @@ test.each([1280, 420])("settings shell preserves surfaces and geometry at %i px"
       expect(getComputedStyle(settings).borderRadius).toBe("12px");
       expect(getComputedStyle(shell).overflow).toBe("hidden");
       expect(getComputedStyle(settings).backgroundColor).toBe(
-        dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)",
+        dark ? "rgb(26, 26, 26)" : "rgb(250, 250, 250)",
       );
       expect(getComputedStyle(navigation).backgroundColor).toBe(
-        dark ? "rgb(5, 5, 5)" : "rgb(252, 252, 252)",
+        dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)",
       );
       expect(getComputedStyle(settings).boxShadow).toBe(
         dark
@@ -499,9 +499,9 @@ test.each([1280, 420])("settings shell preserves surfaces and geometry at %i px"
       ).toBe("1px");
       expect(
         getComputedStyle(settings.querySelector(".model-services-navigation")!).borderRightColor,
-      ).toBe(dark ? "rgba(255, 255, 255, 0.1)" : "rgba(13, 13, 13, 0.1)");
+      ).toBe(dark ? "rgb(58, 58, 58)" : "rgb(235, 235, 235)");
       expect(getComputedStyle(panel).backgroundColor).toBe(
-        dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)",
+        dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)",
       );
       expect(root.scrollWidth).toBeLessThanOrEqual(width);
       expect(root.scrollHeight).toBeLessThanOrEqual(900);

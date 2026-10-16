@@ -65,6 +65,7 @@ export function ProjectTrust({
       ) : null}
       <div className="flex shrink-0 flex-col gap-2">
         <Button
+          size="standard"
           className="h-9 w-full"
           disabled={pending}
           onClick={() => {
@@ -83,6 +84,7 @@ export function ProjectTrust({
           {t(creating ? "app.trust-create" : saving ? "app.trust-save" : "app.trust")}
         </Button>
         <Button
+          size="compact"
           autoFocus
           ref={cancel}
           variant="secondary"

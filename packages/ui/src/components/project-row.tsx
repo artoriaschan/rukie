@@ -383,6 +383,7 @@ export function ProjectRow(props: ProjectRowProps) {
         </div>
         <div role="separator" className="h-px shrink-0 bg-border" />
         <Button
+          size="compact"
           variant="ghost"
           className="mx-1.5 mb-1.5 justify-start"
           onClick={() => {

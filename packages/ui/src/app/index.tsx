@@ -931,7 +931,11 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               {t(state.connection === "reconnecting" ? "app.reconnecting" : "app.disconnected")}
             </span>
             {state.connection === "disconnected" ? (
-              <Button size="sm" variant="secondary" onClick={() => safe(() => client.connect())}>
+              <Button
+                size="contextual"
+                variant="secondary"
+                onClick={() => safe(() => client.connect())}
+              >
                 {t("app.retry")}
               </Button>
             ) : null}
@@ -952,7 +956,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           >
             <p>{t("app.busy")}</p>
             <Button
-              size="sm"
+              size="contextual"
               variant="secondary"
               disabled={!connected}
               onClick={() => state.selected && safe(() => select(state.selected!))}
@@ -1017,6 +1021,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           <span aria-hidden="true" />
           <Tooltip content={t("app.back")}>
             <Button
+              focus="inset"
               size="icon"
               variant="ghost"
               aria-label={t("app.back")}
@@ -1028,6 +1033,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           </Tooltip>
           <Tooltip content={t("app.forward")}>
             <Button
+              focus="inset"
               size="icon"
               variant="ghost"
               aria-label={t("app.forward")}
@@ -1040,6 +1046,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
           {!settingsOpen ? (
             <Tooltip content={t("app.toggle-sidebar")}>
               <Button
+                focus="inset"
                 size="icon"
                 variant="ghost"
                 aria-label={t("app.toggle-sidebar")}
@@ -1077,7 +1084,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               <Menu.DropdownMenu>
                 <Tooltip content={t("app.more")}>
                   <Menu.DropdownMenuTrigger asChild>
-                    <Button size="icon" variant="ghost" aria-label={t("app.more")}>
+                    <Button focus="inset" size="icon" variant="ghost" aria-label={t("app.more")}>
                       <Ellipsis />
                     </Button>
                   </Menu.DropdownMenuTrigger>
@@ -1098,19 +1105,24 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                       )}
                     />
                     <Menu.DropdownMenuSub>
-                      <Menu.DropdownMenuSubTrigger>{t("app.copy")}</Menu.DropdownMenuSubTrigger>
+                      <Menu.DropdownMenuSubTrigger size="session">
+                        {t("app.copy")}
+                      </Menu.DropdownMenuSubTrigger>
                       <Menu.DropdownMenuSubContent>
                         <Menu.DropdownMenuItem
+                          size="session"
                           onSelect={() => safe(() => navigator.clipboard.writeText(current.id))}
                         >
                           {t("app.copy-id")}
                         </Menu.DropdownMenuItem>
                         <Menu.DropdownMenuItem
+                          size="session"
                           onSelect={() => safe(() => navigator.clipboard.writeText(current.cwd))}
                         >
                           {t("app.copy-cwd")}
                         </Menu.DropdownMenuItem>
                         <Menu.DropdownMenuItem
+                          size="session"
                           onSelect={() => safe(() => navigator.clipboard.writeText(markdown()))}
                         >
                           {t("app.copy-markdown")}
@@ -1118,9 +1130,12 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                       </Menu.DropdownMenuSubContent>
                     </Menu.DropdownMenuSub>
                     <Menu.DropdownMenuSub>
-                      <Menu.DropdownMenuSubTrigger>{t("app.open")}</Menu.DropdownMenuSubTrigger>
+                      <Menu.DropdownMenuSubTrigger size="session">
+                        {t("app.open")}
+                      </Menu.DropdownMenuSubTrigger>
                       <Menu.DropdownMenuSubContent>
                         <Menu.DropdownMenuItem
+                          size="session"
                           onSelect={() =>
                             safe(() =>
                               client.request({ type: "host.revealPath", path: current.cwd }),
@@ -1130,6 +1145,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                           {t("app.finder")}
                         </Menu.DropdownMenuItem>
                         <Menu.DropdownMenuItem
+                          size="session"
                           onSelect={() =>
                             safe(() =>
                               client.request({ type: "host.openInTerminal", path: current.cwd }),
@@ -1145,6 +1161,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               </Menu.DropdownMenu>
               <Tooltip content={t("app.summary")}>
                 <Button
+                  focus="inset"
                   size="icon"
                   variant="ghost"
                   aria-label={t("app.summary")}
@@ -1165,6 +1182,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
         >
           <Tooltip content={t("app.home")} side="right">
             <Button
+              focus="inset"
               size="icon"
               variant="ghost"
               aria-label={t("app.home")}
@@ -1176,6 +1194,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             </Button>
           </Tooltip>
           <Button
+            focus="inset"
             className="mt-auto"
             size="icon"
             variant="ghost"

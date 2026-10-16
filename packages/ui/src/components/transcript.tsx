@@ -499,7 +499,7 @@ export function Transcript({
       {!following ? (
         <div className="absolute bottom-3 right-4">
           <Button
-            size="sm"
+            size="contextual"
             variant="secondary"
             onClick={() => virtual.scrollToIndex(state.groups.length - 1, { align: "end" })}
           >

@@ -8,6 +8,6 @@ export interface MetallicButtonProps extends Omit<ButtonProps, "variant"> {
 // The shared workspace style uses a neutral surface rather than a decorative material.
 export const MetallicButton = forwardRef<HTMLButtonElement, MetallicButtonProps>(
   function MetallicButton({ paused: _paused, ...rest }, ref) {
-    return <Button ref={ref} variant="outline" {...rest} />;
+    return <Button size="standard" ref={ref} variant="outline" {...rest} />;
   },
 );

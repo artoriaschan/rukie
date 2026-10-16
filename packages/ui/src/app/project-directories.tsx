@@ -65,7 +65,7 @@ export function ProjectDirectories({
                 ) : (
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="micro"
                     className="h-6 min-h-6 shrink-0 py-0 text-ui-caption opacity-0 group-hover/directory:opacity-100 group-focus-within/directory:opacity-100"
                     aria-label={`${t("app.set-primary")} ${directory}`}
                     disabled={disabled}

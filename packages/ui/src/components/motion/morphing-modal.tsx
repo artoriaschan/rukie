@@ -17,6 +17,10 @@ export interface MorphingModalProps {
   /** "bottom" anchors to the viewport bottom (mobile-like). "center" centers vertically. */
   placement?: "bottom" | "center";
   className?: string;
+  /** Named feature geometry is owned here rather than descendant CSS. */
+  padding?: "standard" | "project" | "goal" | "settings" | "none";
+  /** Settings retain their 10px vertical offset within the viewport clamp. */
+  geometry?: "standard" | "settings";
   label?: string;
   /** Preferred focus when an outside owner (for example a menu) restores focus while open. */
   initialFocus?: RefObject<HTMLElement | null>;
@@ -28,6 +32,8 @@ export function MorphingModal({
   children,
   placement = "bottom",
   className,
+  padding = "standard",
+  geometry = "standard",
   label,
   initialFocus,
 }: MorphingModalProps) {
@@ -117,14 +123,27 @@ export function MorphingModal({
                 {...gate}
                 className={cn(
                   "pointer-events-auto relative w-full max-w-[480px] max-h-[calc(100dvh-32px)] flex flex-col overflow-hidden rounded-2xl border border-popover-border bg-popover shadow-(--shadow-overlay) will-change-transform",
+                  geometry === "settings" && "mt-2.5 max-h-[calc(100dvh-42px)]",
                   className,
                 )}
               >
-                <motion.div layout="position" className="flex min-h-0 flex-col p-4">
+                <motion.div
+                  layout="position"
+                  className={cn(
+                    "flex min-h-0 max-h-[inherit] flex-col",
+                    {
+                      standard: "p-6 max-[640px]:px-4",
+                      project: "px-6 py-5 max-[640px]:px-4",
+                      goal: "p-0",
+                      settings: "h-full p-[23px] max-[640px]:p-5",
+                      none: "h-full p-0",
+                    }[padding],
+                  )}
+                >
                   <AnimatePresence mode="popLayout" initial={false}>
                     <motion.div
                       key={viewId}
-                      className="flex min-h-0 flex-col"
+                      className="flex min-h-0 max-h-[inherit] flex-col"
                       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
                       animate={
                         reduce

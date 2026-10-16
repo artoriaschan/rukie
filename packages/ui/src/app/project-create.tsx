@@ -51,6 +51,7 @@ export function ProjectCreate({
         className="flex min-h-0 flex-col gap-3"
       >
         <Input
+          size="scoped"
           autoFocus
           ref={nameInput}
           aria-label={t("app.project-name")}
@@ -78,6 +79,7 @@ export function ProjectCreate({
               disabled={picking}
             />
             <Button
+              size="compact"
               variant="ghost"
               className="h-8 w-full justify-start rounded-none border-t border-border"
               disabled={picking}
@@ -89,6 +91,7 @@ export function ProjectCreate({
           </ScrollArea>
         ) : (
           <Button
+            size="standard"
             variant="outline"
             className="h-[104px] shrink-0 flex-col gap-3 rounded-xl"
             disabled={picking}
@@ -104,10 +107,11 @@ export function ProjectCreate({
           </p>
         ) : null}
         <div className="flex shrink-0 justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
+          <Button size="compact" variant="ghost" onClick={onClose}>
             {t("app.cancel")}
           </Button>
           <Button
+            size="standard"
             type="submit"
             className="h-9"
             disabled={!name.trim() || !directories.length || !connected || picking}

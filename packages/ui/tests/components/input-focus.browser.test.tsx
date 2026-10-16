@@ -18,7 +18,7 @@ test.each([false, true])(
       input.element().focus();
       await expect.element(input).toHaveFocus();
       await expect.poll(() => getComputedStyle(field).boxShadow).toContain("inset");
-      expect(getComputedStyle(field).borderRadius).toBe("8px");
+      expect(getComputedStyle(field).borderRadius).toBe("12px");
       expect(getComputedStyle(input.element()).outlineStyle).toBe("none");
       const focused = field.getBoundingClientRect();
       for (const key of ["left", "top", "width", "height"] as const)

@@ -325,7 +325,7 @@ export function Sidebar(props: SidebarProps) {
           {(expandedSessions.includes(project.id) ? sessions : sessions.slice(0, 5)).map(row)}
           {sessions.length > 5 && !expandedSessions.includes(project.id) ? (
             <Button
-              size="sm"
+              size="contextual"
               variant="ghost"
               aria-label={t("app.show-more-group", { group: project.name })}
               onClick={() => setExpandedSessions([...expandedSessions, project.id])}
@@ -353,7 +353,7 @@ export function Sidebar(props: SidebarProps) {
         <Button
           aria-label={t("app.new-chat")}
           variant="ghost"
-          size="sm"
+          size="contextual"
           className="min-w-0 flex-1 justify-start"
           onClick={() => props.onNew(null)}
         >
@@ -403,7 +403,7 @@ export function Sidebar(props: SidebarProps) {
                 {navigation.projects.length > 5 && !expandedProjects ? (
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="contextual"
                     aria-label={t("app.show-more-group", { group: t("app.projects") })}
                     onClick={() => setExpandedProjects(true)}
                   >

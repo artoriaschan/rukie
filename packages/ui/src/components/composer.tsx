@@ -264,7 +264,7 @@ export function Composer(props: ComposerProps) {
               <Menu.DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="contextual"
                   disabled={props.disabled}
                   aria-label={t("app.permission")}
                   className={cn(
@@ -315,7 +315,7 @@ export function Composer(props: ComposerProps) {
             {props.goalEnabled ? (
               <Button
                 variant="ghost"
-                size="sm"
+                size="contextual"
                 className="conversation-goal-chip text-ui-base"
                 aria-label={t("app.goal-close")}
                 onClick={() => {
@@ -335,7 +335,7 @@ export function Composer(props: ComposerProps) {
             {props.planMode && (
               <Button
                 variant="ghost"
-                size="sm"
+                size="contextual"
                 disabled={props.disabled}
                 className="conversation-plan-mode"
                 aria-label={t("planMode.close")}

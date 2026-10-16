@@ -34,9 +34,19 @@ test("all three Session menus share move targets and moving changes the sidebar 
         await screen.getByRole("button", { name: "Session actions", exact: true }).click();
       const move = screen.getByRole("menuitem", { name: "Move to Project", exact: true });
       await expect.element(move).toBeEnabled();
+      for (const item of screen.getByRole("menu").getByRole("menuitem").all()) {
+        expect(getComputedStyle(item.element()).minHeight).toBe("26px");
+        // Long labels wrap in the existing 128px dropdown; 26px is a minimum.
+        expect(item.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(26);
+        expect(getComputedStyle(item.element()).fontSize).toBe("13px");
+        expect(getComputedStyle(item.element()).lineHeight).toBe("18px");
+        expect(getComputedStyle(item.element()).borderRadius).toBe("8px");
+      }
       await move.hover();
       const target = screen.getByRole("menuitem", { name: "Project", exact: true });
       await expect.element(target).toBeVisible();
+      expect(target.element().getBoundingClientRect().height).toBe(26);
+      expect(getComputedStyle(target.element()).borderRadius).toBe("8px");
       await expect
         .element(screen.getByRole("menuitem", { name: "Choose folder…", exact: true }))
         .toBeVisible();

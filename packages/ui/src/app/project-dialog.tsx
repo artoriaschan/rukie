@@ -24,6 +24,7 @@ export function ProjectDialog({
   const t = useComponentText();
   return (
     <MorphingModal
+      padding="project"
       viewId="project"
       label={title}
       placement="center"
