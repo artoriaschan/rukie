@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "commit": "9d1347b43e684eecee40394708a919f8b85b884e",
+  "dirty": false,
+  "platform": "darwin-arm64",
+  "bunVersion": "1.4.2",
+  "compileDurationMs": 209,
+  "buildDurationMs": 5083,
+  "nodeVersion": "v26.10.0",
+  "npmVersion": "11.19.1",
+  "avatarSha256": "7d44410ef010c6f18e286735ff78b311036d8d66b99491938fd3568e06794921",
+  "packages": [
+    {
+      "name": "@rukie/coding-agent-darwin-arm64",
+      "version": "0.1.0",
+      "tarball": "rukie-coding-agent-darwin-arm64-0.1.0.tgz",
+      "sha256": "1516de4f262eb97a1412a29072fe52e37b902a781159065bdc980dcd77aebcc6",
+      "integrity": "sha512-DWaiKLePAEc4aO4b2cjQYvuO4BIAg8jb2IQyhvKGp4JrFBEIMDIT7epKHU5ZZZqczBKB0LLALeZaxNJikhFoZw=="
+    },
+    {
+      "name": "@rukie/coding-agent",
+      "version": "0.1.0",
+      "tarball": "rukie-coding-agent-0.1.0.tgz",
+      "sha256": "2d3678cdf478a36ae5debfb53628fb5add478a5a2680c638cb3b2eb50a893ae6",
+      "integrity": "sha512-QOaN3+uCL0H4pNjP5d0yKdC5LowMW/1Y8LSdt/XeNtojZVq12MtVvXfkhS/uaO8Fn/LeoLg/nerWqeGRMHhvDA=="
+    }
+  ]
+}

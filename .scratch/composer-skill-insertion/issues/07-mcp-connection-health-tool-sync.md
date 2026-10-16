@@ -1,6 +1,6 @@
 # 07：MCP 连接健康与工具同步
 
-Status: claimed
+Status: resolved
 Blocked by: 06
 
 **What to build:** 按 [spec](../spec.md) 的「MCP Host」「状态接口」两节，让长期共享的连接保持健康：意外断开自动恢复，server 更新工具后下个 Turn 可用，中止一个 Run 不影响其他 Session 的连接。
@@ -39,3 +39,5 @@ Blocked by: 06
 - 最终 focused tsc（agent/coding-agent）、changed-files oxlint、新 Health oxlint、changed-files oxfmt --check 和 git diff --check 全部退出0。`rtk proxy bun run docs:update` 与 `rtk proxy bun run check:docs` 通过，157 Markdown 文件。无未解决的本票 focused 失败；原始失败与复验范围如上保留。
 
 - 正常提交 `8abced3` 的 Husky lint-staged 格式／lint 与 commitlint 全部通过，没有绕过 hooks。交付前合并最新集成 `f9fafe5b`，自动合并且无冲突；合入仅票 04/05 的 UI/editor/picker/history 与对应文档，没有改动本票 MCP/TUI 源码，按增量复验规则复用上述结果。工作树保持干净，本票分支 `feat/composer-ticket-07` 等待新评审代理及合并代理接手。
+
+- 2026-10-16 交付关闭：实现、维护文档与两路独立评审修复已完成；主代理适用本地验证、失败聚类与增量复验、Chromium 截图及 ADR Coverage 结论见 [最终验收](../verification.md#最终交付验收--2026-10-16)。PR [#42](https://github.com/artoriaschan/rukie/pull/42) 等待最新 CI 与用户评审；resolved 不表示已合并。原中间结果与 claimed 历史记录保留。

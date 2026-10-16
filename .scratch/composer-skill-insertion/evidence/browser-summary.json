@@ -1,0 +1,14 @@
+{
+  "source": "9d1347b4",
+  "errors": [],
+  "consoleTypes": ["debug", "debug", "info"],
+  "requests": 177,
+  "httpErrors": 0,
+  "transportErrors": 0,
+  "viewports": [
+    [1280, 900],
+    [420, 800]
+  ],
+  "nativeElectronLaunched": false,
+  "clipboard": "Public ClipboardEvent/DataTransfer and automated Chromium coverage; OS Clipboard API read was denied in headless Chrome."
+}

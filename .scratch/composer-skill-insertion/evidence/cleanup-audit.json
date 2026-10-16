@@ -1,0 +1,90 @@
+[
+  {
+    "path": "/private/tmp/rukie-composer-01",
+    "head": "62124c8af185003eeeaac938ea5ae43ec8d3bbc1",
+    "branch": "feat/composer-ticket-01",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/.vitest/\npackages/ui/node_modules/",
+    "ancestor": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-02",
+    "head": "1cb49e8b4d619380383eb84764e516be253ca726",
+    "branch": "refactor/composer-ticket-02",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/node_modules/",
+    "ancestor": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-03",
+    "head": "54b2c6930ed00413f3879271fe977e919270fd19",
+    "branch": "feat/composer-ticket-03",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/.vitest/\npackages/ui/node_modules/",
+    "ancestor": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-04",
+    "head": "c1b2672f33a0269df01e17cffecc870c0449d8e7",
+    "branch": "feat/composer-ticket-04",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/.vitest/\npackages/ui/node_modules/",
+    "ancestor": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-05",
+    "head": "f9fafe5b5b0c42c9e17c5cd8453b2d0c8011e526",
+    "branch": "feat/composer-ticket-05",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/.vitest/\npackages/ui/node_modules/",
+    "ancestor": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-07",
+    "head": "122a9b167d8e9be4a7f24415681994fe93724c23",
+    "branch": "feat/composer-ticket-07",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/node_modules/",
+    "ancestor": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-08",
+    "head": "49bc9dd18e0e58fa3d5559d825b508c8a45b3633",
+    "branch": "feat/composer-ticket-08",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/.vitest/\npackages/ui/node_modules/",
+    "ancestor": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-09",
+    "head": "630e7733f1e3e97f05205df4a85a1d9d469d0a08",
+    "branch": "docs/composer-ticket-09",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/node_modules/",
+    "ancestor": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-review-fix",
+    "head": "9d1347b43e684eecee40394708a919f8b85b884e",
+    "branch": "fix/composer-review-findings",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/.vitest/\npackages/ui/node_modules/",
+    "ancestor": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-shard-fix",
+    "head": "3d2dcfd0deb630a6a7fccc386f37699d54d801b5",
+    "branch": "fix/composer-shard-timing-path",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/node_modules/",
+    "ancestor": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-ticket-06",
+    "head": "d1e0ac803a65f3d0896ce724ce2abe88d09c25a9",
+    "branch": "feat/composer-ticket-06",
+    "status": "",
+    "ignored": ".husky/_/\n.husky/_/.gitignore\n.husky/_/applypatch-msg\n.husky/_/commit-msg\n.husky/_/h\n.husky/_/husky.sh\n.husky/_/post-applypatch\n.husky/_/post-checkout\n.husky/_/post-commit\n.husky/_/post-merge\n.husky/_/post-rewrite\n.husky/_/pre-applypatch\n.husky/_/pre-auto-gc\n.husky/_/pre-commit\n.husky/_/pre-merge-commit\n.husky/_/pre-push\n.husky/_/pre-rebase\n.husky/_/prepare-commit-msg\nnode_modules/\npackages/agent/node_modules/\npackages/coding-agent/node_modules/\npackages/desktop/node_modules/\npackages/i18n/node_modules/\npackages/server/node_modules/\npackages/shared/node_modules/\npackages/ui/node_modules/",
+    "ancestor": true
+  }
+]

@@ -1,6 +1,6 @@
 # 06：MCP 连接按作用域共享（MCP Host 归属切换）
 
-Status: claimed
+Status: resolved
 Blocked by: 02
 
 **What to build:** 按 [spec](../spec.md) 的「MCP Host」「MCP 配置格式」两节与 [ADR-0047](../../../docs/adr/0047-host-owned-mcp-connections.md)，把 MCP Host 改为进程级并在全局连接表中按作用域共享连接。同项目的多个 Session 共用连接，TUI 替换 Session 不重连，全局 server 只运行一份。
@@ -47,3 +47,5 @@ Blocked by: 02
 - 提交 hooks 的 lint-staged 格式与 lint 通过；首次 commitlint 因 body 单行超过 100 字符拒绝，改短正文后正常重提，没有跳过 hooks。提交前已将最新集成 `62124c8a` 快进到本票分支，新增差异仅是其他票 UI 与验证记录；本票 MCP 源码未被改写，复用上述行为证据。
 
 - 最新集成 `54b2c693` 的合并仅在 server 测试尾部追加处冲突；按 resolving-merge-conflicts 流程保留 MCP startup 与 skills.list 两个完整用例，server 生产接线自动合并。增量 `rtk proxy env -u NO_COLOR bun test packages/server/tests/server.test.ts -t 'startup warms only|MCP Host startup|skills.list works'`：3 pass / 0 fail，29 expects，342ms，日志 `/tmp/rukie-06-merge-server.log`；affected agent/server tsc 通过，日志 `/tmp/rukie-06-merge-types.log`。复用其他有效证据，未扩大为 aggregate。
+
+- 2026-10-16 交付关闭：实现、维护文档与两路独立评审修复已完成；主代理适用本地验证、失败聚类与增量复验、Chromium 截图及 ADR Coverage 结论见 [最终验收](../verification.md#最终交付验收--2026-10-16)。PR [#42](https://github.com/artoriaschan/rukie/pull/42) 等待最新 CI 与用户评审；resolved 不表示已合并。原中间结果与 claimed 历史记录保留。

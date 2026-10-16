@@ -1,6 +1,6 @@
 # 03：用 `/` 插入技能（主线示踪）
 
-Status: claimed
+Status: resolved
 Blocked by: 01
 
 **What to build:** 按 [spec](../spec.md) 的「插入列表」「技能标记」「技能数据」各节，打通第一条完整路径：用户在输入框开头输入 `/`，在输入框上方看到技能列表，选中后输入框开头出现蓝色技能标记，发送后 Agent Core 识别为 Skill Invocation。本票的列表只包含「技能」一组，内置命令由 05 加入。
@@ -42,3 +42,5 @@ Commands use rtk proxy. Automated Chromium uses isolated scripted wire fixtures 
 Aggregate/static acceptance and final Light/Dark/narrow manual Chromium verification remain parent-coordinated. No full check, package-wide test run or manual browser acceptance was duplicated by this implementer. All new UI cases complete below one second individually; earlier 15-second failures were assertion/locator timeout bounds, not retained waits.
 
 Handoff seams: ticket 04 can extend SkillTokenNode serialization/import and mount a clipboard plugin next to SkillPicker in PromptEditor; $serializePrompt is the existing transport serialization owner. Ticket 05 can extend the grouped SkillPicker and its editor command handler for builtins and the plus entry. Composer and PromptInput already receive scoped skills/onSkillsOpen; do not create a second catalog or editor model.
+
+- 2026-10-16 交付关闭：实现、维护文档与两路独立评审修复已完成；主代理适用本地验证、失败聚类与增量复验、Chromium 截图及 ADR Coverage 结论见 [最终验收](../verification.md#最终交付验收--2026-10-16)。PR [#42](https://github.com/artoriaschan/rukie/pull/42) 等待最新 CI 与用户评审；resolved 不表示已合并。原中间结果与 claimed 历史记录保留。

@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 主输入框插入技能与 MCP Host
 
@@ -178,3 +178,5 @@ Status: claimed
 ## Comments
 
 - 2026-10-16 ADR Coverage 交付审阅（待独立评审）：对照基线 `71802c6e` 至集成 `49bc9dd1` 的最终实现，检查模块所有权、依赖方向、授权与信任、持久化与恢复、连接退休与租约、监督、工具同步以及本地 wire 边界。ADR-0047/0048 均为 accepted；ADR-0047 对 ADR-0035 的部分替代已在双方记录。补齐沿用 ADR-0011/0024、查询/观察与活动租约的区别、剪贴板及历史使用既有事实的归属；没有新增持久化格式或改变 Skill Invocation、权限、凭据身份与原生 unsafe replay 决定。DESIGN.md 继续拥有局部视觉规范，相关实现差异交由独立评审，不通过修改规范消除。项目相关用户 server 的启动目录表补为显式 `cwd`（相对项目根）或项目根，澄清表格简写，与票 06 已确认配置行为一致。文档审阅完成不关闭 spec，仍等待主代理统一验证与新评审代理结论。
+
+- 2026-10-16 最终交付关闭：01–09 与本规格同次设为 resolved。两路独立评审共 4 项发现由一个全新实施代理修复、全新合并代理复核，无剩余发现；最终 ADR Coverage 审阅无遗漏或冲突，修复仅兑现已有合同。完整检查的原失败、逐组修复／环境复验、release 与 desktop 剩余阶段、Light/Dark/窄宽度验收及限制见 [验证记录](verification.md#最终交付验收--2026-10-16)。交付分支 `feat/composer-skill-insertion`，PR [#42](https://github.com/artoriaschan/rukie/pull/42) 等待最新 CI 与用户评审，未合并。

@@ -1,6 +1,6 @@
 # 08：输入框中的 `/mcp` 状态
 
-Status: claimed
+Status: resolved
 Blocked by: 05, 07
 
 **What to build:** 按 [spec](../spec.md) 的「插入列表」「状态接口」两节，在内置命令中加入 `/mcp`：一级行显示 MCP 汇总，进入后列出每个 MCP Server 的来源、状态与工具数。新会话页在没有 Session 时也能看到实时状态。
@@ -46,3 +46,5 @@ Blocked by: 05, 07
 - 保持 claimed 待新代理评审与主代理统一验收；没有把局部通过称为 aggregate 或 hosted CI 验收。
 
 - 最终增量静态：`rtk proxy bunx --no tsc -b packages/server packages/ui --pretty false` 退出 0，覆盖最后新增 Session fixture 与 MCP 编辑/校验变更。所有 28 个改动文件的 oxfmt 与 --check、所有改动 TS/TSX 的 oxlint、`git diff --check` 退出 0。最终 `rtk proxy bun run check:docs` 再次通过 157 Markdown。统一 check:dev / aggregate / 手工 Chromium 仍由主代理协调，不存在本票未解决的 focused 失败。
+
+- 2026-10-16 交付关闭：实现、维护文档与两路独立评审修复已完成；主代理适用本地验证、失败聚类与增量复验、Chromium 截图及 ADR Coverage 结论见 [最终验收](../verification.md#最终交付验收--2026-10-16)。PR [#42](https://github.com/artoriaschan/rukie/pull/42) 等待最新 CI 与用户评审；resolved 不表示已合并。原中间结果与 claimed 历史记录保留。

@@ -1,0 +1,57 @@
+[
+  {
+    "path": "/private/tmp/rukie-composer-01",
+    "branch": "feat/composer-ticket-01",
+    "removed": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-02",
+    "branch": "refactor/composer-ticket-02",
+    "removed": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-03",
+    "branch": "feat/composer-ticket-03",
+    "removed": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-04",
+    "branch": "feat/composer-ticket-04",
+    "removed": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-05",
+    "branch": "feat/composer-ticket-05",
+    "removed": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-07",
+    "branch": "feat/composer-ticket-07",
+    "removed": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-08",
+    "branch": "feat/composer-ticket-08",
+    "removed": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-09",
+    "branch": "docs/composer-ticket-09",
+    "removed": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-review-fix",
+    "branch": "fix/composer-review-findings",
+    "removed": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-shard-fix",
+    "branch": "fix/composer-shard-timing-path",
+    "removed": true
+  },
+  {
+    "path": "/private/tmp/rukie-composer-ticket-06",
+    "branch": "feat/composer-ticket-06",
+    "removed": true
+  }
+]

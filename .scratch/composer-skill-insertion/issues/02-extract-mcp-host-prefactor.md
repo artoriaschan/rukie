@@ -1,6 +1,6 @@
 # 02：抽出 MCP Host（预重构）
 
-Status: claimed
+Status: resolved
 Blocked by: None (can start immediately)
 
 **What to build:** 按 [spec](../spec.md) 的「MCP Host」一节与 [ADR-0047](../../../docs/adr/0047-host-owned-mcp-connections.md)，把 Session 内部的 MCP 连接、工具列表、状态快照与授权状态抽到 MCP Host 能力中。这一步每个 Session 仍持有一个私有 MCP Host，行为与现在完全一致；目的是建立后续归属切换所需的接缝。
@@ -9,7 +9,7 @@ Blocked by: None (can start immediately)
 - [x] `createSession` 接受可选的 MCP Host 注入；未注入时创建私有 MCP Host 并随 Session 关闭
 - [x] Run 的取消信号与连接生命周期解耦的接口准备好，但本票保持现有关闭语义
 - [x] 现有 Agent Core MCP 测试与 TUI MCP 面板测试不改断言全部通过
-- [ ] 模块依赖方向符合 ADR-0011 的约束，受影响的类型检查、lint、knip 通过
+- [x] 模块依赖方向符合 ADR-0011 的约束，受影响的类型检查、lint、knip 通过
 
 ## Comments
 
@@ -28,3 +28,5 @@ Blocked by: None (can start immediately)
 - `rtk proxy bunx --no oxfmt packages/agent/src/mcp/host.ts packages/agent/src/mcp/index.ts packages/agent/src/index.ts packages/agent/src/session/index.ts packages/agent/tests/e2e/mcp-host.test.ts` 通过；`rtk proxy git diff --check` 通过。格式化未改变行为，复用上述测试证据。
 - 主代理协调后续静态、Knip 与最终共享生命周期全套验证；本代理未运行 `check:dev` 或 aggregate `check`，没有启动 Electron。现阶段保持 `claimed`，等待新评审代理和协调验证；沿用 spec 的 ADR-0011 / ADR-0024 / ADR-0047 覆盖，无新增长期决定。
 - 2026-10-16：新合并代理确认集成分支干净、`0d717fd9` 为实施提交祖先，检查六个任务所属文件差异后，以 `git merge --ff-only refactor/composer-ticket-02` 集成 `1cb49e8b`。没有冲突或代码改写，复用上述 125 个 MCP 与 76 个 TUI 测试证据；本票继续等待评审与统一静态检查，不标记 resolved。
+
+- 2026-10-16 交付关闭：实现、维护文档与两路独立评审修复已完成；主代理适用本地验证、失败聚类与增量复验、Chromium 截图及 ADR Coverage 结论见 [最终验收](../verification.md#最终交付验收--2026-10-16)。PR [#42](https://github.com/artoriaschan/rukie/pull/42) 等待最新 CI 与用户评审；resolved 不表示已合并。原中间结果与 claimed 历史记录保留。

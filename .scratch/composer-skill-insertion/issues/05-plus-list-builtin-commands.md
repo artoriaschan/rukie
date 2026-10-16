@@ -1,6 +1,6 @@
 # 05：「+」插入列表与 `/goal`、`/plan` 内置命令
 
-Status: claimed
+Status: resolved
 Blocked by: 03
 
 **What to build:** 按 [spec](../spec.md) 的「插入列表」一节，让「+」与 `/` 共用同一个插入列表，并加入内置命令组。用户点击「+」能看到附件、内置命令和全部技能；目标模式与计划模式改由 `/goal`、`/plan` 承担。
@@ -35,3 +35,5 @@ A further entry-refresh/cache case passes (993ms): opening plus after a filtered
 Integrated `c1b2672f` before delivery, removed the temporary local PromptEditor forwarding shim and kept ticket 04's committed owner unchanged. Resolved only the duplicate picker type/import ordering and README paragraph by retaining both contracts. Area `rtk proxy bunx --no tsc -b packages/ui` now exits 0 with ticket 06's integration fixes. `rtk proxy bun run docs:update` and `rtk proxy bun run check:docs` passed (157 Markdown files); changed-file oxlint, oxfmt and diff checks pass. The shared panel/list accessible name is now localized Insert/插入 while group headings retain their individual names. Final aggregate and manual-browser evidence remain parent-coordinated.
 
 The final localized shared-panel name adjustment invalidated only two name-based assertions. Focused `-t "plus shares|filters names"` across builtin and skill insertion files passed 2 cases/11 skipped in 1.03s. Existing geometry and behavior evidence is retained.
+
+- 2026-10-16 交付关闭：实现、维护文档与两路独立评审修复已完成；主代理适用本地验证、失败聚类与增量复验、Chromium 截图及 ADR Coverage 结论见 [最终验收](../verification.md#最终交付验收--2026-10-16)。PR [#42](https://github.com/artoriaschan/rukie/pull/42) 等待最新 CI 与用户评审；resolved 不表示已合并。原中间结果与 claimed 历史记录保留。

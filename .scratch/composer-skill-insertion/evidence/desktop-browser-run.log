@@ -1,0 +1,8 @@
+
+ RUN  v5.0.3 /Users/artorias_chan/.codex/worktrees/57c2/rukie/packages/ui
+
+
+ Test Files  52 passed (52)
+      Tests  343 passed (343)
+   Start at  17:28:37
+   Duration  22.82s (worker 71%, tests 27%, import 2%)

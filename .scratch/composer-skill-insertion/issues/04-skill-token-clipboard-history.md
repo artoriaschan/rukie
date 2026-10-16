@@ -1,6 +1,6 @@
 # 04：技能标记的复制粘贴与历史渲染
 
-Status: claimed
+Status: resolved
 Blocked by: 03
 
 **What to build:** 按 [spec](../spec.md) 的「技能标记」一节，让技能标记在剪贴板与历史消息中保持语义：复制得到 Markdown 链接，粘贴到开头能还原成标记，已发送的消息在历史中显示同样的标记。
@@ -31,3 +31,5 @@ Commands below ran through `rtk proxy`, under Node Vitest 5.0.3 / isolated Chrom
 6. Focused oxlint of changed production/new-test modules: exit 0. Oxfmt writes and `git diff --check`: exit 0. Initial `bunx --no tsc -b packages/ui` reported only the six pre-existing manager test errors owned by ticket 06 (removed createMcpManager and consequent callback types); no new error was reported. Implementation commit `20ee9cf4`; integration `d1e0ac80` merged cleanly as `09174924`, touching no ticket-04 UI files and preserving valid focused evidence. No behavior rerun was required by this merge. Parent owns aggregate static, package/full checks, documentation checks and final manual Light/Dark/narrow Chromium acceptance; no such runs were duplicated here.
 
 ADR coverage: this implements the already accepted ADR-0048 clipboard and historical presentation contract; it introduces no new durable decision. Applicable local source evidence is above, while integrated review and final acceptance remain pending.
+
+- 2026-10-16 交付关闭：实现、维护文档与两路独立评审修复已完成；主代理适用本地验证、失败聚类与增量复验、Chromium 截图及 ADR Coverage 结论见 [最终验收](../verification.md#最终交付验收--2026-10-16)。PR [#42](https://github.com/artoriaschan/rukie/pull/42) 等待最新 CI 与用户评审；resolved 不表示已合并。原中间结果与 claimed 历史记录保留。

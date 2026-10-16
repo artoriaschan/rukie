@@ -1,0 +1,267 @@
+bun test v1.4.2 (744846f84) 1x PARALLEL
+
+scripts/release/tests/installed-command-owner.test.ts:
+(pass) expired installed-command owner restores resources before the next real command [3358.63ms]
+
+scripts/release/tests/tui.test.ts:
+(pass) installed TUI transmits its embedded avatar through the real Sixel worker [1522.71ms]
+(pass) installed TUI sends its embedded avatar through native sharp and Kitty graphics [407.74ms]
+(pass) installed TUI accepts interactive input and restores its terminal after Ctrl-D [730.12ms]
+(pass) installed TUI accepts interactive input and restores its terminal after SIGINT [486.91ms]
+(pass) installed TUI accepts interactive input and restores its terminal after SIGTERM [489.12ms]
+(pass) installed TUI responds to resize and restores a small terminal [374.34ms]
+
+scripts/release/tests/publication-workflow.test.ts:
+(pass) tag and same-tag manual publication serialize exact artifacts across least-privilege stages [0.58ms]
+
+scripts/release/tests/artifacts.test.ts:
+(pass) release verification rejects malformed metadata before consuming artifact paths [0.57ms]
+(pass) verified tarballs identify the source commit, one product version and the exact arm64 package pair [0.06ms]
+(pass) formal publication rejects dirty metadata and a different reviewed source commit [0.64ms]
+(pass) metadata traversal, version drift, unsupported platforms and invalid tool identities are rejected [2.00ms]
+(pass) tarball checksums are verified before unpacking [39.44ms]
+(pass) a product version inconsistent with source is rejected before artifact access [16.17ms]
+(pass) a real packed manifest cannot introduce an Intel dependency [35.59ms]
+(pass) wrong executable architecture is rejected from an actual repacked platform tarball [1394.92ms]
+(pass) a different arm64 ripgrep cannot masquerade as the explicitly selected source binary [1401.45ms]
+
+scripts/release/tests/providers.test.ts:
+(pass) installed openai-responses adapter produces a real Session reply without external Bun [899.92ms]
+(pass) installed anthropic-messages adapter produces a real Session reply without external Bun [258.60ms]
+(pass) installed azure adapter produces a real Session reply without external Bun [259.29ms]
+(pass) installed Anthropic adapter reports local protocol errors [255.23ms]
+(pass) installed Responses cancellation closes the active stream and exits through launcher [239.82ms]
+(pass) installed Bedrock SDK signs a loopback request and preserves local validation failure [266.38ms]
+(pass) built-in missing credentials fail before any model stream or external request [189.53ms]
+(pass) release build embeds every locked API family and all nine model OAuth flows [0.78ms]
+(pass) installed TUI MCP login persists credentials, reconnects, logs out and cancels authorization [2447.49ms]
+
+scripts/release/tests/prepare.test.ts:
+(pass) newest failed exact-SHA CI masks old success [0.07ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) official root strategy: feat: compatible [16.22ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) official root strategy: fix: correction [5.27ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) official root strategy: perf: faster [2.81ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) official root strategy: feat!: incompatible [2.86ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) official root strategy: chore!: incompatible build [2.06ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) official root strategy: test: tests
+
+BREAKING CHANGE: altered contract [2.31ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+✔ No user facing commits found since bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb - skipping
+(pass) official root strategy: docs: guide [1.20ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+✔ No user facing commits found since bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb - skipping
+(pass) official root strategy: test: coverage [1.16ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+✔ No user facing commits found since bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb - skipping
+(pass) official root strategy: chore: upkeep [1.02ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) official prerelease strategy 0.1.1 -> 0.1.2-beta.1 [1.78ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) official prerelease strategy 0.1.2-beta.1 -> 0.1.2-beta.2 [1.84ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) official prerelease strategy 0.1.2-beta.2 -> 0.2.0-beta.2 [2.95ms]
+✔ Considering: 1 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) official prerelease strategy 0.1.2-beta.2 -> 0.1.2 [1.96ms]
+✔ Considering: 2 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) bootstrap plans0.1.0 and writes checked-parent tree through production adapter [359.81ms]
+(pass) moving main at read1 skips branch/PR writes [0.28ms]
+✔ Considering: 2 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) moving main at read2 skips branch/PR writes [2.23ms]
+✔ Considering: 2 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) moving main at read3 skips branch/PR writes [182.27ms]
+(pass) failedCI rejects before any mutation [0.25ms]
+(pass) transport failure leaves pending release untagged [0.10ms]
+✔ Considering: 2 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+✔ Considering: 2 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) merged release tag targets exact passed merge [183.08ms]
+✔ Considering: 2 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) merged release tag rejects collision [2.78ms]
+(pass) same run later attempt failure masks earlier success and unrelated success [0.07ms]
+(pass) workflow trigger validates repository and exact production CI event [0.08ms]
+(pass) product version drift rejects before writes [0.13ms]
+(pass) REST production adapter authenticates, preserves JSON and hides token in failures [0.18ms]
+✔ Considering: 2 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+✔ Considering: 3 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+✔ No user facing commits found since  - skipping
+(pass) large first release roundtrips official overflow metadata and maintainer notes at merge SHA [467.95ms]
+✔ Considering: 1 commits
+⚠ Setting version for . from release-as configuration
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) explicit official 1.0.0 transition is a temporary configuration override [1.70ms]
+(pass) unfinished latest CI and different workflow cannot release [0.05ms]
+✔ Considering: 2 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+(pass) merged PR own CI blocks tagging [2.81ms]
+✔ Considering: 2 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+✔ Considering: 2 commits
+❯ component: coding-agent
+❯ pull request title pattern: undefined
+❯ componentNoSpace: undefined
+✔ No user facing commits found since  - skipping
+(pass) merged PR own CI resumes existing annotated tag [2.76ms]
+
+scripts/release/tests/tag.test.ts:
+(pass) only an existing version tag whose commit belongs to main can enter publication [18.75ms]
+(pass) publication rejects a branch name instead of a product version tag [0.07ms]
+(pass) publication rejects a version tag that does not exist [6.96ms]
+(pass) publication rejects a version tag that differs from its committed product version [19.36ms]
+(pass) publication rejects a version tag whose commit is unreachable from main [12.43ms]
+(pass) rollback shares exact-tag read-only gates and publication concurrency while refusing a first build [0.36ms]
+
+scripts/release/tests/recovery.test.ts:
+(pass) complete matching retry downloads original registry bytes with a fresh installed Session [5413.30ms]
+(pass) accepted @rukie/coding-agent-darwin-arm64 PUT with lost socket response reconciles actual bytes [2288.76ms]
+(pass) accepted @rukie/coding-agent PUT with lost socket response reconciles actual bytes [2239.67ms]
+(pass) same-version bytes conflict stops without republish [2949.77ms]
+(pass) same-version repository conflict stops without republish [2966.22ms]
+(pass) same-version dependencies conflict stops without republish [2951.54ms]
+(pass) same-version platform conflict stops without republish [2895.05ms]
+(pass) registry lookup401 is uncertainty, never absence [653.91ms]
+(pass) registry lookup503 is uncertainty, never absence [669.58ms]
+(pass) real Session rejection is recovered from existing bytes without duplicate uploads [7351.70ms]
+(pass) tag failure preserves stable channel; rerun and unknown accepted tag outcome reconcile state [3118.41ms]
+(pass) older stable recovery cannot lower latest, explicit rollback selects a complete accepted version [8382.68ms]
+(pass) older missing beta is blocked before upload; complete old beta skips newer next and explicit rollback only moves next [11075.08ms]
+(pass) rollback refuses missing registry packages and performs no upload [656.16ms]
+
+scripts/release/tests/installation.test.ts:
+(pass) installed launcher version reports without creating Sessions or consuming project runtime files [833.59ms]
+(pass) installed native version reports without creating Sessions or consuming project runtime files [118.80ms]
+(pass) installed English help reports without creating Sessions or consuming project runtime files [189.87ms]
+(pass) installed Chinese help reports without creating Sessions or consuming project runtime files [189.70ms]
+(pass) installed invalid option reports without creating Sessions or consuming project runtime files [188.77ms]
+(pass) installed command preserves cwd/environment/stdin and performs shipped grep and bash through a real Session [404.48ms]
+(pass) stream-json output and persisted Session Resume use the installed executable [514.56ms]
+(pass) missing or non-executable shipped ripgrep produces an actionable platform error [560.48ms]
+(pass) launcher diagnoses missing platform dependency and unsupported operating system [589.27ms]
+(pass) installation contains public manifests, MIT and third-party notices with native resources [1.51ms]
+(pass) installed launcher preserves SIGINT cancellation and resumes accepted work [526.20ms]
+(pass) installed launcher preserves SIGTERM cancellation and resumes accepted work [500.08ms]
+(pass) installed interruption closes a live bash process and owned capture resources [277.21ms]
+(pass) packaged bash capture bounds output and releases its actual spill files at command exit [669.73ms]
+(pass) installed fixture cancellation waits for active commands and permits the next owner [457.62ms]
+
+scripts/release/tests/assets.test.ts:
+(pass) original bytes are preserved only after exact completed read-only job confirmation, while the workflow remains in progress [1890.97ms]
+(pass) self-authored witness does not authorize assets when trusted job failed or run commit differs [896.87ms]
+(pass) partial or immutable original asset state stops before reconstruction or npm writes [13.04ms]
+(pass) conflicting preserved bytes are never overwritten by a newly accepted upload [1435.37ms]
+(pass) original assets reject incompleteAsset before accepting replay [939.69ms]
+(pass) original assets reject wrongSize before accepting replay [942.01ms]
+(pass) a later successful verification witness preserves the original producing attempt [2318.91ms]
+(pass) freshly downloaded originals pass the complete installed acceptance without rebuilding [23603.65ms]
+(pass) downloaded module inventory is bound to the producing audit identity [1414.02ms]
+
+scripts/release/tests/workflows.test.ts:
+(pass) contributors get full CI for main PR changes, main pushes and manual runs without publishing credentials [0.22ms]
+(pass) CI refuses to record acceptance for a different checkout commit [17.39ms]
+(pass) CI accepts the once-built packages only after every full-suite shard succeeds [0.45ms]
+140 |   for (const [path, duration] of Object.entries(object(timings.files))) {
+141 |     expect(path).toMatch(/^(packages|scripts)\/.+\.test\.tsx?$/);
+142 |     expect(typeof duration).toBe("number");
+143 |     expect(Number.isFinite(duration)).toBe(true);
+144 |     expect(duration).toBeGreaterThan(0);
+145 |     expect(await Bun.file(resolve(root, path)).exists()).toBe(true);
+                                                               ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/Users/artorias_chan/.codex/worktrees/57c2/rukie/scripts/release/tests/workflows.test.ts:145:58)
+(fail) all four shards test the same exact packages with one worker and no acceptance authority [0.83ms]
+(pass) both source gates keep full logs and fail closed while bounding Actions output [37.47ms]
+(pass) PR titles remain data when the actual workflow invokes commitlint [546.75ms]
+
+scripts/release/tests/publication.test.ts:
+(pass) real npm publication installs the registry's exact dependencies and validates a Session before stable latest or validates beta next [4544.65ms]
+(pass) failed main upload leaves the platform and does not expose latest [2134.80ms]
+(pass) a real registry Session rejection leaves the uploaded package and latest unchanged [4325.25ms]
+(pass) fabricated inherited npm auth and registry configuration cannot override the loopback destination [4472.54ms]
+(pass) npm12.1 is rejected before any registry upload [723.90ms]
+(pass) matching partial publication resumes only the missing main package [5410.76ms]
+
+1 tests failed:
+(fail) all four shards test the same exact packages with one worker and no acceptance authority [0.83ms]
+
+ 112 pass
+ 1 fail
+ 1107 expect() calls
+Ran 113 tests across 12 files. [166.09s]
