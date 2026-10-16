@@ -47,6 +47,7 @@ export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: numb
       stdout,
       () =>
         `bytes=${bytesWritten}; cursor=${terminal.buffer.active.cursorX},${terminal.buffer.active.cursorY}`,
+      terminal,
     );
   }
   return {

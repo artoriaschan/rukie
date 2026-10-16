@@ -112,9 +112,25 @@ export async function installRelease(
         command?: string;
         env?: Record<string, string>;
         timeoutMs?: number;
+        /** Bounded, content-free lifecycle facts for a failing installed-command case. */
+        onStage?: (
+          stage:
+            | "spawn-start"
+            | "spawn"
+            | "kill"
+            | "exit"
+            | "stdout-eof"
+            | "stderr-eof"
+            | "exit-error"
+            | "stdout-error"
+            | "stderr-error"
+            | "settled",
+          facts: { pid?: number; code?: number; chars?: number },
+        ) => void;
       } = {},
     ) {
       if (closing) throw new Error("Installed release fixture is closing");
+      options.onStage?.("spawn-start", {});
       const child = Bun.spawn([options.command ?? command, ...argv], {
         cwd,
         env: { ...env, ...options.env },
@@ -123,13 +139,35 @@ export async function installRelease(
         stderr: "pipe",
         signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
       });
+      options.onStage?.("spawn", { pid: child.pid });
+      const exited = child.exited;
+      const stdout = new Response(child.stdout).text();
+      const stderr = new Response(child.stderr).text();
+      // Observe the original promises without adding a hop to the command's completion path.
+      const onStage = options.onStage;
+      if (onStage) {
+        void exited.then(
+          (code) => onStage("exit", { pid: child.pid, code }),
+          () => onStage("exit-error", { pid: child.pid }),
+        );
+        void stdout.then(
+          (value) => onStage("stdout-eof", { pid: child.pid, chars: value.length }),
+          () => onStage("stdout-error", { pid: child.pid }),
+        );
+        void stderr.then(
+          (value) => onStage("stderr-eof", { pid: child.pid, chars: value.length }),
+          () => onStage("stderr-error", { pid: child.pid }),
+        );
+      }
       const result = own(
-        () => child.kill(),
-        Promise.all([
-          child.exited,
-          new Response(child.stdout).text(),
-          new Response(child.stderr).text(),
-        ]).then(([code, stdout, stderr]) => ({ code, stdout, stderr })),
+        () => {
+          options.onStage?.("kill", { pid: child.pid });
+          child.kill();
+        },
+        Promise.all([exited, stdout, stderr]).then(([code, stdout, stderr]) => {
+          options.onStage?.("settled", { pid: child.pid, code });
+          return { code, stdout, stderr };
+        }),
       );
       child.stdin.write(options.stdin ?? "");
       child.stdin.end();

@@ -45,3 +45,12 @@ Status: resolved
 - 验证通过：`rtk proxy bun run docs:update` 与 `rtk proxy bun run check:docs` 均通过（155 Markdown 文件）；`rtk proxy bunx --no -- oxfmt --check DESIGN.md CONTEXT.md packages/ui/README.md .scratch/design-system-migration/issues/01-design-spec-gaps.md` 通过；`rtk git diff --check` 通过。补写本记录后仅复验 tracker 结构、该文件格式与 diff。
 - 文档专用交付没有运行产品测试、浏览器验收或原生 Electron；本票不宣称规范目标已由产品实现或已通过渲染对比度验证。后续实现票按规范实测。
 - 提交前与 integration 分支 `feat/design-system-migration`（`e22f975a`）合并核对，返回 Already up to date。该状态表示本地文档工作完成，PR 评审与 CI 由协调者继续处理。
+
+### 2026-10-16 合并门禁诊断补充
+
+- 原 `c404c333` 文档实施和本地验证证据继续保留；以下是用户授权依次合并堆叠 PR 后附加的测试诊断，不把原文档提交改述为代码变更。
+- PR #34 的托管 TUI parser watchdog 与最终集成分支的 installed-command 用例超时都尚未确认根因；各自最小本地探测通过不能替代失败 CI，也不证明环境原因。合并仍等待最新提交必需门禁通过。
+- 在既有 xterm native I/O owner 中记录有界 timer 和 write/callback 元数据，仅 parser watchdog 失败时追加诊断；在真实安装 smoke 中记录至多 48 条 setup、子进程 PID、请求序号/工具结果数量、exit、stdout/stderr EOF 和清理阶段，仅失败时输出。无 ANSI 内容、请求正文、凭据、环境值或目录路径。
+- 没有改动产品实现、断言结果、等待上限、重试、跳过或 runner 并发。现有 50ms runner-owner 回归覆盖超时诊断、子进程和服务清理，以及下一 owner 的真实安装命令成功；终端复用两个消费者的原生切片解析与已释放输出检查。诊断支持下一次真实托管执行判别缺失边界，不宣称已修复原两次失败。
+- 本补充不改变 UI、领域行为、持久化或架构边界，无需新增 ADR；本地 focused 验证与静态结果见下条。
+- 本地通过：Ink/TUI 真实切片解析和已释放输出 4 例；保留原结果断言的真实安装 grep/bash smoke 1 例（1208.51ms）；50ms runner-owner 回归 1 例（3196.33ms，包含超时失败上下文、真实清理及下一 owner grep）。首次新增诊断断言错误地取到 title 请求，失败事实保留；修正为明确 model 请求并对进程 JSON 先作 unknown 校验后，该回归通过。所有改动文件 format/lint、coding-agent 与 scripts 类型、test-policy、文档和 diff 检查通过。未运行整包、aggregate、浏览器、真实 Electron 或再次托管 CI；最新托管门禁由协调者推送后采集。
