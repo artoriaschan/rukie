@@ -2,6 +2,8 @@ import { modelServiceCopy } from "./model-service-copy";
 export const appCopy = {
   en: {
     "app.skills": "Skills",
+    "app.builtin-commands": "Built-in commands",
+    "app.insertion": "Insert",
     "app.skill-project": "Project",
     "app.skill-user": "Global",
     "app.goal-mode": "Goal mode",
@@ -342,6 +344,8 @@ export const appCopy = {
   },
   zh: {
     "app.skills": "技能",
+    "app.builtin-commands": "内置命令",
+    "app.insertion": "插入",
     "app.skill-project": "项目",
     "app.skill-user": "全局",
     "app.goal-mode": "目标模式",

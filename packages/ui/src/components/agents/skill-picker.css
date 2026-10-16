@@ -77,3 +77,33 @@
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
+
+.composer-insertion-option * {
+  cursor: inherit;
+}
+.composer-insertion-option[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.composer-insertion-switch {
+  display: inline-flex;
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--secondary);
+}
+.composer-insertion-switch > span {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--foreground);
+}
+[data-checked="true"] .composer-insertion-switch {
+  justify-content: flex-end;
+  background: var(--primary);
+}
+[data-checked="true"] .composer-insertion-switch > span {
+  background: var(--primary-foreground);
+}
