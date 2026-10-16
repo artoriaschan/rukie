@@ -54,6 +54,8 @@ export interface AgentActivityTrace {
   icon?: ReactNode;
   /** Let the label toggle rich content, initially collapsed. */
   collapsible?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   /** Rich message content below the trace label; tool details can remain in the label. */
   content?: ReactNode;
 }

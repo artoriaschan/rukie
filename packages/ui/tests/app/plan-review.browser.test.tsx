@@ -114,7 +114,18 @@ test("submitted plans remain visible outside collapsed Trace before execution st
   const screen = await render(
     <UiLocaleProvider locale="en">
       <div style={{ height: 600, display: "flex" }}>
-        <Transcript state={state} decisions={[]} waiting={false} />
+        <Transcript
+          reader={{
+            choices: {},
+            choose: () => {},
+            identities: new Map(),
+            outputPages: {},
+            showOutput: () => {},
+          }}
+          state={state}
+          decisions={[]}
+          waiting={false}
+        />
       </div>
     </UiLocaleProvider>,
   );
@@ -267,6 +278,13 @@ test("restored repeated plan calls render separate cards with structured review 
     <UiLocaleProvider locale="en">
       <div style={{ height: 1200, display: "flex" }}>
         <Transcript
+          reader={{
+            choices: {},
+            choose: () => {},
+            identities: new Map(),
+            outputPages: {},
+            showOutput: () => {},
+          }}
           state={store.getState().views.one!.transcript!}
           decisions={[]}
           waiting={false}

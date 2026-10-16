@@ -1,3 +1,4 @@
+import { Button } from "@/components/motion/button/base";
 import { useId, useState } from "react";
 import { AgentDisclosure } from "../agent-disclosure";
 import { useComponentText } from "@/lib/i18n";
@@ -207,7 +208,12 @@ function TraceIcon({ kind }: { kind: AgentActivityTrace["kind"] }) {
 }
 
 function TraceRow({ item }: { item: AgentActivityTrace }) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = item.open ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    if (item.open === undefined) setInternalOpen(next);
+    item.onOpenChange?.(next);
+  };
   const contentId = useId();
   const triggerId = useId();
   const showIcon = item.icon !== null;
@@ -227,20 +233,22 @@ function TraceRow({ item }: { item: AgentActivityTrace }) {
         className={cn("min-w-0 font-normal text-muted-foreground", !item.detail && "col-span-2")}
       >
         {item.collapsible ? (
-          <button
+          <Button
+            size="contextual"
+            variant="ghost"
             id={triggerId}
             type="button"
             aria-expanded={open}
             aria-controls={contentId}
             onClick={() => setOpen(!open)}
-            className="flex items-center gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="flex h-auto min-h-7 px-0 justify-start not-disabled:hover:bg-transparent text-ui-control items-center gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {item.label}
             <ChevronDown
               aria-hidden="true"
               className={cn("size-3 text-muted-foreground", !open && "-rotate-90")}
             />
-          </button>
+          </Button>
         ) : (
           item.label
         )}

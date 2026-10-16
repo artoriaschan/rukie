@@ -1,5 +1,5 @@
 import { motion, type HTMLMotionProps, useReducedMotion } from "motion/react";
-import type { CSSProperties } from "react";
+import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
@@ -17,11 +17,20 @@ export function AgentDisclosure({
   transition,
   ...props
 }: AgentDisclosureProps) {
+  const region = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = region.current;
+    if (!open && element?.contains(document.activeElement)) {
+      const trigger = element.getAttribute("aria-labelledby");
+      if (trigger) document.getElementById(trigger)?.focus({ preventScroll: true });
+    }
+  }, [open]);
   const reduce = useReducedMotion() ?? false;
 
   return (
     <motion.div
       {...props}
+      ref={region}
       aria-hidden={!open}
       inert={!open}
       initial={false}

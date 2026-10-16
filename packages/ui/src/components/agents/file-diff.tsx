@@ -1,8 +1,9 @@
+import { Button } from "@/components/motion/button/base";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/agents/file-diff
 
 import { Check, ChevronDown, Copy, FileCode2, LoaderCircle } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { useReducedMotion } from "motion/react";
 import {
   type ReactNode,
   useCallback,
@@ -18,7 +19,6 @@ import {
   type AgentCodeToken,
 } from "@/components/agents/agent-code";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
-import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
 export type FileDiffStatus = "streaming" | "complete";
@@ -41,7 +41,7 @@ export interface FileDiffProps {
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   collapseOnComplete?: boolean;
-  maxHeight?: number;
+  maxHeight?: number | null;
   language?: AgentCodeLanguage;
   copyText?: string;
   onCopy?: () => void | Promise<void>;
@@ -120,7 +120,7 @@ export function FileDiff({
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
-    if (!viewport || !currentOpen || !streaming) return;
+    if (!viewport || !currentOpen || !streaming || maxHeight === null) return;
 
     const frame = requestAnimationFrame(() => {
       if (viewport.scrollHeight <= viewport.clientHeight) return;
@@ -147,16 +147,18 @@ export function FileDiff({
 
   return (
     <div data-state={status} aria-busy={streaming} className={cn("w-full text-ui-base", className)}>
-      <button
+      <Button
+        size="contextual"
+        variant="ghost"
         id={triggerId}
         type="button"
         aria-expanded={currentOpen}
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
-        className="group flex min-h-7 w-full items-center gap-2 rounded-md py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="group flex h-auto px-0 justify-start not-disabled:hover:bg-transparent min-h-7 w-full items-center gap-2 rounded-md py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <FileCode2 aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate font-mono text-ui-base text-foreground">
+        <span className="min-w-0 flex-1 whitespace-normal break-words font-mono text-ui-base text-foreground">
           {file}
         </span>
         <span className="flex shrink-0 items-center gap-2">
@@ -180,7 +182,7 @@ export function FileDiff({
         >
           <ChevronDown className="size-3" />
         </span>
-      </button>
+      </Button>
 
       <AgentDisclosure id={contentId} role="region" aria-labelledby={triggerId} open={currentOpen}>
         <div className="pl-4 pt-1">
@@ -188,8 +190,8 @@ export function FileDiff({
             <div
               ref={viewportRef}
               data-slot="file-diff-viewport"
-              className="scrollbar-hide overflow-auto"
-              style={{ maxHeight }}
+              className={maxHeight === null ? "overflow-x-auto" : "scrollbar-hide overflow-auto"}
+              style={{ maxHeight: maxHeight ?? undefined }}
             >
               <div className="font-mono text-code leading-5">
                 <span className="sr-only">{componentText("component.file-changes")}</span>
@@ -232,7 +234,9 @@ export function FileDiff({
 
             {canCopy ? (
               <div className="flex justify-end px-2 pb-1 pt-1">
-                <motion.button
+                <Button
+                  size="icon"
+                  variant="ghost"
                   type="button"
                   aria-label={
                     copied
@@ -245,11 +249,10 @@ export function FileDiff({
                       : componentText("component.copy-diff")
                   }
                   onClick={handleCopy}
-                  transition={{ duration: 0.16, ease: EASE_OUT }}
                   className="grid size-6 place-items-center rounded-md text-muted-foreground outline-none hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-                </motion.button>
+                </Button>
               </div>
             ) : null}
           </div>
