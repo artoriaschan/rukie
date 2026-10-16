@@ -18,8 +18,10 @@ import { AgentActivity, type AgentActivityItem } from "./agents/agent-activity";
 import { ThinkingShimmer } from "./agents/loading-states/thinking-shimmer";
 import { TextShimmer } from "./motion/text-shimmer";
 import { StreamingResponse } from "./agents/streaming-response";
+import type { TraceReaderState } from "../lib/trace-reader";
 function Group({
   group,
+  reader,
   state,
   decisions,
   waiting,
@@ -27,6 +29,7 @@ function Group({
   onExpandPlan,
 }: {
   group: PromptGroup;
+  reader: TraceReaderState;
   state: TranscriptState;
   decisions: PermissionDecision[];
   waiting: boolean;
@@ -45,12 +48,11 @@ function Group({
             state.tools[presentationCallId(message, block.id)]?.status === "error",
         ),
     );
-  const [expanded, setExpanded] = useState(
-    group.status === "running" || group.status === "aborted" || failed,
-  );
-  useEffect(() => {
-    if (failed || group.status === "running" || group.status === "aborted") setExpanded(true);
-  }, [failed, group.status]);
+  const groupKey = `group:${group.id}`;
+  const expanded =
+    reader.choices[groupKey] ??
+    (group.status === "running" || group.status === "aborted" || failed);
+  const setExpanded = (open: boolean) => reader.choose(groupKey, open);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (group.status !== "running") return;
@@ -66,20 +68,42 @@ function Group({
   );
   const duration =
     group.durationMs ??
-    Math.max(
-      0,
-      (group.status === "running" ? now : (group.messages.at(-1)?.timestamp ?? group.startedAt)) -
-        group.startedAt,
-    );
+    (group.status === "running" ? Math.max(0, now - group.startedAt) : undefined);
   const elapsed =
-    duration >= 60000
-      ? t("conversation.duration-minutes", {
-          minutes: Math.floor(duration / 60000),
-          seconds: Math.floor(duration / 1000) % 60,
-        })
-      : t("conversation.duration", { duration: (duration / 1000).toFixed(1) });
+    duration === undefined
+      ? t("conversation.timing-unavailable")
+      : duration >= 60000
+        ? t("conversation.duration-minutes", {
+            minutes: Math.floor(duration / 60000),
+            seconds: Math.floor(duration / 1000) % 60,
+          })
+        : t("conversation.duration", { duration: (duration / 1000).toFixed(1) });
+  const unknownOutcome = group.status === "complete" && group.durationMs === undefined;
+  const warnings = [
+    ...new Set([
+      ...(failed && group.status !== "failed" ? [t("conversation.failed")] : []),
+      ...(group.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.some(
+            (block) =>
+              block.type === "toolCall" &&
+              (state.tools[presentationCallId(message, block.id)]?.status === "cancelled" ||
+                (group.status !== "running" &&
+                  state.tools[presentationCallId(message, block.id)]?.status === "running")),
+          ),
+      )
+        ? [t("conversation.unknown")]
+        : []),
+      ...(decisions.some(
+        (decision) => decision.reply === "deny" && decision.request.placement?.groupId === group.id,
+      )
+        ? [t("conversation.deny")]
+        : []),
+    ]),
+  ];
   const title = (
-    <span className="flex items-center gap-2 text-ui-control text-muted-foreground">
+    <span className="flex flex-wrap items-center gap-x-2 text-ui-base text-muted-foreground">
       {(group.status === "running" && waiting) ||
       group.status === "aborted" ||
       group.status === "failed" ? (
@@ -98,15 +122,23 @@ function Group({
         </span>
       ) : null}
       {group.status === "running" ? (
-        <ThinkingShimmer className="text-ui-control font-normal">
+        <ThinkingShimmer className="text-ui-base font-normal">
           {t("conversation.processing", { duration: elapsed })}
         </ThinkingShimmer>
       ) : (
         <span>{t("conversation.elapsed", { duration: elapsed })}</span>
       )}
+      {unknownOutcome ? <span>{t("conversation.outcome-unknown")}</span> : null}
+      {warnings.length ? <span>{warnings.join(t("conversation.activity-separator"))}</span> : null}
     </span>
   );
-  type TraceActivity = { item: AgentActivityItem; headerDetail?: string; active?: boolean };
+  type TraceActivity = {
+    item: AgentActivityItem;
+    headerDetail?: string;
+    active?: boolean;
+    warning?: string;
+    unresolved?: boolean;
+  };
   const sections: Array<
     | {
         id: string;
@@ -143,47 +175,59 @@ function Group({
       if (anchor !== message || placement.blockIndex !== blockIndex || placement.before !== before)
         continue;
       const request = item.request;
-      appendActivity({
-        id: `permission-${request.identity.epoch}`,
-        type: "trace",
-        kind: "permission",
-        icon: null,
-        label: (
-          <ToolApproval
-            tool={request.toolName}
-            title={t("conversation.decision", { decision: t(`conversation.${item.reply}`) })}
-            status="denied"
-            description={request.origin?.description ?? request.reason}
-            parameters={[
-              {
-                id: "command",
-                label: request.toolName,
-                value: (
-                  <ToolApprovalCode
-                    code={
-                      request.callView?.card === "terminal"
-                        ? request.callView.command
-                        : (JSON.stringify(request.args, null, 2) ?? "")
-                    }
-                    language={request.callView?.card === "terminal" ? "bash" : "json"}
-                  />
-                ),
-              },
-            ]}
-          />
-        ),
-      });
+      appendActivity(
+        {
+          id: `permission-${request.identity.epoch}`,
+          type: "trace",
+          kind: "permission",
+          icon: null,
+          label: (
+            <ToolApproval
+              tool={request.toolName}
+              title={t("conversation.decision", { decision: t(`conversation.${item.reply}`) })}
+              status="denied"
+              description={request.origin?.description ?? request.reason}
+              parameters={[
+                {
+                  id: "command",
+                  label: request.toolName,
+                  value: (
+                    <ToolApprovalCode
+                      code={
+                        request.callView?.card === "terminal"
+                          ? request.callView.command
+                          : (JSON.stringify(request.args, null, 2) ?? "")
+                      }
+                      language={request.callView?.card === "terminal" ? "bash" : "json"}
+                    />
+                  ),
+                },
+              ]}
+            />
+          ),
+        },
+        { warning: t("conversation.deny") },
+      );
     }
   };
+  const occurrences = new Map<number, number>();
   for (const message of group.messages) {
     if (message.role !== "assistant") {
       appendApprovals(message, -1, false);
       continue;
     }
+    const occurrence = occurrences.get(message.timestamp) ?? 0;
+    occurrences.set(message.timestamp, occurrence + 1);
+    // Tool-result commits may arrive while the assistant is partial; they cannot shift its identity.
+    const position = `${group.id}:${message.timestamp}:${occurrence}`;
+    const entry = message.entryId ? `entry:${message.entryId}` : position;
+    const identity = reader.identities.get(entry) ?? reader.identities.get(position) ?? entry;
+    reader.identities.set(entry, identity);
+    reader.identities.set(position, identity);
     if (!message.content.length) appendApprovals(message, -1, false);
     message.content.forEach((block, index) => {
       appendApprovals(message, index, true);
-      const id = `${message.entryId ?? `partial-${message.timestamp}`}:${index}`;
+      const id = `${identity}:${index}`;
       if (block.type === "thinking")
         appendActivity(
           {
@@ -191,6 +235,8 @@ function Group({
             type: "trace",
             kind: "thinking",
             collapsible: true,
+            open: reader.choices[`reasoning:${id}`] ?? false,
+            onOpenChange: (open) => reader.choose(`reasoning:${id}`, open),
             label: t("conversation.thinking"),
             content: <Markdown text={block.thinking} streaming={group.status === "running"} />,
           },
@@ -225,7 +271,12 @@ function Group({
           ),
         });
       else if (block.type === "toolCall") {
-        const tool = state.tools[presentationCallId(message, block.id)];
+        const projected = state.tools[presentationCallId(message, block.id)];
+        // A recorded call without a result is not confirmed running in restored/settled history.
+        const tool =
+          projected?.status === "running" && group.status !== "running"
+            ? { ...projected, status: "cancelled" as const }
+            : projected;
         if (tool?.name === "exit_plan_mode") {
           const submission = plans.find((plan) => plan.toolId === tool.id);
           if (submission)
@@ -246,9 +297,25 @@ function Group({
                     ? "write"
                     : (tool.callView?.kind ?? "other"),
               icon: null,
-              label: <ToolRow tool={tool} readOutput={readOutput} />,
+              label: (
+                <ToolRow
+                  tool={tool}
+                  readOutput={readOutput}
+                  reader={reader}
+                  identity={id}
+                  open={reader.choices[`tool:${id}`] ?? tool.status === "error"}
+                  onOpenChange={(open) => reader.choose(`tool:${id}`, open)}
+                />
+              ),
             },
             {
+              unresolved: tool.status === "cancelled",
+              warning:
+                tool.status === "error"
+                  ? t("conversation.failed")
+                  : tool.status === "cancelled"
+                    ? t("conversation.unknown")
+                    : undefined,
               active: group.status === "running" && tool.status === "running",
               headerDetail: `${t(tool.status === "running" ? `conversation.active-${tool.callView?.kind ?? "other"}` : `conversation.action-${tool.callView?.kind ?? "other"}`)} · ${(tool.name === "ask_user_question" || tool.name === "enter_plan_mode" || tool.name === "exit_plan_mode" ? t(`tool.${tool.name}`) : toolTitle(tool)).replace(/\s+/g, " ").trim()}`,
             },
@@ -288,11 +355,11 @@ function Group({
         maxHeight={null}
         showStatusDivider
         status={group.status === "running" ? "working" : "complete"}
-        duration={duration / 1000}
+        duration={duration === undefined ? undefined : duration / 1000}
         open={expanded}
         onOpenChange={setExpanded}
         collapsibleWhileWorking
-        collapseOnComplete={!failed && group.status !== "aborted"}
+        collapseOnComplete={false}
         renderWorkingStatus={() => title}
         renderCompletedStatus={() => title}
         renderContent={({ expanded: activityOpen, contentId, triggerId }) => (
@@ -310,27 +377,37 @@ function Group({
                     : [],
                 ),
               );
-              const summary = kinds.size
-                ? [...kinds]
-                    .map((kind) => {
-                      const category =
-                        kind === "run"
-                          ? "execute"
-                          : kind === "write"
-                            ? "edit"
-                            : kind === "read"
-                              ? "read"
-                              : kind === "search"
-                                ? "search"
-                                : kind === "fetch"
-                                  ? "fetch"
-                                  : kind === "task"
-                                    ? "task"
-                                    : "other";
-                      return t(`conversation.activity-${category}`);
-                    })
-                    .join(t("conversation.activity-separator"))
-                : t("conversation.analyzed");
+              const sectionWarnings = [
+                ...new Set(section.items.flatMap((item) => (item.warning ? [item.warning] : []))),
+              ];
+              const categorySummary = section.items.some((item) => item.unresolved)
+                ? t("conversation.activity-unknown")
+                : kinds.size
+                  ? [...kinds]
+                      .map((kind) => {
+                        const category =
+                          kind === "run"
+                            ? "execute"
+                            : kind === "write"
+                              ? "edit"
+                              : kind === "read"
+                                ? "read"
+                                : kind === "search"
+                                  ? "search"
+                                  : kind === "fetch"
+                                    ? "fetch"
+                                    : kind === "task"
+                                      ? "task"
+                                      : "other";
+                        return t(`conversation.activity-${category}`);
+                      })
+                      .join(t("conversation.activity-separator"))
+                  : t("conversation.analyzed");
+              const summary =
+                categorySummary +
+                (sectionWarnings.length
+                  ? ` · ${sectionWarnings.join(t("conversation.activity-separator"))}`
+                  : "");
               const Icon = kinds.has("run")
                 ? SquareTerminal
                 : kinds.has("read")
@@ -350,18 +427,31 @@ function Group({
                     </TextShimmer>
                   ) : (
                     <span className="min-w-0 truncate" title={summary}>
-                      {summary}
+                      {categorySummary}
                     </span>
                   )}
+                  {sectionWarnings.length ? (
+                    <span className="shrink-0">
+                      · {sectionWarnings.join(t("conversation.activity-separator"))}
+                    </span>
+                  ) : null}
                 </span>
               );
               return (
-                <AgentDisclosure key={section.id} open={activityOpen} data-trace-group="">
+                <AgentDisclosure
+                  key={section.id}
+                  open={activityOpen}
+                  aria-labelledby={triggerId}
+                  data-trace-group=""
+                >
                   <AgentActivity
                     items={section.items.map(({ item }) => item)}
                     contentType="trace"
                     status={working ? "working" : "complete"}
-                    defaultOpen={false}
+                    open={reader.choices[`segment:${group.id}:${section.id}`] ?? false}
+                    onOpenChange={(open) =>
+                      reader.choose(`segment:${group.id}:${section.id}`, open)
+                    }
                     collapseOnComplete={false}
                     collapsibleWhileWorking
                     maxHeight={null}
@@ -384,6 +474,7 @@ function Group({
   );
 }
 export function Transcript({
+  reader,
   viewportRef,
   navigationContainer,
   state,
@@ -392,6 +483,7 @@ export function Transcript({
   readOutput,
   onExpandPlan,
 }: {
+  reader: TraceReaderState;
   viewportRef?: RefObject<HTMLDivElement | null>;
   navigationContainer?: HTMLElement | null;
   state: TranscriptState;
@@ -484,6 +576,7 @@ export function Transcript({
               >
                 <Group
                   group={group}
+                  reader={reader}
                   state={state}
                   decisions={decisions}
                   waiting={waiting}

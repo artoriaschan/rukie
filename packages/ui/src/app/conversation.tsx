@@ -1,3 +1,4 @@
+import { useTraceReaderState } from "../lib/trace-reader";
 import { latestPlan, planSubmissions, type PlanSubmission } from "../lib/plans";
 import { PlanPane } from "../components/plan-pane";
 import { PlanReviewDock } from "../components/plan-review-dock";
@@ -47,6 +48,7 @@ export function AppConversation({
   onInteractionResolved,
 }: ConversationProps) {
   const viewport = useRef<HTMLDivElement>(null);
+  const traceReader = useTraceReaderState();
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const hadApproval = useRef(false);
   const approvalCount = Object.keys(view.interactions).length;
@@ -190,6 +192,7 @@ export function AppConversation({
             className={summaryOpen ? "flex min-h-0 flex-1 md:pr-[332px]" : "flex min-h-0 flex-1"}
           >
             <Transcript
+              reader={traceReader}
               viewportRef={viewport}
               navigationContainer={panel}
               state={state}

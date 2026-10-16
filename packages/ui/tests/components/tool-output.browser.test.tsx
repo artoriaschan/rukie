@@ -1,3 +1,4 @@
+import { UiLocaleProvider } from "../../src/lib/i18n";
 import { modelServicesFixture } from "../helpers/model-services";
 import { App } from "../../src/app";
 import { expect, test, vi } from "vitest";
@@ -99,7 +100,21 @@ test("App reads a historical tool reference through the session wire command", a
         background: [],
         runSummaries: [],
         messages: [
-          { role: "user", entryId: "u", timestamp: 1, content: "Historical command" },
+          ...Array.from({ length: 40 }, (_, index) => [
+            {
+              role: "user",
+              entryId: `older-user-${index}`,
+              timestamp: index,
+              content: `Older question ${index}`,
+            },
+            {
+              role: "assistant",
+              entryId: `older-answer-${index}`,
+              timestamp: index,
+              content: [{ type: "text", text: `Older answer ${index}` }],
+            },
+          ]).flat(),
+          { role: "user", entryId: "u", timestamp: 100, content: "Historical command" },
           {
             role: "assistant",
             entryId: "a",
@@ -123,18 +138,34 @@ test("App reads a historical tool reference through the session wire command", a
             isError: true,
             content: [{ type: "text", text: "bounded output" }],
             view: {
-              card: "terminal",
-              kind: "execute",
-              output: "bounded output",
+              card: "diff",
+              kind: "edit",
+              diffs: [{ path: "changes.ts", oldText: "before\n", newText: "after\n" }],
               outputRef: { id: "historical-ref" },
             },
           },
         ],
       }),
     });
-    await screen.getByRole("button", { name: "Ran commands", exact: true }).click();
+    await screen.getByRole("button", { name: "Jump to response 41", exact: true }).click();
+    await screen.getByRole("button", { name: "Ran commands · Failed", exact: true }).click();
+    const diff = screen.getByRole("button", { name: /changes.ts/ });
+    await expect.element(diff).toHaveAttribute("aria-expanded", "true");
+    await diff.click();
     await screen.getByRole("button", { name: "Read full output", exact: true }).click();
     await expect.element(screen.getByText("historical full output", { exact: true })).toBeVisible();
+    await screen.getByRole("button", { name: "Jump to response 1", exact: true }).click();
+    await expect.element(screen.getByText("Older answer 0", { exact: true })).toBeVisible();
+    await expect
+      .element(screen.getByRole("article", { name: "Response 41", exact: true }))
+      .not.toBeInTheDocument();
+    await screen.getByRole("button", { name: "Jump to response 41", exact: true }).click();
+    await expect.element(screen.getByText("historical full output", { exact: true })).toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Show summary", exact: true }))
+      .toBeVisible();
+    await screen.getByRole("button", { name: "Show summary", exact: true }).click();
+    await expect.element(diff).toHaveAttribute("aria-expanded", "false");
     const requests = await (await fetch(`http://127.0.0.1:${connection.port}/commands`)).json();
     expect(requests).toEqual(
       expect.arrayContaining([
@@ -150,5 +181,141 @@ test("App reads a historical tool reference through the session wire command", a
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
+  }
+});
+
+test("Trace detail separates safe parameters and empty results without an internal vertical scroll trap", async () => {
+  await page.viewport(420, 480);
+  const command = "printf " + "a-long-readable-command-".repeat(18);
+  const output = Array.from({ length: 80 }, (_, i) => `line ${i}`).join("\n");
+  const screen = await render(
+    <ToolRow
+      tool={{
+        ...tool,
+        args: { apiKey: "private-secret" },
+        callView: { card: "terminal", kind: "execute", command },
+        output,
+        resultView: { card: "terminal", kind: "execute", output },
+      }}
+    />,
+  );
+  try {
+    await expect.element(screen.getByText("Parameters", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Result", { exact: true })).toBeVisible();
+    const trigger = screen.getByRole("button", { name: new RegExp("^printf.*Failed") }).element();
+    expect(trigger.getBoundingClientRect().height).toBeGreaterThan(28);
+    const region = document.getElementById(trigger.getAttribute("aria-controls")!)!;
+    expect(region.getBoundingClientRect().height).toBeGreaterThan(1000);
+    const scrollOwners = [...region.querySelectorAll<HTMLElement>("*")].filter(
+      (node) =>
+        /auto|scroll/.test(getComputedStyle(node).overflowY) &&
+        node.scrollHeight > node.clientHeight,
+    );
+    expect(scrollOwners).toHaveLength(0);
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(420);
+    expect(document.body.textContent).not.toContain("private-secret");
+  } finally {
+    await screen.unmount();
+    await page.viewport(1280, 900);
+  }
+});
+
+test.each([
+  {
+    status: "success" as const,
+    resultView: { card: "terminal" as const, kind: "execute" as const, output: "" },
+    notice: "No output returned",
+  },
+  { status: "cancelled" as const, resultView: undefined, notice: "No output received" },
+])("empty and missing output remain distinct: $notice", async ({ status, resultView, notice }) => {
+  const screen = await render(<ToolRow tool={{ ...tool, status, output: "", resultView }} />);
+  try {
+    const trigger = screen.getByRole("button", { name: /long command Ran command/ });
+    if (status === "cancelled") {
+      await expect
+        .element(trigger)
+        .toHaveAccessibleName("long command Ran command Tool outcome is unknown");
+    }
+    await trigger.click();
+    await expect.element(screen.getByText(notice, { exact: true })).toBeVisible();
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("long typed diffs use Transcript vertical scrolling", async () => {
+  const screen = await render(
+    <ToolRow
+      tool={{
+        ...tool,
+        resultView: {
+          card: "diff",
+          kind: "edit",
+          diffs: [{ path: "large.ts", oldText: "", newText: "added line\n".repeat(80) }],
+        },
+      }}
+    />,
+  );
+  try {
+    const diff = screen.getByRole("button", { name: /large.ts/ });
+    await expect.element(diff).toBeVisible();
+    const viewport = screen.getByText("File changes", { exact: true }).element()
+      .parentElement!.parentElement!;
+    await expect.poll(() => viewport.getBoundingClientRect().height).toBeGreaterThan(1000);
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("Chinese Trace remains readable at enlarged scale in a narrow low Dark viewport", async () => {
+  await page.viewport(420, 480);
+  await commands.reducedMotion(true);
+  document.documentElement.classList.add("dark");
+  document.documentElement.style.setProperty("--ui-font-size", "18px");
+  const screen = await render(
+    <UiLocaleProvider locale="zh">
+      <ToolRow
+        tool={{
+          ...tool,
+          callView: { card: "terminal", kind: "execute", command: "长命令与路径/".repeat(35) },
+        }}
+      />
+    </UiLocaleProvider>,
+  );
+  try {
+    await expect.element(screen.getByText("参数", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("返回结果", { exact: true })).toBeVisible();
+    const trigger = screen.getByRole("button", { name: /长命令与路径.*失败/ }).element();
+    expect(trigger.getBoundingClientRect().height).toBeGreaterThan(28);
+    expect(getComputedStyle(trigger).fontSize).toBe("17px");
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(420);
+    const summary = screen.getByText("summary", { exact: true }).element();
+    expect(getComputedStyle(summary).userSelect).not.toBe("none");
+  } finally {
+    await screen.unmount();
+    document.documentElement.classList.remove("dark");
+    document.documentElement.style.removeProperty("--ui-font-size");
+    await commands.reducedMotion(false);
+    await page.viewport(1280, 900);
+  }
+});
+
+test("an invalid typed diff reports rendering failure and preserves the received patch", async () => {
+  const patch = "@@ -1,2 +1,2 @@\n-this source has an invalid hunk count";
+  const screen = await render(
+    <ToolRow
+      tool={{
+        ...tool,
+        resultView: { card: "diff", kind: "edit", diffs: [{ path: "invalid.ts", patch }] },
+      }}
+    />,
+  );
+  try {
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("Could not render changes. Original content follows.");
+    await expect.element(screen.getByText(patch, { exact: true })).toBeVisible();
+  } finally {
+    await screen.unmount();
   }
 });

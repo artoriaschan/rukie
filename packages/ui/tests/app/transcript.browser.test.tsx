@@ -101,7 +101,7 @@ test("App shows committed and streaming replies, with failed tool output expande
     };
     await send({ type: "message_start", message: result });
     await send({ type: "message_end", entryId: "r", messages: [result] });
-    await screen.getByRole("button", { name: "Ran commands", exact: true }).click();
+    await screen.getByRole("button", { name: "Ran commands · Failed", exact: true }).click();
     await expect.element(screen.getByText("Parser failed", { exact: true })).toBeVisible();
     const tool = screen.getByRole("button", { name: /check Ran command/ }).element();
     const traceRow = tool.closest('[role="listitem"]')!;
@@ -162,7 +162,7 @@ test("App shows committed and streaming replies, with failed tool output expande
     await expect.element(screen.getByRole("alert")).toHaveTextContent("Provider unavailable");
     await expect.element(screen.getByRole("feed")).toHaveAttribute("aria-busy", "false");
     await expect
-      .element(screen.getByRole("button", { name: "Ran commands", exact: true }))
+      .element(screen.getByRole("button", { name: "Ran commands · Failed", exact: true }))
       .toHaveAttribute("aria-expanded", "true");
     expect(
       screen
@@ -277,26 +277,29 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
     await send({ type: "message_end", entryId: "a", messages: [{ ...partial, entryId: "a" }] });
     await send({ type: "result", success: true, text: "First response", durationMs: 434000 });
     const title = response.getByRole("button", { name: "Time spent 7m 14s", exact: true });
-    await expect.element(title).toHaveAttribute("aria-expanded", "false");
+    await expect.element(title).toHaveAttribute("aria-expanded", "true");
     await expect.element(screen.getByText("response", { exact: true })).toBeVisible();
     expect(
       response.element().querySelector('[data-state="complete"][aria-busy="false"]'),
     ).not.toBeNull();
     await title.element().focus();
     await userEvent.keyboard(" ");
+    await expect.element(title).toHaveAttribute("aria-expanded", "false");
+    await userEvent.keyboard(" ");
     await expect.element(title).toHaveAttribute("aria-expanded", "true");
     const completedAnalysis = response.getByRole("button", {
       name: "Analysis complete",
       exact: true,
     });
-    await expect.element(completedAnalysis).toHaveAttribute("aria-expanded", "false");
+    await expect.element(completedAnalysis).toHaveAttribute("aria-expanded", "true");
     completedAnalysis.element().focus();
+    await userEvent.keyboard(" ");
+    await expect.element(completedAnalysis).toHaveAttribute("aria-expanded", "false");
     await userEvent.keyboard(" ");
     await expect.element(completedAnalysis).toHaveAttribute("aria-expanded", "true");
     await expect
       .element(response.getByRole("button", { name: "Reasoning", exact: true }))
-      .toHaveAttribute("aria-expanded", "false");
-    await response.getByRole("button", { name: "Reasoning", exact: true }).click();
+      .toHaveAttribute("aria-expanded", "true");
     await expect.element(screen.getByText("Inspecting the parser", { exact: true })).toBeVisible();
     await expect.poll(() => region.getBoundingClientRect().height).toBeGreaterThan(208);
     expect(divider.nextElementSibling).toBe(region);
@@ -550,6 +553,19 @@ test("consecutive reasoning and tools form traces separated by persistent assist
     ]) {
       await expect.element(screen.getByText(text, { exact: true })).toBeVisible();
     }
+    await send({
+      type: "tool_execution_end",
+      toolCallId: "live",
+      toolName: "bash",
+      result: {
+        role: "toolResult",
+        timestamp: 5,
+        toolCallId: "live",
+        toolName: "bash",
+        isError: false,
+        content: [{ type: "text", text: "live inspection finished" }],
+      },
+    });
     await send({ type: "result", success: true, text: "The result is ready.", durationMs: 2000 });
     await expect
       .element(response.getByRole("button", { name: "Time spent 2.0s", exact: true }))
@@ -825,6 +841,14 @@ test.each(["allow", "allow-session"] as const)(
       );
       expect(details.scrollWidth).toBeLessThanOrEqual(details.clientWidth);
       expect(denied.getBoundingClientRect().width).toBeGreaterThan(80);
+      const process = response.getByRole("button", { name: /^Processed for.*Denied/ });
+      await process.click();
+      await expect.element(process).toHaveAttribute("aria-expanded", "false");
+      await expect.element(process).toMatchTextContent(/Denied/);
+      expect(denied.closest("[inert]")).not.toBeNull();
+      await expect
+        .element(screen.getByRole("button", { name: "Allow", exact: true }))
+        .not.toBeInTheDocument();
     } finally {
       await screen.unmount();
       await commands.stopWire(connection.port);
@@ -905,11 +929,15 @@ test("live Trace titles show the latest detail until every group tool settles", 
     await expect.element(live).toHaveAttribute("aria-expanded", "false");
     const shimmer = live.element().querySelector<HTMLElement>(".beui-text-shimmer")!;
     expect(shimmer).not.toBeNull();
+    expect(getComputedStyle(live.element()).cursor).toBe("pointer");
     expect(shimmer.title).toBe(`Running commands · ${command}`);
     expect(getComputedStyle(shimmer).whiteSpace).toBe("nowrap");
     expect(getComputedStyle(shimmer).textOverflow).toBe("ellipsis");
     expect(shimmer.scrollWidth).toBeGreaterThan(shimmer.clientWidth);
     expect(getComputedStyle(shimmer).animationName).toBe("beui-text-shimmer");
+    await commands.reducedMotion(true);
+    await expect.poll(() => getComputedStyle(shimmer).animationName).toBe("none");
+    await commands.reducedMotion(false);
     await live.click();
     const reasoning = response.getByRole("button", { name: "Reasoning", exact: true });
     await expect.element(reasoning).toHaveAttribute("aria-expanded", "false");
@@ -925,7 +953,13 @@ test("live Trace titles show the latest detail until every group tool settles", 
       .element()
       .closest('[role="listitem"]')!;
     expect(toolRow.textContent).not.toContain("Running commands · first-command");
+    const firstTool = response.getByRole("button", { name: /first-command Ran command Running/ });
+    await firstTool.click();
     await end("latest");
+    await expect
+      .element(response.getByRole("button", { name: /^latest-command.*Ran command Completed/ }))
+      .toHaveAttribute("aria-expanded", "false");
+    await expect.element(firstTool).toHaveAttribute("aria-expanded", "true");
     await send({
       type: "message_update",
       message: {
@@ -1008,7 +1042,20 @@ test("virtualized response groups follow streaming height, preserve upward readi
       role: "assistant",
       entryId: `a-${i}`,
       timestamp: Date.now(),
-      content: [{ type: "text", text: `Intermediate ${i + 1}` }],
+      content:
+        i === 4
+          ? [
+              { type: "thinking", thinking: "Remember this reasoning" },
+              {
+                type: "toolCall",
+                id: "reuse",
+                name: "bash",
+                arguments: {},
+                view: { card: "terminal", kind: "execute", command: "remember-command" },
+              },
+              { type: "text", text: `Intermediate ${i + 1}` },
+            ]
+          : [{ type: "text", text: `Intermediate ${i + 1}` }],
     },
     {
       role: "assistant",
@@ -1082,6 +1129,25 @@ test("virtualized response groups follow streaming height, preserve upward readi
     const response = screen.getByRole("article", { name: "Response 5", exact: true });
     await response.getByRole("button", { name: /^Time spent / }).click();
     await expect.element(screen.getByText("Intermediate 5", { exact: true })).toBeVisible();
+    const segment = response.getByRole("button", {
+      name: "Recorded tool calls · Tool outcome is unknown",
+      exact: true,
+    });
+    await segment.click();
+    await response.getByRole("button", { name: "Reasoning", exact: true }).click();
+    await response.getByRole("button", { name: /remember-command/ }).click();
+    await screen.getByRole("button", { name: "Jump to response 80", exact: true }).click();
+    await expect.element(screen.getByText("Final 80", { exact: true })).toBeVisible();
+    await expect.element(response).not.toBeInTheDocument();
+    await screen.getByRole("button", { name: "Jump to response 5", exact: true }).click();
+    await expect
+      .element(response.getByRole("button", { name: "Reasoning", exact: true }))
+      .toHaveAttribute("aria-expanded", "true");
+    await expect
+      .element(response.getByRole("button", { name: /remember-command/ }))
+      .toHaveAttribute("aria-expanded", "true");
+    const anchor = screen.getByText("Intermediate 5", { exact: true }).element();
+    const anchorTop = anchor.getBoundingClientRect().top;
     await send({
       type: "tool_state_changed",
       name: "todo",
@@ -1107,6 +1173,7 @@ test("virtualized response groups follow streaming height, preserve upward readi
     await expect.element(screen.getByText("Check parser", { exact: true })).toBeVisible();
     await expect.element(screen.getByText("Failed", { exact: true })).toBeVisible();
     expect(feed.getBoundingClientRect().width).toBeLessThan(width);
+    await expect.poll(() => anchor.getBoundingClientRect().top).toBeCloseTo(anchorTop, 0);
     await expect.element(toggle).toHaveFocus();
     await page.viewport(480, 800);
     const summary = screen.getByRole("complementary", { name: "Session summary", exact: true });
@@ -1619,5 +1686,285 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
     await commands.stopWire(connection.port);
     window.removeEventListener("error", captureResizeError);
     await page.viewport(1280, 900);
+  }
+});
+
+test("reader choices survive partial commit, failure and settlement without losing selection", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  const send = async (facts: object) => {
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId: "one", ...facts }),
+    });
+  };
+  const pending = {
+    role: "assistant",
+    timestamp: 123,
+    content: [
+      { type: "thinking", thinking: "Selectable reasoning" },
+      {
+        type: "toolCall",
+        id: "same",
+        name: "bash",
+        arguments: { command: "reader-command" },
+        view: { card: "terminal", kind: "execute", command: "reader-command" },
+      },
+    ],
+  };
+  try {
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    await send({
+      type: "snapshot",
+      model: "test/script",
+      compactions: [],
+      run: { inputs: [] },
+      messages: [
+        { role: "user", entryId: "u", timestamp: 1, content: "Reader controls" },
+        {
+          role: "assistant",
+          entryId: "prior",
+          timestamp: 2,
+          content: [
+            {
+              type: "toolCall",
+              id: "parallel",
+              name: "bash",
+              arguments: {},
+              view: { card: "terminal", kind: "execute", command: "prior-command" },
+            },
+          ],
+        },
+      ],
+    });
+    await send({ type: "message_update", message: pending });
+    const outer = screen.getByRole("article").getByRole("button", { name: /^Processed for/ });
+    const segment = screen.getByRole("button", {
+      name: "Running commands · reader-command",
+      exact: true,
+    });
+    await segment.click();
+    const reasoning = screen.getByRole("button", { name: "Reasoning", exact: true });
+    await reasoning.click();
+    const tool = screen.getByRole("button", { name: /reader-command Ran command Running/ });
+    await tool.click();
+    await tool.click(); // Explicit close must beat a later failure default.
+    const text = screen.getByText("Selectable reasoning", { exact: true }).element();
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    await send({
+      type: "message_update",
+      message: {
+        ...pending,
+        content: [
+          { ...pending.content[0], thinking: "Selectable reasoning appended" },
+          pending.content[1],
+        ],
+      },
+    });
+    await expect
+      .element(screen.getByText("Selectable reasoning appended", { exact: true }))
+      .toBeVisible();
+    expect(window.getSelection()!.toString()).toContain("Selectable reasoning");
+    const focused = document.activeElement;
+    await send({
+      type: "message_end",
+      entryId: "parallel-result",
+      messages: [
+        {
+          role: "toolResult",
+          entryId: "parallel-result",
+          timestamp: 125,
+          toolCallId: "parallel",
+          toolName: "bash",
+          isError: false,
+          content: [{ type: "text", text: "parallel settled before commit" }],
+        },
+      ],
+    });
+    await expect.element(reasoning).toHaveAttribute("aria-expanded", "true");
+    expect(document.activeElement).toBe(focused);
+    await send({
+      type: "message_end",
+      entryId: "committed",
+      messages: [{ ...pending, entryId: "committed" }],
+    });
+    await expect.element(reasoning).toHaveAttribute("aria-expanded", "true");
+    await expect.element(tool).toHaveAttribute("aria-expanded", "false");
+    await outer.click();
+    await send({
+      type: "tool_execution_end",
+      toolCallId: "same",
+      toolName: "bash",
+      result: {
+        role: "toolResult",
+        timestamp: 124,
+        toolCallId: "same",
+        toolName: "bash",
+        isError: true,
+        content: [{ type: "text", text: "reader failure" }],
+      },
+    });
+    const failedOuter = screen
+      .getByRole("article")
+      .getByRole("button", { name: /Processed for.*Failed|Failed.*Processed for/ });
+    await expect.element(failedOuter).toHaveAttribute("aria-expanded", "false");
+    await send({ type: "result", success: true, durationMs: 1000, text: "" });
+    const settled = screen.getByRole("article").getByRole("button", { name: /Time spent 1.0s/ });
+    await expect.element(settled).toHaveAttribute("aria-expanded", "false");
+    await settled.click();
+    await expect
+      .element(screen.getByRole("button", { name: /Ran commands.*Failed/ }))
+      .toHaveAttribute("aria-expanded", "true");
+    await expect
+      .element(screen.getByRole("button", { name: /reader-command Ran command Failed/ }))
+      .toHaveAttribute("aria-expanded", "false");
+    await expect.element(reasoning).toHaveAttribute("aria-expanded", "true");
+    await send({ type: "run_start", inputs: [] });
+    const retry = {
+      role: "assistant",
+      timestamp: 456,
+      entryId: "next-attempt",
+      content: [
+        { type: "text", text: "Another independent attempt." },
+        {
+          type: "toolCall",
+          id: "same",
+          name: "bash",
+          arguments: {},
+          view: { card: "terminal", kind: "execute", command: "second-command" },
+        },
+      ],
+    };
+    await send({ type: "message_end", entryId: "next-attempt", messages: [retry] });
+    await screen
+      .getByRole("button", { name: "Running commands · second-command", exact: true })
+      .click();
+    const second = screen.getByRole("button", { name: /second-command Ran command Running/ });
+    await second.click();
+    await send({
+      type: "tool_execution_end",
+      toolCallId: "same",
+      toolName: "bash",
+      result: {
+        role: "toolResult",
+        timestamp: 457,
+        toolCallId: "same",
+        toolName: "bash",
+        isError: false,
+        content: [{ type: "text", text: "second independent output" }],
+      },
+    });
+    await expect
+      .element(screen.getByText("second independent output", { exact: true }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: /reader-command Ran command Failed/ }))
+      .toHaveAttribute("aria-expanded", "false");
+    await expect
+      .element(screen.getByRole("button", { name: /second-command Ran command Completed/ }))
+      .toHaveAttribute("aria-expanded", "true");
+  } finally {
+    window.getSelection()?.removeAllRanges();
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("untouched failed tools open by default and unknown history never fabricates elapsed time", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  const send = async (facts: object) => {
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId: "one", ...facts }),
+    });
+  };
+  const messages = [
+    { role: "user", entryId: "u", timestamp: 1, content: "Defaults" },
+    {
+      role: "assistant",
+      entryId: "a",
+      timestamp: 2001,
+      content: [
+        {
+          type: "toolCall",
+          id: "call",
+          name: "bash",
+          arguments: {},
+          view: { card: "terminal", kind: "execute", command: "default-command" },
+        },
+      ],
+    },
+  ];
+  try {
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    await send({ type: "snapshot", model: "test/script", compactions: [], messages });
+    const unknown = screen
+      .getByRole("article")
+      .getByRole("button", { name: /^Time spent unavailable Outcome unknown/ });
+    await expect.element(unknown).toHaveAttribute("aria-expanded", "false");
+    await unknown.click();
+    await screen.getByRole("button", { name: /^Recorded tool calls/ }).click();
+    await expect
+      .element(screen.getByRole("button", { name: /default-command Ran command/ }))
+      .toHaveAccessibleName("default-command Ran command Tool outcome is unknown");
+    await send({ type: "run_start", inputs: [] });
+    await expect
+      .element(screen.getByRole("article").getByRole("button", { name: /^Processed for/ }))
+      .toHaveAttribute("aria-expanded", "true");
+    await expect
+      .element(
+        screen.getByRole("button", { name: "Running commands · default-command", exact: true }),
+      )
+      .toHaveAttribute("aria-expanded", "true");
+    await send({
+      type: "tool_execution_end",
+      toolCallId: "call",
+      toolName: "bash",
+      result: {
+        role: "toolResult",
+        timestamp: 2002,
+        toolCallId: "call",
+        toolName: "bash",
+        isError: true,
+        content: [{ type: "text", text: "late failure" }],
+      },
+    });
+    await expect
+      .element(screen.getByRole("button", { name: /default-command Ran command Failed/ }))
+      .toHaveAttribute("aria-expanded", "true");
+    const copy = screen.getByRole("button", { name: "Copy result", exact: true });
+    const copyElement = copy.element();
+    copyElement.focus();
+    const outer = screen.getByRole("article").getByRole("button", { name: /^Processed for/ });
+    const outerElement = outer.element();
+    if (!(outerElement instanceof HTMLElement)) throw new Error("Missing process button");
+    outerElement.click();
+    await expect.element(outer).toHaveFocus();
+    expect(copyElement.closest("[inert]")).not.toBeNull();
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
   }
 });

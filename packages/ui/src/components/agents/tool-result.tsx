@@ -1,3 +1,4 @@
+import { Button } from "@/components/motion/button/base";
 import { useComponentText, type ComponentTranslator } from "@/lib/i18n";
 // beui.dev/components/agents/tool-result
 
@@ -8,13 +9,14 @@ import {
   ChevronDown,
   CircleCheck,
   CircleX,
+  CircleHelp,
   Copy,
   LoaderCircle,
   RotateCcw,
   SquareTerminal,
   Wrench,
 } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { useReducedMotion } from "motion/react";
 import {
   type ReactNode,
   useCallback,
@@ -27,10 +29,9 @@ import {
 import { AgentCode, type AgentCodeLanguage } from "@/components/agents/agent-code";
 import { ActionSwapRollText } from "@/components/motion/action-swap-roll";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
-import { EASE_OUT } from "@/lib/ease";
 import { cn } from "@/lib/utils";
 
-export type ToolResultStatus = "running" | "success" | "error" | "cancelled";
+export type ToolResultStatus = "running" | "success" | "error" | "cancelled" | "unknown";
 export type ToolResultKind = "terminal" | "request" | "custom";
 
 export interface ToolResultProps {
@@ -45,7 +46,7 @@ export interface ToolResultProps {
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   collapseOnComplete?: boolean;
-  maxHeight?: number;
+  maxHeight?: number | null;
   copyText?: string;
   onCopy?: () => void | Promise<void>;
   onRetry?: () => void;
@@ -63,6 +64,7 @@ function getStatusLabel(componentText: ComponentTranslator, status: ToolResultSt
   if (status === "running") return componentText("component.running");
   if (status === "success") return componentText("component.completed");
   if (status === "error") return componentText("component.failed");
+  if (status === "unknown") return componentText("component.unknown-outcome");
   return componentText("component.cancelled");
 }
 
@@ -95,6 +97,7 @@ function StatusIcon({ status, reduce }: { status: ToolResultStatus; reduce: bool
   }
   if (status === "success") return <CircleCheck className="size-3" />;
   if (status === "error") return <CircleX className="size-3" />;
+  if (status === "unknown") return <CircleHelp className="size-3" />;
   return <Ban className="size-3" />;
 }
 
@@ -108,16 +111,17 @@ function ToolResultAction({
   children: ReactNode;
 }) {
   return (
-    <motion.button
+    <Button
+      size="icon"
+      variant="ghost"
       type="button"
       aria-label={label}
       title={label}
       onClick={onClick}
-      transition={{ duration: 0.16, ease: EASE_OUT }}
-      className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      className="grid place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
     >
       {children}
-    </motion.button>
+    </Button>
   );
 }
 
@@ -182,14 +186,19 @@ export function ToolResult({
   );
 
   useEffect(() => {
-    if (previousStatus.current !== "running" && status === "running") {
+    if (open === undefined && previousStatus.current !== "running" && status === "running") {
       setOpen(true);
     }
-    if (previousStatus.current === "running" && status !== "running" && collapseOnComplete) {
+    if (
+      open === undefined &&
+      previousStatus.current === "running" &&
+      status !== "running" &&
+      collapseOnComplete
+    ) {
       setOpen(false);
     }
     previousStatus.current = status;
-  }, [collapseOnComplete, setOpen, status]);
+  }, [collapseOnComplete, setOpen, status, open]);
 
   useEffect(
     () => () => {
@@ -200,7 +209,7 @@ export function ToolResult({
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
-    if (!viewport || !currentOpen || !running) return;
+    if (!viewport || !currentOpen || !running || maxHeight === null) return;
 
     const frame = requestAnimationFrame(() => {
       if (typeof viewport.scrollTo === "function") {
@@ -226,13 +235,15 @@ export function ToolResult({
 
   return (
     <div data-state={status} aria-busy={running} className={cn("w-full text-ui-base", className)}>
-      <button
+      <Button
+        size="contextual"
+        variant="ghost"
         id={triggerId}
         type="button"
         aria-expanded={currentOpen}
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
-        className="group flex min-h-7 w-full items-center gap-2 rounded-lg text-ui-control text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="group flex h-auto px-0 justify-start not-disabled:hover:bg-transparent min-h-7 w-full items-center gap-2 rounded-lg text-ui-control text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <span
           aria-hidden="true"
@@ -241,7 +252,7 @@ export function ToolResult({
           {icon ?? <KindIcon kind={kind} />}
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">
+          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-muted-foreground">
             <ActionSwapRollText value={titleKey}>{title}</ActionSwapRollText>
           </span>
           {meta ? (
@@ -269,12 +280,16 @@ export function ToolResult({
         >
           <ChevronDown className="size-3" />
         </span>
-      </button>
+      </Button>
 
       <AgentDisclosure id={contentId} role="region" aria-labelledby={triggerId} open={currentOpen}>
         <div className="pl-4 pt-1">
           <div className="overflow-hidden rounded-xl bg-muted/80">
-            <div ref={viewportRef} className="scrollbar-hide overflow-y-auto" style={{ maxHeight }}>
+            <div
+              ref={viewportRef}
+              className={maxHeight === null ? undefined : "scrollbar-hide overflow-y-auto"}
+              style={{ maxHeight: maxHeight ?? undefined }}
+            >
               <div className={cn("p-3", contentClassName)}>{children}</div>
             </div>
 

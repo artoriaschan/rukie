@@ -1,3 +1,4 @@
+import { Button } from "@/components/motion/button/base";
 import { useComponentText, type ComponentTranslator } from "@/lib/i18n";
 // beui.dev/components/agents/agent-activity
 
@@ -210,15 +211,19 @@ export function AgentActivity({
           )}
         </div>
       ) : (
-        <button
+        <Button
+          size="contextual"
+          variant="ghost"
           id={triggerId}
           type="button"
           aria-expanded={expanded}
           aria-controls={contentId}
           onClick={toggle}
-          className="group flex min-h-7 min-w-0 max-w-full items-center gap-2 rounded-md text-left font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="group flex h-auto px-0 justify-start not-disabled:hover:bg-transparent text-ui-base min-h-7 min-w-0 max-w-full items-center gap-2 rounded-md text-left font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
-          <span className="min-w-0 truncate">
+          <span
+            className={cn("min-w-0", !renderWorkingStatus && !renderCompletedStatus && "truncate")}
+          >
             {working ? (
               renderWorkingStatus ? (
                 renderWorkingStatus({ label: liveLabel, duration })
@@ -238,7 +243,7 @@ export function AgentActivity({
           >
             <ChevronDown className="size-3" />
           </span>
-        </button>
+        </Button>
       )}
 
       {showStatusDivider ? <hr className="mt-2 border-border" /> : null}
