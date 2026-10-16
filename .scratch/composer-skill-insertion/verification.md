@@ -16,4 +16,6 @@
 
 ## 证据
 
-尚无实施验证结果。
+- 票 02 的实施提交 `1cb49e8b` 已快进到集成分支；公开 MCP Host、Session 生命周期与原有 TUI 消费者的 focused 结果记录在[票 02](issues/02-extract-mcp-host-prefactor.md)。干净快进没有使证据失效，未重跑行为测试；统一静态检查和最终共享生命周期完整检查仍待执行。
+- 网络恢复：主代理通过 `HTTPS_PROXY=http://127.0.0.1:20800` 的 HTTPS fetch 核实 `origin/main` 为 `52b7bd62`；集成基线包含该提交。
+- 集成记录文档验证：`rtk proxy bun run docs:update`、`rtk proxy bun run check:docs`（157 个 Markdown 文件）、两份修改文档的 `oxfmt --check` 与 `rtk git diff --check` 均退出 0。没有更改生产代码，沿用实施代理的行为测试结果。
