@@ -157,3 +157,25 @@ test("plan mode commands and discriminated interaction replies validate at the w
   ])
     expect(parseWireCommand({ id: "1", ...command })).toBeUndefined();
 });
+
+test("MCP status and view commands validate exclusive optional targets and bounded leases", () => {
+  for (const type of ["mcp.status", "mcp.subscribe"])
+    for (const target of [{}, { projectId: "p" }, { sessionId: "s" }]) {
+      const command = {
+        id: "1",
+        type,
+        ...(type === "mcp.subscribe" ? { viewId: "v" } : {}),
+        ...target,
+      };
+      const parsed: unknown = parseWireCommand(command);
+      expect(parsed).toEqual(command);
+      expect(parseWireCommand({ ...command, secret: true })).toBeUndefined();
+      expect(parseWireCommand({ ...command, projectId: "p", sessionId: "s" })).toBeUndefined();
+    }
+  expect(parseWireCommand({ id: "1", type: "mcp.unsubscribe", viewId: "v" })).toBeDefined();
+  expect(parseWireCommand({ id: "1", type: "mcp.subscribe" })).toBeUndefined();
+  expect(
+    parseWireCommand({ id: "1", type: "mcp.subscribe", viewId: "v", active: "false" }),
+  ).toBeUndefined();
+  expect(parseWireCommand({ id: "1", type: "mcp.unsubscribe", viewId: "" })).toBeUndefined();
+});

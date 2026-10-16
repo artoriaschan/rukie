@@ -19,8 +19,8 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import type { WireSkill } from "@rukie/shared";
-import { Sparkles } from "lucide-react";
+import type { McpSnapshot, WireSkill } from "@rukie/shared";
+import { Sparkles, Plug } from "lucide-react";
 import { Popover, PopoverContent } from "../motion/popover";
 import { ScrollArea } from "../ui/scroll-area";
 import { useAppText } from "@/lib/i18n";
@@ -50,6 +50,8 @@ export interface SkillPickerProps {
   insertionActions?: readonly ComposerInsertionAction[];
   skills?: readonly WireSkill[];
   onSkillsOpen?: () => void;
+  mcpSnapshot?: McpSnapshot;
+  onMcpOpenChange?: (open: boolean) => void;
   disabled?: boolean;
   anchorRef: RefObject<HTMLElement | null>;
 }
@@ -57,6 +59,8 @@ export interface SkillPickerProps {
 export function SkillPicker({
   skills = [],
   onSkillsOpen,
+  mcpSnapshot,
+  onMcpOpenChange,
   anchorRef,
   disabled,
   insertionOpen = false,
@@ -68,6 +72,8 @@ export function SkillPicker({
   const id = useId();
   const [query, setQuery] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
+  const [mcpLevel, setMcpLevel] = useState(false);
+  const mcpBack = useRef(false);
   const [active, setActive] = useState(0);
   const lastOpen = useRef<"plus" | "slash" | null>(null);
   const previousText = useRef<string | null>(null);
@@ -99,7 +105,7 @@ export function SkillPicker({
     Number(!a.name.replace(/^\//, "").toLowerCase().startsWith(sortQuery)) -
       Number(!b.name.replace(/^\//, "").toLowerCase().startsWith(sortQuery)) ||
     a.name.localeCompare(b.name);
-  const groups: { name: string; items: InsertionItem[] }[] = [
+  const rootGroups: { name: string; items: InsertionItem[] }[] = [
     {
       name: t("app.add"),
       items: insertionOpen
@@ -123,10 +129,68 @@ export function SkillPicker({
         .sort(sort),
     },
   ].filter((group) => group.items.length > 0);
+  const mcpFilter = query?.replace(/^mcp(?:\s+)?/i, "").toLowerCase() ?? "";
+  const detailRows: InsertionItem[] = (mcpSnapshot?.servers ?? [])
+    .filter((server) => server.name.toLowerCase().includes(mcpFilter))
+    .map((server) => ({
+      name: server.name,
+      action: {
+        name: server.name,
+        label: server.name,
+        group: "command",
+        disabled: true,
+        icon: <Plug aria-hidden="true" />,
+        stateLabel: [
+          t(server.scope === "project" ? "app.skill-project" : "app.skill-user"),
+          t(`app.mcp-state-${server.status}`),
+          ...(server.status === "connected"
+            ? [t("app.mcp-tool-count", { count: server.toolCount })]
+            : []),
+        ].join(" · "),
+        description: server.error,
+        onSelect: () => {},
+      },
+    }));
+  for (const error of mcpSnapshot?.configErrors ?? [])
+    if (!mcpFilter || error.path.toLowerCase().includes(mcpFilter))
+      detailRows.push({
+        name: error.path,
+        action: {
+          name: error.path,
+          label: error.path,
+          group: "command",
+          disabled: true,
+          icon: <Plug aria-hidden="true" />,
+          description: error.error,
+          stateLabel: error.error,
+          onSelect: () => {},
+        },
+      });
+  if (!detailRows.length) {
+    const name = t(
+      !mcpSnapshot ? "app.mcp-loading" : mcpFilter ? "app.mcp-no-match" : "app.mcp-empty",
+    );
+    detailRows.push({
+      name,
+      action: { name, label: name, group: "command", disabled: true, onSelect: () => {} },
+    });
+  }
+  const groups = mcpLevel ? [{ name: t("app.mcp-services"), items: detailRows }] : rootGroups;
   const matches = groups.flatMap((group) => group.items);
   const open =
     !disabled && (insertionOpen || (query !== null && query !== dismissed)) && matches.length > 0;
   const activeIndex = Math.min(active, Math.max(0, matches.length - 1));
+  useEffect(() => {
+    if (!mcpLevel || !open) return;
+    onMcpOpenChange?.(true);
+    return () => onMcpOpenChange?.(false);
+  }, [mcpLevel, open, onMcpOpenChange]);
+  const write = (text: string) =>
+    editor.update(() => {
+      const node = $createTextNode(text);
+      $getRoot().clear().append($createParagraphNode().append(node));
+      node.selectEnd();
+    });
   useEffect(() => {
     if (insertionOpen) {
       setActive(0);
@@ -157,6 +221,14 @@ export function SkillPicker({
               .slice(0, selection.anchor.offset);
             if (!before.includes("\n")) next = text.slice(1);
           }
+          if (!hasSkill && /^\/mcp [^\r\n]*$/i.test(text)) {
+            next = text.slice(1);
+            setMcpLevel(true);
+          } else if (mcpLevel) {
+            setMcpLevel(false);
+            mcpBack.current = true;
+          }
+          if (mcpBack.current && (hasSkill || !/^\/\S*$/.test(text))) mcpBack.current = false;
           setQuery((previous) => {
             if (previous !== next) {
               setActive(0);
@@ -166,7 +238,7 @@ export function SkillPicker({
           });
         });
       }),
-    [editor, insertionOpen, onInsertionOpenChange],
+    [editor, insertionOpen, onInsertionOpenChange, mcpLevel],
   );
   useEffect(() => {
     const entry = disabled
@@ -180,12 +252,23 @@ export function SkillPicker({
     lastOpen.current = entry;
   }, [query, dismissed, onSkillsOpen, disabled, insertionOpen]);
   const close = () => {
+    if (mcpLevel) write("");
+    setMcpLevel(false);
     setDismissed(query);
     onInsertionOpenChange?.(false);
   };
   const choose = (item: InsertionItem) => {
     if ("action" in item) {
       if (item.action.disabled) return;
+      if (item.action.name === "/mcp") {
+        mcpBack.current = false;
+        setMcpLevel(true);
+        setDismissed(null);
+        onInsertionOpenChange?.(false);
+        write("/mcp ");
+        editor.focus();
+        return;
+      }
       close();
       editor.focus();
       item.action.onSelect();
@@ -247,6 +330,17 @@ export function SkillPicker({
           }
           if (event.key === "Escape") {
             event.preventDefault();
+            event.stopPropagation();
+            if (mcpLevel) {
+              setMcpLevel(false);
+              mcpBack.current = true;
+              write("/");
+              return true;
+            }
+            if (mcpBack.current) {
+              mcpBack.current = false;
+              write("");
+            }
             close();
             return true;
           }
@@ -254,7 +348,7 @@ export function SkillPicker({
         },
         COMMAND_PRIORITY_HIGH,
       ),
-    [editor, open, matches, activeIndex, query, insertionOpen, onInsertionOpenChange],
+    [editor, open, matches, activeIndex, query, insertionOpen, onInsertionOpenChange, mcpLevel],
   );
   useEffect(() => {
     const input = editor.getRootElement();
@@ -319,10 +413,13 @@ export function SkillPicker({
                           : `${action?.name}${action?.name !== action?.label ? ` ${action?.label}` : ""}${scope ? ` ${scope}` : ""}`
                       }
                       aria-describedby={description ? `${id}-${index}-description` : undefined}
-                      title={description}
+                      title={[item.name, scope, description].filter(Boolean).join(" · ")}
                       aria-disabled={action?.disabled || undefined}
                       aria-selected={index === activeIndex}
                       data-checked={action?.checked}
+                      data-mcp-row={
+                        mcpLevel ? "detail" : action?.name === "/mcp" ? "summary" : undefined
+                      }
                       className="composer-insertion-option"
                       onPointerDown={(event) => event.preventDefault()}
                       onPointerMove={() => setActive(index)}
@@ -337,7 +434,9 @@ export function SkillPicker({
                       >
                         {description}
                       </span>
-                      <span className="composer-insertion-scope">{action?.trailing ?? scope}</span>
+                      <span className="composer-insertion-scope" title={scope}>
+                        {action?.trailing ?? scope}
+                      </span>
                     </div>
                   );
                 })}

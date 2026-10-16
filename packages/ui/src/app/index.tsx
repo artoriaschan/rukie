@@ -1,3 +1,4 @@
+import { isMcpSnapshot } from "../components/agents/mcp-status";
 import { OVERLAY_LAYER } from "@/lib/overlay";
 import {
   useEffect,
@@ -963,10 +964,85 @@ function DesktopApp({
   useEffect(() => {
     if (connected) refreshSkills();
   }, [connected, refreshSkills]);
+  const [mcpOpen, setMcpOpen] = useState(false);
+  const [mcpCatalogs, setMcpCatalogs] = useState<
+    Record<string, import("@rukie/shared").McpSnapshot>
+  >({});
+  const mcpVersion = useRef(0);
+  const mcpProject = state.selected ? currentProject : targetProject;
+  const mcpBinding = JSON.stringify({
+    cwd: state.selected ? current?.cwd : undefined,
+    project: mcpProject && {
+      primary: mcpProject.primary,
+      directories: mcpProject.directories,
+      trusted: mcpProject.trusted,
+    },
+  });
+  const refreshMcp = useCallback(() => {
+    const version = ++mcpVersion.current;
+    const target = state.selected
+      ? { sessionId: state.selected }
+      : state.target
+        ? { projectId: state.target }
+        : {};
+    void client
+      .request({ type: "mcp.status", ...target })
+      .then((snapshot) => {
+        if (version === mcpVersion.current && isMcpSnapshot(snapshot))
+          setMcpCatalogs((previous) => ({ ...previous, [skillScope]: snapshot }));
+      })
+      .catch((cause: unknown) => setError(skillErrorText.current(cause)));
+  }, [client, state.selected, state.target, skillScope, mcpBinding]);
+  useEffect(() => {
+    if (!connected) return;
+    const viewId = `composer:${skillScope}`;
+    const target = state.selected
+      ? { sessionId: state.selected }
+      : state.target
+        ? { projectId: state.target }
+        : {};
+    const version = ++mcpVersion.current;
+    let disposed = false;
+    const remove = client.subscribeMessages((message) => {
+      if (
+        message &&
+        typeof message === "object" &&
+        "type" in message &&
+        message.type === "mcp_status" &&
+        "viewId" in message &&
+        message.viewId === viewId &&
+        "snapshot" in message &&
+        isMcpSnapshot(message.snapshot)
+      ) {
+        mcpVersion.current++;
+        const snapshot = message.snapshot;
+        setMcpCatalogs((previous) => ({ ...previous, [skillScope]: snapshot }));
+      }
+    });
+    void client
+      .subscribeMcp(viewId, target, Boolean(state.selected || state.target || mcpOpen))
+      .then((snapshot) => {
+        if (!disposed && version === mcpVersion.current && isMcpSnapshot(snapshot))
+          setMcpCatalogs((previous) => ({ ...previous, [skillScope]: snapshot }));
+      })
+      .catch((cause: unknown) => {
+        if (!disposed) setError(skillErrorText.current(cause));
+      });
+    return () => {
+      disposed = true;
+      remove();
+      void client.unsubscribeMcp(viewId).catch(() => {});
+    };
+  }, [client, connected, state.selected, state.target, skillScope, mcpOpen, mcpBinding]);
   const composer = (
     <Composer
       skills={skillCatalogs[skillScope] ?? []}
-      onSkillsOpen={refreshSkills}
+      onSkillsOpen={() => {
+        refreshSkills();
+        refreshMcp();
+      }}
+      mcpSnapshot={mcpCatalogs[skillScope]}
+      onMcpOpenChange={setMcpOpen}
       draft={draft}
       images={images}
       onDraft={setDraft}

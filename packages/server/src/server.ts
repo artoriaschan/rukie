@@ -774,7 +774,22 @@ export async function startServer(options: ServerOptions) {
       void work.finally(() => changes.delete(work)).catch(() => {});
       return work;
     };
+    type StatusLease = {
+      closed: boolean;
+      view?: ReturnType<McpHost["acquire"]> | ReturnType<McpHost["observe"]>;
+    };
+    const mcpViews = new Map<WSContext["raw"], Map<string, StatusLease>>();
+    const closeMcpView = (lease: StatusLease) => {
+      lease.closed = true;
+      if (lease.view) {
+        const work = lease.view.close();
+        retirements.add(work);
+        void work.finally(() => retirements.delete(work));
+      }
+    };
     const release = (socket: WSContext) => {
+      for (const lease of mcpViews.get(socket.raw)?.values() ?? []) closeMcpView(lease);
+      mcpViews.delete(socket.raw);
       for (const unsubscribe of subscriptions.get(socket.raw)?.values() ?? []) unsubscribe();
       subscriptions.delete(socket.raw);
       for (const session of sessions.values()) refreshIdle(session);
@@ -1424,6 +1439,76 @@ export async function startServer(options: ServerOptions) {
           }
           item.settle(command);
           return {};
+        }
+        case "mcp.unsubscribe": {
+          const leases = mcpViews.get(socket.raw);
+          const lease = leases?.get(command.viewId);
+          if (lease) closeMcpView(lease);
+          leases?.delete(command.viewId);
+          return {};
+        }
+        case "mcp.status":
+        case "mcp.subscribe": {
+          const lease: StatusLease = { closed: false };
+          if (command.type === "mcp.subscribe") {
+            if (!subscriptions.has(socket.raw)) return {};
+            let leases = mcpViews.get(socket.raw);
+            if (!leases) mcpViews.set(socket.raw, (leases = new Map()));
+            const previous = leases.get(command.viewId);
+            if (previous) closeMcpView(previous);
+            leases.set(command.viewId, lease);
+          }
+          try {
+            let cwd: string | undefined;
+            let projectId: string | undefined;
+            if ("sessionId" in command) {
+              const summary = (await summaries()).find((item) => item.id === command.sessionId);
+              if (!summary) throw new CommandError("session_not_found");
+              cwd = summary.cwd;
+              projectId = summary.projectId ?? undefined;
+            } else if ("projectId" in command) {
+              projectId = command.projectId;
+              cwd = registry.projects.find((item) => item.id === projectId)?.primary;
+              if (!cwd) throw new CommandError("project_not_found");
+            }
+            const opening = cwd ? await projectOpening(cwd, projectId) : undefined;
+            const settings = await presentationSettings(cwd ?? options.homeDir);
+            const connect = {
+              homeDir: options.homeDir,
+              dataRoot: options.dataRoot,
+              persistence: applicationMcpPersistence(vault),
+              settings: { ...settings, trustedProjects: opening?.trustedDirectories ?? [] },
+              ...(cwd ? { cwd: opening!.identity } : {}),
+            };
+            if (command.type === "mcp.status") return mcpHost!.inspect(connect);
+            if (lease.closed || !subscriptions.has(socket.raw)) return {};
+            const viewId = command.viewId;
+            const onChange = (snapshot: import("@rukie/shared").McpSnapshot) => {
+              if (!lease.closed) send(socket, { type: "mcp_status", viewId, snapshot });
+            };
+            if (command.active === false) {
+              lease.view = mcpHost!.observe(connect, onChange);
+              return await lease.view.snapshot();
+            }
+            lease.view = mcpHost!.acquire({
+              noProject: !cwd,
+              connectOptions: () => ({ ...connect, cwd: connect.cwd ?? options.homeDir }),
+              getRunning: () => false,
+              onEvent: () => {},
+              onChange,
+            });
+            const snapshot = await lease.view.snapshot();
+            return snapshot;
+          } catch (error) {
+            if (lease.closed) return {};
+            closeMcpView(lease);
+            if (
+              command.type === "mcp.subscribe" &&
+              mcpViews.get(socket.raw)?.get(command.viewId) === lease
+            )
+              mcpViews.get(socket.raw)?.delete(command.viewId);
+            throw error;
+          }
         }
         case "skills.list": {
           if (command.projectId && command.sessionId) throw new CommandError("invalid_command");

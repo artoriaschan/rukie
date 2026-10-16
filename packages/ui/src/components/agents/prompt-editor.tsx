@@ -17,6 +17,8 @@ interface PromptEditorProps extends HTMLAttributes<HTMLDivElement> {
   onInsertionOpenChange?: SkillPickerProps["onInsertionOpenChange"];
   insertionActions?: SkillPickerProps["insertionActions"];
   onSkillsOpen?: () => void;
+  mcpSnapshot?: import("@rukie/shared").McpSnapshot;
+  onMcpOpenChange?: (open: boolean) => void;
   anchorRef: SkillPickerProps["anchorRef"];
   value: string;
   disabled?: boolean;
@@ -86,6 +88,8 @@ export function PromptEditor({
   editorRef,
   skills,
   onSkillsOpen,
+  mcpSnapshot,
+  onMcpOpenChange,
   insertionOpen,
   onInsertionOpenChange,
   insertionActions,
@@ -130,6 +134,8 @@ export function PromptEditor({
           onInsertionOpenChange={onInsertionOpenChange}
           insertionActions={insertionActions}
           onSkillsOpen={onSkillsOpen}
+          mcpSnapshot={mcpSnapshot}
+          onMcpOpenChange={onMcpOpenChange}
           anchorRef={anchorRef}
           disabled={disabled}
         />

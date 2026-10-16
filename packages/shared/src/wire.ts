@@ -1,3 +1,4 @@
+import type { McpSnapshot } from "./mcp.ts";
 import type { UserVisibleErrorCode } from "./errors.ts";
 import type { ProviderIconKey } from "./model-services.ts";
 import { Type, type Static, type TSchema } from "typebox";
@@ -219,6 +220,13 @@ export const WireCommandSchema = Type.Union([
   command("session.archive", session),
   command("session.delete", session),
   command("models.list", {}),
+  command("mcp.status", {}),
+  command("mcp.status", { projectId: id }),
+  command("mcp.status", { sessionId: id }),
+  command("mcp.subscribe", { active: Type.Optional(Type.Boolean()), viewId: id }),
+  command("mcp.subscribe", { active: Type.Optional(Type.Boolean()), viewId: id, projectId: id }),
+  command("mcp.subscribe", { active: Type.Optional(Type.Boolean()), viewId: id, sessionId: id }),
+  command("mcp.unsubscribe", { viewId: id }),
   command("skills.list", { projectId: Type.Optional(id), sessionId: Type.Optional(id) }),
   command("session.set_model", {
     ...session,
@@ -372,6 +380,7 @@ export interface WireSessionState {
 export type WireServerMessage<Event> =
   | Event
   | WireResponse
+  | { type: "mcp_status"; viewId: string; snapshot: McpSnapshot }
   | WireSessionState
   | {
       type: "interaction_requested";

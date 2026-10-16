@@ -132,6 +132,7 @@ test("builtins filter by command name, keep draft unchanged and stay usable duri
     const options = screen.getByRole("option").all();
     expect(options.map((item) => item.element().textContent)).toEqual([
       "/goalContinue until the goal is complete or blocked",
+      "/mcpView MCP server statusLoading",
       "/planPlan mode• On",
       "reviewReview changesProject",
     ]);

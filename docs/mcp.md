@@ -139,7 +139,7 @@ MCP Host 订阅协议通知 `notifications/tools/list_changed`，按 server 和�
 
 Session 暴露 `mcpServers()`、`authenticateMcp(name)`、`clearMcpAuth(name)`、`reconnectMcp(name)`；类型与取消契约以[公共 Session 声明](../packages/agent/src/session/index.ts)和[共享状态类型](../packages/shared/src/mcp.ts)为准。状态中的 `error` 保留原始英文消息；已知 Agent Core 错误另带 `errorData`，Frontend 用它按 locale 呈现。
 
-`mcpServers()` 返回独立副本 `McpSnapshot`，包含 `servers` 与配置文件级 `configErrors`。服务器记录提供生效配置的 `scope`、`configPath`、HTTP `url` 或 stdio `command`，以及真实 MCP 工具的协议名称、完整描述和原始输入 JSON Schema。URL 保留环境变量配置表达式，移除 userinfo、query 和 fragment；快照不包含 headers、env、args、clientSecret 或 MCP Credential。pending/failed/needs-auth 的工具数组为空，`toolCount` 与真实工具数组一致。损坏文件记录来源、路径和错误；缺失文件不算错误，其他合法来源仍可使用，Run 保持 fail-open 和现有警告行为。
+`mcpServers()` 返回独立副本 `McpSnapshot`，包含 `servers` 与配置文件级 `configErrors`。服务器记录提供生效配置的 `scope`、`configPath`、HTTP `url` 或 stdio `command`，以及真实 MCP 工具的协议名称、完整描述和原始输入 JSON Schema。URL 保留环境变量配置表达式，移除 userinfo、query 和 fragment；快照不包含 headers、env、args、clientSecret 或 MCP Credential。pending/failed/needs-auth/project-required 的工具数组为空，`toolCount` 与真实工具数组一致。损坏文件记录来源、路径和错误；缺失文件不算错误，其他合法来源仍可使用，Run 保持 fail-open 和现有警告行为。
 
 普通快照不等待连接完成，返回项目视图中共享连接的最新状态，包括 Run 连接、同一 Run 授权或失效和管理操作。查询重新读取完整配置，同配置并发读取合并，已有连接继续复用；状态查询不再创建随后关闭的独立探测连接。调用方修改返回值不会改变 Host、Session 或模型工具声明。`mcpServers({ refresh: true })` 提供空闲时的显式刷新并等待连接落定，并发刷新复用在途请求；它不自动启动 OAuth 或更改 MCP Credential。Run 中显式刷新及三个管理方法返回 busy 错误。Session 关闭取消本视图的等待与管理交互，共享连接保留给其他租约；晚到读取不能覆盖较新的连接配置。
 
@@ -150,3 +150,11 @@ Frontend 提供 `onMcpAuth` 以显示 Interaction；没有回调时主动登录�
 原生认证工具挂起时 close/reopen 会按当前信任和精确 endpoint／headers 配置重新发起授权，替换 listener、state 与 verifier；旧 callback 不能完成新授权。code exchange 开始后仍采用 unsafe 中断语义，不能自动重发已使用或结果未知的 code。请求身份与取消契约见 [Agent Core pending interactions](../packages/agent/README.md#pending-interactions)。
 
 `createMcpHost({ configuration, applicationVersion })` 在后台预热用户全局配置，`ready` 可等待预热完成。`acquire` 创建项目视图并绑定调用方的配置读取、事件和 Interaction；Session 负责租约收尾，Frontend 负责 Host 的进程生命周期。MCP transport 创建失败和 Host close 均释放已建立的资源。`SessionOptions.initializationSignal` 只约束打开过程，不取消其他 Session 的共享 transport 或已接受的后台工作。
+
+### 无 Session 的状态视图
+
+`McpHost.inspect({ homeDir, settings, cwd?, persistence? })` 只重读配置并返回已有连接的快照，不取得租约、不启动进程。无项目时只返回用户来源，引用 `${RUKIE_PROJECT_DIR}` 的条目用 `project-required` 表示「选择项目后启动」，工具数为 0；它是配置等待项目的展示状态，不参与连接重试。`observe(input, onChange)` 按相同规则订阅现有 Host 变化，调用方关闭 observer 后不再接收推送。`acquire({ noProject: true, ... })` 可租用无项目视图中的全局连接，仍不启动这些等待项目的条目。以上接口共用 Host 的连接表。
+
+桌面与 Web 通过 `mcp.status` 查询状态，使用 `projectId`、`sessionId` 中至多一个标识；无标识表示无项目。`mcp.subscribe` 另接收调用方生成的 `viewId`，默认取得活动视图租约；`active: false` 只观察现有状态。二者均不打开 Session、不要求模型或供应商凭证，也不读取 Hooks。服务按注册 Project 和持久化 Session 的实际目录、信任解析视图，推送 `{ type: "mcp_status", viewId, snapshot }`。同一 socket 的同名 viewId 替换旧订阅；`mcp.unsubscribe`、socket 关闭及宿主替换释放订阅和租约，晚到读取不会取得租约。客户端重连重新订阅当前视图。
+
+主输入框的 `/mcp` 一级行显示实时汇总，零值分段隐藏，初次加载显示加载状态。进入后按服务名过滤并显示来源、状态、工具数与独立配置错误；所有状态行都是只读的不可用选项，不发送或插入会话。选择 Project 或查看 `/mcp` 时租用活动视图，切换 Project、离开查看或关闭客户端时释放；无项目的普通摘要只订阅现有全局状态。Esc 从详情回到上级，再按一次清空并关闭；删除命令前缀也回上级。列表沿用组合框的焦点和键盘语义。

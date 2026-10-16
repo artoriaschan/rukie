@@ -4,6 +4,7 @@ import {
   readMcpConfiguration,
   configurationSignature,
   type McpConfigurationEntry,
+  type McpConfigurationOptions,
 } from "./configuration.ts";
 import { createUserVisibleError, type CustomSessionEvent, type McpSnapshot } from "@rukie/shared";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
@@ -17,9 +18,11 @@ type Caller = Omit<
 > &
   Pick<ConnectOptions, "getOrigin">;
 
-/** Session-specific interactions and presentation, independent of transport lifetime. */
+/** Caller-specific interactions and presentation, independent of transport lifetime. */
 export interface McpViewOptions {
   applicationVersion?: string;
+  /** Status-only Frontends may lease the global view without a selected project. */
+  noProject?: boolean;
   connectOptions(): Caller;
   getRunning(): boolean;
   getBusy?(): boolean;
@@ -67,6 +70,7 @@ export function createMcpHost(options: McpHostOptions = {}) {
   const resources = new Set<Entry>();
   const current = new Map<string, Entry>();
   const views = new Set<ReturnType<typeof acquire>>();
+  const statusObservers = new Set<() => void>();
   const reading = new Map<string, ReturnType<typeof readMcpConfiguration>>();
   let closed = false;
   let closing: Promise<void> | undefined;
@@ -89,6 +93,7 @@ export function createMcpHost(options: McpHostOptions = {}) {
     return pending;
   };
   const notify = (entry: Entry, event?: CustomSessionEvent) => {
+    for (const observer of statusObservers) observer();
     for (const view of views) if (view.includes(entry)) view.changed(event);
   };
   const retire = (entry: Entry) => {
@@ -183,6 +188,41 @@ export function createMcpHost(options: McpHostOptions = {}) {
       if (entry.scope === "global" && !desired.has(entry.name)) void retire(entry);
     return configuration;
   };
+  const describe = (
+    name: string,
+    config: McpConfigurationEntry,
+  ): McpSnapshot["servers"][number] => {
+    const value = config.value;
+    const http = typeof value === "object" && value !== null && "url" in value;
+    return {
+      name,
+      scope: config.scope,
+      configPath: config.configPath,
+      transport: http ? "http" : "stdio",
+      status: config.connectionScope === "project-required" ? "project-required" : "pending",
+      auth: "none",
+      tools: [],
+      toolCount: 0,
+    };
+  };
+  /** Read existing connection facts without obtaining a lease or starting a transport. */
+  const inspect = async (input: McpConfigurationOptions): Promise<McpSnapshot> => {
+    assertOpen();
+    const configuration = await read(input);
+    assertOpen();
+    return {
+      configErrors: structuredClone(configuration.configErrors),
+      servers: [...configuration.servers]
+        .map(([name, config]) => {
+          const key = configurationSignature([config.connectionScope, name, config.value]);
+          const entry = entries.get(key);
+          return (
+            (!entry?.retired && entry?.connections.snapshot().servers[0]) || describe(name, config)
+          );
+        })
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  };
   function acquire(viewOptions: McpViewOptions) {
     assertOpen();
     const lease = {};
@@ -198,6 +238,7 @@ export function createMcpHost(options: McpHostOptions = {}) {
     let getOrigin: ConnectOptions["getOrigin"];
     const callerOptions = () => ({ ...viewOptions.connectOptions(), getOrigin });
     let configErrors: McpSnapshot["configErrors"] = [];
+    let deferred: McpSnapshot["servers"] = [];
     let closingView: Promise<void> | undefined;
     let released = false;
     let stopping = false;
@@ -208,9 +249,10 @@ export function createMcpHost(options: McpHostOptions = {}) {
       if (released || closed) throw new Error("MCP view has been closed.");
     };
     const snapshot = (): McpSnapshot => ({
-      servers: [...selected.values()]
-        .flatMap((entry) => entry.connections.snapshot().servers)
-        .sort((a, b) => a.name.localeCompare(b.name)),
+      servers: [
+        ...deferred,
+        ...[...selected.values()].flatMap((entry) => entry.connections.snapshot().servers),
+      ].sort((a, b) => a.name.localeCompare(b.name)),
       configErrors: structuredClone(configErrors),
     });
     const rebuild = () => {
@@ -276,11 +318,19 @@ export function createMcpHost(options: McpHostOptions = {}) {
       return (refreshing ??= (async () => {
         const caller = viewOptions.connectOptions();
         await refreshGlobals(caller);
-        const configuration = await read(caller);
+        const configuration = await read({
+          ...caller,
+          ...(viewOptions.noProject ? { cwd: undefined } : {}),
+        });
         ensureOpen();
         configErrors = configuration.configErrors;
         const next = new Map<string, Entry>();
+        deferred = [];
         for (const [name, config] of configuration.servers) {
+          if (config.connectionScope === "project-required") {
+            deferred.push(describe(name, config));
+            continue;
+          }
           const entry = obtain(name, config, caller);
           entry.leases.add(lease);
           next.set(name, entry);
@@ -313,6 +363,7 @@ export function createMcpHost(options: McpHostOptions = {}) {
         }
         ensureOpen();
         changed();
+        for (const observer of statusObservers) observer();
       })().finally(() => {
         refreshing = undefined;
       }));
@@ -583,10 +634,43 @@ export function createMcpHost(options: McpHostOptions = {}) {
     : Promise.resolve();
   return {
     acquire,
+    inspect,
+    /** Observe current facts without acquiring any connection lease. Configuration is read on each change. */
+    observe(input: McpConfigurationOptions, onChange: (snapshot: McpSnapshot) => void) {
+      assertOpen();
+      let disposed = false;
+      let revision = 0;
+      let adopted: McpSnapshot | undefined;
+      const changed = () => {
+        const currentRevision = ++revision;
+        void inspect(input)
+          .then((snapshot) => {
+            if (
+              !closed &&
+              !disposed &&
+              currentRevision === revision &&
+              !isDeepStrictEqual(adopted, snapshot)
+            ) {
+              adopted = structuredClone(snapshot);
+              onChange(snapshot);
+            }
+          })
+          .catch(() => {});
+      };
+      statusObservers.add(changed);
+      return {
+        snapshot: () => inspect(input),
+        close: async () => {
+          disposed = true;
+          statusObservers.delete(changed);
+        },
+      };
+    },
     ready,
     close(): Promise<void> {
       if (closing) return closing;
       closed = true;
+      statusObservers.clear();
       return (closing = (async () => {
         await Promise.allSettled([...views].map((view) => view.close()));
         await Promise.allSettled(

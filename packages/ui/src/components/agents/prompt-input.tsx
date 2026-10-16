@@ -52,6 +52,8 @@ export interface PromptInputProps extends Omit<
   insertionActions?: readonly ComposerInsertionAction[];
   insertionLabel?: string;
   onSkillsOpen?: () => void;
+  mcpSnapshot?: import("@rukie/shared").McpSnapshot;
+  onMcpOpenChange?: (open: boolean) => void;
   placeholder?: string;
   value?: string;
   defaultValue?: string;
@@ -100,6 +102,8 @@ export function PromptInput({
   insertionActions,
   insertionLabel,
   onSkillsOpen,
+  mcpSnapshot,
+  onMcpOpenChange,
   placeholder: placeholderProp,
   "aria-label": ariaLabelProp,
   onKeyDown,
@@ -116,11 +120,23 @@ export function PromptInput({
   const [internalValue, setInternalValue] = useState(defaultValue);
   const [internalModel, setInternalModel] = useState(defaultModel ?? models[0]?.value);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [mcpViewing, setMcpViewing] = useState(false);
+  const mcpOpenChange = useCallback(
+    (open: boolean) => {
+      setMcpViewing(open);
+      onMcpOpenChange?.(open);
+    },
+    [onMcpOpenChange],
+  );
   const currentValue = value ?? internalValue;
   const currentModelValue = model ?? internalModel;
   const currentModel = models.find((option) => option.value === currentModelValue);
   const canSubmit =
-    (Boolean(currentValue.trim()) || hasExternalContent) && !disabled && !loading && !submitting;
+    (Boolean(currentValue.trim()) || hasExternalContent) &&
+    !disabled &&
+    !loading &&
+    !submitting &&
+    !mcpViewing;
 
   const resizeEditor = useCallback(() => {
     const editor = editorRef.current;
@@ -172,7 +188,7 @@ export function PromptInput({
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     const prompt = currentValue.trim();
-    if ((!prompt && !hasExternalContent) || disabled || loading || submitting) return;
+    if ((!prompt && !hasExternalContent) || disabled || loading || submitting || mcpViewing) return;
 
     onSubmit?.(prompt, currentModelValue);
     if (value === undefined) setInternalValue("");
@@ -226,6 +242,8 @@ export function PromptInput({
         onInsertionOpenChange={setActionsOpen}
         skills={skills}
         onSkillsOpen={onSkillsOpen}
+        mcpSnapshot={mcpSnapshot}
+        onMcpOpenChange={mcpOpenChange}
         value={currentValue}
         disabled={disabled}
         placeholder={placeholder}

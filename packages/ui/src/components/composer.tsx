@@ -9,6 +9,7 @@ import {
   Square,
   Target,
   ListTodo,
+  Plug,
 } from "lucide-react";
 import {
   PERMISSION_MODES,
@@ -19,6 +20,7 @@ import {
   type WireSkill,
   type ContextReport,
 } from "@rukie/shared";
+import { mcpSummary } from "./agents/mcp-status";
 import { PromptInput } from "./agents/prompt-input";
 import { Button } from "./motion/button/base";
 import { Tooltip } from "./motion/tooltip";
@@ -41,6 +43,8 @@ export interface ComposerProps {
   draft: string;
   skills?: readonly WireSkill[];
   onSkillsOpen?: () => void;
+  mcpSnapshot?: import("@rukie/shared").McpSnapshot;
+  onMcpOpenChange?: (open: boolean) => void;
   images: PromptImages;
   onDraft: (text: string) => void;
   onImages: (images: PromptImages | ((previous: PromptImages) => PromptImages)) => void;
@@ -154,8 +158,19 @@ export function Composer(props: ComposerProps) {
         value={props.draft}
         skills={props.skills}
         onSkillsOpen={props.onSkillsOpen}
+        mcpSnapshot={props.mcpSnapshot}
+        onMcpOpenChange={props.onMcpOpenChange}
         insertionLabel={t("app.attach")}
         insertionActions={[
+          {
+            name: "/mcp",
+            label: "/mcp",
+            group: "command",
+            description: t("app.mcp-description"),
+            stateLabel: mcpSummary(props.mcpSnapshot, t),
+            icon: <Plug aria-hidden="true" />,
+            onSelect: () => {},
+          },
           {
             name: t("app.attach"),
             label: t("app.attach"),

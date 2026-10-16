@@ -75,3 +75,5 @@ Session 摘要的必填 `projectId: string | null` 读取应用数据根 `app.sq
 `worktrees.list` 列出已记录且目录仍存在的工作树。`worktree.delete { worktreeId }` 在绑定 Session 的命令、执行、排队、后台工作、Interaction 或外部写入 lease 活跃时返回 `session_busy`；server 准入锁与 Agent Core 实际写者租约一直覆盖 Git 删除、Session Move 和绑定发布。成功执行 `git worktree remove --force`（丢弃未提交改动、保留分支），清除记录与 `worktreeId` 并把绑定 Session 移到 Project 当前主目录。已删除 Session / Project 的工作树仍可单独删除。Git 删除失败返回带摘要的 `worktree_failed`，记录与绑定保留，可恢复源仓库后重试；若 Git 已删除目录但后续 Session Move 或绑定存储失败，记录仍保留；下一次打开（包括重启后）检测目录缺失，先取得写者租约、同步主目录并清除 `worktreeId`，再执行 Resume，无需手动刷新。
 
 `worktrees.refresh` 删除目录已不存在的记录，清除受影响 Session 的 `worktreeId`；下一次打开才同步主目录。刷新对存在的源仓库执行 `git worktree prune`，源仓库缺失时跳过 Git 操作。刷新同样保护受影响 Session 的准入，并返回现存工作树列表；它不会删除仍存在的工作树或派生分支。
+
+MCP 状态查询和订阅独立于 Session 执行权。`mcp.status` 不启动连接；`mcp.subscribe` 可只观察或取得活动项目视图，按 socket 和 viewId 持有，在取消、替换和连接关闭时释放。新会话页无需供应商凭证即可查看状态，Hooks 仍延迟解密。完整参数、状态和租约合同见 [MCP Frontend 接口](../../docs/mcp.md#无-session-的状态视图)。

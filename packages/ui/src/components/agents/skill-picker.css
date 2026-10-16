@@ -107,3 +107,22 @@
 [data-checked="true"] .composer-insertion-switch > span {
   background: var(--primary-foreground);
 }
+
+.composer-insertion-option[data-mcp-row] {
+  opacity: 1;
+}
+
+/* Radix's intrinsic table wrapper must fit this fixed-width insertion surface. */
+.composer-insertion-scroll [data-slot="scroll-area-viewport"] > div {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.composer-insertion-option[data-mcp-row] .composer-insertion-scope {
+  max-width: calc(100% - 36px);
+}
+@container (width < 672px) {
+  .composer-insertion-option[data-mcp-row] .composer-insertion-scope {
+    max-width: calc(100% - 28px);
+  }
+}

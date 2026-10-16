@@ -56,7 +56,7 @@ Electron 与浏览器宿主都提供完整 `modelServices`，左侧导航开放�
 
 ## 主题角色
 
-主输入框的「+」与开头输入 `/` 共用插入列表。「+」显示附件、内置命令与全部技能；`/` 显示按名称过滤的内置命令和技能，方向键、Enter、Tab 或点击选择，焦点留在组合框，Esc 关闭。`/goal` 与 `/plan` 沿用目标和计划模式的可用性、开关及状态；选择内置命令保留输入，选择技能从「+」插到开头并保留正文。「+」打开时输入开头的 `/` 会切换入口，其他文字输入关闭列表；Run 进行中仍可插入技能或使用可用命令。技能标记使用 Lexical token 节点并在发送时序列化为既有 `/名称 正文`，只有标记也可发送；普通斜杠文本仍交给 Agent Core。列表使用 `skills.list` 的生效目录与来源，首次加载及切换 Project / Session 时刷新，每次打开先展示对应缓存再后台刷新。技能标记按所选范围复制为字面的 Markdown 链接，内部剪贴板保留节点；粘贴在开头时还原或替换标记，其他位置保留普通文本。历史根据持久化的 Skill Invocation 显示标记，复制时用当前目录补路径，技能已删除则退回 `/名称`。列表和标记的视觉规则见 [DESIGN.md](../../DESIGN.md#composer-skill-insertion)。
+主输入框的「+」与开头输入 `/` 共用插入列表。「+」显示附件、内置命令与全部技能；`/` 显示按名称过滤的内置命令和技能，方向键、Enter、Tab 或点击选择，焦点留在组合框，Esc 关闭。`/goal` 与 `/plan` 沿用目标和计划模式的可用性、开关及状态；选择 `/goal`、`/plan` 保留输入，选择技能从「+」插到开头并保留正文。「+」打开时输入开头的 `/` 会切换入口，其他文字输入关闭列表；Run 进行中仍可插入技能或使用可用命令。技能标记使用 Lexical token 节点并在发送时序列化为既有 `/名称 正文`，只有标记也可发送；普通斜杠文本仍交给 Agent Core。列表使用 `skills.list` 的生效目录与来源，首次加载及切换 Project / Session 时刷新，每次打开先展示对应缓存再后台刷新。技能标记按所选范围复制为字面的 Markdown 链接，内部剪贴板保留节点；粘贴在开头时还原或替换标记，其他位置保留普通文本。历史根据持久化的 Skill Invocation 显示标记，复制时用当前目录补路径，技能已删除则退回 `/名称`。列表和标记的视觉规则见 [DESIGN.md](../../DESIGN.md#composer-skill-insertion)。
 
 `theme.css` 是共享语义色、结构色与具名阴影的唯一 owner。Light 的主文字为 `#171717`，共享 muted/surface 为 `#f5f5f5`；Dark 的共享 background/card/composer 为 `#212121`、muted/popover 为 `#2f2f2f`。Transcript 继续使用独立的 `layout-content`（Light `#ffffff` / Dark `#000000`），不随共享画布迁移。System 媒体偏好和显式 `.dark` 由同一组声明解析，CSS 首帧即提供正确颜色。覆盖层使用 `--shadow-overlay`，输入框使用 `--shadow-composer`；`text-ui-*` 拥有行高，caption 默认 13px / 18px。设置页当前保留独立的局部表面色。完整角色和可访问颜色配对见 [DESIGN.md](../../DESIGN.md#themes-and-semantic-colors)。
 
@@ -85,3 +85,5 @@ The conversation Plus opens the Pencil C09 attachment menu and keeps image picki
 设置中的「外观」提供跟随系统、浅色和深色三种主题。偏好只保存在当前 renderer 的 `localStorage`（`rukie.appearance`），刷新或重启后恢复；缺失或非法值按跟随系统处理，存储受限时当前页面仍可切换。入口在 React 首次绘制前应用明确的主题类，跟随系统时持续响应系统变化，强制浅色或深色时忽略系统变化。此偏好不进入 Agent Core 或 user settings。
 
 Electron 通过枚举限定的 `setThemeSource` host 能力同步原生界面主题，窗口底色跟随壳层表面；浏览器 host 对应方法为空操作。renderer 初始化前的原生窗口仍采用系统主题，首帧前应用保证针对产品内容。外观 owner 在 renderer 热替换时释放系统监听；原生宿主在关闭或启动失败时释放窗口主题监听。
+
+`/mcp` 使用同一插入列表显示 Host 的实时状态汇总和只读服务行。App 按 Project / Session 缓存快照；无项目时只观察全局状态，选中 Project 或进入详情时取得视图租约，切换范围、退出详情或断开连接时释放，重连恢复当前订阅。查询和订阅不要求已有 Session 或模型。详情使用不可用选项与组合框当前项，Enter/Tab 不发送，Esc 返回上级再清空关闭。协议和状态归属见 [MCP Frontend 接口](../../docs/mcp.md#无-session-的状态视图)。

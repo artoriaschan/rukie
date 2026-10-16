@@ -29,6 +29,13 @@ export function createWireClient(host: Pick<DesktopHost, "getConnection">) {
   let reconnecting = false;
   let connecting: Promise<void> | undefined;
   const subscriptions = new Set<string>();
+  const mcpSubscriptions = new Map<
+    string,
+    {
+      target: { projectId?: string; sessionId?: never } | { sessionId?: string; projectId?: never };
+      active: boolean;
+    }
+  >();
   const subscriptionListeners = new Set<(sessionId: string, busy: boolean) => void>();
   const subscribeSession = async (sessionId: string) => {
     try {
@@ -115,6 +122,8 @@ export function createWireClient(host: Pick<DesktopHost, "getConnection">) {
           setState("connected");
           reconnecting = false;
           for (const sessionId of subscriptions) void subscribeSession(sessionId).catch(() => {});
+          for (const [viewId, { target, active }] of mcpSubscriptions)
+            void request({ type: "mcp.subscribe", viewId, active, ...target }).catch(() => {});
           resolve();
         });
         current.addEventListener("error", () => reject(new WireError("disconnected")), {
@@ -180,6 +189,21 @@ export function createWireClient(host: Pick<DesktopHost, "getConnection">) {
     unsubscribe: async (sessionId: string) => {
       subscriptions.delete(sessionId);
       if (state === "connected") await request({ type: "session.unsubscribe", sessionId });
+    },
+    subscribeMcp: async (
+      viewId: string,
+      target:
+        | { projectId?: string; sessionId?: never }
+        | { sessionId?: string; projectId?: never } = {},
+      active = true,
+    ) => {
+      mcpSubscriptions.set(viewId, { target, active });
+      if (state === "connected")
+        return request({ type: "mcp.subscribe", viewId, active, ...target });
+    },
+    unsubscribeMcp: async (viewId: string) => {
+      mcpSubscriptions.delete(viewId);
+      if (state === "connected") await request({ type: "mcp.unsubscribe", viewId });
     },
     hostState: (next: ConnectionState) => {
       if (next === "disconnected") close();

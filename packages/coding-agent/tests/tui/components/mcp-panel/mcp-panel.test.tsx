@@ -703,3 +703,17 @@ test.each([
     expect(terminal.screen().join("\n")).toContain(label);
   },
 );
+
+test.each([
+  ["en", "select a project to start"],
+  ["zh", "选择项目后启动"],
+] as const)("deferred project MCP status is localized (%s)", async (locale, label) => {
+  const deferred = {
+    ...server("project-dependent"),
+    status: "project-required" as const,
+    toolCount: 0,
+    tools: [],
+  };
+  const terminal = await mount({ locale, page: { kind: "server", server: deferred } });
+  expect(terminal.screen().join("\n")).toContain(label);
+});

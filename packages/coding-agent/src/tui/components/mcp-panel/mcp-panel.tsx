@@ -385,9 +385,9 @@ export function McpPanel(props: McpPanelProps) {
                         <>
                           {" "}
                           ·{" "}
-                          {row.status === "pending" ? (
+                          {row.status === "pending" || row.status === "project-required" ? (
                             <ThemedText color="inactive">
-                              {t("mcp.panel.status.pending")}
+                              {t(`mcp.panel.status.${row.status}`)}
                             </ThemedText>
                           ) : row.status === "needs-auth" ? (
                             <ThemedText color="warning">⚠</ThemedText>
