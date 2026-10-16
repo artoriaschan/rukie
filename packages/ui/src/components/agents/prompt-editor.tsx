@@ -8,7 +8,7 @@ import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { $createParagraphNode, $createTextNode, $getRoot, SKIP_DOM_SELECTION_TAG } from "lexical";
 import { type HTMLAttributes, type Ref, useLayoutEffect } from "react";
 import { SkillPicker, type SkillPickerProps } from "./skill-picker";
-import { SkillTokenNode, $serializePrompt } from "./skill-token";
+import { SkillTokenNode, $serializePrompt, registerSkillTokenInvariant } from "./skill-token";
 import { SkillClipboard } from "./skill-clipboard";
 
 interface PromptEditorProps extends HTMLAttributes<HTMLDivElement> {
@@ -29,6 +29,7 @@ interface PromptEditorProps extends HTMLAttributes<HTMLDivElement> {
 
 function DraftPlugin({ value, disabled }: { value: string; disabled?: boolean }) {
   const [editor] = useLexicalComposerContext();
+  useLayoutEffect(() => registerSkillTokenInvariant(editor), [editor]);
   useLayoutEffect(() => {
     editor.setEditable(!disabled);
   }, [editor, disabled]);

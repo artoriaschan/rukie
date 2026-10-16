@@ -5994,6 +5994,90 @@ test("skills.list works before Session creation and resolves Project overrides",
   }
 });
 
+test("split-root skill catalog invokes the same effective skill in persisted wire history", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-skill-roots-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const dataRoot = join(homeDir, "data");
+    const configurationRoot = join(homeDir, "configuration");
+    const primary = join(homeDir, "project");
+    const write = (path: string, name: string, content: string) =>
+      Bun.write(
+        join(path, name, "SKILL.md"),
+        `---\nname: ${name}\ndescription: ${content}\n---\n${content}`,
+      );
+    await write(join(configurationRoot, "skills"), "configuration-only", "WRONG ROOT");
+    await write(join(homeDir, ".agents/skills"), "terminal-only", "TERMINAL ROOT");
+    await write(join(dataRoot, "skills"), "review", "USER ROOT");
+    await write(join(primary, ".agents/skills"), "review", "PROJECT SHADOW");
+    const server = await owner.acquire(
+      () =>
+        startServerImpl({
+          homeDir,
+          dataRoot,
+          configurationRoot,
+          sessionOptions: fakeModel([fauxAssistantMessage("done"), fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    let client = await connect(server, "app://rukie", owner);
+    const global = (await client.command("skills.list")).result;
+    expect(global).toEqual([
+      {
+        name: "review",
+        description: "USER ROOT",
+        scope: "user",
+        filePath: join(dataRoot, "skills/review/SKILL.md"),
+      },
+    ]);
+    const project = (
+      await client.command("project.create", {
+        name: "Project",
+        directories: [primary],
+        trusted: true,
+      })
+    ).result as { id: string };
+    for (const projectId of [null, project.id]) {
+      const catalog = (await client.command("skills.list", projectId ? { projectId } : {}))
+        .result as { name: string; filePath: string }[];
+      expect(catalog).toHaveLength(1);
+      const { sessionId } = (
+        await client.command("session.create", {
+          project: projectId,
+          text: `/${catalog[0]!.name} inspect`,
+        })
+      ).result as { sessionId: string };
+      await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+      const history = await connect(server, "app://rukie", owner);
+      await history.command("session.subscribe", { sessionId });
+      const snapshot = await history.next(
+        (message) => message.type === "snapshot" && message.sessionId === sessionId,
+      );
+      client = history;
+      const messages: unknown = snapshot.messages;
+      if (!Array.isArray(messages)) throw new Error("Missing wire history messages");
+      const prompt: unknown = messages.find(
+        (message: unknown) =>
+          typeof message === "object" && message !== null && "skillInvocation" in message,
+      );
+      if (typeof prompt !== "object" || prompt === null || !("skillInvocation" in prompt))
+        throw new Error("Missing persisted Skill Invocation");
+      expect(prompt).toMatchObject({
+        role: "user",
+        content: [{ type: "text", text: "/review inspect" }],
+      });
+      expect(prompt.skillInvocation).toContain(`location="${catalog[0]!.filePath}"`);
+      expect(prompt.skillInvocation).toContain(projectId ? "PROJECT SHADOW" : "USER ROOT");
+    }
+  } finally {
+    await owner.close();
+  }
+});
+
 test("MCP views inspect without a Session or connection and push live leased status", async () => {
   const { mcpOAuthServer } = await import("../../agent/tests/helpers/mcp-oauth-server.ts");
   const owner = ownResources();

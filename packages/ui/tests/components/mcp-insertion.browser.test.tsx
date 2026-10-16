@@ -59,6 +59,22 @@ test("MCP summary enters read-only live status, filters and exits without sendin
         }),
       )
       .toBeVisible();
+    const assertMenuRow = (row: Element, cursor: string) => {
+      const previous = document.documentElement.className;
+      try {
+        for (const theme of [false, true]) {
+          document.documentElement.classList.toggle("dark", theme);
+          document.documentElement.classList.toggle("light", !theme);
+          const style = getComputedStyle(row);
+          expect(style.borderRadius).toBe("8px");
+          expect(style.height).toBe("32px");
+          expect(style.cursor).toBe(cursor);
+        }
+      } finally {
+        document.documentElement.className = previous;
+      }
+    };
+    assertMenuRow(screen.getByRole("option").element(), "pointer");
     await userEvent.keyboard("{Tab}");
     await expect.poll(() => input.element().textContent).toBe("/mcp ");
     const connected = screen.getByRole("option", {
@@ -66,7 +82,7 @@ test("MCP summary enters read-only live status, filters and exits without sendin
       exact: true,
     });
     await expect.element(connected).toHaveAttribute("aria-disabled", "true");
-    expect(getComputedStyle(connected.element()).cursor).toBe("not-allowed");
+    assertMenuRow(connected.element(), "not-allowed");
     await expect
       .element(
         screen.getByRole("option", {

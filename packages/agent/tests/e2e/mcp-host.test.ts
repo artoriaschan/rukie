@@ -1,24 +1,29 @@
-import { expect, test } from "bun:test";
+import { ownMcpFixture } from "../helpers/owned-mcp.ts";
+import { expect, test, jest } from "bun:test";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { join } from "node:path";
 import { realpath } from "node:fs/promises";
-import { fauxAssistantMessage, getCurrentTools } from "@earendil-works/pi-ai";
+import { fileURLToPath } from "node:url";
+import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@earendil-works/pi-ai";
 import { createMcpHost, createSession } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 import { mcpOAuthServer } from "../helpers/mcp-oauth-server.ts";
 
 test("an injected MCP Host survives Session disposal and serves a later Session", async () => {
-  const dirs = await tempDirs();
-  const server = mcpOAuthServer({ authentication: false });
-  const host = createMcpHost();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
+  const server = owner.own(mcpOAuthServer({ authentication: false }), (resource) =>
+    resource.stop(),
+  );
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   try {
     await Bun.write(
       join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
-    const first = await createSession({
+    const first = await owner.open({
       ...dirs,
       ...fakeModel([fauxAssistantMessage("first")]),
       mcpHost: host,
@@ -32,7 +37,7 @@ test("an injected MCP Host survives Session disposal and serves a later Session"
       await first.close();
     }
     const fake = fakeModel([fauxAssistantMessage("later")]);
-    const second = await createSession({ ...dirs, ...fake, mcpHost: host });
+    const second = await owner.open({ ...dirs, ...fake, mcpHost: host });
     try {
       expect((await second.run("use MCP again")).success).toBe(true);
       expect(getCurrentTools(fake.contexts[0]!.messages).map((tool) => tool.name)).toContain(
@@ -55,22 +60,23 @@ test("an injected MCP Host survives Session disposal and serves a later Session"
       "MCP Host has been closed",
     );
   } finally {
-    await host.close();
-    await server.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("closing an injected MCP Host shuts down active resources and rejects later Runs", async () => {
-  const dirs = await tempDirs();
-  const server = mcpOAuthServer({ authentication: false });
-  const host = createMcpHost();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
+  const server = owner.own(mcpOAuthServer({ authentication: false }), (resource) =>
+    resource.stop(),
+  );
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   try {
     await Bun.write(
       join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
-    const session = await createSession({
+    const session = await owner.open({
       ...dirs,
       ...fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("unexpected")]),
       mcpHost: host,
@@ -86,18 +92,21 @@ test("closing an injected MCP Host shuts down active resources and rejects later
       await session.close();
     }
   } finally {
-    await host.close();
-    await server.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("two Sessions share global and same-project servers while different projects have their own instances", async () => {
-  const dirs = await tempDirs();
-  const other = await tempDirs();
-  const global = mcpOAuthServer({ authentication: false });
-  const project = mcpOAuthServer({ authentication: false });
-  const host = createMcpHost();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
+  const other = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
+  const global = owner.own(mcpOAuthServer({ authentication: false }), (resource) =>
+    resource.stop(),
+  );
+  const project = owner.own(mcpOAuthServer({ authentication: false }), (resource) =>
+    resource.stop(),
+  );
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   const sessions: Awaited<ReturnType<typeof createSession>>[] = [];
   try {
     await Bun.write(
@@ -111,7 +120,7 @@ test("two Sessions share global and same-project servers while different project
       );
     for (const cwd of [dirs.cwd, dirs.cwd, other.cwd])
       sessions.push(
-        await createSession({
+        await owner.open({
           ...dirs,
           cwd,
           ...fakeModel([]),
@@ -143,21 +152,19 @@ test("two Sessions share global and same-project servers while different project
     await sessions[1]!.mcpServers();
     expect(initialized(project)).toHaveLength(2);
   } finally {
-    await Promise.all(sessions.map((session) => session.close()));
-    await host.close();
-    await global.stop();
-    await project.stop();
-    await dirs.cleanup();
-    await other.cleanup();
+    await owner.close();
   }
 });
 
 test("the last project lease closes at the virtual 30 second deadline and reacquisition cancels retirement", async () => {
-  const { jest } = await import("bun:test");
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const deleted = Promise.withResolvers<void>();
-  const server = mcpOAuthServer({ authentication: false, onDelete: () => deleted.resolve() });
-  const host = createMcpHost();
+  const server = owner.own(
+    mcpOAuthServer({ authentication: false, onDelete: () => deleted.resolve() }),
+    (resource) => resource.stop(),
+  );
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   const acquire = () =>
     host.acquire({
       connectOptions: () => ({ ...dirs, settings: {}, trustProjectMcp: true }),
@@ -171,14 +178,14 @@ test("the last project lease closes at the virtual 30 second deadline and reacqu
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
     const first = acquire();
-    await first.prepareRun();
+    await owner.prepareRun(first);
     await first.snapshot();
-    jest.useFakeTimers();
+    owner.fakeTimers();
     await first.close();
     jest.advanceTimersByTime(29_999);
     expect(server.requests.some((request) => request.method === "DELETE")).toBe(false);
     const second = acquire();
-    await second.prepareRun();
+    await owner.prepareRun(second);
     await second.snapshot();
     jest.advanceTimersByTime(1);
     expect(server.requests.some((request) => request.method === "DELETE")).toBe(false);
@@ -189,30 +196,32 @@ test("the last project lease closes at the virtual 30 second deadline and reacqu
     await deleted.promise;
     expect(server.requests.filter((request) => request.method === "DELETE")).toHaveLength(1);
   } finally {
-    await host.close();
-    jest.useRealTimers();
-    await server.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("a replacement signature keeps the old active call alive and management reports server busy", async () => {
-  const { fauxToolCall } = await import("@earendil-works/pi-ai");
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const called = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
+  owner.unblock(() => release.resolve());
   const deleted = Promise.withResolvers<void>();
-  const old = mcpOAuthServer({
-    authentication: false,
-    beforeToolResponse: async () => {
-      called.resolve();
-      await release.promise;
-    },
-    onDelete: () => deleted.resolve(),
-  });
-  const latest = mcpOAuthServer({ authentication: false });
-  const host = createMcpHost();
-  const sessions: Awaited<ReturnType<typeof createSession>>[] = [];
+  const old = owner.own(
+    mcpOAuthServer({
+      authentication: false,
+      beforeToolResponse: async () => {
+        called.resolve();
+        await release.promise;
+      },
+      onDelete: () => deleted.resolve(),
+    }),
+    (resource) => resource.stop(),
+  );
+  const latest = owner.own(mcpOAuthServer({ authentication: false }), (resource) =>
+    resource.stop(),
+  );
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   try {
     const config = (url: string) =>
       Bun.write(
@@ -220,7 +229,7 @@ test("a replacement signature keeps the old active call alive and management rep
         JSON.stringify({ mcpServers: { srv: { url } } }),
       );
     await config(old.url);
-    const first = await createSession({
+    const first = await owner.open({
       ...dirs,
       ...fakeModel([
         fauxAssistantMessage(fauxToolCall("mcp__srv__echo", { text: "held" }), {
@@ -231,13 +240,12 @@ test("a replacement signature keeps the old active call alive and management rep
       mcpHost: host,
       permissionMode: "full-access",
     });
-    const second = await createSession({
+    const second = await owner.open({
       ...dirs,
       ...fakeModel([]),
       mcpHost: host,
       onMcpAuth: async () => ({ type: "cancelled" }),
     });
-    sessions.push(first, second);
     const running = first.run("call MCP");
     await called.promise;
     for (const operation of [
@@ -256,19 +264,15 @@ test("a replacement signature keeps the old active call alive and management rep
     await deleted.promise;
     expect(old.requests.filter((request) => request.method === "DELETE")).toHaveLength(1);
   } finally {
-    release.resolve();
-    await Promise.all(sessions.map((session) => session.close()));
-    await host.close();
-    await old.stop();
-    await latest.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("two Sessions share one authorization and initiator cancellation reaches both waiters", async () => {
-  const dirs = await tempDirs();
-  const server = mcpOAuthServer();
-  const host = createMcpHost();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
+  const server = owner.own(mcpOAuthServer(), (resource) => resource.stop());
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   const requested = Promise.withResolvers<AbortSignal>();
   let interactions = 0;
   const sessions: Awaited<ReturnType<typeof createSession>>[] = [];
@@ -279,7 +283,7 @@ test("two Sessions share one authorization and initiator cancellation reaches bo
     );
     for (let index = 0; index < 2; index++)
       sessions.push(
-        await createSession({
+        await owner.open({
           ...dirs,
           ...fakeModel([]),
           mcpHost: host,
@@ -302,17 +306,14 @@ test("two Sessions share one authorization and initiator cancellation reaches bo
     expect(interactions).toBe(1);
     expect((await sessions[1]!.mcpServers()).servers[0]?.status).toBe("needs-auth");
   } finally {
-    await Promise.all(sessions.map((session) => session.close()));
-    await host.close();
-    await server.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("global stdio warms in home or configured cwd while project substitutions choose project instances", async () => {
-  const { fileURLToPath } = await import("node:url");
-  const allocated = await tempDirs();
-  const second = await tempDirs();
+  const owner = ownMcpFixture();
+  const allocated = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
+  const second = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const dirs = {
     ...allocated,
     cwd: await realpath(allocated.cwd),
@@ -348,8 +349,10 @@ test("global stdio warms in home or configured cwd while project substitutions c
     }),
   );
   await Bun.write(join(dirs.cwd, ".mcp.json"), JSON.stringify({ mcpServers: { project: config } }));
-  const host = createMcpHost({ configuration: { homeDir: dirs.homeDir, settings: {} } });
-  const sessions: Awaited<ReturnType<typeof createSession>>[] = [];
+  const host = owner.own(
+    createMcpHost({ configuration: { homeDir: dirs.homeDir, settings: {} } }),
+    (resource) => resource.close(),
+  );
   const read = async () =>
     Value.Parse(
       Type.Array(
@@ -370,14 +373,13 @@ test("global stdio warms in home or configured cwd while project substitutions c
       [dirs.cwd, dirs.homeDir].sort(),
     );
     for (const cwd of [dirs.cwd, dirs.cwd, other.cwd]) {
-      const session = await createSession({
+      const session = await owner.open({
         ...dirs,
         cwd,
         ...fakeModel([]),
         trustProjectMcp: true,
         mcpHost: host,
       });
-      sessions.push(session);
       await session.mcpServers({ refresh: true });
     }
     const recorded = await read();
@@ -392,31 +394,33 @@ test("global stdio warms in home or configured cwd while project substitutions c
       recorded.filter((entry) => entry.project === undefined && entry.cwd === dirs.cwd),
     ).toHaveLength(2);
   } finally {
-    await Promise.all(sessions.map((session) => session.close()));
-    await host.close();
-    await dirs.cleanup();
-    await other.cleanup();
+    await owner.close();
   }
 });
 
 test("Host startup limits global HTTP initialization to eight concurrent servers", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const eight = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
+  owner.unblock(() => release.resolve());
   let initialized = 0;
   let active = 0;
   let maximum = 0;
-  const server = mcpOAuthServer({
-    authentication: false,
-    beforeInitialize: async () => {
-      initialized++;
-      active++;
-      maximum = Math.max(maximum, active);
-      if (initialized === 8) eight.resolve();
-      await release.promise;
-      active--;
-    },
-  });
+  const server = owner.own(
+    mcpOAuthServer({
+      authentication: false,
+      beforeInitialize: async () => {
+        initialized++;
+        active++;
+        maximum = Math.max(maximum, active);
+        if (initialized === 8) eight.resolve();
+        await release.promise;
+        active--;
+      },
+    }),
+    (resource) => resource.stop(),
+  );
   await Bun.write(
     join(dirs.homeDir, ".rukie/mcp.json"),
     JSON.stringify({
@@ -425,7 +429,10 @@ test("Host startup limits global HTTP initialization to eight concurrent servers
       ),
     }),
   );
-  const host = createMcpHost({ configuration: { homeDir: dirs.homeDir, settings: {} } });
+  const host = owner.own(
+    createMcpHost({ configuration: { homeDir: dirs.homeDir, settings: {} } }),
+    (resource) => resource.close(),
+  );
   try {
     await eight.promise;
     expect(initialized).toBe(8);
@@ -434,20 +441,27 @@ test("Host startup limits global HTTP initialization to eight concurrent servers
     expect(initialized).toBe(9);
     expect(maximum).toBe(8);
   } finally {
-    release.resolve();
-    await host.close();
-    await server.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("connection signatures ignore object order and replace an expanded environment value", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const deleted = Promise.withResolvers<void>();
-  const old = mcpOAuthServer({ authentication: false, onDelete: () => deleted.resolve() });
-  const latest = mcpOAuthServer({ authentication: false });
+  const old = owner.own(
+    mcpOAuthServer({ authentication: false, onDelete: () => deleted.resolve() }),
+    (resource) => resource.stop(),
+  );
+  const latest = owner.own(mcpOAuthServer({ authentication: false }), (resource) =>
+    resource.stop(),
+  );
   const previous = process.env.RUKIE_MCP_HOST_SIGNATURE_URL;
-  const host = createMcpHost();
+  owner.own(previous, (value) => {
+    if (value === undefined) delete process.env.RUKIE_MCP_HOST_SIGNATURE_URL;
+    else process.env.RUKIE_MCP_HOST_SIGNATURE_URL = value;
+  });
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   let session: Awaited<ReturnType<typeof createSession>> | undefined;
   const path = join(dirs.homeDir, ".rukie/mcp.json");
   try {
@@ -460,7 +474,7 @@ test("connection signatures ignore object order and replace an expanded environm
         },
       }),
     );
-    session = await createSession({ ...dirs, ...fakeModel([]), mcpHost: host });
+    session = await owner.open({ ...dirs, ...fakeModel([]), mcpHost: host });
     await session.mcpServers({ refresh: true });
     await Bun.write(
       path,
@@ -494,12 +508,29 @@ test("connection signatures ignore object order and replace an expanded environm
       ),
     ).toHaveLength(1);
   } finally {
-    if (previous === undefined) delete process.env.RUKIE_MCP_HOST_SIGNATURE_URL;
-    else process.env.RUKIE_MCP_HOST_SIGNATURE_URL = previous;
-    await session?.close();
+    await owner.close();
+  }
+});
+
+test("closing during global warmup settles ready without a shutdown warning", async () => {
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
+  const warnings: string[] = [];
+  const host = owner.own(
+    createMcpHost({
+      configuration: {
+        homeDir: dirs.homeDir,
+        settings: {},
+        onWarning: (warning) => warnings.push(warning),
+      },
+    }),
+    (resource) => resource.close(),
+  );
+  try {
     await host.close();
-    await old.stop();
-    await latest.stop();
-    await dirs.cleanup();
+    await host.ready;
+    expect(warnings).toEqual([]);
+  } finally {
+    await owner.close();
   }
 });

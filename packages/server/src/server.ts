@@ -1523,7 +1523,7 @@ export async function startServer(options: ServerOptions) {
           }
           return listSkills({
             homeDir: options.homeDir,
-            dataRoot: options.configurationRoot ?? directory,
+            dataRoot: options.dataRoot,
             cwd,
           });
         }

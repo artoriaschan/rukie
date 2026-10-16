@@ -1,3 +1,4 @@
+import { ownMcpFixture } from "../helpers/owned-mcp.ts";
 import { expect, test, jest } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -8,23 +9,31 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 import { mcpOAuthServer } from "../helpers/mcp-oauth-server.ts";
 
 test("Host snapshots expose pending without waiting for initialization and Run cancellation only cancels its wait", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
-  const server = mcpOAuthServer({
-    authentication: false,
-    beforeInitialize: async () => {
-      entered.resolve();
-      await release.promise;
-    },
-  });
-  const host = createMcpHost();
-  const view = host.acquire({
-    connectOptions: () => ({ ...dirs, settings: {} }),
-    getRunning: () => false,
-    onChange: () => {},
-    onEvent: () => {},
-  });
+  owner.unblock(() => release.resolve());
+  const server = owner.own(
+    mcpOAuthServer({
+      authentication: false,
+      beforeInitialize: async () => {
+        entered.resolve();
+        await release.promise;
+      },
+    }),
+    (resource) => resource.stop(),
+  );
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
+  const view = owner.own(
+    host.acquire({
+      connectOptions: () => ({ ...dirs, settings: {} }),
+      getRunning: () => false,
+      onChange: () => {},
+      onEvent: () => {},
+    }),
+    (resource) => resource.close(),
+  );
   try {
     await Bun.write(
       join(dirs.homeDir, ".rukie/mcp.json"),
@@ -40,19 +49,16 @@ test("Host snapshots expose pending without waiting for initialization and Run c
     await expect(waiting).rejects.toThrow("cancel this Run");
     expect(server.requests.some((request) => request.method === "DELETE")).toBe(false);
     release.resolve();
-    await view.prepareRun();
+    await owner.prepareRun(view);
     expect((await view.snapshot()).servers).toMatchObject([{ status: "connected", toolCount: 1 }]);
   } finally {
-    release.resolve();
-    await view.close();
-    await host.close();
-    await server.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 }, 1000);
 
 test("unexpected stdio close exposes pending, retries at virtual deadlines and stops after five early disconnects", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const manifest = join(dirs.homeDir, "manifest");
   await Bun.write(manifest, JSON.stringify({ tools: ["crash"] }));
   await Bun.write(
@@ -71,18 +77,21 @@ test("unexpected stdio close exposes pending, retries at virtual deadlines and s
       },
     }),
   );
-  const host = createMcpHost();
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   let changed = Promise.withResolvers<void>();
-  const view = host.acquire({
-    connectOptions: () => ({ ...dirs, settings: {} }),
-    getRunning: () => false,
-    onChange: () => changed.resolve(),
-    onEvent: () => {},
-  });
+  const view = owner.own(
+    host.acquire({
+      connectOptions: () => ({ ...dirs, settings: {} }),
+      getRunning: () => false,
+      onChange: () => changed.resolve(),
+      onEvent: () => {},
+    }),
+    (resource) => resource.close(),
+  );
   // The child really exits; only the supervisor's parent-process deadlines use virtual time.
   try {
-    await view.prepareRun();
-    jest.useFakeTimers();
+    await owner.prepareRun(view);
+    owner.fakeTimers();
     for (let attempt = 0; attempt < 6; attempt++) {
       changed = Promise.withResolvers<void>();
       await expect(
@@ -98,23 +107,21 @@ test("unexpected stdio close exposes pending, retries at virtual deadlines and s
       jest.advanceTimersByTime([1000, 2000, 4000, 8000, 16000][attempt]! - 1);
       expect((await view.snapshot()).servers[0]?.status).toBe("pending");
       jest.advanceTimersByTime(1);
-      await view.prepareRun();
+      await owner.prepareRun(view);
       expect((await view.snapshot()).servers[0]?.status).toBe("connected");
     }
     jest.advanceTimersByTime(30_000);
     expect((await view.snapshot()).servers[0]?.status).toBe("failed");
   } finally {
-    await view.close();
-    await host.close();
-    jest.useRealTimers();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test.each([false, true])(
   "same-name MCP description and schema changes reach the next Turn (child: %s)",
   async (child) => {
-    const dirs = await tempDirs();
+    const owner = ownMcpFixture();
+    const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
     const manifest = join(dirs.homeDir, "manifest");
     const write = (description: string) =>
       Bun.write(
@@ -144,20 +151,25 @@ test.each([false, true])(
         },
       }),
     );
-    const host = createMcpHost();
+    const host = owner.own(createMcpHost(), (resource) => resource.close());
     let changed = Promise.withResolvers<void>();
-    const view = host.acquire({
-      connectOptions: () => ({ ...dirs, settings: {} }),
-      getRunning: () => false,
-      onChange: (snapshot) => {
-        if (snapshot.servers[0]?.tools.find((tool) => tool.name === "echo")?.description === "new")
-          changed.resolve();
-      },
-      onEvent: () => {},
-    });
+    const view = owner.own(
+      host.acquire({
+        connectOptions: () => ({ ...dirs, settings: {} }),
+        getRunning: () => false,
+        onChange: (snapshot) => {
+          if (
+            snapshot.servers[0]?.tools.find((tool) => tool.name === "echo")?.description === "new"
+          )
+            changed.resolve();
+        },
+        onEvent: () => {},
+      }),
+      (resource) => resource.close(),
+    );
     let session: Awaited<ReturnType<typeof createSession>> | undefined;
     try {
-      await view.prepareRun();
+      await owner.prepareRun(view);
       const update = async () => {
         await write("new");
         await view.callHookTool("srv", "notify", {}, new AbortController().signal);
@@ -183,7 +195,7 @@ test.each([false, true])(
         fauxAssistantMessage("updated"),
         ...(child ? [fauxAssistantMessage("parent done")] : []),
       ]);
-      session = await createSession({
+      session = await owner.open({
         ...dirs,
         ...fake,
         mcpHost: host,
@@ -200,16 +212,14 @@ test.each([false, true])(
         parameters: { properties: { new: { type: "string" } } },
       });
     } finally {
-      await session?.close();
-      await view.close();
-      await host.close();
-      await dirs.cleanup();
+      await owner.close();
     }
   },
 );
 
 test("failed list_changed preserves the previous tools and warns, then a later notification atomically replaces them", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const manifest = join(dirs.homeDir, "manifest");
   await Bun.write(manifest, JSON.stringify({ tools: ["notify", "echo"] }));
   await Bun.write(
@@ -230,21 +240,24 @@ test("failed list_changed preserves the previous tools and warns, then a later n
   );
   const warned = Promise.withResolvers<string>();
   const updated = Promise.withResolvers<void>();
-  const host = createMcpHost();
-  const view = host.acquire({
-    connectOptions: () => ({
-      ...dirs,
-      settings: {},
-      onWarning: (message) => warned.resolve(message),
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
+  const view = owner.own(
+    host.acquire({
+      connectOptions: () => ({
+        ...dirs,
+        settings: {},
+        onWarning: (message) => warned.resolve(message),
+      }),
+      getRunning: () => false,
+      onChange: (snapshot) => {
+        if (snapshot.servers[0]?.tools.some((tool) => tool.name === "new")) updated.resolve();
+      },
+      onEvent: () => {},
     }),
-    getRunning: () => false,
-    onChange: (snapshot) => {
-      if (snapshot.servers[0]?.tools.some((tool) => tool.name === "new")) updated.resolve();
-    },
-    onEvent: () => {},
-  });
+    (resource) => resource.close(),
+  );
   try {
-    await view.prepareRun();
+    await owner.prepareRun(view);
     const original = await view.snapshot();
     await Bun.write(manifest, JSON.stringify({ tools: ["notify", "new"], failList: true }));
     await view.callHookTool("srv", "notify", {}, new AbortController().signal);
@@ -259,14 +272,13 @@ test("failed list_changed preserves the previous tools and warns, then a later n
       tools: [{ name: "notify" }, { name: "new" }],
     });
   } finally {
-    await view.close();
-    await host.close();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("thirty continuous healthy seconds reset recovery and cancelling a Run during backoff leaves recovery shared", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const manifest = join(dirs.homeDir, "manifest");
   await Bun.write(manifest, JSON.stringify({ tools: ["crash"] }));
   await Bun.write(
@@ -285,17 +297,20 @@ test("thirty continuous healthy seconds reset recovery and cancelling a Run duri
       },
     }),
   );
-  const host = createMcpHost();
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   let changed = Promise.withResolvers<void>();
-  const view = host.acquire({
-    connectOptions: () => ({ ...dirs, settings: {} }),
-    getRunning: () => false,
-    onChange: () => changed.resolve(),
-    onEvent: () => {},
-  });
+  const view = owner.own(
+    host.acquire({
+      connectOptions: () => ({ ...dirs, settings: {} }),
+      getRunning: () => false,
+      onChange: () => changed.resolve(),
+      onEvent: () => {},
+    }),
+    (resource) => resource.close(),
+  );
   try {
-    await view.prepareRun();
-    jest.useFakeTimers();
+    await owner.prepareRun(view);
+    owner.fakeTimers();
     const crash = async () => {
       changed = Promise.withResolvers<void>();
       await expect(
@@ -309,7 +324,7 @@ test("thirty continuous healthy seconds reset recovery and cancelling a Run duri
     controller.abort(new Error("cancel backoff wait"));
     await expect(waiting).rejects.toThrow("cancel backoff wait");
     jest.advanceTimersByTime(1000);
-    await view.prepareRun();
+    await owner.prepareRun(view);
     jest.advanceTimersByTime(29_999);
     await crash();
     jest.advanceTimersByTime(1000);
@@ -317,7 +332,7 @@ test("thirty continuous healthy seconds reset recovery and cancelling a Run duri
     jest.advanceTimersByTime(999);
     expect((await view.snapshot()).servers[0]?.status).toBe("pending");
     jest.advanceTimersByTime(1);
-    await view.prepareRun();
+    await owner.prepareRun(view);
     jest.advanceTimersByTime(29_999);
     expect((await view.snapshot()).servers[0]?.status).toBe("connected");
     jest.advanceTimersByTime(1);
@@ -325,20 +340,19 @@ test("thirty continuous healthy seconds reset recovery and cancelling a Run duri
     jest.advanceTimersByTime(999);
     expect((await view.snapshot()).servers[0]?.status).toBe("pending");
     jest.advanceTimersByTime(1);
-    await view.prepareRun();
+    await owner.prepareRun(view);
     expect((await view.snapshot()).servers[0]?.status).toBe("connected");
   } finally {
-    await view.close();
-    await host.close();
-    jest.useRealTimers();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("list_changed notifications serialize whole paginated discovery and publish no partial generation", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
+  owner.unblock(() => release.resolve());
   const updated = Promise.withResolvers<void>();
   let requests = 0;
   let listing = false;
@@ -346,46 +360,52 @@ test("list_changed notifications serialize whole paginated discovery and publish
   let active = 0;
   const old = { name: "old", description: "old", inputSchema: { type: "object" } };
   const latest = { name: "new", description: "new", inputSchema: { type: "object" } };
-  const server = mcpOAuthServer({
-    authentication: false,
-    notifyToolsChanged: 2,
-    listTools: async (cursor) => {
-      requests++;
-      active++;
-      maximum = Math.max(maximum, active);
-      try {
-        if (!listing) return { tools: [old] };
-        if (requests === 2) {
-          entered.resolve();
-          await release.promise;
-          return { tools: [latest], nextCursor: "second" };
+  const server = owner.own(
+    mcpOAuthServer({
+      authentication: false,
+      notifyToolsChanged: 2,
+      listTools: async (cursor) => {
+        requests++;
+        active++;
+        maximum = Math.max(maximum, active);
+        try {
+          if (!listing) return { tools: [old] };
+          if (requests === 2) {
+            entered.resolve();
+            await release.promise;
+            return { tools: [latest], nextCursor: "second" };
+          }
+          if (cursor === "second")
+            return { tools: [{ name: "last", inputSchema: { type: "object" } }] };
+          return { tools: [latest, { name: "last", inputSchema: { type: "object" } }] };
+        } finally {
+          active--;
         }
-        if (cursor === "second")
-          return { tools: [{ name: "last", inputSchema: { type: "object" } }] };
-        return { tools: [latest, { name: "last", inputSchema: { type: "object" } }] };
-      } finally {
-        active--;
-      }
-    },
-  });
-  const host = createMcpHost();
+      },
+    }),
+    (resource) => resource.stop(),
+  );
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   const changes: string[][] = [];
-  const view = host.acquire({
-    connectOptions: () => ({ ...dirs, settings: {} }),
-    getRunning: () => false,
-    onChange: (snapshot) => {
-      const names = snapshot.servers[0]?.tools.map((tool) => tool.name) ?? [];
-      changes.push(names);
-      if (names.includes("last")) updated.resolve();
-    },
-    onEvent: () => {},
-  });
+  const view = owner.own(
+    host.acquire({
+      connectOptions: () => ({ ...dirs, settings: {} }),
+      getRunning: () => false,
+      onChange: (snapshot) => {
+        const names = snapshot.servers[0]?.tools.map((tool) => tool.name) ?? [];
+        changes.push(names);
+        if (names.includes("last")) updated.resolve();
+      },
+      onEvent: () => {},
+    }),
+    (resource) => resource.close(),
+  );
   try {
     await Bun.write(
       join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
-    await view.prepareRun();
+    await owner.prepareRun(view);
     listing = true;
     await view.callHookTool("srv", "notify", {}, new AbortController().signal);
     await entered.promise;
@@ -398,42 +418,46 @@ test("list_changed notifications serialize whole paginated discovery and publish
     expect(requests).toBe(4);
     expect(changes.filter((names) => names.includes("new"))).toEqual([["new", "last"]]);
   } finally {
-    release.resolve();
-    await view.close();
-    await host.close();
-    await server.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("reconnect awaits the original transport shutdown before initializing a replacement", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const deleting = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
+  owner.unblock(() => release.resolve());
   let initializations = 0;
-  const server = mcpOAuthServer({
-    authentication: false,
-    beforeInitialize: async () => {
-      initializations++;
-    },
-    onDelete: async () => {
-      deleting.resolve();
-      await release.promise;
-    },
-  });
-  const host = createMcpHost();
-  const view = host.acquire({
-    connectOptions: () => ({ ...dirs, settings: {} }),
-    getRunning: () => false,
-    onChange: () => {},
-    onEvent: () => {},
-  });
+  const server = owner.own(
+    mcpOAuthServer({
+      authentication: false,
+      beforeInitialize: async () => {
+        initializations++;
+      },
+      onDelete: async () => {
+        deleting.resolve();
+        await release.promise;
+      },
+    }),
+    (resource) => resource.stop(),
+  );
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
+  const view = owner.own(
+    host.acquire({
+      connectOptions: () => ({ ...dirs, settings: {} }),
+      getRunning: () => false,
+      onChange: () => {},
+      onEvent: () => {},
+    }),
+    (resource) => resource.close(),
+  );
   try {
     await Bun.write(
       join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
-    await view.prepareRun();
+    await owner.prepareRun(view);
     const reconnect = view.reconnect("srv");
     await deleting.promise;
     expect(initializations).toBe(1);
@@ -442,56 +466,60 @@ test("reconnect awaits the original transport shutdown before initializing a rep
     await reconnect;
     expect(initializations).toBe(2);
   } finally {
-    release.resolve();
-    await view.close();
-    await host.close();
-    await server.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("late tool discovery from a retired generation cannot replace current tools", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
+  owner.unblock(() => release.resolve());
   let listings = 0;
-  const server = mcpOAuthServer({
-    authentication: false,
-    notifyToolsChanged: 1,
-    listTools: async () => {
-      const generation = ++listings;
-      if (generation === 2) {
-        entered.resolve();
-        await release.promise;
-      }
-      return {
-        tools: [
-          {
-            name: generation === 2 ? "stale" : generation === 1 ? "old" : "current",
-            inputSchema: { type: "object" },
-          },
-        ],
-      };
-    },
-  });
-  const host = createMcpHost();
-  const warnings: string[] = [];
-  const view = host.acquire({
-    connectOptions: () => ({
-      ...dirs,
-      settings: {},
-      onWarning: (message) => warnings.push(message),
+  const server = owner.own(
+    mcpOAuthServer({
+      authentication: false,
+      notifyToolsChanged: 1,
+      listTools: async () => {
+        const generation = ++listings;
+        if (generation === 2) {
+          entered.resolve();
+          await release.promise;
+        }
+        return {
+          tools: [
+            {
+              name: generation === 2 ? "stale" : generation === 1 ? "old" : "current",
+              inputSchema: { type: "object" },
+            },
+          ],
+        };
+      },
     }),
-    getRunning: () => false,
-    onChange: () => {},
-    onEvent: () => {},
-  });
+    (resource) => resource.stop(),
+  );
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
+  const warnings: string[] = [];
+  const view = owner.own(
+    host.acquire({
+      connectOptions: () => ({
+        ...dirs,
+        settings: {},
+        onWarning: (message) => warnings.push(message),
+      }),
+      getRunning: () => false,
+      onChange: () => {},
+      onEvent: () => {},
+    }),
+    (resource) => resource.close(),
+  );
   try {
     await Bun.write(
       join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
-    await view.prepareRun();
+    await owner.prepareRun(view);
     await view.callHookTool("srv", "notify", {}, new AbortController().signal);
     await entered.promise;
     await view.reconnect("srv");
@@ -500,50 +528,47 @@ test("late tool discovery from a retired generation cannot replace current tools
     expect((await view.snapshot()).servers[0]?.tools).toMatchObject([{ name: "current" }]);
     expect(warnings).toEqual([]);
   } finally {
-    release.resolve();
-    await view.close();
-    await host.close();
-    await server.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("needs-auth and intentional retirement never start recovery", async () => {
-  const dirs = await tempDirs();
-  const server = mcpOAuthServer();
-  const host = createMcpHost();
-  const view = host.acquire({
-    connectOptions: () => ({ ...dirs, settings: {} }),
-    getRunning: () => false,
-    onChange: () => {},
-    onEvent: () => {},
-  });
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
+  const server = owner.own(mcpOAuthServer(), (resource) => resource.stop());
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
+  const view = owner.own(
+    host.acquire({
+      connectOptions: () => ({ ...dirs, settings: {} }),
+      getRunning: () => false,
+      onChange: () => {},
+      onEvent: () => {},
+    }),
+    (resource) => resource.close(),
+  );
   try {
     await Bun.write(
       join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
-    await view.prepareRun();
+    await owner.prepareRun(view);
     const requests = server.requests.length;
-    jest.useFakeTimers();
+    owner.fakeTimers();
     jest.advanceTimersByTime(120_000);
-    await view.prepareRun();
+    await owner.prepareRun(view);
     expect((await view.snapshot()).servers[0]?.status).toBe("needs-auth");
     expect(server.requests).toHaveLength(requests);
     await host.close();
     jest.advanceTimersByTime(120_000);
     expect(server.requests).toHaveLength(requests);
   } finally {
-    await view.close();
-    await host.close();
-    jest.useRealTimers();
-    await server.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("a model response holding a disconnected MCP tool receives an error without waiting for recovery", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const manifest = join(dirs.homeDir, "manifest");
   await Bun.write(manifest, JSON.stringify({ tools: ["crash", "echo"] }));
   await Bun.write(
@@ -562,20 +587,23 @@ test("a model response holding a disconnected MCP tool receives an error without
       },
     }),
   );
-  const host = createMcpHost();
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
   let changed = Promise.withResolvers<void>();
-  const view = host.acquire({
-    connectOptions: () => ({ ...dirs, settings: {} }),
-    getRunning: () => false,
-    onChange: () => changed.resolve(),
-    onEvent: () => {},
-  });
+  const view = owner.own(
+    host.acquire({
+      connectOptions: () => ({ ...dirs, settings: {} }),
+      getRunning: () => false,
+      onChange: () => changed.resolve(),
+      onEvent: () => {},
+    }),
+    (resource) => resource.close(),
+  );
   let session: Awaited<ReturnType<typeof createSession>> | undefined;
   try {
-    await view.prepareRun();
+    await owner.prepareRun(view);
     const fake = fakeModel([
       async () => {
-        jest.useFakeTimers();
+        owner.fakeTimers();
         changed = Promise.withResolvers<void>();
         await expect(
           view.callHookTool("srv", "crash", {}, new AbortController().signal),
@@ -587,7 +615,7 @@ test("a model response holding a disconnected MCP tool receives an error without
       },
       fauxAssistantMessage("handled disconnect"),
     ]);
-    session = await createSession({
+    session = await owner.open({
       ...dirs,
       ...fake,
       mcpHost: host,
@@ -602,49 +630,57 @@ test("a model response holding a disconnected MCP tool receives an error without
     ]);
     expect((await view.snapshot()).servers[0]?.status).toBe("pending");
   } finally {
-    await session?.close();
-    await view.close();
-    await host.close();
-    jest.useRealTimers();
-    await dirs.cleanup();
+    await owner.close();
   }
 });
 
 test("Run preparation also waits for a replacement configuration discovered after initial connection", async () => {
-  const dirs = await tempDirs();
+  const owner = ownMcpFixture();
+  const dirs = await owner.acquire(tempDirs, (dirs) => dirs.cleanup());
   const firstEntered = Promise.withResolvers<void>();
   const firstRelease = Promise.withResolvers<void>();
+  owner.unblock(() => firstRelease.resolve());
   const latestEntered = Promise.withResolvers<void>();
   const latestRelease = Promise.withResolvers<void>();
-  const first = mcpOAuthServer({
-    authentication: false,
-    beforeInitialize: async () => {
-      firstEntered.resolve();
-      await firstRelease.promise;
-    },
-  });
-  const latest = mcpOAuthServer({
-    authentication: false,
-    beforeInitialize: async () => {
-      latestEntered.resolve();
-      await latestRelease.promise;
-    },
-  });
+  owner.unblock(() => latestRelease.resolve());
+  const first = owner.own(
+    mcpOAuthServer({
+      authentication: false,
+      beforeInitialize: async () => {
+        firstEntered.resolve();
+        await firstRelease.promise;
+      },
+    }),
+    (resource) => resource.stop(),
+  );
+  const latest = owner.own(
+    mcpOAuthServer({
+      authentication: false,
+      beforeInitialize: async () => {
+        latestEntered.resolve();
+        await latestRelease.promise;
+      },
+    }),
+    (resource) => resource.stop(),
+  );
   const path = join(dirs.homeDir, ".rukie/mcp.json");
   const configure = (url: string) =>
     Bun.write(path, JSON.stringify({ mcpServers: { srv: { url } } }));
-  const host = createMcpHost();
-  const view = host.acquire({
-    connectOptions: () => ({ ...dirs, settings: {} }),
-    getRunning: () => false,
-    onChange: () => {},
-    onEvent: () => {},
-  });
+  const host = owner.own(createMcpHost(), (resource) => resource.close());
+  const view = owner.own(
+    host.acquire({
+      connectOptions: () => ({ ...dirs, settings: {} }),
+      getRunning: () => false,
+      onChange: () => {},
+      onEvent: () => {},
+    }),
+    (resource) => resource.close(),
+  );
   let preparing: Promise<void> | undefined;
   try {
     await configure(first.url);
     let complete = false;
-    preparing = view.prepareRun().then(() => {
+    preparing = owner.prepareRun(view).then(() => {
       complete = true;
     });
     await firstEntered.promise;
@@ -660,13 +696,6 @@ test("Run preparation also waits for a replacement configuration discovered afte
       status: "connected",
     });
   } finally {
-    firstRelease.resolve();
-    latestRelease.resolve();
-    await preparing;
-    await view.close();
-    await host.close();
-    await first.stop();
-    await latest.stop();
-    await dirs.cleanup();
+    await owner.close();
   }
 });

@@ -211,3 +211,54 @@ test("skill catalog preserves the existing composer height before and after open
     await screen.unmount();
   }
 });
+
+test("editing before a skill keeps its token first and preserves the typed body and caret", async () => {
+  const sent = vi.fn();
+  const screen = await renderPrompt(<PromptInput skills={skills} onSubmit={sent} />);
+  try {
+    const input = screen.getByRole("combobox");
+    await input.fill("/r");
+    await userEvent.keyboard("{Tab}body{Home}prefix");
+    const token = input.element().querySelector("[data-skill-token]")!;
+    expect(input.element().firstElementChild!.firstChild).toBe(token);
+    await expect.element(input).toHaveTextContent("review prefix body");
+    await userEvent.keyboard("X{Enter}");
+    expect(sent).toHaveBeenCalledWith("/review prefixX body", undefined);
+  } finally {
+    await screen.unmount();
+  }
+});
+
+test("linebreak, paste and undo at the start keep one leading skill and the editable body", async () => {
+  const sent = vi.fn();
+  const screen = await renderPrompt(<PromptInput skills={skills} onSubmit={sent} />);
+  try {
+    const input = screen.getByRole("combobox");
+    await input.fill("/r");
+    await userEvent.keyboard("{Tab}body{Home}{ArrowLeft}");
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+    await userEvent.keyboard("new");
+    const data = new DataTransfer();
+    data.setData("text/plain", " pasted");
+    input
+      .element()
+      .dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+      );
+    await expect
+      .poll(() => (input.element() as HTMLElement).innerText)
+      .toBe("review\nnew pasted body");
+    expect(input.element().querySelectorAll("[data-skill-token]")).toHaveLength(1);
+    expect(input.element().firstElementChild!.firstChild).toBe(
+      input.element().querySelector("[data-skill-token]"),
+    );
+    await userEvent.keyboard(
+      navigator.platform.includes("Mac") ? "{Meta>}z{/Meta}" : "{Control>}z{/Control}",
+    );
+    await expect.poll(() => (input.element() as HTMLElement).innerText).toBe("review\nnew body");
+    await userEvent.keyboard("X{Enter}");
+    expect(sent).toHaveBeenCalledWith("/review\nnewX body", undefined);
+  } finally {
+    await screen.unmount();
+  }
+});

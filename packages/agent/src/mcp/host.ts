@@ -627,6 +627,8 @@ export function createMcpHost(options: McpHostOptions = {}) {
           await Promise.all([...entries.values()].map((entry) => entry.connecting));
         })
         .catch((error: unknown) => {
+          // Shutdown can finish while asynchronous configuration discovery is pending.
+          if (closed) return;
           options.configuration?.onWarning?.(
             `MCP startup: ${error instanceof Error ? error.message : String(error)}`,
           );
