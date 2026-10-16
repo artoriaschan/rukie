@@ -191,16 +191,20 @@ export function createToolLoadout(input: RootLoadoutInput | ChildLoadoutInput) {
         await input.install(registrations, (await plan(false, context)).tools, context);
     },
     hasMcpDrift() {
-      const available = new Set(
+      const available = new Map(
         input
           .mcp()
           .filter(allowed)
-          .map((tool) => tool.name),
+          .map((tool) => [tool.name, toToolDeclaration(tool)]),
       );
-      const published = registrations
-        .filter((tool) => tool.name.startsWith("mcp__"))
-        .map((tool) => tool.name);
-      return available.size !== published.length || published.some((name) => !available.has(name));
+      const published = registrations.filter((tool) => tool.name.startsWith("mcp__"));
+      return (
+        available.size !== published.length ||
+        published.some((tool) => {
+          const next = available.get(tool.name);
+          return !next || !declarationsEqual(toToolDeclaration(tool), next);
+        })
+      );
     },
     /** Publish late discovery after native preparation, before request messages are reconstructed. */
     async publish(context = input.context) {

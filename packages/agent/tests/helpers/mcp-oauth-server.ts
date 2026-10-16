@@ -21,7 +21,10 @@ export function mcpOAuthServer(
     tokenEndpointAuthMethods?: string[];
     beforeInitialize?: () => Promise<void>;
     beforeToolResponse?: () => Promise<void>;
-    onDelete?: () => void;
+    onDelete?: () => void | Promise<void>;
+    listTools?: (cursor: unknown) => Promise<unknown>;
+    /** Emit protocol notifications before the response on the same real HTTP SSE stream. */
+    notifyToolsChanged?: number;
   } = {},
 ) {
   const requests: {
@@ -179,7 +182,7 @@ export function mcpOAuthServer(
             });
           if (request.method === "GET") return new Response(null, { status: 405 });
           if (request.method === "DELETE") {
-            options.onDelete?.();
+            await options.onDelete?.();
             return new Response(null, { status: 204 });
           }
           if (!Value.Check(Rpc, body)) return new Response(null, { status: 400 });
@@ -194,16 +197,30 @@ export function mcpOAuthServer(
                   capabilities: { tools: {} },
                 }
               : body.method === "tools/list"
-                ? {
-                    tools: options.tools ?? [
-                      {
-                        name: "echo",
-                        description: "Echo an authorized message",
-                        inputSchema: { type: "object", properties: { text: { type: "string" } } },
-                      },
-                    ],
-                  }
+                ? options.listTools
+                  ? await options.listTools(body.params?.cursor)
+                  : {
+                      tools: options.tools ?? [
+                        {
+                          name: "echo",
+                          description: "Echo an authorized message",
+                          inputSchema: { type: "object", properties: { text: { type: "string" } } },
+                        },
+                      ],
+                    }
                 : { content: [{ type: "text", text: "OAuth MCP: called" }] };
+          if (body.method === "tools/call" && options.notifyToolsChanged) {
+            const notifications = Array.from({ length: options.notifyToolsChanged }, () => ({
+              jsonrpc: "2.0",
+              method: "notifications/tools/list_changed",
+            }));
+            return new Response(
+              [...notifications, { jsonrpc: "2.0", id: body.id, result }]
+                .map((message) => `data: ${JSON.stringify(message)}\n\n`)
+                .join(""),
+              { headers: { "content-type": "text/event-stream", "mcp-session-id": "oauth-test" } },
+            );
+          }
           return Response.json(
             { jsonrpc: "2.0", id: body.id, result },
             { headers: { "mcp-session-id": "oauth-test" } },

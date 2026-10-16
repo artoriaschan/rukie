@@ -582,6 +582,7 @@ test("scope step-up immediately after the first OAuth login in the same Run rest
       await session.run("login and use expanded capabilities");
       const snapshots = await Promise.all(reads);
       expect(snapshots.map((snapshot) => snapshot.servers[0]?.status)).toEqual([
+        "pending",
         "needs-auth",
         "connected",
         "needs-auth",
@@ -597,7 +598,7 @@ test("scope step-up immediately after the first OAuth login in the same Run rest
       const requests = server.requests.length;
       await session.mcpServers();
       await Promise.resolve();
-      expect(reads).toHaveLength(4);
+      expect(reads).toHaveLength(5);
       expect(server.requests).toHaveLength(requests);
       expect(scopes).toEqual(["tools", "tools tools:write"]);
       expect(

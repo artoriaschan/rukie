@@ -119,7 +119,9 @@ test("two Sessions share global and same-project servers while different project
           mcpHost: host,
         }),
       );
-    const snapshots = await Promise.all(sessions.map((session) => session.mcpServers()));
+    const snapshots = await Promise.all(
+      sessions.map((session) => session.mcpServers({ refresh: true })),
+    );
     expect(snapshots.map((snapshot) => snapshot.servers.map((server) => server.name))).toEqual([
       ["global", "project"],
       ["global", "project"],
@@ -169,12 +171,14 @@ test("the last project lease closes at the virtual 30 second deadline and reacqu
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
     const first = acquire();
+    await first.prepareRun();
     await first.snapshot();
     jest.useFakeTimers();
     await first.close();
     jest.advanceTimersByTime(29_999);
     expect(server.requests.some((request) => request.method === "DELETE")).toBe(false);
     const second = acquire();
+    await second.prepareRun();
     await second.snapshot();
     jest.advanceTimersByTime(1);
     expect(server.requests.some((request) => request.method === "DELETE")).toBe(false);
@@ -243,7 +247,7 @@ test("a replacement signature keeps the old active call alive and management rep
     ])
       await expect(operation()).rejects.toMatchObject({ code: "session-mcp-busy" });
     await config(latest.url);
-    expect((await second.mcpServers()).servers).toMatchObject([
+    expect((await second.mcpServers({ refresh: true })).servers).toMatchObject([
       { name: "srv", status: "connected", url: latest.url },
     ]);
     expect(old.requests.some((request) => request.method === "DELETE")).toBe(false);
@@ -286,7 +290,7 @@ test("two Sessions share one authorization and initiator cancellation reaches bo
           },
         }),
       );
-    await Promise.all(sessions.map((session) => session.mcpServers()));
+    await Promise.all(sessions.map((session) => session.mcpServers({ refresh: true })));
     const logins = sessions.map((session) => session.authenticateMcp("srv"));
     const signal = await requested.promise;
     await sessions[0]!.close();
@@ -374,7 +378,7 @@ test("global stdio warms in home or configured cwd while project substitutions c
         mcpHost: host,
       });
       sessions.push(session);
-      await session.mcpServers();
+      await session.mcpServers({ refresh: true });
     }
     const recorded = await read();
     expect(recorded).toHaveLength(5);
@@ -457,7 +461,7 @@ test("connection signatures ignore object order and replace an expanded environm
       }),
     );
     session = await createSession({ ...dirs, ...fakeModel([]), mcpHost: host });
-    await session.mcpServers();
+    await session.mcpServers({ refresh: true });
     await Bun.write(
       path,
       JSON.stringify({
@@ -466,7 +470,7 @@ test("connection signatures ignore object order and replace an expanded environm
         },
       }),
     );
-    await session.mcpServers();
+    await session.mcpServers({ refresh: true });
     expect(
       old.requests.filter(
         (request) =>
@@ -478,7 +482,7 @@ test("connection signatures ignore object order and replace an expanded environm
     ).toHaveLength(1);
     expect(old.requests.some((request) => request.method === "DELETE")).toBe(false);
     process.env.RUKIE_MCP_HOST_SIGNATURE_URL = latest.url;
-    expect((await session.mcpServers()).servers[0]?.status).toBe("connected");
+    expect((await session.mcpServers({ refresh: true })).servers[0]?.status).toBe("connected");
     await deleted.promise;
     expect(
       latest.requests.filter(

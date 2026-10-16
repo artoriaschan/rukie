@@ -689,3 +689,17 @@ test("long CJK names keep the footer and native selection in place across resize
   await terminal.waitFor(() => terminal.activated.length > 0);
   expect(terminal.activated).toEqual([`server:${selectedName}`]);
 });
+
+test.each([
+  ["en", "connecting"],
+  ["zh", "连接中"],
+] as const)(
+  "pending MCP status is localized (%s) and keeps management choices",
+  async (locale, label) => {
+    const pending = { ...server("waiting"), status: "pending" as const };
+    const page = { kind: "server" as const, server: pending };
+    expect(mcpPanelChoices(page)).toEqual(["reconnect", "back"]);
+    const terminal = await mount({ locale, page });
+    expect(terminal.screen().join("\n")).toContain(label);
+  },
+);

@@ -20,6 +20,9 @@ test("Host status snapshots retain their transport and expose immutable facts wi
     onChange: (snapshot) => changes.push(snapshot),
   });
   try {
+    const pending = await view.snapshot();
+    expect(pending.servers[0]).toMatchObject({ status: "pending", tools: [], toolCount: 0 });
+    await view.prepareRun();
     const snapshot = await view.snapshot();
     expect(snapshot.servers[0]).toMatchObject({ name: "srv", status: "connected", toolCount: 1 });
     expect(server.requests.some((request) => request.method === "DELETE")).toBe(false);
@@ -27,7 +30,7 @@ test("Host status snapshots retain their transport and expose immutable facts wi
     snapshot.servers[0]!.tools.length = 0;
     expect((await view.snapshot()).servers[0]!.tools).toHaveLength(1);
     expect(server.requests).toHaveLength(requests);
-    expect(changes).toHaveLength(1);
+    expect(changes).toHaveLength(2);
   } finally {
     await view.close();
     await host.close();
@@ -36,7 +39,7 @@ test("Host status snapshots retain their transport and expose immutable facts wi
   }
 });
 
-test("a newer project view configuration wins over an earlier pending status query", async () => {
+test("a newer project view configuration replaces an earlier pending generation without late overwrite", async () => {
   const dirs = await tempDirs();
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
@@ -76,9 +79,9 @@ test("a newer project view configuration wins over an earlier pending status que
     );
     await otherView.prepareRun();
     release.resolve();
-    expect((await pending).servers.map((server) => server.name)).toEqual(["latest"]);
+    expect((await pending).servers).toMatchObject([{ name: "old", status: "pending" }]);
     expect((await view.snapshot()).servers.map((server) => server.name)).toEqual(["latest"]);
-    expect(changes).toHaveLength(1);
+    expect(changes).toHaveLength(2);
   } finally {
     release.resolve();
     await Promise.all([view.close(), otherView.close()]);

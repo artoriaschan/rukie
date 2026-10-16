@@ -462,7 +462,7 @@ test("a changed snapshot at a microtask boundary preserves valid identities and 
   }
 });
 
-test("closing a loading panel and replacing its Session rejects a late probe without reopening", async () => {
+test("closing a pending panel and replacing its Session keeps late connection changes from reopening it", async () => {
   const gate = Promise.withResolvers<void>();
   let probing = false;
   const server = mcpOAuthServer({
@@ -485,7 +485,7 @@ test("closing a loading panel and replacing its Session rejects a late probe wit
     app.stdin.write("/help\r");
     await app.waitFor(() => screen(app).includes("/mcp [login|logout|reconnect <server>]"));
     app.stdin.write("/mcp\r");
-    await app.waitFor(() => probing && screen(app).includes("正在读取 MCP 状态"));
+    await app.waitFor(() => probing && screen(app).includes("连接中"));
     app.stdin.write("blocked" + paste("ignored"));
     await app.flush();
     expect(app.calls).toHaveLength(0);

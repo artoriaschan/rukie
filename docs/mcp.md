@@ -127,6 +127,10 @@ Headless CLI 不提供授权交互，也不向模型暴露 `authenticate` 工具
 
 连接身份由作用域、server 名与展开后配置的稳定签名确定。用户消息和原生 Run 开始前重新读取配置；配置变更新建一代连接，旧连接完成进行中的调用后关闭。Run 中止只取消等待与该 Run 的调用，Host 的连接继续服务其他 Session。需要授权的状态属于连接，避免每次 Run 重复发起未授权请求；同连接并发授权共用发起 Session 的 Interaction，发起方取消会向所有等待者返回取消。子代理的授权经父 Session 转发并带上 origin。登录、登出和重连在该 server 有进行中的调用时返回 busy。
 
+连接初始化或退避重连期间，状态立即返回 `pending`，工具数组和 `toolCount` 均为空／0；Run 开始前等待这些连接落定，中止只取消该 Run 的等待。意外关闭最多重试 5 次，依次等待 1、2、4、8、16 秒（退避延迟上限 30 秒）；每次替换前等待旧一代的原始关闭 Promise，确认 transport 清理完成。只有连续健康连接满 30 秒才重置重试次数，初始化成功或短暂恢复不重置；耗尽后保留 `failed`，可手动重连。主动关闭与 `needs-auth` 不自动重试，断线期间旧工具调用直接失败。
+
+MCP Host 订阅协议通知 `notifications/tools/list_changed`，按 server 和连接代串行读取完整的分页工具列表。整次发现成功才替换工具描述、Schema 与工具集；发现失败保留上一代并告警，已退休连接的晚到结果丢弃。根 Session 与子代理在下一 Turn 边界读取变更，包括工具名称相同但描述或输入 Schema 改变的情况。
+
 `session.close()` 取消本 Session 的授权交互并释放租约，私有 Host 同时关闭；注入 Host 的 Frontend 在进程退出时显式 `close()`。Resume 根据当前配置租用连接，不恢复旧 transport。桌面启动只为全局单例解密用户 MCP 配置及对应 HTTP 凭据；项目凭据在首次连接时解密，Hooks 与供应商凭据继续按使用时机读取。
 
 普通 MCP 工具使用原生 unsafe replay，read-only 或 idempotent 提示不授予自动重放。工具执行后、结果提交前中断时，恢复保留未知结果，不重新调用 server；改变当前工具说明、schema 或提示也不能提升已提交 intent 的重放权限。
@@ -135,11 +139,11 @@ Headless CLI 不提供授权交互，也不向模型暴露 `authenticate` 工具
 
 Session 暴露 `mcpServers()`、`authenticateMcp(name)`、`clearMcpAuth(name)`、`reconnectMcp(name)`；类型与取消契约以[公共 Session 声明](../packages/agent/src/session/index.ts)和[共享状态类型](../packages/shared/src/mcp.ts)为准。状态中的 `error` 保留原始英文消息；已知 Agent Core 错误另带 `errorData`，Frontend 用它按 locale 呈现。
 
-`mcpServers()` 返回独立副本 `McpSnapshot`，包含 `servers` 与配置文件级 `configErrors`。服务器记录提供生效配置的 `scope`、`configPath`、HTTP `url` 或 stdio `command`，以及真实 MCP 工具的协议名称、完整描述和原始输入 JSON Schema。URL 保留环境变量配置表达式，移除 userinfo、query 和 fragment；快照不包含 headers、env、args、clientSecret 或 MCP Credential。failed/needs-auth 的工具数组为空，`toolCount` 与真实工具数组一致。损坏文件记录来源、路径和错误；缺失文件不算错误，其他合法来源仍可使用，Run 保持 fail-open 和现有警告行为。
+`mcpServers()` 返回独立副本 `McpSnapshot`，包含 `servers` 与配置文件级 `configErrors`。服务器记录提供生效配置的 `scope`、`configPath`、HTTP `url` 或 stdio `command`，以及真实 MCP 工具的协议名称、完整描述和原始输入 JSON Schema。URL 保留环境变量配置表达式，移除 userinfo、query 和 fragment；快照不包含 headers、env、args、clientSecret 或 MCP Credential。pending/failed/needs-auth 的工具数组为空，`toolCount` 与真实工具数组一致。损坏文件记录来源、路径和错误；缺失文件不算错误，其他合法来源仍可使用，Run 保持 fail-open 和现有警告行为。
 
-快照返回项目视图中共享连接的最新状态，包括 Run 连接、同一 Run 授权或失效和管理操作。查询重新读取完整配置，同配置并发读取合并，已有连接继续复用；状态查询不再创建随后关闭的独立探测连接。调用方修改返回值不会改变 Host、Session 或模型工具声明。`mcpServers({ refresh: true })` 提供空闲时的显式刷新，并发刷新复用在途请求；它不自动启动 OAuth 或更改 MCP Credential。Run 中显式刷新及三个管理方法返回 busy 错误。Session 关闭取消本视图的等待与管理交互，共享连接保留给其他租约；晚到读取不能覆盖较新的连接配置。
+普通快照不等待连接完成，返回项目视图中共享连接的最新状态，包括 Run 连接、同一 Run 授权或失效和管理操作。查询重新读取完整配置，同配置并发读取合并，已有连接继续复用；状态查询不再创建随后关闭的独立探测连接。调用方修改返回值不会改变 Host、Session 或模型工具声明。`mcpServers({ refresh: true })` 提供空闲时的显式刷新并等待连接落定，并发刷新复用在途请求；它不自动启动 OAuth 或更改 MCP Credential。Run 中显式刷新及三个管理方法返回 busy 错误。Session 关闭取消本视图的等待与管理交互，共享连接保留给其他租约；晚到读取不能覆盖较新的连接配置。
 
-公开事件 `mcp_servers_changed` 表示新快照已提交，不携带工具 schema；Frontend 收到事件后调用普通 `mcpServers()` 读取当前视图。文件级诊断与服务器状态、工具的实际变化都可触发事件；相同快照和缓存读取不重复通知。面板通过这些事件更新，无轮询或后台重连。稳定服务器名与协议工具名保留导航身份；当前工具消失时退回仍有效的工具列表，没有工具时退回服务器详情，服务器消失时退回服务器列表，并显示变化提示。
+公开事件 `mcp_servers_changed` 表示新快照已提交，不携带工具 schema；Frontend 收到事件后调用普通 `mcpServers()` 读取当前视图。文件级诊断与服务器状态、工具的实际变化都可触发事件；相同快照和缓存读取不重复通知。面板通过这些事件更新，无轮询；连接恢复由 MCP Host 负责。稳定服务器名与协议工具名保留导航身份；当前工具消失时退回仍有效的工具列表，没有工具时退回服务器详情，服务器消失时退回服务器列表，并显示变化提示。
 
 Frontend 提供 `onMcpAuth` 以显示 Interaction；没有回调时主动登录被拒绝，模型也看不到登录工具。管理面板、选择、阅读位置、结果和授权 UI 都属于 Frontend 本地状态，不写 Transcript、Tool State 或 reminder；Session Resume 不恢复面板。Interaction FIFO 临时接管面板输入，队列处理完后恢复有效页面。关闭、Session 替换或退出清理面板订阅，晚到结果不能重新打开面板或更新另一 Session。
 

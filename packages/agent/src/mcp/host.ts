@@ -249,7 +249,7 @@ export function createMcpHost(options: McpHostOptions = {}) {
         stopping ||
         admittingManagement ||
         operations.size ||
-        [...selected.values()].some((entry) => entry.connecting || entry.retired)
+        [...selected.values()].some((entry) => entry.retired)
       )
         return;
       rebuild();
@@ -329,6 +329,16 @@ export function createMcpHost(options: McpHostOptions = {}) {
         signal.removeEventListener("abort", abort);
       }
     };
+    const settleConnections = (signal?: AbortSignal) =>
+      wait(
+        Promise.all(
+          [...selected.values()].map(async (entry) => {
+            await entry.connecting;
+            await entry.connections.waitForReady();
+          }),
+        ),
+        signal,
+      );
     const manage = async <T>(
       name: string,
       action: (entry: Entry) => Promise<T>,
@@ -455,6 +465,7 @@ export function createMcpHost(options: McpHostOptions = {}) {
           );
         return entry.connections.callHookTool(name, tool, input, signal);
       },
+      /** Ordinary state reads expose pending immediately; explicit idle refresh waits for readiness. */
       snapshot({ refresh: force = false }: { refresh?: boolean } = {}): Promise<McpSnapshot> {
         if (publishing && !force) return Promise.resolve(structuredClone(snapshot()));
         const operation = async () => {
@@ -465,15 +476,7 @@ export function createMcpHost(options: McpHostOptions = {}) {
             });
           ensureOpen();
           await refresh();
-          await wait(
-            Promise.all([...selected.values()].map((entry) => entry.connecting)),
-            controller.signal,
-          );
-          await refresh();
-          await wait(
-            Promise.all([...selected.values()].map((entry) => entry.connecting)),
-            controller.signal,
-          );
+          if (force) await settleConnections(controller.signal);
           ensureOpen();
           changed();
           return structuredClone(snapshot());
@@ -517,20 +520,29 @@ export function createMcpHost(options: McpHostOptions = {}) {
           await refresh();
           await Promise.all([...selected.values()].map((next) => next.connecting));
         }),
+      /** Finish accepted list changes without tying shared transport work to this Turn's signal. */
+      async prepareTurn(signal?: AbortSignal) {
+        await wait(
+          Promise.all([...selected.values()].map((entry) => entry.connections.waitForToolSync())),
+          signal,
+        );
+        ensureOpen();
+        changed();
+      },
       async prepareRun(
         input: { signal?: AbortSignal; getOrigin?: ConnectOptions["getOrigin"] } = {},
       ) {
         ensureOpen();
         getOrigin = input.getOrigin;
         await wait(refresh(), input.signal);
-        await wait(
-          Promise.all([...selected.values()].map((entry) => entry.connecting)),
-          input.signal,
-        );
+        await settleConnections(input.signal);
+        ensureOpen();
+        // Re-read after discovery so configuration changes while waiting apply to this Run.
+        await wait(refresh(), input.signal);
+        await settleConnections(input.signal);
         ensureOpen();
         for (const entry of selected.values()) entry.caller = callerOptions();
-        // Initial discovery may have finished before this view subscribed to the connection.
-        await refresh();
+        changed();
       },
       adopt: () => changed(),
       async waitForIdle() {

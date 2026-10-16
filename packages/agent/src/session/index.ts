@@ -1944,6 +1944,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }),
             hook(GenerationTask, {
               beforeRequest: async (_request, _api, ctx) => {
+                await mcp.prepareTurn(ctx.abortSignal);
+                if (childLoadout.hasMcpDrift()) {
+                  await childLoadout.refresh();
+                  const updated = { ...extension, tools: childLoadout.registrations };
+                  registry.install(updated);
+                  await child.configure(
+                    { extensions: [updated], tools: (await childLoadout.plan(false, ctx)).tools },
+                    ctx,
+                  );
+                  await childLoadout.publish(ctx);
+                }
                 await child.commit(async (tx) => {
                   const pending = await tx.doc(ChildHookContextDoc, child.id);
                   for (const { source, content } of pending.pending)
@@ -2793,6 +2804,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 await correctionLimit(conversation, ctx);
                 await goalRuntime.prepareWrapup(ctx);
                 await prepareReminders(ctx);
+                await mcp.prepareTurn(ctx.abortSignal);
+                if (toolLoadout.hasMcpDrift()) await rebuildTools(false, ctx);
                 await toolLoadout.publish(ctx);
                 contextMessages = modelContextMessages(await conversation.context(ctx));
                 await observation.flush();
