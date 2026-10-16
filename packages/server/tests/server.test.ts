@@ -374,7 +374,7 @@ test("initial and reconnect registry metadata present the canonical configured h
   }
 });
 
-test("startup catalog and history never unlock encrypted execution configuration", async () => {
+test("startup warms only MCP configuration while history keeps Hooks and provider credentials locked", async () => {
   const owner = ownResources();
   try {
     const homeDir = await owner.acquire(
@@ -420,7 +420,7 @@ test("startup catalog and history never unlock encrypted execution configuration
     ])
       await database.saveCredential(identity, { type: "replace", ciphertext: "opaque" });
     await database.close();
-    let decryptions = 0;
+    const decryptions: string[] = [];
     let authorized = false;
     const server = await owner.acquire(
       () =>
@@ -433,8 +433,8 @@ test("startup catalog and history never unlock encrypted execution configuration
             async encrypt() {
               throw new Error("unexpected encryption");
             },
-            async decrypt() {
-              decryptions++;
+            async decrypt(identity) {
+              decryptions.push(identity);
               if (!authorized) throw new Error("system authorization required");
               return "{}";
             },
@@ -457,7 +457,7 @@ test("startup catalog and history never unlock encrypted execution configuration
       permissionMode: "full-access",
       agent: { thinkingLevel: "high" },
     });
-    expect(decryptions).toBe(0);
+    expect(decryptions).toEqual(["configuration:mcp"]);
     await expect(
       createSession({
         homeDir,
@@ -472,7 +472,7 @@ test("startup catalog and history never unlock encrypted execution configuration
     expect((await client.command("session.create", { project: null, text: "run" })).error).toEqual({
       code: "internal",
     });
-    expect(decryptions).toBe(1);
+    expect(decryptions).toEqual(["configuration:mcp", "configuration:hooks"]);
     expect(await filesystem.readdir(join(homeDir, "desktop-data", "workspace"))).toEqual([]);
     authorized = true;
     client.messages.length = 0;
@@ -482,7 +482,9 @@ test("startup catalog and history never unlock encrypted execution configuration
     await client.next((message) => message.type === "result");
     expect(JSON.stringify(client.messages)).toContain("continued history");
     expect(client.messages.some((message) => message.type === "session_state")).toBe(true);
-    expect(decryptions).toBeGreaterThan(1);
+    expect(decryptions).toContain("configuration:hooks");
+    expect(decryptions).not.toContain("oauth:fixture");
+    expect(decryptions).not.toContain("provider:fixture");
   } finally {
     await owner.close();
   }
@@ -5828,6 +5830,95 @@ test("desktop child questions retain origin and settle under the parent Session"
     ).toEqual({});
     await client.next((message) => message.type === "request_settled");
     expect(JSON.stringify(fake.contexts)).toContain("The user declined to answer.");
+  } finally {
+    await owner.close();
+  }
+});
+
+test("MCP Host startup unlocks global HTTP credentials but defers project credentials, Hooks and providers", async () => {
+  const { mcpOAuthServer } = await import("../../agent/tests/helpers/mcp-oauth-server.ts");
+  const { createHash } = await import("node:crypto");
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-mcp-startup-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const global = await owner.acquire(
+      async () => mcpOAuthServer({ authentication: false }),
+      (server) => server.stop(),
+    );
+    const project = await owner.acquire(
+      async () => mcpOAuthServer({ authentication: false }),
+      (server) => server.stop(),
+    );
+    const identity = (name: string, url: string) =>
+      `oauth:${name}|${createHash("sha256")
+        .update(JSON.stringify({ type: "http", url, headers: {} }))
+        .digest("hex")
+        .slice(0, 16)}`;
+    const globalIdentity = identity("global", global.url);
+    const projectIdentity = identity("project", project.url);
+    const plaintext = new Map([
+      [
+        "configuration:mcp",
+        JSON.stringify({
+          global: { url: global.url },
+          project: { url: project.url, headers: { "x-project": "${RUKIE_PROJECT_DIR}" } },
+        }),
+      ],
+      [globalIdentity, JSON.stringify({ serverUrl: global.url })],
+      [projectIdentity, JSON.stringify({ serverUrl: project.url })],
+      ["configuration:hooks", "{}"],
+      ["provider:fixture", "{}"],
+    ]);
+    plaintext.set(
+      "configuration:mcp",
+      JSON.stringify({
+        global: { url: global.url },
+        scoped: { command: process.execPath, args: ["${RUKIE_PROJECT_DIR}/deferred.ts"] },
+      }),
+    );
+    await Bun.write(
+      join(homeDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { project: { url: project.url } } }),
+    );
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (database) => database.close(),
+    );
+    for (const key of plaintext.keys())
+      await database.saveCredential(key, { type: "replace", ciphertext: "opaque" });
+    await database.close();
+    const unlocked: string[] = [];
+    const warmed = Promise.withResolvers<void>();
+    await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          onHandshake: () => {},
+          encryption: {
+            async encrypt() {
+              throw new Error("unexpected write");
+            },
+            async decrypt(key) {
+              unlocked.push(key);
+              if (key === globalIdentity) warmed.resolve();
+              const text = plaintext.get(key);
+              if (text === undefined) throw new Error("unexpected identity");
+              return text;
+            },
+          },
+        }),
+      (server) => server.close(),
+    );
+    await warmed.promise;
+    expect(unlocked).toContain("configuration:mcp");
+    expect(unlocked).toContain(globalIdentity);
+    expect(unlocked).not.toContain(projectIdentity);
+    expect(unlocked).not.toContain("configuration:hooks");
+    expect(unlocked).not.toContain("provider:fixture");
+    expect(project.requests).toEqual([]);
   } finally {
     await owner.close();
   }

@@ -49,6 +49,7 @@ import {
 } from "react";
 import {
   createSession,
+  createMcpHost,
   listSkills,
   listModelCatalog,
   listSessions,
@@ -147,8 +148,21 @@ export async function createChat(
 ) {
   const t = createTuiI18n(locale);
   const interactions = createInteractions(host, locale);
+  const mcpHost =
+    options.mcpHost ??
+    createMcpHost({
+      applicationVersion: productVersion,
+      configuration: {
+        homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
+        persistence: options.mcpPersistence,
+        settings: options.settings ?? {},
+        onWarning: options.onWarning,
+      },
+    });
   const sessionOptions: SessionOptions = {
     ...options,
+    mcpHost,
     applicationVersion: productVersion,
     reminderSources: [
       ...(options.reminderSources ?? []),
@@ -159,7 +173,13 @@ export async function createChat(
     onPlanReview: options.onPlanReview ?? interactions.askPlanReview,
     onMcpAuth: options.onMcpAuth ?? interactions.askMcpAuth,
   };
-  let session = await createSession(sessionOptions);
+  let session: Awaited<ReturnType<typeof createSession>>;
+  try {
+    session = await createSession(sessionOptions);
+  } catch (error) {
+    if (!options.mcpHost) await mcpHost.close();
+    throw error;
+  }
   const checkpointCwd = await realpath(options.cwd);
   const skills = await listSkills(options);
   const loadModelCatalog = () => listModelCatalog(options.settings, options.models);
@@ -214,6 +234,7 @@ export async function createChat(
           await history.flush();
         } finally {
           await imageViewer.dispose();
+          if (!options.mcpHost) await mcpHost.close();
         }
       }
     },

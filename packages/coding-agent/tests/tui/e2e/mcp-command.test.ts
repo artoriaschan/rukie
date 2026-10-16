@@ -1,10 +1,17 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
-const { mcpOAuthServer }: { mcpOAuthServer(): { url: string; stop(): Promise<void> } } =
-  await import(
-    new URL("../../../../agent/tests/helpers/mcp-oauth-server.ts", import.meta.url).href
-  );
+const {
+  mcpOAuthServer,
+}: {
+  mcpOAuthServer(options?: { authentication?: boolean }): {
+    url: string;
+    requests: { body: unknown; method: string }[];
+    stop(): Promise<void>;
+  };
+} = await import(
+  new URL("../../../../agent/tests/helpers/mcp-oauth-server.ts", import.meta.url).href
+);
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
 test("MCP completion lists controls and the most recent server names, keeping command selection semantics", async () => {
   const server = mcpOAuthServer();
@@ -202,3 +209,41 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
     }
   },
 );
+
+test("clearing the TUI Session preserves the process Host connection", async () => {
+  const server = mcpOAuthServer({ authentication: false });
+  const app = await start(["first"], {
+    rows: 32,
+    prepare: (root) =>
+      Bun.write(
+        join(root, ".rukie/mcp.json"),
+        JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
+      ).then(() => {}),
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.reply("first completed");
+    await app.waitFor(() => !app.isWorking() && screen(app).includes("first completed"));
+    app.stdin.write("/clear\r");
+    await app.waitFor(() => screen(app).includes("❯") && !screen(app).includes("first completed"));
+    app.stdin.write("second\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(
+      server.requests.filter(
+        (request) =>
+          typeof request.body === "object" &&
+          request.body !== null &&
+          "method" in request.body &&
+          request.body.method === "initialize",
+      ),
+    ).toHaveLength(1);
+    expect(server.requests.some((request) => request.method === "DELETE")).toBe(false);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    await app.cleanup();
+    expect(server.requests.filter((request) => request.method === "DELETE")).toHaveLength(1);
+  } finally {
+    await app.cleanup();
+    await server.stop();
+  }
+});

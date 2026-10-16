@@ -1,4 +1,4 @@
-import { userDataDirectory } from "../config/paths.ts";
+import { readMcpConfiguration, type McpConfiguration } from "./configuration.ts";
 import { awaitWithContext } from "@earendil-works/chord/context";
 import type { PreflightTool } from "../tools/support/preflight.ts";
 import type { PresentedTool } from "../tools/support/presentation.ts";
@@ -21,7 +21,6 @@ import {
   type OAuthFlowOptions,
   type McpOAuthStateStore,
 } from "@earendil-works/pi-mcp/oauth";
-import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -32,7 +31,6 @@ import {
   type McpConfigError,
   type UserVisibleErrorData,
 } from "@rukie/shared";
-import { isTrustedProject } from "../config/index.ts";
 import {
   requestInteraction,
   type OnInteractionStart,
@@ -67,6 +65,7 @@ const StdioConfig = Type.Object({
   command: Type.String({ minLength: 1 }),
   args: Type.Optional(Type.Array(Type.String())),
   env: Type.Optional(Type.Record(Type.String(), Type.String())),
+  cwd: Type.Optional(Type.String({ minLength: 1 })),
   oauth: Type.Optional(Type.Never()),
 });
 const OAuthConfig = Type.Object({
@@ -82,30 +81,6 @@ const HttpConfig = Type.Object({
   oauth: Type.Optional(OAuthConfig),
 });
 const ServerConfig = Type.Union([StdioConfig, HttpConfig]);
-
-function expandEnvironment(value: string): string {
-  return value.replace(
-    /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?\}/g,
-    (_match, name: string, fallback: string | undefined) => {
-      const environment = process.env[name];
-      if (fallback !== undefined && !environment) return fallback;
-      if (environment !== undefined) return environment;
-      throw createUserVisibleError(`Missing MCP environment variable: ${name}`, {
-        code: "mcp-env-missing",
-        params: { name },
-      });
-    },
-  );
-}
-
-function expandValues(values: Record<string, string> | undefined) {
-  return (
-    values &&
-    Object.fromEntries(
-      Object.entries(values).map(([key, value]) => [key, expandEnvironment(value)]),
-    )
-  );
-}
 
 /** Redact literal URL secrets without expanding configuration expressions. */
 function displayUrl(value: string): string {
@@ -149,6 +124,7 @@ function adaptTool(
   client: McpClient,
   tool: Tool,
   reportError: (error: unknown) => void,
+  activity: <T>(call: () => Promise<T>) => Promise<T>,
 ): ToolRegistration {
   const name = `mcp__${server}__${tool.name}`;
   const parameters = Type.Unsafe<Record<string, unknown>>(tool.inputSchema);
@@ -167,7 +143,7 @@ function adaptTool(
     async execute(args, _api, context) {
       const signal = context.abortSignal;
       try {
-        const result = await client.callTool(tool.name, args, { signal });
+        const result = await activity(() => client.callTool(tool.name, args, { signal }));
         return {
           content: toLlmContent(result),
           details: resultDetails(result),
@@ -188,7 +164,7 @@ function requiresAuthentication(error: unknown) {
   );
 }
 
-/** Authorization state belongs to the Session; connections still belong to each Run. */
+/** Authorization state is owned by one Host connection generation. */
 export function createMcpAuthState() {
   return {
     needsAuth: new Set<string>(),
@@ -199,7 +175,7 @@ export function createMcpAuthState() {
   };
 }
 
-/** The Session owns these connections; discovery cancellation ends when connect settles. */
+/** Transport owner used by MCP Host connection generations. */
 export function createMcpConnections(
   authState: ReturnType<typeof createMcpAuthState>,
   applicationVersion?: string,
@@ -227,6 +203,19 @@ export function createMcpConnections(
   const serverAuthKeys = new Map<string, string>();
   const retired = new WeakSet<McpClient>();
   const failed = new Set<string>();
+  let activeCalls = 0;
+  let idle: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  const activity = async <T>(call: () => Promise<T>): Promise<T> => {
+    if (!activeCalls++) idle = Promise.withResolvers<void>();
+    try {
+      return await call();
+    } finally {
+      if (!--activeCalls) {
+        idle?.resolve();
+        idle = undefined;
+      }
+    }
+  };
   let closePromise: Promise<void> | undefined;
   let closing = false;
   let onWarning: ((message: string) => void) | undefined;
@@ -305,36 +294,16 @@ export function createMcpConnections(
       for (let index = list.length - 1; index >= 0; index--)
         if (list[index]!.server === server) list.splice(index, 1);
   };
-  async function readConfig(
-    path: string,
-    scope: "user" | "project",
-  ): Promise<Record<string, unknown>> {
-    try {
-      const file = Bun.file(path);
-      if (!(await file.exists())) return {};
-      const data = await file.json();
-      if (
-        !Value.Check(Type.Object({ mcpServers: Type.Record(Type.String(), Type.Unknown()) }), data)
-      ) {
-        throw createUserVisibleError("Expected an object containing mcpServers.", {
-          code: "mcp-config-file-invalid",
-          params: { source: path },
-        });
-      }
-      return data.mcpServers;
-    } catch (error) {
-      report(path, error);
-      const recorded = errors.at(-1)!;
-      configErrors.push({
-        scope,
-        path,
-        error: recorded.error,
-        ...(recorded.errorData && { errorData: recorded.errorData }),
-      });
-      return {};
-    }
-  }
   return {
+    get authenticating() {
+      return authState.inFlight.size > 0;
+    },
+    get activeCalls() {
+      return activeCalls;
+    },
+    async waitForCalls() {
+      await idle?.promise;
+    },
     tools,
     toolServers,
     errors,
@@ -372,7 +341,7 @@ export function createMcpConnections(
           params: { server },
         });
       // Hook execution owns its timeout; the SDK default would cap every hook at 30s.
-      return client.callTool(tool, input, { signal, timeoutMs: 0 });
+      return activity(() => client.callTool(tool, input, { signal, timeoutMs: 0 }));
     },
     get hasServers() {
       return descriptions.size > 0;
@@ -399,6 +368,8 @@ export function createMcpConnections(
       skipServer?: string;
       loadOnly?: boolean;
       reconnect?: boolean;
+      configuration?: McpConfiguration;
+      onChange?(): void;
     }) {
       onWarning = options.onWarning;
       onEvent = options.onEvent;
@@ -408,29 +379,9 @@ export function createMcpConnections(
         closePromise = undefined;
         lifetime = new AbortController();
       }
-      const userPath = join(userDataDirectory(options), "mcp.json");
-      const projectPath = join(options.cwd, ".mcp.json");
-      const servers = new Map<
-        string,
-        { value: unknown; scope: "user" | "project"; configPath: string }
-      >();
-      configErrors.length = 0;
-      for (const path of [userPath, projectPath]) {
-        failed.delete(path);
-        for (let index = errors.length - 1; index >= 0; index--)
-          if (errors[index]!.server === path) errors.splice(index, 1);
-      }
-      const userConfiguration = options.persistence
-        ? await options.persistence.configuration()
-        : options.dataRoot !== undefined
-          ? {}
-          : await readConfig(userPath, "user");
-      for (const [name, value] of Object.entries(userConfiguration))
-        servers.set(name, { value, scope: "user", configPath: userPath });
-      if (options.trustProjectMcp || isTrustedProject(options.cwd, options.settings)) {
-        for (const [name, value] of Object.entries(await readConfig(projectPath, "project")))
-          servers.set(name, { value, scope: "project", configPath: projectPath });
-      }
+      const configuration = options.configuration ?? (await readMcpConfiguration(options));
+      const servers = configuration.servers;
+      configErrors.splice(0, configErrors.length, ...configuration.configErrors);
       if (options.onlyServer === undefined && options.skipServer === undefined)
         for (const server of configurations.keys()) if (!servers.has(server)) await retire(server);
       options.signal?.throwIfAborted();
@@ -439,9 +390,10 @@ export function createMcpConnections(
       };
       options.signal?.addEventListener("abort", abort, { once: true });
       try {
-        for (const [server, { value, scope, configPath }] of [...servers.entries()].sort(
-          ([a], [b]) => a.localeCompare(b),
-        )) {
+        for (const [
+          server,
+          { value, rawValue = value, scope, configPath, error: configurationError },
+        ] of [...servers.entries()].sort(([a], [b]) => a.localeCompare(b))) {
           if (options.onlyServer !== undefined && server !== options.onlyServer) continue;
           if (server === options.skipServer) continue;
           options.signal?.throwIfAborted();
@@ -463,8 +415,8 @@ export function createMcpConnections(
             name: server,
             scope,
             configPath,
-            ...(Value.Check(Type.Object({ url: Type.String() }), value)
-              ? { url: displayUrl(value.url) }
+            ...(Value.Check(Type.Object({ url: Type.String() }), rawValue)
+              ? { url: displayUrl(rawValue.url) }
               : {}),
             ...(Value.Check(Type.Object({ command: Type.String() }), value)
               ? { command: value.command }
@@ -504,6 +456,7 @@ export function createMcpConnections(
               );
           });
           try {
+            if (configurationError) throw configurationError;
             const [invalid] = Value.Errors(ServerConfig, value);
             if (invalid)
               throw createUserVisibleError(
@@ -527,14 +480,7 @@ export function createMcpConnections(
                   { code: "mcp-config-metadata-https", params: {} },
                 );
             }
-            const entry =
-              "url" in parsed
-                ? {
-                    ...parsed,
-                    url: expandEnvironment(parsed.url),
-                    headers: expandValues(parsed.headers),
-                  }
-                : { ...parsed, env: expandValues(parsed.env) };
+            const entry = parsed;
             views.set(server, {
               ...metadata,
               tools: [],
@@ -629,18 +575,25 @@ export function createMcpConnections(
                 auth: (await store?.load())?.tokens ? "oauth" : (views.get(server)?.auth ?? "none"),
               });
               const adapted = discovered.map((tool) =>
-                adaptTool(server, activeClient, tool, (error) => {
-                  if (!closing) {
-                    if (requiresAuthentication(error)) requireAuth?.();
-                    else report(server, error);
-                  }
-                }),
+                adaptTool(
+                  server,
+                  activeClient,
+                  tool,
+                  (error) => {
+                    if (!closing) {
+                      if (requiresAuthentication(error)) requireAuth?.();
+                      else report(server, error);
+                    }
+                  },
+                  activity,
+                ),
               );
               replaceTools(adapted);
               descriptions.set(
                 server,
                 `${server}:\n${activeClient.instructions ?? ""}\nTools: ${adapted.map((tool) => tool.name).join(", ") || "none"}`,
               );
+              options.onChange?.();
             };
             const authenticate = (
               toolSignal?: AbortSignal,
@@ -648,6 +601,7 @@ export function createMcpConnections(
               boundary?: { identity: InteractionIdentity; beforeExchange(): Promise<void> },
             ): Promise<McpAuthOutcome> => {
               const onMcpAuth = options.onMcpAuth;
+              const onInteractionStart = options.onInteractionStart;
               if (!key || !("url" in entry) || !store || !onMcpAuth)
                 return Promise.reject(
                   createUserVisibleError(
@@ -657,6 +611,13 @@ export function createMcpConnections(
                       params: { server },
                     },
                   ),
+                );
+              if (activeCalls)
+                return Promise.reject(
+                  createUserVisibleError("MCP server has active calls.", {
+                    code: "session-mcp-busy",
+                    params: {},
+                  }),
                 );
               const shared = authState.inFlight.get(key);
               if (shared) return shared;
@@ -766,7 +727,7 @@ export function createMcpConnections(
                         notify: (notification) =>
                           // A temporary management transport closes after its reply;
                           // its notification belongs to the caller's operation lifetime.
-                          options.onInteractionStart?.(
+                          onInteractionStart?.(
                             notification,
                             toolSignal ?? signal ?? interactionSignal,
                           ),
@@ -866,8 +827,14 @@ export function createMcpConnections(
                 authState.needsAuth.delete(key);
                 authState.rejectedTokens.delete(key);
                 authState.authorizationScopes.delete(key);
-                replaceTools([]);
-                if (usedOAuth) setNeedsAuthView();
+                if (usedOAuth) {
+                  for (const active of clients) {
+                    if (active.options.title !== server) continue;
+                    retired.add(active);
+                    await active.close();
+                  }
+                  requireAuth?.();
+                }
               });
             requireAuth = () => {
               ready = false;
@@ -1011,7 +978,7 @@ export function createMcpConnections(
                     command: entry.command,
                     args: entry.args,
                     env: entry.env,
-                    cwd: options.cwd,
+                    cwd: "cwd" in entry ? entry.cwd : options.cwd,
                   });
             await client.connect(transport);
             await registerTools(client);

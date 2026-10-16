@@ -4,6 +4,11 @@ import { createInterface } from "node:readline";
 // A real JSON-RPC stdio server. Its manifest can change between Runs.
 const manifest = await Bun.file(process.env.MCP_MANIFEST!).json();
 appendFileSync(process.env.MCP_PIDS!, `${process.pid}\n`);
+if (process.env.MCP_LAUNCHES)
+  appendFileSync(
+    process.env.MCP_LAUNCHES,
+    `${JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2), project: process.env.MCP_PROJECT })}\n`,
+  );
 const lines = createInterface({ input: process.stdin });
 const send = (message: unknown) => process.stdout.write(`${JSON.stringify(message)}\n`);
 for await (const line of lines) {
