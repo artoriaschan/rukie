@@ -1,5 +1,11 @@
 export const modelServiceCopy = {
   en: {
+    "appearance.theme": "Theme",
+    "appearance.description":
+      "Choose a theme for this device. System follows your system appearance.",
+    "appearance.system": "System",
+    "appearance.light": "Light",
+    "appearance.dark": "Dark",
     "services.keyPlaceholder": "Enter API Key",
     "services.delete": "Delete",
     "services.save": "Save",
@@ -152,6 +158,11 @@ export const modelServiceCopy = {
     "services.manual": "Manual configuration",
   },
   zh: {
+    "appearance.theme": "主题",
+    "appearance.description": "选择此设备的主题。跟随系统会随系统外观自动切换。",
+    "appearance.system": "跟随系统",
+    "appearance.light": "浅色",
+    "appearance.dark": "深色",
     "services.keyPlaceholder": "输入 API Key",
     "services.delete": "删除",
     "services.save": "保存",

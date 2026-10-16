@@ -228,3 +228,20 @@ test("browser model service settings autosave, reveal and delete through the sin
     }
   }
 });
+
+test("browser theme source is a local no-op without an active connection", async () => {
+  const original = location.href;
+  const saved = sessionStorage.getItem("rukie.webDevelopment.connection");
+  try {
+    history.replaceState(null, "", location.pathname);
+    sessionStorage.removeItem("rukie.webDevelopment.connection");
+    const host = browserHost();
+    await host.setThemeSource("system");
+    await host.setThemeSource("light");
+    await host.setThemeSource("dark");
+  } finally {
+    history.replaceState(null, "", original);
+    if (saved === null) sessionStorage.removeItem("rukie.webDevelopment.connection");
+    else sessionStorage.setItem("rukie.webDevelopment.connection", saved);
+  }
+});

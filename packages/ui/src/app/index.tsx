@@ -43,6 +43,7 @@ import * as Menu from "../components/ui/dropdown-menu";
 import { UiLocaleProvider, useAppText } from "../lib/i18n";
 import { cn } from "../lib/utils";
 import type { PermissionDecision } from "../lib/transcript";
+import { createAppearance, type Appearance } from "../lib/appearance";
 import { ModelServices } from "./model-services";
 import { AppConversation } from "./conversation";
 import { ProjectCreate } from "./project-create";
@@ -77,6 +78,7 @@ export interface ConversationProps {
 export interface AppProps {
   host: AppHost;
   locale?: Locale;
+  appearance?: Appearance;
   Conversation?: ComponentType<ConversationProps>;
 }
 const emptyView: SessionViewState = { interactions: {}, busy: false };
@@ -111,7 +113,18 @@ export function App({ locale = "en", ...props }: AppProps) {
     </UiLocaleProvider>
   );
 }
-function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "locale">) {
+function DesktopApp({
+  host,
+  appearance,
+  Conversation = AppConversation,
+}: Omit<AppProps, "locale">) {
+  const localAppearance = useRef<Appearance | undefined>(undefined);
+  const getAppearance = () =>
+    appearance ??
+    (localAppearance.current ??= createAppearance(
+      host.setThemeSource ? { setThemeSource: host.setThemeSource } : undefined,
+    ));
+  useEffect(() => () => localAppearance.current?.dispose(), []);
   const t = useAppText();
   const errorText = useErrorText();
   const [store] = useState(createDesktopStore);
@@ -1327,6 +1340,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
       </div>
       {settingsOpen ? (
         <ModelServices
+          getAppearance={getAppearance}
           services={host.modelServices}
           request={client.request}
           onChanged={async () => {

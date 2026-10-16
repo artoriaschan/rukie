@@ -10,6 +10,8 @@ import type {
   ModelPriceResult,
 } from "@rukie/shared";
 export interface DesktopHost {
+  /** Presentation-only native theme selection; browser hosts perform no operation. */
+  setThemeSource(source: "system" | "light" | "dark"): Promise<void>;
   getConnection(): Promise<{ port: number; token: string }>;
   pickProjectFolder(multiple?: boolean): Promise<string[] | null>;
   /** App binds its single connection before host actions; host never opens or closes it. */
@@ -72,6 +74,7 @@ export function browserHost(): DesktopHost {
   };
   return {
     ...connection,
+    setThemeSource: async () => {},
     modelServices: {
       list: async () =>
         checked(

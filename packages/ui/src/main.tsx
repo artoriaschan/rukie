@@ -1,16 +1,12 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./app";
+import { createAppearance } from "./lib/appearance";
 import { browserHost } from "./host";
 import "./theme.css";
 const host = window.rukieHost ?? browserHost();
 const locale = navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
 document.documentElement.lang = locale;
-const theme = matchMedia("(prefers-color-scheme: dark)");
-const applyTheme = () => {
-  document.documentElement.classList.toggle("dark", theme.matches);
-  document.documentElement.classList.toggle("light", !theme.matches);
-};
-applyTheme();
-theme.addEventListener("change", applyTheme);
+const appearance = createAppearance(host);
+import.meta.hot?.dispose(() => appearance.dispose());
 const root = document.getElementById("root");
-if (root) createRoot(root).render(<App host={host} locale={locale} />);
+if (root) createRoot(root).render(<App host={host} locale={locale} appearance={appearance} />);

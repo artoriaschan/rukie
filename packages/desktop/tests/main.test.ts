@@ -18,6 +18,7 @@ const electron = vi.hoisted(() => {
   };
   const window = {
     webContents,
+    setBackgroundColor: vi.fn(),
     loadURL: vi.fn().mockResolvedValue(undefined),
     on: vi.fn((name: string, fn: (...args: unknown[]) => void) => events.set(name, fn)),
     destroy: vi.fn(),
@@ -27,6 +28,12 @@ const electron = vi.hoisted(() => {
     isDestroyed: vi.fn(() => false),
   };
   return {
+    nativeTheme: {
+      themeSource: "system",
+      shouldUseDarkColors: false,
+      on: vi.fn<(event: string, listener: () => void) => void>(),
+      removeListener: vi.fn<(event: string, listener: () => void) => void>(),
+    },
     handlers,
     events,
     protocol,
@@ -69,6 +76,8 @@ import { fileURLToPath } from "node:url";
 beforeEach(() => {
   electron.app.isPackaged = false;
   electron.app.requestSingleInstanceLock.mockReturnValue(true);
+  electron.nativeTheme.themeSource = "system";
+  electron.nativeTheme.shouldUseDarkColors = false;
   electron.handlers.clear();
   electron.events.clear();
   vi.clearAllMocks();
@@ -504,4 +513,53 @@ test("API Key acquisition opens only the fixed trusted destination and denies po
     electron.window.webContents.mainFrame.url = "app://rukie/";
     await owner.stop();
   }
+});
+
+test("native theme accepts only trusted enum selections and releases backing-fill observation", async () => {
+  const owner = await startDesktop({
+    dataRoot: "/tmp/rukie-desktop-test-data",
+    rendererDirectory: "/tmp",
+    preload: "/tmp/preload.cjs",
+    sidecar: {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./helpers/sidecar.mjs", import.meta.url))],
+    },
+  });
+  const event = {
+    sender: electron.window.webContents,
+    senderFrame: electron.window.webContents.mainFrame,
+  };
+  const change = electron.handlers.get("rukie:setThemeSource")!;
+  try {
+    for (const source of ["dark", "light", "system"]) {
+      await change(event, source);
+      expect(electron.nativeTheme.themeSource).toBe(source);
+    }
+    for (const source of [undefined, null, {}, "auto", "#000000"]) {
+      await expect(change(event, source)).rejects.toThrow("Invalid theme source");
+      expect(electron.nativeTheme.themeSource).toBe("system");
+    }
+    await expect(
+      change({ ...event, senderFrame: { url: "app://rukie/" } }, "dark"),
+    ).rejects.toThrow("Untrusted");
+    expect(electron.nativeTheme.themeSource).toBe("system");
+    expect(electron.BrowserWindow).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundColor: "#f7f7f7", titleBarStyle: "hiddenInset" }),
+    );
+    const updated = electron.nativeTheme.on.mock.calls[0]![1];
+    electron.nativeTheme.shouldUseDarkColors = true;
+    updated();
+    expect(electron.window.setBackgroundColor).toHaveBeenLastCalledWith("#0e0e0e");
+    electron.window.isDestroyed.mockReturnValueOnce(true);
+    electron.window.setBackgroundColor.mockClear();
+    updated();
+    expect(electron.window.setBackgroundColor).not.toHaveBeenCalled();
+  } finally {
+    await owner.stop();
+  }
+  expect(electron.nativeTheme.removeListener).toHaveBeenCalledWith(
+    "updated",
+    electron.nativeTheme.on.mock.calls[0]![1],
+  );
+  await expect(change(event, "light")).rejects.toThrow("closing");
 });

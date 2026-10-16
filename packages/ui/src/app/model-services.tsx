@@ -1,3 +1,5 @@
+import { AppearanceSettings } from "./appearance-settings";
+import { createAppearance, type Appearance } from "../lib/appearance";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -96,15 +98,21 @@ const defaultModel: ServiceModel = {
 /** Settings owns drafts; the trusted host owns secret storage and connection checks. */
 export function ModelServices({
   services,
+  getAppearance,
   onChanged,
   request,
 }: {
   services: Services;
+  getAppearance?: () => Appearance;
   request?: (command: ClientCommand) => Promise<unknown>;
   onChanged: () => Promise<void>;
 }) {
   const t = useAppText();
-  const [page, setPage] = useState<"models" | "worktrees">("models");
+  const localAppearance = useRef<Appearance | undefined>(undefined);
+  const resolveAppearance = () =>
+    getAppearance?.() ?? (localAppearance.current ??= createAppearance());
+  useEffect(() => () => localAppearance.current?.dispose(), []);
+  const [page, setPage] = useState<"models" | "worktrees" | "appearance">("models");
   const surface = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -568,7 +576,7 @@ export function ModelServices({
         ).map(([group, items]) => (
           <div
             key={String(group)}
-            className={`model-services-nav-group ${group === "environment" ? "worktree-settings-navigation" : ""}`}
+            className={`model-services-nav-group ${group === "environment" || group === "personal" ? "worktree-settings-navigation" : ""}`}
           >
             <p className="text-ui-sm text-muted-foreground">{t(`services.nav.${group}`)}</p>
             {items.map(([name, Icon]) => (
@@ -576,18 +584,23 @@ export function ModelServices({
                 key={name}
                 aria-label={t(`services.nav.${name}`)}
                 data-settings-page={name}
-                variant={name === "worktrees" && page === "worktrees" ? "secondary" : "ghost"}
+                variant={name === page ? "secondary" : "ghost"}
                 size="contextual"
-                disabled={name !== "worktrees" || !request}
-                aria-current={name === "worktrees" && page === "worktrees" ? "page" : undefined}
-                onClick={() => setPage("worktrees")}
+                disabled={name !== "appearance" && (name !== "worktrees" || !request)}
+                aria-current={name === page ? "page" : undefined}
+                onClick={() => {
+                  if (name === "appearance") resolveAppearance();
+                  if (name === "appearance" || name === "worktrees") setPage(name);
+                }}
                 title={
-                  name === "worktrees" && request
-                    ? t("services.nav.worktrees")
+                  name === "appearance" || (name === "worktrees" && request)
+                    ? t(`services.nav.${name}`)
                     : t("services.unavailable")
                 }
                 aria-describedby={
-                  name === "worktrees" && request ? undefined : "settings-unavailable"
+                  name === "appearance" || (name === "worktrees" && request)
+                    ? undefined
+                    : "settings-unavailable"
                 }
               >
                 <Icon className="size-3" />
@@ -614,9 +627,11 @@ export function ModelServices({
       <ScrollArea
         className="model-services-content-scroll"
         viewportClassName="model-services-content"
-        viewportLabel={t("services.title")}
+        viewportLabel={page === "models" ? t("services.title") : t(`services.nav.${page}`)}
       >
-        {page === "worktrees" && request ? (
+        {page === "appearance" ? (
+          <AppearanceSettings appearance={resolveAppearance()} />
+        ) : page === "worktrees" && request ? (
           <WorktreeSettings request={request} />
         ) : (
           <div className="model-services-workspace">

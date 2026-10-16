@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  nativeTheme,
   protocol,
   safeStorage,
   shell,
@@ -48,6 +49,9 @@ export async function startDesktop(options: DesktopOptions) {
   const managementToken = randomBytes(32).toString("hex");
   let acquiredSidecar: Sidecar | undefined;
   let acquiredWindow: BrowserWindow | undefined;
+  let releaseTheme: (() => void) | undefined;
+  // Native backing fill follows DESIGN.md layout-rail, not the content canvas.
+  const windowBackground = () => (nativeTheme.shouldUseDarkColors ? "#0e0e0e" : "#f7f7f7");
   try {
     const window = new BrowserWindow({
       width: 1200,
@@ -55,6 +59,7 @@ export async function startDesktop(options: DesktopOptions) {
       minWidth: 420,
       minHeight: 400,
       titleBarStyle: "hiddenInset",
+      backgroundColor: windowBackground(),
       trafficLightPosition: { x: 16, y: 16 },
       webPreferences: {
         preload: options.preload,
@@ -65,6 +70,11 @@ export async function startDesktop(options: DesktopOptions) {
       },
     });
     acquiredWindow = window;
+    const updateBackground = () => {
+      if (!window.isDestroyed()) window.setBackgroundColor(windowBackground());
+    };
+    nativeTheme.on("updated", updateBackground);
+    releaseTheme = () => nativeTheme.removeListener("updated", updateBackground);
     app.on("second-instance", () => {
       if (window.isDestroyed()) return;
       if (window.isMinimized()) window.restore();
@@ -119,6 +129,13 @@ export async function startDesktop(options: DesktopOptions) {
       )
         throw new Error("Untrusted desktop sender");
     };
+    ipcMain.handle("rukie:setThemeSource", async (event, source: unknown) => {
+      authorize(event);
+      if (source !== "system" && source !== "light" && source !== "dark")
+        throw new Error("Invalid theme source");
+      nativeTheme.themeSource = source;
+      updateBackground();
+    });
     ipcMain.handle("rukie:getConnection", async (event) => {
       authorize(event);
       return sidecar.getConnection();
@@ -219,6 +236,7 @@ export async function startDesktop(options: DesktopOptions) {
     let stopped: Promise<void> | undefined;
     const stop = () => {
       closing = true;
+      releaseTheme?.();
       return (stopped ??= (async () => {
         try {
           await sidecar.stop();
@@ -249,6 +267,7 @@ export async function startDesktop(options: DesktopOptions) {
     if (!closing) void sidecar.getConnection().catch(() => {});
     return { window, stop };
   } catch (error) {
+    releaseTheme?.();
     await acquiredSidecar?.stop();
     await secrets.close();
     acquiredWindow?.destroy();

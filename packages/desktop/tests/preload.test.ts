@@ -12,8 +12,16 @@ test("preload exposes fixed native methods and explicit credential reveal with f
   const call = electron.contextBridge.exposeInMainWorld.mock.calls[0]!;
   expect(call[0]).toBe("rukieHost");
   const host: DesktopHost = call[1];
-  expect(Object.keys(host).sort()).toEqual(["getConnection", "modelServices", "pickProjectFolder"]);
+  expect(Object.keys(host).sort()).toEqual([
+    "getConnection",
+    "modelServices",
+    "pickProjectFolder",
+    "setThemeSource",
+  ]);
   await host.getConnection();
+  await host.setThemeSource("system");
+  await host.setThemeSource("light");
+  await host.setThemeSource("dark");
   await host.pickProjectFolder();
   await host.pickProjectFolder(false);
   expect(Object.keys(host.modelServices!).sort()).toEqual([
@@ -34,6 +42,9 @@ test("preload exposes fixed native methods and explicit credential reveal with f
   await host.modelServices!.delete("local");
   expect(electron.ipcRenderer.invoke.mock.calls).toEqual([
     ["rukie:getConnection"],
+    ["rukie:setThemeSource", "system"],
+    ["rukie:setThemeSource", "light"],
+    ["rukie:setThemeSource", "dark"],
     ["rukie:pickProjectFolder"],
     ["rukie:pickProjectFolder", false],
     [
