@@ -47,6 +47,17 @@ test("full output is fetched on demand, byte pages and failed reads remain retry
     await expect.element(button).toBeVisible();
     const trigger = screen.getByRole("button", { name: /long command/ });
     const baseline = trigger.element().getBoundingClientRect();
+    expect(getComputedStyle(trigger.element()).cursor).toBe("pointer");
+    for (const child of trigger.element().querySelectorAll("svg, span")) {
+      expect(getComputedStyle(child).cursor).toBe("pointer");
+    }
+    expect(baseline.height).toBe(28);
+    trigger.element().focus();
+    await userEvent.keyboard("{Space}");
+    await expect.element(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(getComputedStyle(trigger.element()).boxShadow).toContain("2px");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(trigger).toHaveAttribute("aria-expanded", "true");
     button.element().focus();
     await userEvent.keyboard("{Enter}");
     await expect.element(screen.getByText("first output", { exact: false })).toBeVisible();

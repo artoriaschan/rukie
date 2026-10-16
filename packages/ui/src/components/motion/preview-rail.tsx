@@ -16,7 +16,7 @@ import { useTapGesture } from "@/lib/hooks/use-tap-gesture";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "./tooltip";
 
-export interface PreviewRailItem {
+interface PreviewRailItem {
   id: string;
   label: string;
   ariaLabel?: string;

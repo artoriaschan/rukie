@@ -96,9 +96,11 @@ export function Sidebar(props: SidebarProps) {
             tabIndex={-1}
             className="group/row relative flex min-w-0 items-center rounded-lg px-1 outline-none focus-visible:ring-2 focus-visible:ring-ring row-hover:bg-hover"
           >
-            <button
+            <Button
+              size="compact"
+              variant="ghost"
               onClick={() => props.onSelect(session.id)}
-              className="flex cursor-pointer min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/row:pr-[60px] group-focus-within/row:pr-[60px]"
+              className="flex justify-start not-disabled:hover:bg-transparent not-disabled:hover:text-current text-current cursor-pointer min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/row:pr-[60px] group-focus-within/row:pr-[60px]"
               aria-current={props.selected === session.id ? "page" : undefined}
             >
               {session.running && !session.waitingInteraction ? (
@@ -115,7 +117,7 @@ export function Sidebar(props: SidebarProps) {
               <span className="session-row-title min-w-0 flex-1 overflow-hidden whitespace-nowrap">
                 {session.title}
               </span>
-            </button>
+            </Button>
             <div className="absolute right-1 flex items-center">
               <Tooltip content={t(pinned ? "app.unpin" : "app.pin")}>
                 <Button
@@ -161,10 +163,12 @@ export function Sidebar(props: SidebarProps) {
   ) => (
     <section key={id} aria-label={t(`app.${id}`)} className="mb-3">
       <div className="group/header flex items-center gap-1 px-2">
-        <button
+        <Button
+          size="contextual"
+          variant="ghost"
           onClick={() => toggle(id)}
           aria-expanded={!groups.includes(id)}
-          className="flex cursor-pointer min-w-0 flex-1 items-center gap-1 py-1 min-h-7 text-left text-ui-base text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex px-0 justify-start not-disabled:hover:bg-transparent not-disabled:hover:text-muted-foreground cursor-pointer min-w-0 flex-1 items-center gap-1 py-1 min-h-7 text-left text-ui-base text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {t(`app.${id}`)}
           <ChevronDown
@@ -173,7 +177,7 @@ export function Sidebar(props: SidebarProps) {
               groups.includes(id) && "-rotate-90 opacity-100",
             )}
           />
-        </button>
+        </Button>
         {sessions.some((session) => session.running) ? (
           <LoaderCircle
             aria-label={t("app.running")}

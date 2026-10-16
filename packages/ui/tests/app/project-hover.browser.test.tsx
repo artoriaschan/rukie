@@ -22,6 +22,11 @@ test("Project keyboard detail preserves disclosure and opens the shared editor",
       .getByRole("region", { name: "Projects", exact: true })
       .getByRole("button", { name: "Project", exact: true });
     await expect.element(row).toBeVisible();
+    expect(row.element().getBoundingClientRect().height).toBe(32);
+    expect(getComputedStyle(row.element()).paddingLeft).toBe("8px");
+    expect(getComputedStyle(row.element()).cursor).toBe("pointer");
+    for (const child of row.element().querySelectorAll("svg, span"))
+      expect(getComputedStyle(child).cursor).toBe("pointer");
     row.element().focus();
     const card = screen.getByRole("dialog", { name: "Project details", exact: true });
     await expect.element(card).toBeVisible();

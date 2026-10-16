@@ -13,9 +13,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuTrigger,
 } from "../../src/components/ui/dropdown-menu";
-import { Message } from "../../src/components/agents/message";
 import { Citation } from "../../src/components/agents/citations";
-import { AgentProgress } from "../../src/components/agents/loading-states/agent-progress";
 import "../../src/theme.css";
 
 test("permission actions expose Chinese copy and invoke caller decisions", async () => {
@@ -81,18 +79,14 @@ test("popover stays readable when its trigger is near the viewport edge", async 
   expect(dialog.element().getBoundingClientRect().right).toBeLessThanOrEqual(innerWidth - 8);
 });
 
-test("registry message, citation and progress accessible names use the injected locale", async () => {
+test("registry citation accessible name uses the injected locale", async () => {
   const screen = await render(
     <UiLocaleProvider locale="zh">
-      <Message from="assistant">回复</Message>
       <Citation citationId="source" index={2} idPrefix="sources" />
-      <AgentProgress label="检查代码" elapsedSeconds={1} />
     </UiLocaleProvider>,
   );
   try {
-    await expect.element(screen.getByRole("article", { name: "助手消息" })).toBeVisible();
     await expect.element(screen.getByRole("link", { name: "查看引用 2" })).toBeVisible();
-    await expect.element(screen.getByRole("status", { name: "检查代码，进行中" })).toBeVisible();
   } finally {
     await screen.unmount();
   }

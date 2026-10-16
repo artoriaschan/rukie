@@ -1,3 +1,4 @@
+import { Button } from "@/components/motion/button/base";
 import { useComponentText } from "@/lib/i18n";
 
 import { BookOpenText, ChevronDown, ExternalLink, Globe2 } from "lucide-react";
@@ -212,12 +213,14 @@ export function Citations({
 
   return (
     <div className={cn("w-full text-ui-base", className)}>
-      <button
+      <Button
+        size="contextual"
+        variant="ghost"
         type="button"
         aria-expanded={currentOpen}
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
-        className="group -ml-1 flex min-h-7 items-center gap-2 rounded-lg px-1 text-left text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="group -ml-1 flex justify-start not-disabled:hover:bg-transparent text-ui-base min-h-7 items-center gap-2 rounded-lg px-1 text-left text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         <BookOpenText className="size-3" />
         <span className="font-medium">{title}</span>
@@ -231,7 +234,7 @@ export function Citations({
         >
           <ChevronDown className="size-3" />
         </span>
-      </button>
+      </Button>
 
       <AgentDisclosure id={contentId} open={currentOpen}>
         <CitationList citations={citations} idPrefix={resolvedPrefix} className="mt-1" />

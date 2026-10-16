@@ -1,3 +1,4 @@
+import { Button } from "@/components/motion/button/base";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   Check,
@@ -160,7 +161,9 @@ export function NewChatSelector(props: NewChatSelectorProps) {
     <div className="new-chat-selector" data-project={props.target ? "" : undefined}>
       <div className="new-chat-project">
         {props.target ? (
-          <button
+          <Button
+            size="icon"
+            variant="ghost"
             type="button"
             className="new-chat-clear"
             aria-label={t("app.clear-project")}
@@ -169,7 +172,7 @@ export function NewChatSelector(props: NewChatSelectorProps) {
           >
             <Folder aria-hidden="true" className="new-chat-folder size-3" />
             <X aria-hidden="true" className="new-chat-x size-3" />
-          </button>
+          </Button>
         ) : (
           <span className="new-chat-clear" aria-hidden="true">
             <MessageSquare className="size-3" />
@@ -177,10 +180,10 @@ export function NewChatSelector(props: NewChatSelectorProps) {
         )}
         <Menu.DropdownMenu onOpenChange={(open) => open || setProjectQuery("")}>
           <Menu.DropdownMenuTrigger asChild disabled={props.disabled}>
-            <button type="button" className="new-chat-trigger">
+            <Button size="compact" variant="ghost" type="button" className="new-chat-trigger">
               <span className="truncate">{name}</span>
               <ChevronDown aria-hidden="true" className="size-3 shrink-0" />
-            </button>
+            </Button>
           </Menu.DropdownMenuTrigger>
           <Menu.DropdownMenuContent side="top" className="new-chat-menu w-72">
             <SearchField
@@ -231,7 +234,9 @@ export function NewChatSelector(props: NewChatSelectorProps) {
         >
           <Tooltip content={label}>
             <Menu.DropdownMenuTrigger asChild disabled={props.disabled}>
-              <button
+              <Button
+                size="compact"
+                variant="ghost"
                 type="button"
                 className="new-chat-trigger new-chat-branch"
                 aria-label={t("app.current-branch", { branch: label })}
@@ -239,7 +244,7 @@ export function NewChatSelector(props: NewChatSelectorProps) {
                 <GitBranch aria-hidden="true" className="size-3 shrink-0" />
                 <span className="truncate font-mono text-ui-caption">{label}</span>
                 <ChevronDown aria-hidden="true" className="size-3 shrink-0" />
-              </button>
+              </Button>
             </Menu.DropdownMenuTrigger>
           </Tooltip>
           <Menu.DropdownMenuContent side="top" align="end" className="new-chat-menu w-80">

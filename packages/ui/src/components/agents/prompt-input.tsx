@@ -236,7 +236,9 @@ export function PromptInput({
               className="w-56 space-y-0.5 bg-menu p-1"
             >
               {actions.map((action) => (
-                <button
+                <Button
+                  size="compact"
+                  variant="ghost"
                   key={action.value}
                   type="button"
                   disabled={action.disabled}
@@ -244,7 +246,7 @@ export function PromptInput({
                     onAction?.(action.value);
                     setActionsOpen(false);
                   }}
-                  className="flex w-full items-start gap-2 rounded-md px-2 py-1 min-h-8 text-left outline-none not-disabled:hover:bg-menu-hover focus-visible:bg-menu-hover disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex text-ui-base justify-start w-full items-start gap-2 rounded-md px-2 py-1 min-h-8 text-left outline-none not-disabled:hover:bg-menu-hover focus-visible:bg-menu-hover disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {action.icon ? (
                     <span className="mt-0.5 grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:size-3">
@@ -259,7 +261,7 @@ export function PromptInput({
                       </span>
                     ) : null}
                   </span>
-                </button>
+                </Button>
               ))}
             </MorphPopoverContent>
           </MorphPopover>

@@ -262,11 +262,13 @@ export function ProjectRow(props: ProjectRowProps) {
               }
             }}
           >
-            <button
+            <Button
+              size="compact"
+              variant="ghost"
               ref={disclosure}
               aria-expanded={props.expanded}
               onClick={props.onToggle}
-              className="flex cursor-pointer min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex justify-start not-disabled:hover:bg-transparent not-disabled:hover:text-current text-current cursor-pointer min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {props.expanded ? (
                 <FolderOpen className="size-3 shrink-0" />
@@ -274,7 +276,7 @@ export function ProjectRow(props: ProjectRowProps) {
                 <Folder className="size-3 shrink-0" />
               )}
               <span className="truncate">{props.project.name}</span>
-            </button>
+            </Button>
             <Tooltip content={t("app.new-in-project", { project: props.project.name })}>
               <Button
                 variant="ghost"

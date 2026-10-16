@@ -72,6 +72,14 @@ test("titlebar keeps its blank space draggable and its controls clickable at nar
         const backdrop = screen.getByRole("button", { name: "Close sidebar", exact: true });
         await expect.element(backdrop).toBeVisible();
         expect(document.querySelectorAll('button[aria-label="Toggle sidebar"]')).toHaveLength(1);
+        expect(getComputedStyle(backdrop.element()).cursor).toBe("pointer");
+        await userEvent.keyboard("{Tab}");
+        backdrop.element().focus();
+        expect(getComputedStyle(backdrop.element()).outlineWidth).toBe("2px");
+        await userEvent.keyboard("{Enter}");
+        await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
+        await expect.element(toggle).toHaveFocus();
+        await toggle.click();
         const bounds = backdrop.element().getBoundingClientRect();
         await backdrop.click({ position: { x: bounds.width - 8, y: 8 } });
         await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
@@ -135,6 +143,21 @@ test("sidebar searches projects, selects a welcome target and creates a Session 
     await expect
       .element(screen.getByRole("heading", { name: /What should we build/ }))
       .toHaveTextContent("What should we build in Project?");
+    const welcome = screen.getByRole("button", {
+      name: "What should we build in Project?",
+      exact: true,
+    });
+    expect(getComputedStyle(welcome.element()).cursor).toBe("pointer");
+    expect(getComputedStyle(welcome.element()).fontSize).toBe("18px");
+    expect(getComputedStyle(welcome.element()).paddingLeft).toBe("0px");
+    expect(welcome.element().getBoundingClientRect().height).toBe(28);
+    welcome.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Project", exact: true }))
+      .toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(welcome).toHaveFocus();
     await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Build a compiler");
     await userEvent.keyboard("{Enter}");
     await expect

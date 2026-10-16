@@ -26,10 +26,18 @@ test("sidebar titles follow Pencil and session hover changes immediately without
     for (const section of sidebar.querySelectorAll("section")) {
       const heading = section.querySelector("button[aria-expanded]");
       expect(heading).not.toBeNull();
+      expect(heading!.getBoundingClientRect().height).toBe(28);
+      expect(getComputedStyle(heading!).cursor).toBe("pointer");
+      for (const child of heading!.querySelectorAll("svg, span"))
+        expect(getComputedStyle(child).cursor).toBe("pointer");
       expect(getComputedStyle(heading!).fontSize).toBe("14px");
       expect(getComputedStyle(heading!).fontWeight).toBe("400");
     }
     for (const session of [first, second]) {
+      expect(getComputedStyle(session.element()).cursor).toBe("pointer");
+      expect(getComputedStyle(session.element()).paddingLeft).toBe("8px");
+      for (const child of session.element().querySelectorAll("svg, span"))
+        expect(getComputedStyle(child).cursor).toBe("pointer");
       expect(getComputedStyle(session.element()).fontSize).toBe("14px");
       expect(getComputedStyle(session.element()).fontWeight).toBe("400");
       expect(session.element().getBoundingClientRect().height).toBe(32);

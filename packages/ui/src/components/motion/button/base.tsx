@@ -58,7 +58,7 @@ const SIZE_CLASS: Record<ButtonSize, string> = {
   compact: COMPACT,
   contextual: CONTEXTUAL,
   micro: MICRO,
-  // Descendants include glyphs wrapped by stateful/motion adapters.
+  // Descendants include glyphs wrapped by composite action labels.
   icon: "size-6 min-h-6 min-w-6 shrink-0 p-0 text-ui-base rounded-md [&_svg]:size-3",
 };
 

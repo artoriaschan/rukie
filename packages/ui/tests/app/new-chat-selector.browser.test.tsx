@@ -1,6 +1,7 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { App } from "../../src/app";
+import { NewChatSelector } from "../../src/app/new-chat-selector";
 import { modelServicesFixture } from "../helpers/model-services";
 import { ownProjectBrowserTest } from "../helpers/project-browser";
 import "../../src/theme.css";
@@ -79,6 +80,12 @@ test.each([
     const main = screen.getByRole("main");
     const projectTrigger = main.getByRole("button", { name: text.conversation, exact: true });
     await expect.element(projectTrigger).toBeEnabled();
+    expect(projectTrigger.element().getBoundingClientRect().height).toBe(32);
+    expect(getComputedStyle(projectTrigger.element()).borderRadius).toBe("8px");
+    expect(getComputedStyle(projectTrigger.element()).fontSize).toBe("14px");
+    expect(getComputedStyle(projectTrigger.element()).cursor).toBe("pointer");
+    for (const child of projectTrigger.element().querySelectorAll("svg, span"))
+      expect(getComputedStyle(child).cursor).toBe("pointer");
 
     // C32: the bar shares the composer width and sits directly on top of it.
     const bar = document.querySelector<HTMLElement>(".new-chat-selector")!;
@@ -117,6 +124,10 @@ test.each([
 
     // C34: all local branches, search and switching.
     const branchTrigger = main.getByRole("button", { name: text.branch("main"), exact: true });
+    expect(branchTrigger.element().getBoundingClientRect().height).toBe(32);
+    expect(getComputedStyle(branchTrigger.element()).cursor).toBe("pointer");
+    for (const child of branchTrigger.element().querySelectorAll("svg, span"))
+      expect(getComputedStyle(child).cursor).toBe("pointer");
     await branchTrigger.click();
     const branchSearch = screen.getByRole("textbox", { name: text.searchBranches, exact: true });
     await expect.element(branchSearch).toHaveFocus();
@@ -244,4 +255,53 @@ test("Don’t use a project resets the selection and hides the branch menu", asy
   await screen.getByRole("menuitem", { name: "Project", exact: true }).click();
   await expect.element(main.getByRole("button", { name: "Project", exact: true })).toBeVisible();
   expect(document.querySelector(".new-chat-branch")).toBeNull();
+});
+
+test("disabled new chat choices preserve geometry and reject pointer and keyboard activation", async () => {
+  const owner = ownProjectBrowserTest();
+  const action = vi.fn();
+  const project = {
+    id: "project",
+    name: "Project",
+    directories: ["/project"],
+    primary: "/project",
+    trusted: true,
+  };
+  const screen = await owner.render(
+    <div style={{ width: 388 }}>
+      <NewChatSelector
+        projects={[project]}
+        target={project}
+        git={{ repository: true, branch: "main", head: "abcdef", branches: ["main"] }}
+        worktree={false}
+        disabled
+        onProject={action}
+        onAddProject={action}
+        onWorktree={action}
+        onBranch={async () => {
+          action();
+          return null;
+        }}
+      />
+    </div>,
+  );
+  try {
+    for (const name of ["Clear project selection", "Project", "Current branch: main"]) {
+      const button = screen.getByRole("button", { name, exact: true });
+      await expect.element(button).toBeDisabled();
+      expect(button.element().getBoundingClientRect().height).toBe(
+        name === "Clear project selection" ? 24 : 32,
+      );
+      expect(getComputedStyle(button.element()).opacity).toBe("0.5");
+      for (const child of [button.element(), ...button.element().querySelectorAll("svg,span")])
+        expect(getComputedStyle(child).cursor).toBe("not-allowed");
+      await button.click({ force: true });
+      button.element().focus();
+      await userEvent.keyboard("{Enter}{Space}");
+    }
+    expect(action).not.toHaveBeenCalled();
+    expect(screen.getByRole("menu").query()).toBeNull();
+  } finally {
+    await owner.close();
+  }
 });
