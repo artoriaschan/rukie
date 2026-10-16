@@ -99,7 +99,7 @@ test("list filters names with prefix priority and keeps ten rows above the compo
     );
     await input.fill("/");
     await expect.poll(() => options.all().length).toBe(14);
-    const panel = screen.getByRole("dialog", { name: "Skills" }).element();
+    const panel = screen.getByRole("dialog", { name: "Insert" }).element();
     const form = input.element().closest("form")!;
     expect(panel.getBoundingClientRect().width).toBe(form.getBoundingClientRect().width);
     await expect

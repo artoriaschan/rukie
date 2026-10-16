@@ -35,7 +35,7 @@ test("new chat preserves plan preselection after failure and creates its first R
   const selector = document.querySelector(".new-chat-selector")!;
   const baseline = [composer, selector].map((item) => item.getBoundingClientRect().toJSON());
   await add.click();
-  await screen.getByRole("menuitem", { name: "Plan mode Off", exact: true }).click();
+  await screen.getByRole("option", { name: "/plan Plan mode Off", exact: true }).click();
   await expect
     .element(screen.getByRole("button", { name: "Close plan mode", exact: true }))
     .toBeVisible();
@@ -76,8 +76,8 @@ test.each([
     width: 1280,
     dark: false,
     attach: "Attach images",
-    off: "Plan mode Off",
-    on: "Plan mode • On",
+    off: "/plan Plan mode Off",
+    on: "/plan Plan mode • On",
     close: "Close plan mode",
     prompt: "Prompt",
   },
@@ -86,8 +86,8 @@ test.each([
     width: 420,
     dark: true,
     attach: "添加图片",
-    off: "计划模式 已关闭",
-    on: "计划模式 • 已开启",
+    off: "/plan 计划模式 已关闭",
+    on: "/plan 计划模式 • 已开启",
     close: "关闭计划模式",
     prompt: "输入消息",
   },
@@ -142,7 +142,7 @@ test.each([
     await expect.element(close).not.toBeInTheDocument();
     await expect.poll(() => promptText(prompt.element())).toBe("Preserved Session draft");
     await screen.getByRole("button", { name: copy.attach, exact: true }).click();
-    await screen.getByRole("menuitem", { name: copy.off, exact: true }).click();
+    await screen.getByRole("option", { name: copy.off, exact: true }).click();
     await expect
       .poll(async () =>
         (await commands(connection.port)).some(
@@ -163,9 +163,7 @@ test.each([
       copy.dark ? "rgb(47, 47, 47)" : "rgb(255, 255, 255)",
     );
     await screen.getByRole("button", { name: copy.attach, exact: true }).click();
-    await expect
-      .element(screen.getByRole("menuitem", { name: copy.on, exact: true }))
-      .toBeVisible();
+    await expect.element(screen.getByRole("option", { name: copy.on, exact: true })).toBeVisible();
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(innerWidth);
   },
 );

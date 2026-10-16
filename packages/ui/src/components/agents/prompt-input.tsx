@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/m
 
 import { cn } from "@/lib/utils";
 import { PromptEditor } from "./prompt-editor";
+import type { ComposerInsertionAction } from "./skill-picker";
 import type { WireSkill } from "@rukie/shared";
 
 export interface PromptModel {
@@ -48,6 +49,8 @@ export interface PromptInputProps extends Omit<
 > {
   disabled?: boolean;
   skills?: readonly WireSkill[];
+  insertionActions?: readonly ComposerInsertionAction[];
+  insertionLabel?: string;
   onSkillsOpen?: () => void;
   placeholder?: string;
   value?: string;
@@ -94,6 +97,8 @@ export function PromptInput({
   className,
   disabled,
   skills,
+  insertionActions,
+  insertionLabel,
   onSkillsOpen,
   placeholder: placeholderProp,
   "aria-label": ariaLabelProp,
@@ -216,6 +221,9 @@ export function PromptInput({
       <PromptEditor
         editorRef={editorRef}
         anchorRef={formRef}
+        insertionActions={insertionActions}
+        insertionOpen={actionsOpen}
+        onInsertionOpenChange={setActionsOpen}
         skills={skills}
         onSkillsOpen={onSkillsOpen}
         value={currentValue}
@@ -286,6 +294,27 @@ export function PromptInput({
               ))}
             </MorphPopoverContent>
           </MorphPopover>
+        ) : null}
+        {insertionActions?.length ? (
+          <Tooltip content={insertionLabel ?? componentText("component.add-to-prompt")}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={disabled}
+              aria-label={insertionLabel ?? componentText("component.add-to-prompt")}
+              aria-haspopup="listbox"
+              aria-expanded={actionsOpen}
+              className="conversation-add-trigger"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => {
+                editorRef.current?.focus({ preventScroll: true });
+                setActionsOpen(!actionsOpen);
+              }}
+            >
+              <Plus aria-hidden="true" />
+            </Button>
+          </Tooltip>
         ) : null}
         {leadingAction}
         {models.length ? (

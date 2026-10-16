@@ -19,7 +19,7 @@ test("Goal confirmation initially focuses Cancel and preserves the draft when ca
   const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Keep my target");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
+  await screen.getByRole("option", { name: /^\/goal Goal mode/ }).click();
   const dialog = screen.getByRole("dialog", { name: "Enable goal mode?", exact: true });
   await expect.element(dialog).toBeVisible();
   await expect.element(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
@@ -55,7 +55,7 @@ test("Goal confirmation awaits permission success, sends a new Goal and clears o
   const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Ship my goal");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
+  await screen.getByRole("option", { name: /^\/goal Goal mode/ }).click();
   await screen
     .getByRole("button", { name: "Switch to full access and enable", exact: true })
     .click();
@@ -101,7 +101,7 @@ test("Existing Session enables only after successful permission response and sen
   const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Existing target");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
+  await screen.getByRole("option", { name: /^\/goal Goal mode/ }).click();
   await fixture(connection.port, "error", {
     type: "session.set_permission_mode",
     code: "session_busy",
@@ -251,7 +251,7 @@ test.each(["new", "one"] as const)(
       .element(screen.getByRole("button", { name: "Send prompt", exact: true }))
       .toBeDisabled();
     await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-    await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
+    await screen.getByRole("option", { name: /^\/goal Goal mode/ }).click();
     await screen
       .getByRole("button", { name: "Switch to full access and enable", exact: true })
       .click();
@@ -289,7 +289,7 @@ test("Cancelling a pending permission change never arms the Goal draft", async (
   );
   await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
+  await screen.getByRole("option", { name: /^\/goal Goal mode/ }).click();
   await fixture(connection.port, "hold");
   await screen
     .getByRole("button", { name: "Switch to full access and enable", exact: true })
@@ -330,7 +330,7 @@ test("Goal drafts follow navigation and C37 keyboard cancellation preserves text
     new File([new Uint8Array([137, 80, 78, 71])], "keep.png", { type: "image/png" }),
   );
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
+  await screen.getByRole("option", { name: /^\/goal Goal mode/ }).click();
   await screen
     .getByRole("button", { name: "Switch to full access and enable", exact: true })
     .click();
@@ -339,7 +339,7 @@ test("Goal drafts follow navigation and C37 keyboard cancellation preserves text
   await expect.poll(() => promptText(prompt.element())).toBe("");
   await prompt.fill("Session one draft");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
+  await screen.getByRole("option", { name: /^\/goal Goal mode/ }).click();
   await screen
     .getByRole("button", { name: "Switch to full access and enable", exact: true })
     .click();
@@ -366,7 +366,7 @@ test("Goal drafts follow navigation and C37 keyboard cancellation preserves text
   await expect.element(prompt).toHaveFocus();
   // Full access skips C42; a later permission choice belongs to this draft and is sent unchanged.
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
+  await screen.getByRole("option", { name: /^\/goal Goal mode/ }).click();
   expect(screen.getByRole("dialog", { name: "Enable goal mode?", exact: true }).query()).toBeNull();
   await screen.getByRole("button", { name: "Permission mode", exact: true }).click();
   await screen.getByRole("menuitemradio", { name: /Ask/ }).click();
@@ -390,17 +390,15 @@ test("Running and unfinished Goal disable C09, while normal input keeps its prom
   await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
   // Another window may publish a Goal after this window has armed its own draft.
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
+  await screen.getByRole("option", { name: /^\/goal Goal mode/ }).click();
   await screen
     .getByRole("button", { name: "Switch to full access and enable", exact: true })
     .click();
   await fixture(connection.port, "message", { sessionId: "one", type: "run_start" });
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  const row = screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true });
+  const row = screen.getByRole("option", { name: /^\/goal Goal mode/ });
   await expect.element(row).toHaveAttribute("aria-disabled", "true");
-  await expect
-    .element(screen.getByText("Unavailable while a Run is in progress", { exact: true }))
-    .toBeVisible();
+  await expect.element(row).toHaveAccessibleDescription("Unavailable while a Run is in progress");
   expect(getComputedStyle(row.element()).cursor).toBe("not-allowed");
   const rowElement = row.element();
   if (!(rowElement instanceof HTMLElement)) throw new Error("Menu row must be HTML");
@@ -508,7 +506,7 @@ test.each([
     await prompt.fill("Keep this text");
     const open = async () => {
       await screen.getByRole("button", { name: label.attach, exact: true }).click();
-      await screen.getByRole("menuitemcheckbox", { name: label.mode, exact: true }).click();
+      await screen.getByRole("option", { name: new RegExp(`^/goal ${label.mode}`) }).click();
     };
     await open();
     const dialog = screen.getByRole("dialog", { name: label.title, exact: true });
@@ -547,10 +545,10 @@ test.each([
     await open();
     await expect.element(chip).toBeVisible();
     await screen.getByRole("button", { name: label.attach, exact: true }).click();
-    const row = screen.getByRole("menuitemcheckbox", { name: label.mode, exact: true });
-    await expect.element(row).toHaveAttribute("aria-checked", "true");
-    row.element().focus();
-    await userEvent.keyboard("{Enter}");
+    const row = screen.getByRole("option", { name: new RegExp(`^/goal ${label.mode}`) });
+    await expect.element(row).toHaveAttribute("data-checked", "true");
+    await expect.element(prompt).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}{Enter}");
     await expect.element(chip).not.toBeInTheDocument();
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
   },
@@ -567,7 +565,12 @@ test("C09 hands focus to C42 without competing traps under reduced motion", asyn
       event.target instanceof Element &&
       event.target.closest('[role="dialog"][aria-label="Enable goal mode?"]')
     )
-      overlaps.push(Boolean(document.querySelector('[role="menu"][data-state="open"]')));
+      overlaps.push(
+        document
+          .querySelector('[role="listbox"]')
+          ?.closest('[role="dialog"]')
+          ?.getAttribute("aria-hidden") === "false",
+      );
   };
   window.addEventListener("focusin", focus);
   onTestFinished(() => window.removeEventListener("focusin", focus));
@@ -584,9 +587,7 @@ test("C09 hands focus to C42 without competing traps under reduced motion", asyn
   const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Keep my focus");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  const goalRow = screen
-    .getByRole("menuitemcheckbox", { name: "Goal mode", exact: true })
-    .element();
+  const goalRow = screen.getByRole("option", { name: /^\/goal Goal mode/ }).element();
   if (!(goalRow instanceof HTMLElement)) throw new Error("Goal row must be HTML");
   goalRow.focus();
   goalRow.click();
@@ -602,7 +603,7 @@ test("C09 hands focus to C42 without competing traps under reduced motion", asyn
   await userEvent.keyboard("{Escape}");
   await expect.element(dialog).not.toBeInTheDocument();
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-  await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
+  await screen.getByRole("option", { name: /^\/goal Goal mode/ }).click();
   await expect.element(cancel).toHaveFocus();
   await dialog
     .getByRole("button", { name: "Switch to full access and enable", exact: true })

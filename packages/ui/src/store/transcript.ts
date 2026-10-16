@@ -27,6 +27,8 @@ function message(value: unknown): value is TranscriptMessage {
   )
     return false;
   if (value.entryId !== undefined && typeof value.entryId !== "string") return false;
+  if (value.skillInvocation !== undefined && typeof value.skillInvocation !== "string")
+    return false;
   if (value.source !== undefined && typeof value.source !== "string") return false;
   if (value.errorMessage !== undefined && typeof value.errorMessage !== "string") return false;
   if (value.stopReason !== undefined && typeof value.stopReason !== "string") return false;
