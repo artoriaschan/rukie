@@ -279,7 +279,18 @@ function DesktopApp({
   const [goalRemoval, setGoalRemoval] = useState<{ sessionId: string; goalId: string } | null>(
     null,
   );
-  const clearedGoalSession = useRef<string | null>(null);
+  const goalRemovalFocus = useRef<typeof goalRemoval>(null);
+  const goalRemovalOwner = useRef(goalRemoval);
+  const changeGoalRemoval = (next: typeof goalRemoval) => {
+    goalRemovalOwner.current = next;
+    goalRemovalFocus.current = null;
+    setGoalRemoval(next);
+  };
+  const finishGoalRemoval = (origin: NonNullable<typeof goalRemoval>) => {
+    if (goalRemovalOwner.current !== origin) return;
+    goalRemovalOwner.current = null;
+    setGoalRemoval(null);
+  };
   const goalConfirmationOwner = useRef(goalConfirmation);
   const changeGoalConfirmation = (next: typeof goalConfirmation) => {
     goalConfirmationOwner.current = next;
@@ -337,21 +348,29 @@ function DesktopApp({
   const hasGoal = Boolean(unfinishedGoal);
   useEffect(() => {
     if (
-      clearedGoalSession.current !== null &&
-      clearedGoalSession.current === state.selected &&
+      goalRemovalFocus.current !== null &&
+      goalRemovalFocus.current.sessionId === state.selected &&
       !unfinishedGoal &&
       !goalRemoval
     ) {
-      clearedGoalSession.current = null;
+      goalRemovalFocus.current = null;
       focusPrompt();
-    } else if (clearedGoalSession.current !== state.selected) clearedGoalSession.current = null;
+    } else if (
+      goalRemovalFocus.current &&
+      (goalRemovalFocus.current.sessionId !== state.selected ||
+        (unfinishedGoal && goalRemovalFocus.current.goalId !== unfinishedGoal.id))
+    )
+      goalRemovalFocus.current = null;
   }, [state.selected, unfinishedGoal, goalRemoval]);
   useEffect(() => {
     if (
       goalRemoval &&
       (goalRemoval.sessionId !== state.selected || goalRemoval.goalId !== unfinishedGoal?.id)
-    )
-      setGoalRemoval(null);
+    ) {
+      if (goalRemoval.sessionId === state.selected && !unfinishedGoal)
+        finishGoalRemoval(goalRemoval);
+      else changeGoalRemoval(null);
+    }
   }, [goalRemoval, state.selected, unfinishedGoal?.id]);
   const goalEnabled = inputDraft.goalEnabled && !hasGoal;
   useEffect(() => {
@@ -1010,7 +1029,7 @@ function DesktopApp({
                 disabled={!connected}
                 onAction={async (action) => {
                   if (action === "clear") {
-                    setGoalRemoval({ sessionId: state.selected!, goalId: unfinishedGoal.id });
+                    changeGoalRemoval({ sessionId: state.selected!, goalId: unfinishedGoal.id });
                     return;
                   }
                   try {
@@ -1390,11 +1409,19 @@ function DesktopApp({
       {goalRemoval ? (
         <GoalConfirmation
           intent="remove"
-          onClose={() => setGoalRemoval(null)}
+          onClose={() => changeGoalRemoval(null)}
           onConfirm={async () => {
-            await client.request({ type: "session.goal_clear", sessionId: goalRemoval.sessionId });
-            clearedGoalSession.current = goalRemoval.sessionId;
-            setGoalRemoval(null);
+            const origin = goalRemoval;
+            // State may publish removal before the response. Only this confirmed invocation owns focus.
+            goalRemovalFocus.current = origin;
+            try {
+              await client.request({ type: "session.goal_clear", sessionId: origin.sessionId });
+            } catch (reason) {
+              if (goalRemovalOwner.current === origin) goalRemovalFocus.current = null;
+              throw reason;
+            }
+            // Dismissal ends presentation ownership without cancelling the already sent command.
+            finishGoalRemoval(origin);
           }}
         />
       ) : null}

@@ -42,4 +42,20 @@
 - 30个通过真实wire创建的临时Session激活导航/搜索滚动。导航轨8px/拇指4px实测；所有页面无横向页溢出，主要动作可达；keycaps及组合键后缀未显示。数字快捷提示在最后一次核对发现并修复，旧三张plan-review截图被plan-review-final三张替代，其余有效证据复用。
 - 收集79张截图（包括3张已替代的旧数字提示截图），实际检查Light Project/Edit、Dark Search、窄分支/模型/Goal/Question及最终Plan截图；console只有Vite/React信息，errors为空，648条网络记录资源均200。一次Search media/viewport拍摄中agent-browser挂起并自动重启到about:blank；doctor8pass/0warn/0fail，重新连接同一真实sidecar完成后续，不推断产品根因。错误文案等待和过期ref/被侧栏覆盖的交互已按实际状态修正，没有把未生效点击记为通过。
 - 本次命名browser已关闭；launcher46683/sidecar46688/Vite46748/provider46967均退出；63244/63250/IPv45173无监听。实际UI删除独立worktree后，确认临时Git根干净、仅根worktree并精确移除；launcher临时目录已清理。保留无关IPv6 Vite29894及其他数据。真实Electron/钥匙串/OS picker未启动。
-- 票和spec保持claimed，等待fresh Standards/Spec评审及修复后一起关闭。CI待各PR实际结果，未自动合并。
+- 该阶段票和spec保持claimed，随后完成下节的fresh评审与修复。CI以各PR实际结果为准，未自动合并。
+
+## 最终评审、修复与关闭
+
+Standards轴以cc17c80b→30991d55审阅：1项P2，Goal删除A等待响应时取消，再打开新的确认B，A的旧成功回调会关闭B并覆盖焦点归属；无额外baseline smell。Spec轴独立审阅同一差异：1项P2，确认同一Goal呈现身份缺陷；没有其他具体遗漏或越界改动。两轴结论分别保留，只有一个需修复的问题。
+
+新的单一实现代理修复全部评审项：每次Goal删除确认有独立呈现身份，关闭、替换Goal或切换Session会取消该身份的UI和焦点权限；已发送的clear命令继续按原合同执行。确认时记录Session与Goal身份的焦点意图，当前错误清除它；真实Goal消失时才消费它，因此兼容状态先于响应、响应先于状态两种顺序。DESIGN明确待响应期间的取消仅关闭呈现，不宣称服务器命令已被撤销。Core、server、wire和原生API均未变化。
+
+公开App/真实脚本WS回归：同Session重开与跨Session替换先失败2例1.92s，修复后2例通过1.59s；Goal16与wire client7共23例通过8.78s。只修改测试fixture的hold可选query筛选，保持无参数hold原语义。最初根目录project过滤无法启动，修正为packages/ui显式config后仅运行原范围，未将启动失败计为产品失败。
+
+第一次受影响真实侧车验收发现状态先于响应时焦点留在BODY；这使初版简单guard的焦点证据失效。新增回归的首次barrier缺少必需contextReport，两次15.69s失败属于fixture错误并保留；补齐有效公开wire消息后，原简单guard真实失败在Prompt焦点断言（1失败/16跳过15.70s）。随后同时审计取消、Session切换、同Session不同Goal、当前错误和两种状态/响应顺序，最终Goal18例全部通过9.15s；保留wire client7例的有效证据。用例没有固定睡眠；超一秒失败耗时是有界失败等待，未扩大timeout或削弱断言。
+
+增量oxfmt、三份TS/TSX lint、tsc、测试policy通过；文档、tracker及diff检查通过。初始check:dev与其他消费者证据继续有效，未重复desktop/check/check:dev。此次仅改变Goal回调和焦点生命周期，未改变任何样式、几何、文案或共享原语；沿用08全页面验收，额外重拍受影响Goal的Light/Dark/420-18三张图。
+
+最终隔离Chromium真实Core流：启用Goal→Pause→打开删除确认→Escape返回Trash且Goal保留→重新打开→确认clear→authoritative bar消失且Prompt为活动TEXTAREA；实际predicate通过，页面无横向溢出。当前源码@fs路径和实际加载App中的owner/focus guard均确认，控制台只有Vite/React信息，errors为空，156条请求资源均200。第一次等待aria-label文案作为页面文本的25秒超时是工具等待错误，doctor8pass/0warn/0fail；后改用真实DOM状态条件。两次验收都使用临时配置/内存加密/loopback假模型，命名browser关闭，launcher与provider退出，IPv45173已释放，保留无关IPv6开发实例。未启动原生Electron、钥匙串或OS picker。
+
+ADR Coverage最终对照整个实现：沿用ADR-0029的ui分层与main/preload宿主边界，外观偏好仅renderer持久化；Trace阅读选择与Goal确认身份仅本地呈现，不改变Core执行、协议、信任、Session恢复或外部资源生命周期。token、原语、CSS门禁和命名层级属于现有DESIGN实现，无需新增ADR；没有发现与既有决定冲突或遗漏的长期取舍。08与spec在本次评审修复变更一起resolved，含义为适用本地工作完成；原Project包失败、首次Plan live未分类、原生视觉未验收和PR34 TUI CI失败仍按前文保留，resolved不代表CI通过或已经合并。

@@ -694,3 +694,136 @@ test.each([
     ).toBe(false);
   },
 );
+
+test.each(["one", "two", "replacement"] as const)(
+  "A dismissed Goal clear response preserves the newer removal and its focus (%s)",
+  async (destination) => {
+    const sessionId = destination === "two" ? "two" : "one";
+    const nextGoalId =
+      destination === "replacement"
+        ? "replacement-goal"
+        : sessionId === "two"
+          ? "second-goal"
+          : goal.id;
+    const owner = ownProjectBrowserTest();
+    const connection = await owner.startWire();
+    await page.viewport(1280, 900);
+    const screen = await owner.render(
+      <App
+        host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+        locale="en"
+      />,
+    );
+    await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
+    await publishGoal(connection.port, goal);
+    const trash = screen.getByRole("button", { name: "Delete goal", exact: true });
+    const dialog = screen.getByRole("dialog", { name: "Delete goal?", exact: true });
+    await trash.click();
+    await fixture(connection.port, "hold?type=session.goal_clear");
+    await dialog.getByRole("button", { name: "Delete goal", exact: true }).click();
+    await expect
+      .poll(async () =>
+        (await recorded(connection.port)).filter((c) => c.type === "session.goal_clear"),
+      )
+      .toMatchObject([{ sessionId: "one" }]);
+    if (destination === "replacement") {
+      await publishGoal(connection.port, { ...goal, id: nextGoalId });
+      await expect.element(dialog).not.toBeInTheDocument();
+    } else {
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect.element(dialog).not.toBeInTheDocument();
+      await expect.element(trash).toHaveFocus();
+    }
+    // Dismissal/replacement closes the presentation; the sent clear remains in flight.
+    if (sessionId === "two") {
+      await screen.getByRole("button", { name: "Explore ideas", exact: true }).click();
+      await expect
+        .element(screen.getByRole("button", { name: "Attach images", exact: true }))
+        .toBeEnabled();
+      await fixture(connection.port, "message", {
+        sessionId,
+        type: "tool_state_changed",
+        name: "goal",
+        value: { ...goal, id: nextGoalId },
+      });
+    }
+    await trash.click();
+    const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+    await expect.element(cancel).toHaveFocus();
+    const newerDialog = dialog.element();
+    await fixture(connection.port, "flush");
+    // This later WS state is an observable transport/render barrier after the held response.
+    await fixture(connection.port, "message", {
+      sessionId,
+      type: "tool_state_changed",
+      name: "goal",
+      value: {
+        ...goal,
+        id: nextGoalId,
+        objective: "Target after old response",
+      },
+    });
+    await expect
+      .element(screen.getByText("Target after old response", { exact: true }))
+      .toBeInTheDocument();
+    expect(newerDialog.isConnected).toBe(true);
+    await expect.element(cancel).toHaveFocus();
+    await expect
+      .element(dialog.getByRole("button", { name: "Delete goal", exact: true }))
+      .toBeEnabled();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(dialog).not.toBeInTheDocument();
+    await expect.element(trash).toHaveFocus();
+    expect(
+      (await recorded(connection.port)).filter((c) => c.type === "session.goal_clear"),
+    ).toHaveLength(1);
+    expect((await recorded(connection.port)).some((c) => c.type === "abort")).toBe(false);
+  },
+);
+
+test("Goal removal restores Prompt focus when authoritative removal precedes its response", async () => {
+  const owner = ownProjectBrowserTest();
+  const connection = await owner.startWire();
+  await page.viewport(1280, 900);
+  const screen = await owner.render(
+    <App
+      host={{ getConnection: async () => connection, modelServices: modelServicesFixture }}
+      locale="en"
+    />,
+  );
+  await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
+  await publishGoal(connection.port, goal);
+  await screen.getByRole("button", { name: "Delete goal", exact: true }).click();
+  const dialog = screen.getByRole("dialog", { name: "Delete goal?", exact: true });
+  await fixture(connection.port, "hold?type=session.goal_clear");
+  await dialog.getByRole("button", { name: "Delete goal", exact: true }).click();
+  await expect
+    .poll(async () =>
+      (await recorded(connection.port)).some((c) => c.type === "session.goal_clear"),
+    )
+    .toBe(true);
+  await publishGoal(connection.port, null);
+  await expect.element(dialog).not.toBeInTheDocument();
+  await fixture(connection.port, "flush");
+  // A later wire state exposes a render barrier without focusing any control from the test.
+  await fixture(connection.port, "message", {
+    type: "session_state",
+    sessionId: "one",
+    permissionMode: "full-access",
+    thinkingLevel: "off",
+    contextReport: {
+      model: "test/script",
+      window: 10000,
+      used: 2500,
+      categories: [],
+      memoryFiles: [],
+      mcpTools: [],
+      skills: [],
+      agentTypes: [],
+    },
+  });
+  await expect
+    .element(screen.getByRole("button", { name: "Permission mode", exact: true }))
+    .toHaveTextContent("Full access");
+  await expect.element(screen.getByRole("textbox", { name: "Prompt", exact: true })).toHaveFocus();
+});

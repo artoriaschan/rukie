@@ -1,6 +1,6 @@
 # 08：功能页面逐节符合性与写法清理
 
-Status: claimed
+Status: resolved
 Blocked by: 03, 04, 05
 
 **What to build:** 按 DESIGN.md 的「Workspace and page composition」各小节，逐页核对已实现页面的几何、token 和交互，清理剩余的字面值和任意值，并加一道静态门禁防止回退。依据 [spec](../spec.md) 中「功能页面」一节。
@@ -35,7 +35,7 @@ Blocked by: 03, 04, 05
 - [x] 把 `scripts/check-ui-typography.ts` 的检查范围扩展到 `packages/ui/src/**/*.css` 中的 `font-size` 字面值（允许引用 `--text-ui-*` 和 `--text-code`），并补充对应的拒绝样本测试。
 - [x] 测试：在各功能 browser 套件中补齐规范点名尺寸的几何断言，覆盖 Light、Dark、420px、18px 字号和 zh/en。运行受影响的文件和 `bun run check:dev`。
 - [x] 用 agent-browser 做最终的整体验收：覆盖上表全部页面，在 Light、Dark 和 420px 下截图，检查控制台与网络。
-- [ ] 本 ticket 是 spec 的最后一张。关闭时完成 spec 的 ADR Coverage 审阅，并把 spec 一并设为 resolved。
+- [x] 本 ticket 是 spec 的最后一张。关闭时完成 spec 的 ADR Coverage 审阅，并把 spec 一并设为 resolved。
 
 ## Comments
 
@@ -89,3 +89,9 @@ Final GUI audit found single-choice Interaction aria-hidden numeric1–4 markers
 清理：实际UI删除本次独立工作树并见空状态；Git fixture根05982fd、状态干净且仅一个worktree后精确移除。命名浏览器关闭；launcher46683/sidecar46688/Vite46748/provider46967退出，63244/63250/IPv45173无监听；保留无关IPv6 Vite29894。未启动Electron/钥匙串/原生目录选择器。
 
 本票与spec保持claimed，交由fresh Standards/Spec评审；评审修复完成后由新的实现代理一起关闭。ADR coverage已按完整实现补齐，包含nativeTheme宿主边界与前端Goal确认；无新增持久化或协议取舍。
+
+### 最终评审修复与关闭
+
+Fresh Standards与Spec两轴各报告同一项P2 Goal删除确认身份问题，无其他具体发现。新的单一实现代理修复全部评审项：迟到clear响应不能关闭同Session重开、跨Session或同Session新Goal的确认；焦点意图绑定确认身份并支持authoritative状态先于响应。取消待响应弹窗仅结束呈现，已发送命令不伪装为撤销，合同已写入DESIGN。公开回归先失败2例，最终Goal18例通过9.15s；wire client7例有效复用。首次实测焦点失败及barrier fixture失败均保留，修复后真实侧车确认clear返回Prompt，三类Goal截图与无console/network错误证据完成。增量静态、文档、tracker检查通过，未例行重跑包或check:dev。完整两轴结论、RED/GREEN、复用边界和限制见[验证记录](../verification.md#最终评审修复与关闭)。
+
+完成spec的ADR Coverage最终审阅：ui分层与nativeTheme宿主边界沿用ADR-0029，Goal确认/Trace读者身份均属临时Frontend呈现，不引入Core、wire、持久化、信任或生命周期取舍，无需新增ADR。本票与spec同变更resolved；PR与CI交付状态不等同本地完成，先前失败和原生限制不改写为通过。

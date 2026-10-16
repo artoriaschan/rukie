@@ -506,7 +506,7 @@ Keep password masking/reveal, numeric-field stepping, localized alerts and pendi
 
 Preserve the existing 28px toolbar role and 40px status bar above the unchanged composer. The bar retains 12px left/8px right padding, 8px information/action gaps, truncated objective and nonshrinking time/actions. States come from authoritative Goal state; round-limit/unarmed takes precedence over Resume availability. Complete/removed state leaves no bar. Closing a draft mode preserves input.
 
-Goal removal uses a 448px confirmation modal, 16px radius, 20px vertical/24px horizontal body padding, separate footer and initial Cancel focus. These local values do not modify the shared modal. Trash opens this confirmation before sending the removal command; cancellation preserves the Goal. The enable-mode confirmation remains a separate action.
+Goal removal uses a 448px confirmation modal, 16px radius, 20px vertical/24px horizontal body padding, separate footer and initial Cancel focus. These local values do not modify the shared modal. Trash opens this confirmation before sending the removal command; cancellation before confirmation preserves the Goal. Cancel, Escape and backdrop dismissal remain available while a confirmed removal is pending: dismissal closes only that presentation and does not cancel the already sent command. Its late response cannot close a newer confirmation or claim its focus; authoritative Goal state still determines the bar. The enable-mode confirmation remains a separate action.
 
 ### Plan and Interaction surfaces
 
