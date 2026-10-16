@@ -361,7 +361,9 @@ function DefaultApprovalCard({
               </span>
             )}
             {onDismiss ? (
-              <button
+              <Button
+                size="icon"
+                variant="ghost"
                 type="button"
                 aria-label={componentText("component.dismiss")}
                 disabled={busy || disabled}
@@ -369,7 +371,7 @@ function DefaultApprovalCard({
                 className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="size-3" />
-              </button>
+              </Button>
             ) : null}
           </div>
 

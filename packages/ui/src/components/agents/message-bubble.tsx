@@ -1,3 +1,4 @@
+import { Button } from "@/components/motion/button/base";
 import { useComponentText } from "@/lib/i18n";
 
 import { ChevronDown } from "lucide-react";
@@ -297,7 +298,9 @@ export function MessageBubbleCollapsible({
       >
         {children}
       </div>
-      <button
+      <Button
+        size="contextual"
+        variant="ghost"
         type="button"
         aria-expanded={currentOpen}
         aria-controls={contentId}
@@ -311,7 +314,7 @@ export function MessageBubbleCollapsible({
         <span aria-hidden="true" style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}>
           <ChevronDown className="size-3" />
         </span>
-      </button>
+      </Button>
     </div>
   );
 }

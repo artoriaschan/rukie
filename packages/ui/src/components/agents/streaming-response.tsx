@@ -1,3 +1,4 @@
+import { Button } from "@/components/motion/button/base";
 import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/agents/streaming-response
 
@@ -53,7 +54,9 @@ function ResponseAction({
   const componentText = useComponentText();
 
   return (
-    <motion.button
+    <Button
+      size="icon"
+      variant="ghost"
       type="button"
       aria-label={label}
       title={label}
@@ -64,14 +67,13 @@ function ResponseAction({
           : undefined
       }
       onClick={onClick}
-      transition={{ duration: 0.16, ease: EASE_OUT }}
       className={cn(
-        "grid size-7 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+        "grid place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
         active && "bg-muted text-foreground",
       )}
     >
       {children}
-    </motion.button>
+    </Button>
   );
 }
 
@@ -203,7 +205,9 @@ export function StreamingResponse({
                 </>
               ) : null}
               {hasSources ? (
-                <button
+                <Button
+                  size="contextual"
+                  variant="ghost"
                   type="button"
                   aria-expanded={currentSourcesOpen}
                   aria-controls={sourcesContentId}
@@ -224,7 +228,7 @@ export function StreamingResponse({
                   >
                     <ChevronDown className="size-3" />
                   </span>
-                </button>
+                </Button>
               ) : null}
             </div>
 

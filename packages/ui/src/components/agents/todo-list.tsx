@@ -1,3 +1,4 @@
+import { Button } from "@/components/motion/button/base";
 import { useComponentText, type ComponentTranslator } from "@/lib/i18n";
 // beui.dev/components/agents/todo-list
 
@@ -276,13 +277,15 @@ export function TodoList({
       aria-label={componentText("component.agent-task-list")}
       className={cn("w-full overflow-hidden rounded-xl border border-border/70", className)}
     >
-      <button
+      <Button
+        size="compact"
+        variant="ghost"
         id={triggerId}
         type="button"
         aria-expanded={currentOpen}
         aria-controls={contentId}
         onClick={() => setOpen(!currentOpen)}
-        className="group flex min-h-8 w-full items-center gap-2 rounded-xl px-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group flex py-0 not-disabled:hover:bg-transparent min-h-8 w-full items-center gap-2 rounded-xl px-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <TodoHeaderIcon complete={allComplete} />
         <h3 className="min-w-0 flex-1 truncate text-ui-base font-medium text-foreground">
@@ -310,7 +313,7 @@ export function TodoList({
         >
           <ChevronDown className="size-3" />
         </span>
-      </button>
+      </Button>
 
       <AgentDisclosure id={contentId} role="region" aria-labelledby={triggerId} open={currentOpen}>
         <div

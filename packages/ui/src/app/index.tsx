@@ -140,6 +140,7 @@ function DesktopApp({
     if (!settingsOpen) settingsOpener.current?.focus();
   }, [settingsOpen]);
   const [sidebar, setSidebar] = useState(() => matchMedia("(min-width: 768px)").matches);
+  const sidebarToggle = useRef<HTMLButtonElement>(null);
   const [search, setSearch] = useState(false);
   const [summary, setSummary] = useState(false);
   const [deleting, setDeleting] = useState<WireSessionSummary | null>(null);
@@ -1062,6 +1063,7 @@ function DesktopApp({
                 focus="inset"
                 size="icon"
                 variant="ghost"
+                ref={sidebarToggle}
                 aria-label={t("app.toggle-sidebar")}
                 aria-pressed={sidebar}
                 onClick={() => setSidebar(!sidebar)}
@@ -1224,9 +1226,13 @@ function DesktopApp({
           {sidebar ? (
             <>
               <button
+                type="button"
                 aria-label={t("app.close-sidebar")}
-                className="absolute inset-0 z-10 bg-(--layout-content)/60 md:hidden"
-                onClick={() => setSidebar(false)}
+                className="absolute inset-0 z-10 cursor-pointer bg-(--layout-content)/60 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:hidden"
+                onClick={() => {
+                  setSidebar(false);
+                  sidebarToggle.current?.focus();
+                }}
               />
               <div className="absolute inset-y-0 left-0 z-20 md:relative md:z-auto">
                 <Sidebar
@@ -1308,9 +1314,13 @@ function DesktopApp({
                   {targetProject ? (
                     <Menu.DropdownMenu>
                       <Menu.DropdownMenuTrigger asChild>
-                        <button className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <Button
+                          size="contextual"
+                          variant="ghost"
+                          className="min-h-0 rounded-md p-0 text-ui-xl font-medium text-current not-disabled:hover:bg-transparent not-disabled:hover:text-current"
+                        >
                           {t("app.project-welcome", { project: targetProject.name })}
-                        </button>
+                        </Button>
                       </Menu.DropdownMenuTrigger>
                       <Menu.DropdownMenuContent>
                         <Menu.DropdownMenuGroup>

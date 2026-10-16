@@ -24,7 +24,7 @@ export interface AgentCodeLineProps {
   tokens?: AgentCodeToken[];
   className?: string;
 }
-export function useAgentCodeTokens(code: string, language: string, streaming = false) {
+function useAgentCodeTokens(code: string, language: string, streaming = false) {
   const [result, setResult] = useState<{ code: string; lines: ThemedToken[][] } | null>(null);
   const stream = useRef<{ language: string; code: string; tokenizer: ShikiStreamTokenizer } | null>(
     null,

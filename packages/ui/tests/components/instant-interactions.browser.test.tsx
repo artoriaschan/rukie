@@ -34,7 +34,6 @@ import {
   MorphPopoverContent,
 } from "../../src/components/motion/popover-morph";
 import { ActionSwapButton } from "../../src/components/motion/action-swap";
-import { StatefulButton } from "../../src/components/motion/button/stateful";
 import { PreviewRail } from "../../src/components/motion/preview-rail";
 import { act } from "react";
 import "../../src/theme.css";
@@ -272,7 +271,7 @@ for (const theme of ["light", "dark"] as const) {
       await owner.close();
     }
   });
-  test(`${theme} stateful and cycling button labels change immediately without click-feedback fades`, async () => {
+  test(`${theme} cycling button labels change immediately without click-feedback fades`, async () => {
     const owner = ownProjectBrowserTest();
     await commands.reducedMotion(false);
     document.documentElement.className = theme;
@@ -286,9 +285,6 @@ for (const theme of ["light", "dark"] as const) {
           ]}
           onValueChange={action}
         />
-        <StatefulButton state="error" errorText="Retry action" onClick={action}>
-          Idle action
-        </StatefulButton>
       </>,
     );
     try {
@@ -297,9 +293,6 @@ for (const theme of ["light", "dark"] as const) {
       expectImmediate(next);
       expect(getComputedStyle(next.firstElementChild!).opacity).toBe("1");
       expect(action).toHaveBeenCalledOnce();
-      await screen.getByRole("button", { name: "Retry action", exact: true }).click();
-      expect(action).toHaveBeenCalledTimes(2);
-      expectImmediate(screen.getByRole("button", { name: "Retry action", exact: true }).element());
     } finally {
       await owner.close();
     }

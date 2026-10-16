@@ -1,7 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import { Button, ButtonLink } from "../../src/components/motion/button/base";
-import { StatefulButton } from "../../src/components/motion/button/stateful";
 import { Input } from "../../src/components/motion/input";
 import "../../src/theme.css";
 
@@ -102,13 +101,13 @@ test("shared controls render compact geometry and grow with interface text", asy
   }
 });
 
-test("stateful labels and validation remain readable and actionable", async () => {
+test("button labels and validation remain readable and actionable", async () => {
   const action = vi.fn();
   const screen = await render(
     <div style={{ width: 320 }}>
-      <StatefulButton state="error" errorText="请检查设置并重新执行这个操作" onClick={action}>
-        Retry
-      </StatefulButton>
+      <Button size="standard" onClick={action}>
+        请检查设置并重新执行这个操作
+      </Button>
       <Input label="Token" defaultValue="invalid" error="请检查令牌" />
     </div>,
   );

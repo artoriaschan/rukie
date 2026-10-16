@@ -183,18 +183,20 @@ export function ToolApproval({
           {description ? <p className="mt-2 text-muted-foreground">{description}</p> : null}
 
           {parameters.length ? (
-            <button
+            <Button
+              size="contextual"
+              variant="ghost"
               type="button"
               aria-expanded={currentOpen}
               aria-controls={detailsId}
               onClick={() => setOpen(!currentOpen)}
-              className="mt-2 inline-flex min-h-7 items-center gap-1 rounded-md text-ui-base font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className="px-0 not-disabled:hover:bg-transparent mt-2 inline-flex min-h-7 items-center gap-1 rounded-md text-ui-base font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
               {componentText("component.view-details")}
               <span aria-hidden="true" style={{ transform: `rotate(${currentOpen ? 180 : 0}deg)` }}>
                 <ChevronDown className="size-3" />
               </span>
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
