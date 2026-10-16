@@ -81,7 +81,7 @@ Map semantic roles at the theme owner; do not copy raw palette colors into pages
 
 | Token or role                                                                                      | Contract                                                                                                                                                                                                         |
 | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `background`, `foreground`                                                                         | Canvas and primary reading text from the reference palette, except protected structural and named feature surfaces.                                                                                              |
+| `background`, `foreground`                                                                         | Canvas and primary reading text from the reference palette; structural and named feature surfaces follow the explicit surface-ownership table.                                                                   |
 | `card`, `card-foreground`                                                                          | Neutral content surface and readable foreground; no automatic card border around every content group.                                                                                                            |
 | `popover`, `popover-foreground`, `menu`                                                            | Overlay surfaces; the menu and popover roles remain separately named even when their colors match.                                                                                                               |
 | `primary`, `primary-foreground`                                                                    | Monochrome inverse action pair. Do not alias primary to brand or execution blue.                                                                                                                                 |
@@ -98,7 +98,7 @@ Map semantic roles at the theme owner; do not copy raw palette colors into pages
 | `interaction-confirmation-surface`, `interaction-confirmation-foreground`                          | Dedicated waiting-for-input treatment, independent of completed success.                                                                                                                                         |
 | `diff-*`, `ansi-*`, `find-highlight`, `find-highlight-active`                                      | Technical output and search roles, independent of brand and generic status.                                                                                                                                      |
 
-The shared neutral target resolves as follows; the independently specified shell and protected feature roles do not inherit a new fill merely because they currently alias one of these tokens.
+The shared neutral target resolves as follows. Structural shell colors remain independent; named feature surfaces consume the roles in [Surface ownership](#surface-ownership).
 
 | Shared token                                                                  | Light                 | Dark                  |
 | ----------------------------------------------------------------------------- | --------------------- | --------------------- |
@@ -118,6 +118,22 @@ The base colors and source surface-hover are sampled values; the shared hover/se
 The source's weak text, placeholders and some warning pairs do not satisfy Rukie's contrast requirements. Preserve those observations as reference evidence, not as exemptions. Existing accessible corrections remain at the shared owner; future changes must measure the rendered pairs in both themes. Never lower contrast to obtain visual similarity or silently claim that the source palette was already AA-compliant.
 
 Code and diff surfaces retain the installed GitHub Light/Dark Shiki themes. Keep addition/removal lines, word highlights and their text/count colors separate. ANSI output preserves the installed normal and bright `ansi-*` meanings. Do not recolor technical output to match neutral control styling. Charts, identity colors and file-type colors retain separately named roles and never imply permission or execution state.
+
+### Settings surface roles
+
+Settings consume named `settings-*` roles defined only in `theme.css`; page and portal roots do not redefine shared tokens. These roles are independent of `layout-*`, including when settings occupies the same workspace frame. Preserve the settings geometry specified in [Model services settings](#model-services-settings).
+
+| Settings token        | Palette/shared role     | Light     | Dark      |
+| --------------------- | ----------------------- | --------- | --------- |
+| `settings-canvas`     | Soft canvas             | `#fafafa` | `#1a1a1a` |
+| `settings-navigation` | Canvas / `background`   | `#ffffff` | `#212121` |
+| `settings-card`       | Canvas / `card`         | `#ffffff` | `#212121` |
+| `settings-popover`    | Popover / `popover`     | `#ffffff` | `#2f2f2f` |
+| `settings-menu`       | Popover / `menu`        | `#ffffff` | `#2f2f2f` |
+| `settings-surface`    | Muted surface / `muted` | `#f5f5f5` | `#2f2f2f` |
+| `settings-border`     | Quiet border / `border` | `#ebebeb` | `#3a3a3a` |
+
+Settings navigation includes the settings category column and provider rail. Form cards use `settings-card`; nested grouped content uses `settings-surface`. Portalled settings Dialogs and menus use their named settings overlay roles. Text, field fills/boundaries, hover, selection, focus, danger and disabled states use their shared semantic roles directly; no settings-specific foreground or status palette is introduced.
 
 ## Typography
 
@@ -147,7 +163,7 @@ Use `text-ui-*` for interface text. `--ui-font-size` defaults to 14px and owns u
 | `text-ui-2xs`     | 9px / 12px                 | Existing workflow timeline axis ticks and unit suffixes only.            |
 | `text-ui-control` | 13px / 20px                | Retained compact Trace/tool controls only.                               |
 
-Relative to `--ui-font-size`, xl is +4px, lg +2px, base unchanged, caption/control −1px, sm −2px, xs −4px and 2xs −5px. New page/home display roles require a named shared typography role rather than arbitrary per-page font sizes. Existing caption and scoped Pencil roles using 1.5 line height retain their geometry until an authorized, regression-tested migration.
+Relative to `--ui-font-size`, xl is +4px, lg +2px, base unchanged, caption/control −1px, sm −2px, xs −4px and 2xs −5px. New page/home display roles require a named shared typography role rather than arbitrary per-page font sizes. Caption uses the table’s 18px line height at the default scale; remove the legacy 1.5 line-height override during migration. Independently documented feature typography remains scoped to its named role.
 
 Use normal weight for body and most labels, medium for action/section emphasis and semibold for reading headings where required. Define size, line height, weight and tracking together. Preserve platform-specific CJK rendering and wrapping; do not transplant a sampled negative tracking value to every locale.
 
@@ -172,30 +188,30 @@ The reusable spacing scale is 0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 36,
 
 ### Shared control targets
 
-These are the new source-derived shared targets for new or explicitly migrated components. Protected existing feature roles below retain their measured sizes. A shared primitive's geometry change must pass the layout-preservation gate; do not resize every existing consumer automatically.
+These are the shared targets for components and their consumers. The [design-system migration](.scratch/design-system-migration/spec.md#decisions) explicitly authorizes replacing legacy generic control geometry with these targets, including 32px fields, menu shells/rows and Dialog padding. Independently named feature roles below retain their specified sizes. Each implementation ticket records its authorized differences and verifies its affected consumers under the layout-preservation gate.
 
 | Role                       | Height / shape          | Insets and type                                                                   |
 | -------------------------- | ----------------------- | --------------------------------------------------------------------------------- |
 | Standard text Button       | 36px minimum            | 16px horizontal; 14px/20px label.                                                 |
 | Compact text Button        | 32px minimum            | 12px horizontal; 12px/16px label.                                                 |
-| Small contextual Button    | 28px minimum            | 8px horizontal; explicit toolbar/context variant.                                 |
-| Auxiliary micro action     | 24px minimum            | Existing sparse auxiliary roles only; not a normal approval action.               |
+| Small contextual Button    | 28px minimum            | 8px horizontal; MD/8px corners; explicit toolbar/context variant.                 |
+| Auxiliary micro action     | 24px minimum            | SM/6px corners; sparse auxiliary roles only; not a normal approval action.        |
 | Icon-only action           | 24px square             | 12px glyph; 6px corners, retained Rukie role.                                     |
 | Input                      | 36px minimum            | 4px vertical / 12px horizontal; 12px/16px text.                                   |
 | Select trigger             | 36px minimum            | 8px vertical / 12px horizontal; allow line-box growth.                            |
 | Textarea                   | Content-driven          | 8px vertical / 12px horizontal; declare growth limit and scroll owner.            |
 | Switch                     | 36px × 20px             | 2px inset, 16px thumb; existing provider variant 32px × 18px with 14px thumb.     |
 | Checkbox / Radio           | 16px visible mark       | Existing Rukie mark; activating control/label meets the 24px interaction minimum. |
-| Standard menu / Select row | 32px minimum            | 14px/20px; 8px horizontal inset and icon/text gap.                                |
-| Compact Session menu row   | 26px minimum            | 13px/18px; explicit variant, not a global menu resize.                            |
+| Standard menu / Select row | 32px minimum            | MD/8px corners; 14px/20px; 8px horizontal inset and icon/text gap.                |
+| Compact Session menu row   | 26px minimum            | MD/8px corners; 13px/18px; explicit Session variant.                              |
 | Navigation row             | 32px minimum            | Preserve existing navigation insets and trailing actions.                         |
 | Trace summary row          | 28px minimum            | Preserve existing disclosure hierarchy and baseline.                              |
 | Small rename Dialog        | 384px reference maximum | 24px padding, 16px section gaps, 18px/18px medium title; height follows content.  |
 | Ordinary Dialog            | 480px maximum           | 24px interior; rich or scoped dialogs can use a separately documented maximum.    |
 
-Do not remap installed Button size names silently. The existing `sm`/`md`/`lg` roles are 28px/32px/36px; the source-derived compact and standard roles map to existing md and lg where applicable. Add a shared semantic variant when needed. Input and menu density likewise use explicit variants; existing 32px fields and 32px Session menus do not become 36px or 26px without authorization and regression evidence.
+Keep installed Button size names `sm`/`md`/`lg` at 28px/32px/36px. Expose explicit semantic variants `standard` (36px), `compact` (32px), `contextual` (28px), `micro` (24px) and `icon` (24px square); each product call site selects its role. Generic Input and Select triggers use the 36px target; Session menus use the explicit 26px variant. Named 32px Project/settings fields remain scoped exceptions. These migrations are authorized by the linked spec and require the recorded regression evidence.
 
-Ordinary menus use 4px shell padding and viewport-bounded internal scrolling. Keep existing 2px row gaps for installed Rukie menu roles. Tooltip insets are 8px with a 4px anchor gap. Dialogs and popovers clamp to viewport width and height minus 32px; title and footer remain visible while the body scrolls. Never turn a sample dialog's observed height into a global fixed height.
+Ordinary menus use 4px shell padding and viewport-bounded internal scrolling. Keep existing 2px row gaps for installed Rukie menu roles. Tooltip uses the MD/8px radius role, 8px insets and a 4px anchor gap. Dialogs and popovers clamp to viewport width and height minus 32px; title and footer remain visible while the body scrolls. Never turn a sample dialog's observed height into a global fixed height.
 
 Use `min-w-0` for text in flex layouts and `min-h-0` for nested scrolling panels. Prefer fluid widths plus a shared maximum. Long paths, code, translated labels and pending status must wrap or scroll within their owner instead of displacing actions.
 
@@ -212,11 +228,18 @@ Use named radius roles with px values. Source design names and Tailwind class na
 | XL            | 16px            | `rounded-2xl`                                         |
 | Pill / circle | Shape-dependent | `rounded-full`, only for a deliberate pill or circle. |
 
-New source-derived standard fields and text buttons use the LG/12px role; menus and ordinary popovers also use LG/12px, and dialogs XL/16px. Existing 8px basic controls, 6px small controls, menu shells/items and scoped composite geometry remain protected until explicitly migrated. Icon-only actions keep their 6px role. Do not globally redefine Tailwind's radius mapping or use bare `rounded` to approximate a new target.
+Standard and compact text Buttons, generic fields, menu/Select shells and ordinary popovers use LG/12px; Dialogs use XL/16px. Contextual Buttons, standard menu/Select rows, compact Session menu rows and Tooltip use MD/8px. Auxiliary micro actions and icon-only actions use SM/6px. These named roles replace legacy generic 8px basic controls, 6px small text controls and 8px menu shells during the authorized migration. Independently named feature geometry remains as specified below. Do not globally redefine Tailwind's radius mapping or use bare `rounded` to approximate a target.
 
-Count visible rounded containers, not plain DOM wrappers. A nested content surface steps down one role; peers share a radius. Preserve a control's documented role inside composites rather than applying automatic radius subtraction to every descendant. A dialog shell does not force all inner content into smaller controls. Decorative wrappers must not change actual composer or approval geometry.
+Count visible rounded containers, not plain DOM wrappers. A nested content surface steps down one role; peers share a radius. Standard, compact Session and Select rows therefore use MD/8px inside LG/12px menu shells. Preserve a control's documented role inside composites rather than applying automatic radius subtraction to every descendant. A dialog shell does not force all inner content into smaller controls. Decorative wrappers must not change actual composer or approval geometry.
 
-Use restrained functional depth. The source composer reference is `0 3px 16px rgb(0 0 0 / 8%)`; ordinary overlay reference is `0 1px 2px rgb(0 0 0 / 3%), 0 4px 10px -2px rgb(0 0 0 / 4%), 0 10px 24px -8px rgb(0 0 0 / 6%)`. These are reference recipes for a shared elevation role, not per-page literals or complete Dark recipes. Define and verify themed counterparts at the shared owner before adoption. Existing overlay and workspace shadows remain valid scoped roles.
+Use restrained functional depth. `theme.css` owns the following shared elevation roles. Light retains the source reference recipes; Dark is an explicit Rukie adaptation. Consume the named role instead of copying the recipe into a page, and verify both themes on their actual surfaces during implementation.
+
+| Elevation token     | Light                                                                                          | Dark                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `--shadow-overlay`  | `0 1px 2px rgb(0 0 0 / 3%), 0 4px 10px -2px rgb(0 0 0 / 4%), 0 10px 24px -8px rgb(0 0 0 / 6%)` | `0 1px 2px rgb(0 0 0 / 20%), 0 4px 10px -2px rgb(0 0 0 / 28%), 0 10px 24px -8px rgb(0 0 0 / 40%)` |
+| `--shadow-composer` | `0 3px 16px rgb(0 0 0 / 8%)`                                                                   | `0 3px 16px rgb(0 0 0 / 32%)`                                                                     |
+
+Menus, Select panels, popovers, Tooltip and Dialogs consume `--shadow-overlay`; the composer consumes `--shadow-composer`. These roles replace legacy generic overlay/composer shadows. The separately specified workspace perimeter shadows remain structural roles and do not inherit either recipe.
 
 Ordinary rows and technical groups have no shadow. Cards use border-led separation. Menus, popovers and dialogs use shared overlay elevation; Toast may use the attention role. Do not remove an overlay's shadow on focus or stack independent card shadows around every tool result. Keep source/platform hairlines distinct: ordinary control borders are 1px; .5px is allowed only for a named high-DPI structural role.
 
@@ -311,6 +334,27 @@ Keep the existing title-bar action centers, native control exclusion zones, Sess
 Navigation order, Session membership, pinning, row reveal and category expansion retain their implemented behavior. Session rows remain transparent at rest, including the current Session; retain current semantics and keyboard focus without adding a persistent fill. The new-chat/search header stays outside the scrolling categories; its divider appears only below scroll top when content overflows, without moving the viewport.
 
 Use the installed navigation ScrollArea: transparent 8px track, centered 4px thumb, minimum 24px, with no consumed content width. Preserve trailing action space, title fading and focus access. Resizers retain a transparent 4px hit area and a 2px radius-inset indicator. Frame, panel and conversation scroll ownership must not move as a styling side effect.
+
+### Surface ownership
+
+The following bindings are normative in both themes. `layout-content` remains `#ffffff` / `#000000`; changing shared Dark `background` to `#212121` does not recolor the structural conversation canvas. Transparent descendants reveal their owning surface rather than acquiring an implicit card fill.
+
+| Surface                                                 | Owning token                      | Light / Dark fill                                 |
+| ------------------------------------------------------- | --------------------------------- | ------------------------------------------------- |
+| Main conversation frame and Transcript background       | `layout-content`                  | `#ffffff` / `#000000`                             |
+| Plan Side Pane body/header                              | Shared `background`               | `#ffffff` / `#212121`                             |
+| Plan tab strip and gap between conversation/Plan frames | Structural `layout-rail`          | `#f7f7f7` / `#0e0e0e`                             |
+| Conversation summary cards                              | Shared `card`                     | `#ffffff` / `#212121`                             |
+| Plan-preview cards                                      | Shared `input-surface`            | `#ffffff` / `#212121`                             |
+| User message bubble (soft/tint)                         | Shared `muted`                    | `#f5f5f5` / `#2f2f2f`                             |
+| Assistant message body and Trace                        | Transparent over `layout-content` | `#ffffff` / `#000000`                             |
+| Composer                                                | Shared `background`               | `#ffffff` / `#212121`                             |
+| Permission Tool Approval Interaction card               | Shared `card`                     | `#ffffff` / `#212121`                             |
+| Question / plan-review Approval Card Interaction        | Shared `muted`                    | `#f5f5f5` / `#2f2f2f`                             |
+| Generic menu / Select / popover / Dialog                | Shared `menu` / `popover`         | `#ffffff` / `#2f2f2f`                             |
+| Settings surfaces, including portalled overlays         | Named `settings-*` roles          | [Settings surface roles](#settings-surface-roles) |
+
+Interaction content retains its actual request-specific presentation; the waiting badge's `interaction-confirmation-*` pair does not fill the whole card. Summary borders use `card-border`; plan-preview and ordinary panel separation use `border`. The composer receives its named elevation without changing the dock geometry.
 
 ### Conversation and Agent surfaces
 
@@ -420,7 +464,7 @@ Keep the established model trigger and independent list/detail panels. The trigg
 
 Below 672px, the detail matches the list width and sits 4px above it. Preserve reserved provider/check slots, independent hover preview, keyboard entry/return and focus restoration. Opening/reopening clears preview; hover does not change saved model selection. Provider marks use the explicit catalog key. Existing fixed reasoning labels remain the scoped localization exception; all other copy stays localized.
 
-Permission and context panels retain their 376px and 348px scoped widths and actual data categories. The existing settings/conversation surfaces and their protected field dimensions remain scoped roles; do not apply the reference's permission orange, 280px menu or sampled context values globally.
+Permission and context panels retain their 376px and 348px scoped widths and actual data categories. The named settings/conversation surfaces and their specified field dimensions remain scoped roles; do not apply the reference's permission orange, 280px menu or sampled context values globally.
 
 ### Search overlay
 
@@ -432,7 +476,7 @@ Its existing entrance is scale 0.98→1 plus opacity over 160ms, without transla
 
 Project hover detail anchors to the visible row hover-background rectangle: left edge = rectangle right edge + 4px, top edges aligned, excluding shadow. It may overlap middle navigation, escape sidebar scroll clipping and clamp only to the application viewport. Preserve the 4px pointer corridor and keyboard access; do not anchor it to the sidebar's outer edge.
 
-Retain the established 320px detail shell, 12px radius, 6px internal row margins/gaps and full-width separators. Project dialogs preserve their separate dimensions: create 480px, trust 416px, edit 520px and remove 448px maximum, with 16px shell radius and viewport clamps. Their local 32px fields, 36px primary actions and draft/focus flow remain protected rather than resizing with new generic roles.
+Retain the established 320px detail shell, 12px radius, 6px internal row margins/gaps and full-width separators. Project dialogs preserve their separate dimensions: create 480px, trust 416px, edit 520px and remove 448px maximum, with 16px shell radius and viewport clamps. Their named local 32px fields, 36px primary actions and draft/focus flow remain scoped exceptions to generic control targets.
 
 Keep names/paths readable, action footers visible and trust explanations explicit. Cancellation preserves editable drafts. Removal states name what is removed and what is retained, and busy/error states remain observable. Session/Project menus continue deriving one action list across their existing entry points; keep flyout, pointer corridor, disabled and focus-restoration behavior.
 
