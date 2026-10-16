@@ -157,7 +157,7 @@ test("Summary hides empty cards and its plan row supports both themes, narrow bo
       document.documentElement.classList.toggle("dark", theme === "dark");
       const card = summary.getByRole("region", { name: "计划", exact: true }).element();
       expect(getComputedStyle(card).backgroundColor).toBe(
-        theme === "dark" ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)",
+        theme === "dark" ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)",
       );
       expect(summary.element().getBoundingClientRect().width).toBe(300);
       const resting = getComputedStyle(button.element()).backgroundColor;

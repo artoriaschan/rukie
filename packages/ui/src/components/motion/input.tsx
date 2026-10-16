@@ -80,10 +80,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       {label ? (
         <label
           htmlFor={id}
-          className={cn(
-            "px-1 text-ui-base font-normal leading-[1.5] text-foreground",
-            classNames?.label,
-          )}
+          className={cn("px-1 text-ui-base font-normal text-foreground", classNames?.label)}
         >
           {label}
         </label>
@@ -131,7 +128,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             onBlur?.(event);
           }}
           className={cn(
-            "peer min-h-7 w-full bg-transparent py-1 text-ui-base leading-[1.5] text-foreground caret-foreground outline-none",
+            "peer min-h-7 w-full bg-transparent py-1 text-ui-base text-foreground caret-foreground outline-none",
             "placeholder:text-foreground-subtlest",
             leftIcon ? "pl-10" : "pl-3",
             rightSlot || success ? "pr-10" : "pr-3",

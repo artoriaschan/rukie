@@ -51,7 +51,7 @@ function DefaultPreview({ item }: { item: PreviewRailItem }) {
   return (
     <div
       data-slot="preview-rail-card"
-      className="rounded-xl border border-border-strong bg-popover p-4 shadow-md"
+      className="rounded-xl border border-border-strong bg-popover p-4 shadow-(--shadow-overlay)"
     >
       <p data-slot="preview-rail-title" className="font-medium text-card-foreground">
         {item.label}

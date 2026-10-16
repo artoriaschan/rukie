@@ -29,6 +29,9 @@ export default defineConfig({
           browser: {
             enabled: true,
             commands: {
+              colorScheme: async ({ page }, colorScheme: "light" | "dark") => {
+                await page.emulateMedia({ colorScheme });
+              },
               reducedMotion: async ({ page }, reduced: boolean) => {
                 await page.emulateMedia({ reducedMotion: reduced ? "reduce" : "no-preference" });
               },

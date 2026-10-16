@@ -181,7 +181,7 @@ export function SelectTrigger({
       aria-controls={ctx.listId}
       onClick={() => ctx.setOpen(!ctx.open)}
       className={cn(
-        "relative z-10 flex w-full items-center justify-between gap-2 min-h-8 rounded-lg border border-input-border bg-input-surface px-3 py-1 text-ui-base leading-[1.5] text-foreground outline-none",
+        "relative z-10 flex w-full items-center justify-between gap-2 min-h-8 rounded-lg border border-input-border bg-input-surface px-3 py-1 text-ui-base text-foreground outline-none",
         "not-disabled:hover:border-input-border-hover focus-visible:border-input-border-focused focus-visible:bg-input-focused focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
         className,
@@ -288,7 +288,7 @@ export function SelectContent({ className, children }: SelectContentProps) {
       // sits above or below depending on available space
       className={cn(
         OVERLAY_LAYER.interactive,
-        "absolute left-0 right-0 rounded-lg border border-popover-border bg-menu text-popover-foreground shadow-md",
+        "absolute left-0 right-0 rounded-lg border border-popover-border bg-menu text-popover-foreground shadow-(--shadow-overlay)",
         isTop ? "bottom-full" : "top-full",
         className,
       )}
@@ -330,7 +330,7 @@ export function SelectItem({ value, disabled = false, className, children }: Sel
         disabled={disabled}
         onClick={() => ctx.select(value)}
         className={cn(
-          "flex w-full items-center justify-between min-h-8 gap-2 rounded-md px-2 py-0 text-left text-ui-base leading-[1.5] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          "flex w-full items-center justify-between min-h-8 gap-2 rounded-md px-2 py-0 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           selected
             ? "bg-selected text-foreground"
             : "text-foreground not-disabled:hover:bg-menu-hover focus-visible:bg-menu-hover",

@@ -56,7 +56,7 @@ test("C43 plan review matches source number circles, inline descriptions and cus
     for (const dark of [false, true]) {
       document.documentElement.classList.toggle("dark", dark);
       expect(getComputedStyle(region).backgroundColor).toBe(
-        dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)",
+        dark ? "rgb(47, 47, 47)" : "rgb(245, 245, 245)",
       );
       await page.viewport(420, 700);
       expect(region.getBoundingClientRect().right).toBeLessThanOrEqual(innerWidth);

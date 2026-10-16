@@ -57,7 +57,7 @@ test("multiple questions preserve previous answers, collect multiple choices and
     expect(
       getComputedStyle(screen.getByRole("button", { name: "Submit", exact: true }).element())
         .backgroundColor,
-    ).toBe("rgb(0, 0, 0)");
+    ).toBe("rgb(23, 23, 23)");
     await screen.getByRole("button", { name: "Submit", exact: true }).click();
     expect(onReply).toHaveBeenCalledWith(request, {
       answers: [
@@ -143,7 +143,7 @@ test("C43 uses 752px input surface, 16px corners, 48px rows and readable narrow 
     for (const dark of [false, true]) {
       document.documentElement.classList.toggle("dark", dark);
       expect(getComputedStyle(region).backgroundColor).toBe(
-        dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)",
+        dark ? "rgb(47, 47, 47)" : "rgb(245, 245, 245)",
       );
       await page.viewport(420, 700);
       expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(innerWidth);

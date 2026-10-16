@@ -114,7 +114,7 @@ test("Pencil model panels preserve the composer layout and show catalog facts", 
     for (const dark of [false, true]) {
       root.classList.toggle("dark", dark);
       expect(getComputedStyle(list).backgroundColor).toBe(
-        dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)",
+        dark ? "rgb(47, 47, 47)" : "rgb(255, 255, 255)",
       );
       expect(getComputedStyle(first.element()).cursor).toBe("pointer");
       expect(getComputedStyle(first.element().querySelector("svg")!).cursor).toBe("pointer");

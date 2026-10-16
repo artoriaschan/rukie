@@ -272,7 +272,7 @@ function MorphPopoverSurface({
         top,
         visibility: layout ? "visible" : "hidden",
       }}
-      className={cn(OVERLAY_LAYER.interactive, "fixed ", shadow && "drop-shadow-md")}
+      className={cn(OVERLAY_LAYER.interactive, "fixed")}
     >
       <div
         ref={ctx.contentRef}
@@ -285,7 +285,11 @@ function MorphPopoverSurface({
           maxWidth: "calc(100vw - 32px)",
           overflowY: "auto",
         }}
-        className={cn("overflow-hidden border border-popover-border bg-popover", className)}
+        className={cn(
+          "overflow-hidden border border-popover-border bg-popover",
+          shadow && "shadow-(--shadow-overlay)",
+          className,
+        )}
       >
         {children}
       </div>

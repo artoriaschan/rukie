@@ -58,8 +58,8 @@ for (const theme of ["light", "dark"] as const) {
     try {
       const primary = screen.getByRole("button", { name: "Primary", exact: true });
       const disabled = screen.getByRole("button", { name: "Disabled", exact: true });
-      const fill = theme === "light" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
-      const text = theme === "light" ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)";
+      const fill = theme === "light" ? "rgb(23, 23, 23)" : "rgb(250, 250, 250)";
+      const text = theme === "light" ? "rgb(255, 255, 255)" : "rgb(10, 10, 10)";
       expect(getComputedStyle(primary.element()).backgroundColor).toBe(fill);
       expect(getComputedStyle(primary.element()).color).toBe(text);
       const restingShadow = getComputedStyle(primary.element()).boxShadow;
@@ -82,7 +82,7 @@ for (const theme of ["light", "dark"] as const) {
       expect(
         getComputedStyle(screen.getByRole("button", { name: "Secondary", exact: true }).element())
           .backgroundColor,
-      ).toBe(theme === "light" ? "rgb(230, 230, 230)" : "rgb(54, 54, 54)");
+      ).toBe(theme === "light" ? "rgb(255, 255, 255)" : "rgb(40, 40, 40)");
     } finally {
       await screen.unmount();
     }
@@ -98,9 +98,9 @@ for (const theme of ["light", "dark"] as const) {
     );
     try {
       const input = screen.getByRole("textbox", { name: "Name", exact: true }).element();
-      expect(getComputedStyle(input).lineHeight).toBe("21px");
+      expect(getComputedStyle(input).lineHeight).toBe("20px");
       expect(getComputedStyle(input.parentElement!).backgroundColor).toBe(
-        theme === "light" ? "rgb(255, 255, 255)" : "rgb(43, 43, 43)",
+        theme === "light" ? "rgb(255, 255, 255)" : "rgb(33, 33, 33)",
       );
       expect(getComputedStyle(screen.getByText("Name", { exact: true }).element()).fontWeight).toBe(
         "400",
@@ -109,15 +109,15 @@ for (const theme of ["light", "dark"] as const) {
       expect(toggle.element().getBoundingClientRect().width).toBe(36);
       expect(toggle.element().getBoundingClientRect().height).toBeCloseTo(20, 3);
       expect(getComputedStyle(toggle.element()).backgroundColor).toBe(
-        theme === "light" ? "rgb(230, 230, 230)" : "rgb(54, 54, 54)",
+        theme === "light" ? "rgb(255, 255, 255)" : "rgb(40, 40, 40)",
       );
       await toggle.click();
       await expect.element(toggle).toHaveAttribute("aria-checked", "true");
       await expect
         .poll(() => getComputedStyle(toggle.element()).backgroundColor)
-        .toBe(theme === "light" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)");
+        .toBe(theme === "light" ? "rgb(23, 23, 23)" : "rgb(250, 250, 250)");
       expect(getComputedStyle(toggle.element().firstElementChild!).backgroundColor).toBe(
-        theme === "light" ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)",
+        theme === "light" ? "rgb(255, 255, 255)" : "rgb(10, 10, 10)",
       );
       const checkbox = screen.getByRole("checkbox", { name: "Accept" });
       expect(checkbox.element().getBoundingClientRect().width).toBe(16);
@@ -136,7 +136,7 @@ for (const theme of ["light", "dark"] as const) {
       expect(getComputedStyle(badge).fontSize).toBe("12px");
       expect(getComputedStyle(badge).paddingLeft).toBe("8px");
       expect(getComputedStyle(badge).backgroundColor).toBe(
-        theme === "light" ? "rgb(230, 230, 230)" : "rgb(54, 54, 54)",
+        theme === "light" ? "rgb(255, 255, 255)" : "rgb(40, 40, 40)",
       );
     } finally {
       await screen.unmount();

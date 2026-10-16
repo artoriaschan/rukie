@@ -75,7 +75,7 @@ export function InteractionApprovalCard({
       aria-label={regionLabel}
       aria-busy={status === "submitting"}
       className={cn(
-        "flex w-full max-w-[752px] flex-col gap-0.5 rounded-2xl bg-input-surface px-2 pb-2.5 pt-3.5 text-ui-base outline-none",
+        "flex w-full max-w-[752px] flex-col gap-0.5 rounded-2xl bg-muted px-2 pb-2.5 pt-3.5 text-ui-base outline-none",
         className,
       )}
       onCompositionStart={() => {
@@ -172,7 +172,7 @@ export function InteractionApprovalCard({
       <header className="flex items-start gap-2 pb-2 pl-3 pr-2">
         {source}
         <div className="min-w-0 flex-1">
-          <h2 className="break-words text-ui-lg leading-[1.5] font-medium">{question.title}</h2>
+          <h2 className="break-words text-ui-lg font-medium">{question.title}</h2>
           {question.description ? (
             <p className="mt-1 break-words text-ui-sm text-muted-foreground">
               {question.description}

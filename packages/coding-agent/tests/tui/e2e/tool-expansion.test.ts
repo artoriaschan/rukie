@@ -52,9 +52,21 @@ test("cards toggle from header and body whitespace and union with transcript exp
     app.stdin.write("\x0f");
     await app.waitFor(() => app.screen().join("\n").includes("+2 lines"));
     app.resize(40, 40);
-    await app.waitFor(() => app.screen().every((line) => Bun.stringWidth(line) <= 40));
+    // Native resize can truncate the old frame before the app paints its wrapped title.
+    await app.waitFor(() => {
+      const lines = app.screen();
+      const row = header();
+      return (
+        lines.every((line) => Bun.stringWidth(line) <= 40) &&
+        lines[row + 1] === "  urth\\nfifth')" &&
+        lines[row + 2] === " ⎿ first" &&
+        lines[row + 3] === ""
+      );
+    });
     testClock.advanceTimersByTime(500);
-    click(app, 39, header() + 2);
+    const narrowBody = app.screen().indexOf(" ⎿ first") + 1;
+    expect(app.screen()[narrowBody]!.trim()).toBe("");
+    click(app, 39, narrowBody);
     await app.waitFor(() => app.screen().includes("   fifth"));
     testClock.advanceTimersByTime(500);
     click(app, 39, header() - 1);

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: claimed
 
 # Spec: 按最新 DESIGN.md 重构桌面与 Web 前端
 

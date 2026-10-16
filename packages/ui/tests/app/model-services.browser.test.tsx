@@ -70,10 +70,10 @@ test("Pencil P01-E empty provider state preserves shell and opens the custom cat
       );
       await expect
         .poll(() => getComputedStyle(action.element()).backgroundColor)
-        .toBe(dark ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)");
+        .toBe(dark ? "rgb(250, 250, 250)" : "rgb(23, 23, 23)");
       await expect
         .poll(() => getComputedStyle(action.element()).color)
-        .toBe(dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)");
+        .toBe(dark ? "rgb(10, 10, 10)" : "rgb(255, 255, 255)");
       for (const [node, top, width, height] of [
         [icon, 190, 12, 12],
         [title, 232, 560, 24],
@@ -142,8 +142,8 @@ test("Pencil model footer keeps cancel surface and primary save colors in both t
     for (const dark of [true, false]) {
       document.documentElement.classList.toggle("dark", dark);
       const surface = dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)";
-      const primary = dark ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)";
-      const inverse = dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
+      const primary = dark ? "rgb(250, 250, 250)" : "rgb(23, 23, 23)";
+      const inverse = dark ? "rgb(10, 10, 10)" : "rgb(255, 255, 255)";
       await expect.poll(() => getComputedStyle(cancel.element()).backgroundColor).toBe(surface);
       await expect.poll(() => getComputedStyle(save.element()).backgroundColor).toBe(primary);
       await expect.poll(() => getComputedStyle(save.element()).color).toBe(inverse);
@@ -324,7 +324,7 @@ test("model services creates a provider and preserves input when encrypted save 
     await advanced.hover();
     await expect
       .poll(() => getComputedStyle(advanced.element()).backgroundColor)
-      .toBe("rgba(13, 13, 13, 0.05)");
+      .toBe("rgb(236, 236, 236)");
     await expect.poll(() => getComputedStyle(advanced.element()).color).toBe("rgb(38, 38, 38)");
     // The neutral F01 hover remains readable against the scoped Light settings surface.
     advanced.element().focus();
@@ -812,13 +812,13 @@ test.each([
   {
     theme: "Light",
     dark: false,
-    background: "rgb(240, 240, 240)",
+    background: "rgb(241, 241, 241)",
     foreground: "rgb(38, 38, 38)",
   },
   {
     theme: "Dark",
     dark: true,
-    background: "rgb(54, 54, 54)",
+    background: "rgb(58, 58, 58)",
     foreground: "rgb(212, 212, 212)",
   },
 ])(

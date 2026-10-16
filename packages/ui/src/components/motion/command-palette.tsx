@@ -279,7 +279,7 @@ export function CommandPalette({
                 transition={reduce ? { duration: 0 } : PANEL_TRANSITION}
                 {...gate}
                 onKeyDown={onKeyDown}
-                className="pointer-events-auto flex w-full max-w-[520px] max-h-full flex-col overflow-hidden rounded-[20px] border border-popover-border bg-popover shadow-md will-change-transform"
+                className="pointer-events-auto flex w-full max-w-[520px] max-h-full flex-col overflow-hidden rounded-[20px] border border-popover-border bg-popover shadow-(--shadow-overlay) will-change-transform"
               >
                 <div className="flex shrink-0 items-center px-4 py-1">
                   <input
