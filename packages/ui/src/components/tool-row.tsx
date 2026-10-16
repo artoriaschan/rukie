@@ -150,7 +150,7 @@ export function ToolRow({
           <div>
             <Button
               variant="ghost"
-              size="sm"
+              size="contextual"
               disabled={pending || (page !== undefined && end)}
               onClick={() => {
                 void load(page?.nextOffset ?? 0);
@@ -161,7 +161,7 @@ export function ToolRow({
             {page ? (
               <Button
                 variant="ghost"
-                size="sm"
+                size="contextual"
                 disabled={pending}
                 onClick={() => {
                   setPage(undefined);

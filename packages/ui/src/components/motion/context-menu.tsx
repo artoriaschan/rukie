@@ -464,7 +464,7 @@ export function ContextMenuContent({
         onKeyDown={onKeyDown}
         onContextMenu={(event) => event.preventDefault()}
         className={cn(
-          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-(--shadow-overlay) outline-none",
+          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-xl border border-popover-border bg-menu p-1 text-popover-foreground shadow-(--shadow-overlay) outline-none",
           className,
         )}
       >
@@ -478,6 +478,7 @@ export function ContextMenuContent({
 type ContextMenuItemTone = "default" | "destructive";
 
 export interface ContextMenuItemProps {
+  size?: "standard" | "session";
   children: ReactNode;
   onSelect?: () => void;
   disabled?: boolean;
@@ -492,11 +493,17 @@ export interface ContextMenuItemProps {
   ariaCurrent?: boolean;
 }
 
-function itemClassName(tone: ContextMenuItemTone, inset: boolean, className?: string) {
+function itemClassName(
+  tone: ContextMenuItemTone,
+  inset: boolean,
+  size: "standard" | "session",
+  className?: string,
+) {
   return cn(
-    "relative isolate flex w-full select-none items-center min-h-8 gap-2 rounded-md px-2 py-0 text-left text-ui-base outline-none",
-    "focus-visible:ring-2 focus-visible:ring-ring",
+    "relative isolate flex w-full select-none items-center min-h-8 gap-2 rounded-lg px-2 py-0 text-left text-ui-base outline-none",
+    "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:cursor-inherit [&_span]:cursor-inherit",
+    size === "session" && "min-h-[26px] text-ui-caption",
     inset && "pl-8",
     tone === "destructive" ? "text-destructive-soft-foreground" : "text-foreground",
     className,
@@ -507,7 +514,7 @@ function ItemHighlight({ tone }: { tone: ContextMenuItemTone }) {
   return (
     <span
       className={cn(
-        "absolute inset-0 -z-10 rounded-md",
+        "absolute inset-0 -z-10 rounded-lg",
         tone === "destructive" ? "bg-destructive-soft" : "bg-menu-hover",
       )}
     />
@@ -528,6 +535,7 @@ function headingForSub(context: ContextMenuContextValue, clientX: number, client
 }
 
 function ContextMenuItemBase({
+  size = "standard",
   children,
   onSelect,
   disabled = false,
@@ -579,7 +587,7 @@ function ContextMenuItemBase({
         onSelect?.();
         if (closeOnSelect) context.setOpen(false);
       }}
-      className={itemClassName(tone, inset, className)}
+      className={itemClassName(tone, inset, size, className)}
     >
       {active && !disabled ? <ItemHighlight tone={tone} /> : null}
       {children}
@@ -617,6 +625,7 @@ export function ContextMenuSub({ children }: { children: ReactNode }) {
 }
 
 export interface ContextMenuSubTriggerProps {
+  size?: "standard" | "session";
   children: ReactNode;
   disabled?: boolean;
   className?: string;
@@ -624,6 +633,7 @@ export interface ContextMenuSubTriggerProps {
 }
 
 export function ContextMenuSubTrigger({
+  size = "standard",
   children,
   disabled = false,
   className,
@@ -672,7 +682,7 @@ export function ContextMenuSubTrigger({
         if (event.detail === 0) openWithFocus();
         else context.setOpenSub(sub.id);
       }}
-      className={itemClassName("default", false, className)}
+      className={itemClassName("default", false, size, className)}
     >
       {highlighted ? <ItemHighlight tone="default" /> : null}
       {children}
@@ -819,7 +829,7 @@ export function ContextMenuSubContent({
           onKeyDown={onKeyDown}
           onContextMenu={(event) => event.preventDefault()}
           className={cn(
-            "min-w-56 max-w-[min(320px,calc(100vw-16px))] max-h-[calc(100dvh-16px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-(--shadow-overlay) outline-none",
+            "min-w-56 max-w-[min(320px,calc(100vw-16px))] max-h-[calc(100dvh-16px)] overflow-y-auto space-y-0.5 rounded-xl border border-popover-border bg-menu p-1 text-popover-foreground shadow-(--shadow-overlay) outline-none",
             className,
           )}
         >

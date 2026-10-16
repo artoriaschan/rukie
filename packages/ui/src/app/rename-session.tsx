@@ -67,9 +67,15 @@ function RenameDialog({
     }
   };
   return (
-    <MorphingModal viewId={id} label={t(copy.title)} onClose={close} placement="center">
+    <MorphingModal
+      className="max-w-96"
+      viewId={id}
+      label={t(copy.title)}
+      onClose={close}
+      placement="center"
+    >
       <form
-        className="relative flex min-h-0 flex-col gap-3 p-2"
+        className="relative flex min-h-0 flex-col gap-4"
         aria-busy={pending}
         onSubmit={(event) => {
           event.preventDefault();
@@ -77,7 +83,7 @@ function RenameDialog({
         }}
       >
         <div className="shrink-0 pr-8">
-          <h2 className="text-ui-lg font-medium">{t(copy.title)}</h2>
+          <h2 className="text-ui-xl leading-none font-medium">{t(copy.title)}</h2>
           <p className="text-ui-base text-muted-foreground">{t("app.rename-description")}</p>
         </div>
         <div className="min-h-0 overflow-y-auto">
@@ -96,10 +102,10 @@ function RenameDialog({
           ) : null}
         </div>
         <div className="flex shrink-0 justify-end gap-2">
-          <Button variant="secondary" disabled={pending} onClick={close}>
+          <Button size="standard" variant="secondary" disabled={pending} onClick={close}>
             {t("app.cancel")}
           </Button>
-          <Button type="submit" disabled={pending || !normalized || unchanged}>
+          <Button size="standard" type="submit" disabled={pending || !normalized || unchanged}>
             {t("app.save")}
           </Button>
         </div>

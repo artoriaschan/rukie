@@ -22,6 +22,7 @@ export function GoalConfirmation({
   }, [pending]);
   return (
     <MorphingModal
+      padding="goal"
       viewId="goal"
       placement="center"
       label={t("app.goal-confirm-title")}
@@ -39,10 +40,12 @@ export function GoalConfirmation({
         ) : null}
       </div>
       <div className="goal-confirmation-footer">
-        <Button ref={cancel} variant="secondary" onClick={onClose}>
+        <Button geometry="goal" size="standard" ref={cancel} variant="secondary" onClick={onClose}>
           {t("app.cancel")}
         </Button>
         <Button
+          geometry="goal"
+          size="standard"
           variant="destructive"
           disabled={pending}
           onClick={() => {

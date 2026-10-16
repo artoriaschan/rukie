@@ -98,7 +98,7 @@ for (const theme of ["light", "dark"] as const) {
     );
     try {
       const input = screen.getByRole("textbox", { name: "Name", exact: true }).element();
-      expect(getComputedStyle(input).lineHeight).toBe("20px");
+      expect(getComputedStyle(input).lineHeight).toBe("16px");
       expect(getComputedStyle(input.parentElement!).backgroundColor).toBe(
         theme === "light" ? "rgb(255, 255, 255)" : "rgb(33, 33, 33)",
       );

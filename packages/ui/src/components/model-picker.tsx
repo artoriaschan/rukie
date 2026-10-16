@@ -86,7 +86,7 @@ export function ModelPicker({
       <Menu.DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
+          size="contextual"
           disabled={disabled}
           aria-label={t("app.model")}
           className="conversation-model-trigger"
@@ -193,7 +193,7 @@ export function ModelPicker({
                       (level) => (
                         <Button
                           key={level}
-                          size="sm"
+                          size="micro"
                           variant="outline"
                           aria-pressed={model === detail.spec && thinkingLevel === level}
                           className="conversation-reasoning-chip"

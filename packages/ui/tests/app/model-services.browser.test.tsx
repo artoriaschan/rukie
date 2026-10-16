@@ -2502,7 +2502,18 @@ test.each([false, true])(
         expect(getComputedStyle(nested).backgroundColor).toBe(
           dark ? "rgb(47, 47, 47)" : "rgb(245, 245, 245)",
         );
+      await page.viewport(420, 700);
+      document.documentElement.style.setProperty("--ui-font-size", "18px");
+      await expect.poll(() => dialog.getBoundingClientRect().bottom).toBeLessThanOrEqual(684);
+      expect(dialog.getBoundingClientRect().left).toBeGreaterThanOrEqual(16);
+      expect(dialog.getBoundingClientRect().right).toBeLessThanOrEqual(404);
+      const footer = dialog.querySelector(".model-services-modal-footer")!;
+      expect(footer.getBoundingClientRect().bottom).toBeLessThanOrEqual(684);
+      expect(
+        dialog.querySelector(".model-services-model-header")!.getBoundingClientRect().top,
+      ).toBeGreaterThanOrEqual(16);
     } finally {
+      document.documentElement.style.removeProperty("--ui-font-size");
       await screen.unmount();
     }
   },

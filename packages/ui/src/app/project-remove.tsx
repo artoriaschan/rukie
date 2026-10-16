@@ -65,10 +65,18 @@ export function ProjectRemove({
         </p>
       ) : null}
       <div className="flex shrink-0 items-center justify-end gap-2">
-        <Button autoFocus ref={cancel} variant="ghost" disabled={pending} onClick={back}>
+        <Button
+          size="standard"
+          autoFocus
+          ref={cancel}
+          variant="ghost"
+          disabled={pending}
+          onClick={back}
+        >
           {t("app.cancel")}
         </Button>
         <Button
+          size="standard"
           variant="destructive"
           className="h-9 bg-destructive-soft text-destructive-soft-foreground not-disabled:hover:bg-destructive-soft/80"
           disabled={pending || busy || !connected}

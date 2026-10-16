@@ -137,10 +137,6 @@
   transform: translateY(220px);
   font-size: var(--text-ui-sm);
 }
-.model-services-provider-form input {
-  height: 30px;
-  min-height: 0;
-}
 .model-services-provider-form .relative > p {
   font-weight: 400;
   color: var(--muted-foreground);
@@ -190,14 +186,6 @@
 .model-services-model-row > span {
   order: 5;
 }
-.model-services-model-row [role="switch"] {
-  width: 32px;
-  height: 18px;
-}
-.model-services-model-row [role="switch"] > div {
-  width: 14px;
-  height: 14px;
-}
 .model-services-catalog {
   padding: 10px;
 }
@@ -214,18 +202,9 @@
 .model-services-model-modal {
   max-width: 672px;
   height: 704px;
-  margin-top: 10px;
 }
 .model-services-confirm-modal {
   max-width: 448px;
-  margin-top: 10px;
-}
-.model-services-modal > div {
-  padding: 23px;
-  height: 100%;
-}
-.model-services-modal > div > div {
-  height: 100%;
 }
 .model-services-model-form {
   display: flex;
@@ -268,10 +247,6 @@
   font-weight: 400;
   padding-left: 0;
   color: var(--muted-foreground);
-}
-.model-services-model-fields input {
-  height: 30px;
-  min-height: 0;
 }
 .model-services-model-fields > button {
   justify-content: flex-start;
@@ -390,12 +365,6 @@
   .model-services-model-row > div:first-child > p:first-child {
     max-width: 140px;
   }
-  .model-services-model-row [role="switch"] {
-    flex-shrink: 0;
-  }
-  .model-services-modal > div {
-    padding: 20px;
-  }
   .model-services-builtins {
     display: none;
   }
@@ -494,14 +463,6 @@
 }
 .model-services-providers button:disabled {
   background: transparent;
-}
-.model-services-provider-heading [role="switch"] {
-  width: 32px;
-  height: 18px;
-}
-.model-services-provider-heading [role="switch"] > div {
-  width: 14px;
-  height: 14px;
 }
 .model-services-provider-heading > div {
   height: 26px;
@@ -807,15 +768,6 @@
 .model-services-provider-form > div:has(> label[for]) {
   height: 63px;
 }
-.model-services-provider-form input {
-  height: 30px;
-}
-.model-services-provider-form div[data-state]:has(> input),
-.model-services-provider-form [aria-haspopup="listbox"] {
-  height: 32px;
-  min-height: 32px;
-  border-radius: 8px;
-}
 .model-services-provider-form > .relative > p {
   margin-bottom: 4px;
 }
@@ -833,9 +785,6 @@
 .model-services-catalog-heading {
   height: 28px;
   margin-bottom: 24px;
-}
-.model-services-model-modal > div {
-  padding: 0;
 }
 .model-services-model-form {
   gap: 0;
@@ -875,9 +824,6 @@
 .model-services-model-fields h3 {
   font-weight: 400;
 }
-.model-services-model-fields input {
-  height: 30px;
-}
 .model-services-model-fields input[type="number"] {
   appearance: textfield;
 }
@@ -885,11 +831,6 @@
 .model-services-model-fields input[type="number"]::-webkit-outer-spin-button {
   appearance: none;
   margin: 0;
-}
-.model-services-model-fields div[data-state]:has(> input) {
-  height: 32px;
-  min-height: 32px;
-  border-radius: 8px;
 }
 .model-services-model-fields label {
   font-size: var(--text-ui-sm);
@@ -1112,11 +1053,6 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-}
-.model-services-default-reasoning button[aria-haspopup="listbox"] {
-  height: 32px;
-  min-height: 32px;
-  border-radius: 8px;
 }
 
 /* This field is near the dialog footer; open its options into the form body. */

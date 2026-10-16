@@ -272,7 +272,10 @@ export function PromptInput({
             disabled={disabled || loading}
             className="min-w-0"
           >
-            <SelectTrigger className="min-h-8 w-auto max-w-52 rounded-lg border-0 bg-transparent px-2 py-0 text-ui-sm hover:bg-muted focus-visible:ring-2">
+            <SelectTrigger
+              size="composer"
+              className="min-h-8 w-auto max-w-52 rounded-lg border-0 bg-transparent px-2 py-0 text-ui-sm hover:bg-muted focus-visible:ring-2"
+            >
               <span className="flex min-w-0 items-center gap-2">
                 {currentModel?.icon ? (
                   <span className="grid size-4 shrink-0 place-items-center text-muted-foreground [&_svg]:size-3">

@@ -138,7 +138,12 @@ export function WorktreeSettings({
             </h2>
             <p className="text-ui-base text-muted-foreground">{t("worktrees.description")}</p>
           </div>
-          <Button variant="outline" size="sm" disabled={pending} onClick={() => void refresh()}>
+          <Button
+            variant="outline"
+            size="compact"
+            disabled={pending}
+            onClick={() => void refresh()}
+          >
             <RefreshCw className="size-3" />
             {t("worktrees.refresh")}
           </Button>
@@ -164,7 +169,7 @@ export function WorktreeSettings({
                 </div>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="contextual"
                   disabled={pending}
                   onClick={() => {
                     setDialogError("");
@@ -185,6 +190,7 @@ export function WorktreeSettings({
       </section>
       {selected ? (
         <MorphingModal
+          padding="project"
           viewId={selected.id}
           label={t("worktrees.delete-title")}
           placement="center"
@@ -203,10 +209,18 @@ export function WorktreeSettings({
               </p>
             ) : null}
             <div className="worktree-settings-dialog-footer">
-              <Button ref={cancel} autoFocus variant="secondary" disabled={pending} onClick={close}>
+              <Button
+                size="compact"
+                ref={cancel}
+                autoFocus
+                variant="secondary"
+                disabled={pending}
+                onClick={close}
+              >
                 {t("app.cancel")}
               </Button>
               <Button
+                size="standard"
                 variant="destructive"
                 className="h-9"
                 disabled={pending}

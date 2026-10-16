@@ -1378,7 +1378,7 @@ test("delete confirmation scrolls long titles while keeping title and actions vi
     await screen.getByRole("menuitem", { name: "Delete chat", exact: true }).click();
     await expect.element(screen.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
     const normal = screen.getByRole("dialog").element().getBoundingClientRect();
-    expect(normal.height).toBe(190);
+    expect(normal.height).toBe(194);
     expect(normal.width).toBe(480);
     await screen.getByRole("button", { name: "Cancel", exact: true }).click();
     const title = "Long user title ".repeat(1000);

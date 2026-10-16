@@ -133,6 +133,7 @@ export function ProjectEdit({
         }}
       >
         <Input
+          size="scoped"
           autoFocus
           ref={nameInput}
           aria-label={t("app.project-name")}
@@ -161,6 +162,7 @@ export function ProjectEdit({
             }}
           />
           <Button
+            size="compact"
             variant="ghost"
             className="h-8 w-full justify-start rounded-none border-t border-border"
             disabled={picking || pending}
@@ -184,6 +186,7 @@ export function ProjectEdit({
         ) : null}
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
           <Button
+            size="compact"
             variant="destructive"
             className="h-8"
             aria-describedby={busy ? "project-remove-busy" : undefined}
@@ -196,10 +199,10 @@ export function ProjectEdit({
             {t("app.remove-local-project")}
           </Button>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="ghost" disabled={pending} onClick={close}>
+            <Button size="compact" variant="ghost" disabled={pending} onClick={close}>
               {t("app.cancel")}
             </Button>
-            <Button type="submit" className="h-9" disabled={!canSave}>
+            <Button size="standard" type="submit" className="h-9" disabled={!canSave}>
               {t("app.save")}
             </Button>
           </div>

@@ -46,7 +46,7 @@ export const StatefulButton = forwardRef<HTMLButtonElement, StatefulButtonProps>
     const textKey = typeof stateText === "string" ? `${state}-${stateText}` : state;
 
     return (
-      <Button ref={ref} disabled={disabled || isBusy} aria-busy={isBusy} {...rest}>
+      <Button size="standard" ref={ref} disabled={disabled || isBusy} aria-busy={isBusy} {...rest}>
         <span
           key={textKey}
           aria-live="polite"

@@ -524,22 +524,9 @@
   left: 0;
   width: 76px;
 }
-.app-titlebar-navigation button {
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-}
 .app-titlebar-navigation button:disabled {
   background: transparent;
   opacity: 0.5;
-}
-.app-titlebar-navigation button:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
-}
-.app-titlebar-navigation svg {
-  width: 12px;
-  height: 12px;
 }
 .app-navigation {
   width: 52px;
@@ -585,13 +572,6 @@
 }
 
 /* C27–C31 own this chrome without changing other MorphingModal consumers. */
-.project-dialog > div {
-  padding: 20px 24px;
-}
-.project-dialog button:not([data-size="icon"]) > svg {
-  width: 12px;
-  height: 12px;
-}
 .project-directory-list {
   min-height: 0;
   max-height: 240px;
@@ -601,10 +581,6 @@
   max-height: inherit;
 }
 @media (max-width: 640px) {
-  .project-dialog > div {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
 }
 
 /* Opaque inverse fills keep label contrast; a 1px inset edge marks hover; pressing adds nothing. */

@@ -419,7 +419,7 @@ function DefaultApprovalCard({
                   </>
                 ) : null}
                 <Button
-                  size={currentStep === questions.length - 1 ? "sm" : "icon"}
+                  size={currentStep === questions.length - 1 ? "standard" : "icon"}
                   aria-label={
                     currentStep === questions.length - 1
                       ? componentText("component.submit-response")
@@ -445,7 +445,7 @@ function DefaultApprovalCard({
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <Button
                   data-permission-primary
-                  size="sm"
+                  size="standard"
                   disabled={busy || disabled}
                   onClick={onApprove}
                   className="rounded-lg"
@@ -456,7 +456,7 @@ function DefaultApprovalCard({
                 {onRequestChanges ? (
                   <Button
                     variant="secondary"
-                    size="sm"
+                    size="standard"
                     disabled={busy || disabled}
                     onClick={onRequestChanges}
                     className="rounded-lg"
@@ -467,7 +467,7 @@ function DefaultApprovalCard({
                 {onReject ? (
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="standard"
                     disabled={busy || disabled}
                     onClick={onReject}
                     className="rounded-lg text-muted-foreground hover:text-danger"

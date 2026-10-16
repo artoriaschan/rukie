@@ -523,6 +523,7 @@ export function ModelServices({
         aria-label={t("services.navigation")}
       >
         <Input
+          size="scoped"
           disabled
           placeholder={t("services.search")}
           aria-label={t("services.search")}
@@ -576,7 +577,7 @@ export function ModelServices({
                 aria-label={t(`services.nav.${name}`)}
                 data-settings-page={name}
                 variant={name === "worktrees" && page === "worktrees" ? "secondary" : "ghost"}
-                size="sm"
+                size="contextual"
                 disabled={name !== "worktrees" || !request}
                 aria-current={name === "worktrees" && page === "worktrees" ? "page" : undefined}
                 onClick={() => setPage("worktrees")}
@@ -601,7 +602,7 @@ export function ModelServices({
             aria-label={t("services.title")}
             data-settings-page="models"
             variant={page === "models" ? "secondary" : "ghost"}
-            size="sm"
+            size="contextual"
             aria-current={page === "models" ? "page" : undefined}
             onClick={() => setPage("models")}
           >
@@ -633,7 +634,7 @@ export function ModelServices({
                     <RefreshCw />
                   </Button>
                   <Button
-                    size="sm"
+                    size="contextual"
                     onClick={() => {
                       setCatalog(true);
                       setError("");
@@ -655,7 +656,7 @@ export function ModelServices({
                   <h2 id="provider-empty-title">{t("services.providerEmptyTitle")}</h2>
                   <p>{t("services.providerEmptyDescription")}</p>
                   <Button
-                    size="sm"
+                    size="contextual"
                     onClick={() => {
                       setCatalog(true);
                       setError("");
@@ -668,7 +669,7 @@ export function ModelServices({
                     <div className="model-services-provider-empty-error text-ui-sm text-danger">
                       <p role="alert">{error}</p>
                       {error === t("services.loadFailure") ? (
-                        <Button variant="ghost" size="sm" onClick={() => void load()}>
+                        <Button variant="ghost" size="contextual" onClick={() => void load()}>
                           {t("services.retry")}
                         </Button>
                       ) : null}
@@ -690,7 +691,7 @@ export function ModelServices({
                       <Button
                         key={provider.id}
                         variant={!catalog && draft?.id === provider.id ? "secondary" : "ghost"}
-                        size="sm"
+                        size="contextual"
                         className="justify-start truncate"
                         aria-label={provider.name}
                         aria-pressed={!catalog && draft?.id === provider.id}
@@ -727,7 +728,7 @@ export function ModelServices({
                       <div className="mb-3 text-ui-sm text-danger">
                         <p role="alert">{error}</p>
                         {error === t("services.loadFailure") ? (
-                          <Button variant="ghost" size="sm" onClick={() => void load()}>
+                          <Button variant="ghost" size="contextual" onClick={() => void load()}>
                             {t("services.retry")}
                           </Button>
                         ) : null}
@@ -753,6 +754,7 @@ export function ModelServices({
                         </div>
                         <div className="model-services-catalog-cards">
                           <Button
+                            size="compact"
                             variant="secondary"
                             className="model-services-catalog-tile"
                             onClick={() => void create()}
@@ -768,6 +770,7 @@ export function ModelServices({
                           </Button>
                           {PROVIDER_PRESETS.map((preset) => (
                             <Button
+                              size="compact"
                               key={preset.id}
                               variant="secondary"
                               className="model-services-catalog-tile"
@@ -802,6 +805,7 @@ export function ModelServices({
                           </h2>
                           <div className="flex items-center gap-2">
                             <Switch
+                              size="provider"
                               ariaLabel={t("services.providerEnabled")}
                               disabled={pending}
                               checked={draft.enabled !== false}
@@ -857,6 +861,7 @@ export function ModelServices({
                           </div>
                         </div>
                         <Input
+                          size="scoped"
                           disabled={pending}
                           label={t("services.url")}
                           value={draft.baseUrl}
@@ -882,6 +887,7 @@ export function ModelServices({
                             }}
                           >
                             <SelectTrigger
+                              size="scoped"
                               aria-label={t("services.api")}
                             >{`${protocols[draft.api]} (${routes[draft.api]})`}</SelectTrigger>
                             <SelectContent className="model-services-menu model-services-api-menu">
@@ -910,6 +916,7 @@ export function ModelServices({
                             </a>
                           ) : null}
                           <Input
+                            size="scoped"
                             disabled={pending}
                             label={t("services.key")}
                             classNames={{ input: "model-services-key-input" }}
@@ -953,7 +960,7 @@ export function ModelServices({
                         ) : null}
                         <div className="model-services-model-heading flex items-center justify-between gap-2">
                           <h3 className="font-medium">{t("services.models")}</h3>
-                          <Button variant="secondary" size="sm" onClick={() => openModel()}>
+                          <Button variant="secondary" size="contextual" onClick={() => openModel()}>
                             <Plus className="size-3" />
                             {t("services.addModel")}
                           </Button>
@@ -982,6 +989,7 @@ export function ModelServices({
                                 </p>
                               </div>
                               <Switch
+                                size="provider"
                                 ariaLabel={t("services.enabled")}
                                 checked={item.enabled !== false}
                                 disabled={pending}
@@ -1030,7 +1038,7 @@ export function ModelServices({
                         )}
                       </div>
                     ) : (
-                      <Button variant="secondary" onClick={() => setCatalog(true)}>
+                      <Button size="compact" variant="secondary" onClick={() => setCatalog(true)}>
                         {t("services.addProvider")}
                       </Button>
                     )}
@@ -1042,6 +1050,8 @@ export function ModelServices({
         )}
       </ScrollArea>
       <MorphingModal
+        geometry="settings"
+        padding={dialog === "model" ? "none" : "settings"}
         label={
           dialog === "model"
             ? t(editing === undefined ? "services.addModel" : "services.editModel")
@@ -1091,6 +1101,7 @@ export function ModelServices({
               <section className="model-services-basic">
                 <h3 className="text-ui-base">{t("services.basic")}</h3>
                 <Input
+                  size="scoped"
                   label={t("services.id")}
                   placeholder={t("services.id")}
                   autoFocus
@@ -1117,11 +1128,13 @@ export function ModelServices({
                 />
                 <div className="model-services-basic-columns">
                   <Input
+                    size="scoped"
                     label={t("services.displayName")}
                     value={model.name ?? ""}
                     onChange={(name) => setModel({ ...model, name })}
                   />
                   <Input
+                    size="scoped"
                     label={t("services.context")}
                     type="number"
                     min={1}
@@ -1207,7 +1220,7 @@ export function ModelServices({
                         setModel(next);
                       }}
                     >
-                      <SelectTrigger aria-label={t("services.defaultReasoning")}>
+                      <SelectTrigger size="scoped" aria-label={t("services.defaultReasoning")}>
                         {model.defaultThinkingLevel
                           ? reasoningLabels[model.defaultThinkingLevel]
                           : t("services.selectReasoning")}
@@ -1275,7 +1288,7 @@ export function ModelServices({
               <div className="model-services-advanced-shell">
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="contextual"
                   className="model-services-advanced-toggle"
                   aria-expanded={advanced}
                   onClick={() => setAdvanced(!advanced)}
@@ -1293,6 +1306,7 @@ export function ModelServices({
                     <section className="model-services-option-card">
                       <h3>{t("services.compression")}</h3>
                       <Input
+                        size="scoped"
                         label={t("services.compressionThreshold")}
                         type="number"
                         min={1}
@@ -1309,6 +1323,7 @@ export function ModelServices({
                       <h3>{t("services.runtime")}</h3>
                       <div className="model-services-basic-columns">
                         <Input
+                          size="scoped"
                           label="Temperature"
                           type="number"
                           min={0}
@@ -1318,6 +1333,7 @@ export function ModelServices({
                           onChange={(value) => editAdvanced("temperature", value)}
                         />
                         <Input
+                          size="scoped"
                           label={t("services.tokens")}
                           type="number"
                           min={1}
@@ -1326,6 +1342,7 @@ export function ModelServices({
                         />
                       </div>
                       <Input
+                        size="scoped"
                         label={t("services.toolIterations")}
                         type="number"
                         min={1}
@@ -1351,6 +1368,7 @@ export function ModelServices({
                         ["inputPrice", "outputPrice", "cacheReadPrice", "cacheWritePrice"] as const
                       ).map((field) => (
                         <Input
+                          size="scoped"
                           key={field}
                           label={t(`services.${field}`)}
                           type="number"
@@ -1362,6 +1380,7 @@ export function ModelServices({
                       ))}
                     </div>
                     <Input
+                      size="scoped"
                       label={t("services.priceSource")}
                       value={model.priceSource ?? ""}
                       onChange={(priceSource) => {
@@ -1382,7 +1401,7 @@ export function ModelServices({
               <Button
                 className="model-services-model-cancel"
                 variant="ghost"
-                size="sm"
+                size="contextual"
                 onClick={() => changeDialog(null)}
                 disabled={pending}
               >
@@ -1391,7 +1410,7 @@ export function ModelServices({
               <Button
                 className="model-services-model-save cursor-pointer disabled:pointer-events-auto disabled:cursor-not-allowed"
                 type="submit"
-                size="sm"
+                size="contextual"
                 disabled={pending || dialogPending || priceLoading}
                 aria-busy={dialogPending || priceLoading}
                 aria-label={t("services.saveModel")}
@@ -1422,12 +1441,18 @@ export function ModelServices({
             }}
           >
             <h2 className="font-medium">{t("services.rename")}</h2>
-            <Input autoFocus label={t("services.name")} value={rename} onChange={setRename} />
+            <Input
+              size="scoped"
+              autoFocus
+              label={t("services.name")}
+              value={rename}
+              onChange={setRename}
+            />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => changeDialog(null)}>
+              <Button size="compact" variant="ghost" onClick={() => changeDialog(null)}>
                 {t("services.cancel")}
               </Button>
-              <Button type="submit" disabled={pending || dialogPending}>
+              <Button size="compact" type="submit" disabled={pending || dialogPending}>
                 {t("services.saveProvider")}
               </Button>
             </div>
@@ -1440,6 +1465,7 @@ export function ModelServices({
             <p className="text-ui-sm text-muted-foreground">{t("services.deleteNote")}</p>
             <div className="model-services-delete-footer flex justify-end gap-2">
               <Button
+                size="compact"
                 variant="secondary"
                 aria-label={t("services.cancel")}
                 onClick={() => changeDialog(null)}
@@ -1448,6 +1474,7 @@ export function ModelServices({
                 {t("services.cancel")}
               </Button>
               <Button
+                size="compact"
                 variant="destructive"
                 aria-label={t("services.confirm")}
                 data-confirm-delete

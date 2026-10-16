@@ -171,7 +171,7 @@ export function QueuedInputs({
             ))}
           </div>
           <Button
-            size="sm"
+            size="contextual"
             variant="ghost"
             disabled={disabled}
             onClick={() => onSteer(input.requestId)}
@@ -179,7 +179,7 @@ export function QueuedInputs({
             {t("conversation.steer")}
           </Button>
           <Button
-            size="sm"
+            size="contextual"
             variant="ghost"
             disabled={disabled}
             onClick={() => onWithdraw(input.requestId)}
@@ -267,6 +267,7 @@ export function Summary({
         <section aria-label={t("conversation.plan")} className="conversation-summary-card">
           <h3 className="conversation-summary-title">{t("conversation.plan")}</h3>
           <Button
+            size="compact"
             variant="ghost"
             className="conversation-summary-row w-full justify-start text-foreground focus-visible:ring-inset focus-visible:ring-offset-0"
             onClick={() => onOpenPlan?.(plan)}

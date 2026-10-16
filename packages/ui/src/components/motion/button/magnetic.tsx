@@ -13,7 +13,7 @@ export const MagneticButton = forwardRef<HTMLButtonElement, MagneticButtonProps>
   function MagneticButton({ strength = 0, magneticClassName, children, ...rest }, ref) {
     return (
       <Magnetic strength={strength} className={magneticClassName}>
-        <Button ref={ref} {...rest}>
+        <Button size="standard" ref={ref} {...rest}>
           {children}
         </Button>
       </Magnetic>

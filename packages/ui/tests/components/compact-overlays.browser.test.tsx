@@ -39,7 +39,7 @@ test("compact menu groups preserve row spacing, shadow, and action focus restora
   await expect.element(item).toBeVisible();
   const menu = screen.getByRole("menu").element();
   expect(getComputedStyle(menu).padding).toBe("4px");
-  expect(getComputedStyle(menu).borderRadius).toBe("8px");
+  expect(getComputedStyle(menu).borderRadius).toBe("12px");
   expect(getComputedStyle(menu).zIndex).toBe("60");
   expect(getComputedStyle(menu).boxShadow).not.toBe("none");
   expect(getComputedStyle(item.element()).height).toBe("32px");
@@ -71,7 +71,7 @@ test("compact Select clamps long options and keeps selected label after choosing
   );
   const trigger = screen.getByRole("button", { name: "Option 0" });
   await expect.element(trigger).toBeVisible();
-  expect(getComputedStyle(trigger.element()).height).toBe("32px");
+  expect(getComputedStyle(trigger.element()).height).toBe("38px");
   await trigger.click();
   const list = screen.getByRole("listbox");
   await expect.element(list).toBeVisible();

@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { forwardRef, useId, useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -15,9 +15,10 @@ export type InputClassNames = {
 
 export interface InputProps extends Omit<
   InputHTMLAttributes<HTMLInputElement>,
-  "value" | "defaultValue" | "onChange"
+  "value" | "defaultValue" | "onChange" | "size"
 > {
   label?: string;
+  size?: "standard" | "scoped";
   value?: string;
   defaultValue?: string;
   onChange?: (value: string) => void;
@@ -35,6 +36,7 @@ export interface InputProps extends Omit<
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   {
     label,
+    size = "standard",
     value: valueProp,
     defaultValue,
     onChange,
@@ -56,7 +58,6 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 ) {
   const reactId = useId();
   const id = idProp ?? reactId;
-  const reduce = useReducedMotion();
 
   const controlled = valueProp !== undefined;
   const [internal, setInternal] = useState(defaultValue ?? "");
@@ -89,7 +90,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       <div
         data-state={hasError ? "error" : success ? "success" : focused ? "focused" : "idle"}
         className={cn(
-          "relative flex min-h-8 items-center rounded-lg border ring-inset",
+          "relative flex items-center border ring-inset",
+          size === "scoped" ? "min-h-8 rounded-lg" : "min-h-9 rounded-xl",
           "border-input-border bg-input-surface",
           !focused && !hasError && !disabled && "hover:border-input-border-hover",
           focused && !hasError && "border-input-border-focused bg-input-focused ring-2 ring-ring",
@@ -128,8 +130,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             onBlur?.(event);
           }}
           className={cn(
-            "peer min-h-7 w-full bg-transparent py-1 text-ui-base text-foreground caret-foreground outline-none",
+            "peer min-h-0 w-full bg-transparent py-1 text-foreground caret-foreground outline-none",
             "placeholder:text-foreground-subtlest",
+            size === "scoped" ? "min-h-[30px] text-ui-base" : "min-h-[34px] text-ui-sm",
             leftIcon ? "pl-10" : "pl-3",
             rightSlot || success ? "pr-10" : "pr-3",
             disabled && "cursor-not-allowed",
@@ -138,25 +141,22 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         />
 
         {success ? (
-          <motion.svg
+          <svg
             viewBox="0 0 24 24"
             fill="none"
             className={cn(
-              "absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--color-success)",
+              "absolute right-3 top-1/2 size-3 -translate-y-1/2 text-(--color-success)",
               classNames?.successIcon,
             )}
           >
-            <motion.path
+            <path
               d="M5 12.5l4.5 4.5L19 7.5"
               stroke="currentColor"
               strokeWidth={2.5}
               strokeLinecap="round"
               strokeLinejoin="round"
-              initial={reduce ? { pathLength: 1 } : { pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: reduce ? 0 : 0.12, ease: "easeOut" }}
             />
-          </motion.svg>
+          </svg>
         ) : rightSlot ? (
           <span
             className={cn(

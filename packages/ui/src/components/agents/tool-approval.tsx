@@ -223,6 +223,7 @@ export function ToolApproval({
             className="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-3"
           >
             <Button
+              size="standard"
               data-permission-primary
               disabled={disabled}
               onClick={onApprove}
@@ -232,6 +233,7 @@ export function ToolApproval({
             </Button>
             {onAlwaysAllow ? (
               <Button
+                size="standard"
                 variant="outline"
                 disabled={disabled}
                 onClick={onAlwaysAllow}
@@ -240,7 +242,13 @@ export function ToolApproval({
                 {sessionAllowLabel ?? componentText("component.always-allow")}
               </Button>
             ) : null}
-            <Button variant="ghost" disabled={disabled} onClick={onDeny} className="max-w-full">
+            <Button
+              size="standard"
+              variant="ghost"
+              disabled={disabled}
+              onClick={onDeny}
+              className="max-w-full"
+            >
               {denyLabel ?? componentText("component.deny")}
             </Button>
           </motion.div>

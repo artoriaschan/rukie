@@ -62,7 +62,7 @@ export function DeleteSession({
       placement="center"
       initialFocus={cancel}
     >
-      <div className="relative flex min-h-0 flex-col gap-3 p-2" aria-busy={pending}>
+      <div className="relative flex min-h-0 flex-col gap-3" aria-busy={pending}>
         <div className="shrink-0 pr-8">
           <h2 className="text-ui-lg font-medium">{t("app.delete-title")}</h2>
           <p className="text-ui-base text-muted-foreground">
@@ -86,10 +86,18 @@ export function DeleteSession({
           ) : null}
         </ScrollArea>
         <div className="flex shrink-0 justify-end gap-2">
-          <Button ref={cancel} autoFocus variant="secondary" disabled={pending} onClick={close}>
+          <Button
+            size="standard"
+            ref={cancel}
+            autoFocus
+            variant="secondary"
+            disabled={pending}
+            onClick={close}
+          >
             {t("app.cancel")}
           </Button>
           <Button
+            size="standard"
             variant="destructive"
             disabled={pending || session.running || session.waitingInteraction}
             onClick={() => {

@@ -53,7 +53,7 @@ export function Checkbox({
         onClick={() => !disabled && onCheckedChange(!checked)}
         data-state={checked ? "checked" : indeterminate ? "indeterminate" : "unchecked"}
         className={cn(
-          "relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border outline-none before:absolute before:-inset-1 before:content-['']",
+          "relative inline-flex cursor-inherit [&_svg]:cursor-inherit [&_span]:cursor-inherit h-4 w-4 shrink-0 items-center justify-center rounded-sm border outline-none before:absolute before:-inset-1 before:content-['']",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           "not-disabled:not-focus-visible:hover:ring-1 not-disabled:not-focus-visible:hover:ring-inset not-disabled:not-focus-visible:hover:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
           showMark

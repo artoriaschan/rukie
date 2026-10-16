@@ -237,6 +237,7 @@ export function InteractionApprovalCard({
             </div>
           ) : (
             <Button
+              size="compact"
               key={option.value}
               variant="ghost"
               disabled={busy || option.disabled}
@@ -280,6 +281,7 @@ export function InteractionApprovalCard({
           <Pencil className="size-3" />
         </span>
         <Input
+          size="scoped"
           aria-label={question.customPlaceholder ?? t("question.custom")}
           placeholder={question.customPlaceholder ?? t("question.custom")}
           value={answer.custom ?? ""}
@@ -307,6 +309,7 @@ export function InteractionApprovalCard({
           }}
         />
         <Button
+          size="compact"
           variant={question.multiple || answer.custom?.trim() ? "primary" : "ghost"}
           className="h-8 rounded-full border border-border px-3"
           disabled={busy || (question.multiple && !answered)}
@@ -322,7 +325,7 @@ export function InteractionApprovalCard({
       {questions.length > 1 ? (
         <nav aria-label={t("question.navigation")} className="mt-2 flex justify-between gap-2">
           <Button
-            size="sm"
+            size="contextual"
             variant="ghost"
             disabled={busy || step === 0}
             onClick={() => navigate(step - 1)}
@@ -332,7 +335,7 @@ export function InteractionApprovalCard({
             {t("question.previous")}
           </Button>
           <Button
-            size="sm"
+            size="contextual"
             variant="ghost"
             disabled={busy || !answered || step === questions.length - 1}
             onClick={() => navigate(step + 1)}
