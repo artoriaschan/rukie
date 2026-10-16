@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { useState } from "react";
 import { expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
@@ -75,7 +76,7 @@ test("Pencil model panels preserve the composer layout and show catalog facts", 
   const wasDark = root.classList.contains("dark");
   try {
     const trigger = screen.getByRole("button", { name: "Choose model", exact: true });
-    const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true }).element();
+    const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true }).element();
     const baseline = prompt.closest("form")!.getBoundingClientRect().toJSON();
     const anchor = trigger.element().getBoundingClientRect();
     await trigger.click();
@@ -190,7 +191,7 @@ test("Pencil composer, permission and context controls retain their real actions
   };
   const screen = await render(fixture(vi.fn(), models, false, report));
   try {
-    const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true }).element();
+    const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true }).element();
     const form = prompt.closest("form")!;
     await expect
       .element(document.querySelector<HTMLElement>(".conversation-context-panel")!)
@@ -198,7 +199,7 @@ test("Pencil composer, permission and context controls retain their real actions
     expect(form.getBoundingClientRect().width).toBe(736);
     expect(form.getBoundingClientRect().height).toBe(100);
     expect(getComputedStyle(form.querySelector('button[type="submit"]')!).borderRadius).toBe("6px");
-    expect(getComputedStyle(prompt, "::placeholder").color).toBe("rgb(107, 107, 107)");
+    expect(getComputedStyle(prompt, "::before").color).toBe("rgb(107, 107, 107)");
     const trigger = screen.getByRole("button", { name: "Permission mode", exact: true });
     expect(trigger.element().getBoundingClientRect().height).toBe(28);
     await trigger.click();
@@ -250,26 +251,27 @@ test("Pencil composer, permission and context controls retain their real actions
       .element(document.querySelector<HTMLElement>(".conversation-context-panel")!)
       .toBeVisible();
     await screen
-      .getByRole("textbox", { name: "Prompt", exact: true })
+      .getByRole("combobox", { name: "Prompt", exact: true })
       .click({ position: { x: 4, y: 4 } });
     await expect
       .element(document.querySelector<HTMLElement>(".conversation-context-panel")!)
       .not.toBeVisible();
     await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-    const attachment = screen.getByRole("menuitem", { name: "Attach images", exact: true });
+    const attachment = screen.getByRole("option", { name: "Attach images", exact: true });
     await expect.element(attachment).toBeVisible();
-    const toolsMenu = attachment.element().closest('[role="menu"]')!;
-    expect(toolsMenu.getBoundingClientRect().width).toBe(752);
-    expect(getComputedStyle(toolsMenu).borderRadius).toBe("8px");
+    const toolsMenu = attachment.element().closest('[role="dialog"]')!;
+    const composer = screen.getByRole("combobox", { name: "Prompt", exact: true });
+    expect(toolsMenu.getBoundingClientRect().width).toBe(
+      composer.element().closest("form")!.getBoundingClientRect().width,
+    );
+    expect(getComputedStyle(toolsMenu).borderRadius).toBe("12px");
     expect(attachment.element().getBoundingClientRect().height).toBe(32);
     const file = document.querySelector<HTMLInputElement>('input[type="file"]')!;
     const openFile = vi.spyOn(file, "click").mockImplementation(() => {});
-    await userEvent.keyboard("{ArrowDown}{Enter}");
+    await userEvent.keyboard("{Enter}");
     expect(openFile).toHaveBeenCalledOnce();
     openFile.mockRestore();
-    await expect
-      .element(screen.getByRole("button", { name: "Attach images", exact: true }))
-      .toHaveFocus();
+    await expect.element(composer).toHaveFocus();
   } finally {
     await screen.unmount();
   }
@@ -463,7 +465,7 @@ function PlanComposer() {
 test("C09 toggles plan mode and closes its menu without moving composer controls", async () => {
   await page.viewport(1280, 900);
   const screen = await render(
-    <div style={{ width: 752 }}>
+    <div style={{ width: 752, marginTop: 400 }}>
       <PlanComposer />
     </div>,
   );
@@ -475,11 +477,9 @@ test("C09 toggles plan mode and closes its menu without moving composer controls
       item.element().getBoundingClientRect().toJSON(),
     );
     await attach.click();
-    const row = screen.getByRole("menuitem", { name: "Plan mode Off", exact: true });
+    const row = screen.getByRole("option", { name: "/plan Plan mode Off", exact: true });
     await expect.element(row).toBeVisible();
-    const attachment = screen
-      .getByRole("menuitem", { name: "Attach images", exact: true })
-      .element();
+    const attachment = screen.getByRole("option", { name: "Attach images", exact: true }).element();
     expect(row.element().getBoundingClientRect().top).toBeGreaterThan(
       attachment.getBoundingClientRect().top,
     );
@@ -493,13 +493,15 @@ test("C09 toggles plan mode and closes its menu without moving composer controls
       [attach, permission, model].map((item) => item.element().getBoundingClientRect().toJSON()),
     ).toEqual(baseline);
     await attach.click();
-    await screen.getByRole("menuitem", { name: "Plan mode • On", exact: true }).click();
+    await screen.getByRole("option", { name: "/plan Plan mode • On", exact: true }).click();
     await expect
       .element(screen.getByRole("button", { name: "Close plan mode", exact: true }))
       .not.toBeInTheDocument();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Keep this draft");
+      .poll(() =>
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Keep this draft");
   } finally {
     await screen.unmount();
   }
@@ -508,19 +510,19 @@ test("C09 toggles plan mode and closes its menu without moving composer controls
 test("C39 hover and keyboard close preserve the draft and toolbar geometry", async () => {
   await page.viewport(1280, 900);
   const screen = await render(
-    <div style={{ width: 752 }}>
+    <div style={{ width: 752, marginTop: 400 }}>
       <PlanComposer />
     </div>,
   );
   try {
     await screen.getByRole("button", { name: "Attach images", exact: true }).click();
-    await screen.getByRole("menuitem", { name: "Plan mode Off", exact: true }).click();
+    await screen.getByRole("option", { name: "/plan Plan mode Off", exact: true }).click();
     const close = screen.getByRole("button", { name: "Close plan mode", exact: true });
     const bounds = close.element().getBoundingClientRect().toJSON();
     expect(bounds.height).toBe(28);
     const permission = screen.getByRole("button", { name: "Permission mode", exact: true });
     expect(bounds.left).toBeGreaterThan(permission.element().getBoundingClientRect().right);
-    await screen.getByRole("textbox", { name: "Prompt", exact: true }).click();
+    await screen.getByRole("combobox", { name: "Prompt", exact: true }).click();
     expect(
       getComputedStyle(close.element().querySelector(".conversation-plan-close")!).visibility,
     ).toBe("hidden");
@@ -549,8 +551,10 @@ test("C39 hover and keyboard close preserve the draft and toolbar geometry", asy
     await userEvent.keyboard("{Enter}");
     await expect.element(close).not.toBeInTheDocument();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Keep this draft");
+      .poll(() =>
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Keep this draft");
   } finally {
     await screen.unmount();
   }

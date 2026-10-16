@@ -107,13 +107,7 @@ export type { PermissionAskRequest, SessionAllowRule } from "../permissions/inde
 import { fileTrackingState } from "../file-tracking/index.ts";
 import { collectReminders, type ReminderSource, type SystemReminder } from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
-import {
-  createMcpConnections,
-  createMcpManager,
-  createMcpAuthState,
-  type OnMcpAuth,
-  type McpAuthOutcome,
-} from "../mcp/index.ts";
+import { createMcpHost, type McpHost, type OnMcpAuth, type McpAuthOutcome } from "../mcp/index.ts";
 import { createSessionTitle, titleSourceState, type TitleSource } from "../session-title/index.ts";
 import { sideQuestion } from "../side-question/index.ts";
 import { contextUsage, contextReport } from "../context-usage/index.ts";
@@ -171,6 +165,8 @@ export interface SessionOptions {
   homeDir: string;
   /** Explicit isolated application data root; terminal callers omit it. */
   dataRoot?: string;
+  /** Injected Host outlives this Session; omitted Hosts are private and close with it. */
+  mcpHost?: McpHost;
   /** Host-owned encrypted MCP persistence; never used by terminal defaults. */
   mcpPersistence?: import("../mcp/index.ts").McpPersistence;
   /** Merged settings, see `loadSettings`. */
@@ -925,7 +921,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const assertAvailable = (idle = false) => {
       if (closed) throw new Error("Session is closed.");
       if (storageFailure !== undefined) throw storageFailure;
-      if (idle && mcpManager.busy)
+      if (idle && mcp.busy)
         throw createUserVisibleError("Session is managing MCP servers.", {
           code: "session-mcp-busy",
           params: {},
@@ -1263,7 +1259,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         assertAvailable();
         if (
           idle &&
-          (mcpManager.busy ||
+          (mcp.busy ||
             selectingModel ||
             foregroundAdmission ||
             manualCompaction ||
@@ -1294,11 +1290,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       changed: (value, source) => custom({ type: "session_title_changed", title: value, source }),
       warning: warn,
     });
-    const mcpAuthState = createMcpAuthState();
-    const mcp = createMcpConnections(mcpAuthState, options.applicationVersion);
-    const reconnectMcpServers = new Set<string>();
-    const mcpManager = createMcpManager({
-      createConnections: () => createMcpConnections(mcpAuthState, options.applicationVersion),
+    const mcpHost = options.mcpHost ?? createMcpHost();
+    const mcp = mcpHost.acquire({
+      applicationVersion: options.applicationVersion,
       connectOptions: () => ({
         cwd,
         homeDir: options.homeDir,
@@ -1314,6 +1308,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       getRunning: () => !!observation?.running(),
       getBusy: () => selectingModel || foregroundAdmission !== undefined || manualCompaction,
       onChange: () => custom({ type: "mcp_servers_changed" }),
+      onEvent: custom,
     });
     const jobHistory = await fullHistory(ROOT_CONVERSATION_ID);
     const historicalCalls: string[] = [];
@@ -1389,8 +1384,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     failedCleanup.push(async () => {
       await runtime.disposeJobs(true);
-      await mcpManager.close();
       await mcp.close();
+      if (!options.mcpHost) await mcpHost.close();
       runtime.disposeHooks();
     });
     const reportedSkillWarnings = new Set<string>();
@@ -1949,6 +1944,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }),
             hook(GenerationTask, {
               beforeRequest: async (_request, _api, ctx) => {
+                await mcp.prepareTurn(ctx.abortSignal);
+                if (childLoadout.hasMcpDrift()) {
+                  await childLoadout.refresh();
+                  const updated = { ...extension, tools: childLoadout.registrations };
+                  registry.install(updated);
+                  await child.configure(
+                    { extensions: [updated], tools: (await childLoadout.plan(false, ctx)).tools },
+                    ctx,
+                  );
+                  await childLoadout.publish(ctx);
+                }
                 await child.commit(async (tx) => {
                   const pending = await tx.doc(ChildHookContextDoc, child.id);
                   for (const { source, content } of pending.pending)
@@ -2508,33 +2514,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let preparedMcpRequestId: string | undefined;
     let preparedMcpRun: number | undefined;
     const refreshMcp = async (signal?: AbortSignal) => {
-      const connectionOptions: Parameters<typeof mcp.connect>[0] = {
-        cwd,
-        homeDir: options.homeDir,
-        dataRoot: options.dataRoot,
-        persistence: options.mcpPersistence,
-        settings,
-        trustProjectMcp: options.trustProjectMcp,
-        interactive: !!options.onMcpAuth,
-        onMcpAuth: options.onMcpAuth,
-        onInteractionStart: notifyInteraction,
+      await mcp.prepareRun({
         signal,
         getOrigin: (conversationId) => {
           const row = subagents.list().find((row) => row.conversationId === conversationId);
           return row ? { agentId: row.id, description: row.description } : undefined;
         },
-        onWarning: warn,
-        onEvent: (event) => {
-          custom(event);
-          mcpManager.adopt(mcp.snapshot());
-        },
-      };
-      for (const name of reconnectMcpServers) {
-        await mcp.connect({ ...connectionOptions, onlyServer: name, reconnect: true });
-        reconnectMcpServers.delete(name);
-      }
-      await mcp.connect(connectionOptions);
-      mcpManager.adopt(mcp.snapshot());
+      });
       await rebuildTools(true);
     };
     toolLoadout = createToolLoadout({
@@ -2818,6 +2804,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 await correctionLimit(conversation, ctx);
                 await goalRuntime.prepareWrapup(ctx);
                 await prepareReminders(ctx);
+                await mcp.prepareTurn(ctx.abortSignal);
+                if (toolLoadout.hasMcpDrift()) await rebuildTools(false, ctx);
                 await toolLoadout.publish(ctx);
                 contextMessages = modelContextMessages(await conversation.context(ctx));
                 await observation.flush();
@@ -2886,7 +2874,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 await tracking.commitResults(
                   committed.flatMap((value) => (value ? [value.entry] : [])),
                 );
-                mcpManager.adopt(mcp.snapshot());
+                mcp.adopt();
                 const takeover = committed.some((value) =>
                   value?.entry.model?.some((message) => {
                     if (message.role !== "toolResult" || message.toolName !== "exit_plan_mode")
@@ -3649,17 +3637,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async mcpServers(input) {
         if (closed) throw new Error("Session has been closed.");
-        return mcpManager.snapshot(input);
+        return mcp.snapshot(input);
       },
       async authenticateMcp(name) {
-        return mcpManager.authenticate(name);
+        return mcp.authenticate(name);
       },
       async clearMcpAuth(name) {
-        await mcpManager.clearAuth(name);
+        await mcp.clearAuth(name);
       },
       async reconnectMcp(name) {
-        await mcpManager.reconnect(name);
-        reconnectMcpServers.add(name);
+        await mcp.reconnect(name);
       },
       async compact(input) {
         assertAvailable(true);
@@ -4135,7 +4122,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         // A native Run can settle before its host receipt/metadata commit releases
         // foreground admission. Readiness includes that owned completion boundary.
         await foregroundAdmission;
-        await mcpManager.waitForIdle();
+        await mcp.waitForIdle();
         await jobAdmissions;
         await conversation.waitForIdle(context);
         await Promise.all(humanCompletions.values());
@@ -4154,7 +4141,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               failure ??= error;
             }
           };
-          await release(() => mcpManager.close());
+          await release(() => mcp.stopManagement());
           await release(() => title.dispose());
           await release(async () => {
             const result = await hooks.run("SessionEnd", hookInput({ reason }), {
@@ -4185,6 +4172,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           for (const owner of childRuntimes.values()) await release(() => owner.disposeJobs());
           await release(() => runtime.disposeJobs());
           await release(() => mcp.close());
+          if (!options.mcpHost) await release(() => mcpHost.close());
           await release(() => env.cleanup(context));
           unregister();
           await release(lease.release);

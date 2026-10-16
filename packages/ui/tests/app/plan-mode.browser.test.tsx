@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { App } from "../../src/app";
@@ -34,19 +35,19 @@ test("new chat preserves plan preselection after failure and creates its first R
   const selector = document.querySelector(".new-chat-selector")!;
   const baseline = [composer, selector].map((item) => item.getBoundingClientRect().toJSON());
   await add.click();
-  await screen.getByRole("menuitem", { name: "Plan mode Off", exact: true }).click();
+  await screen.getByRole("option", { name: "/plan Plan mode Off", exact: true }).click();
   await expect
     .element(screen.getByRole("button", { name: "Close plan mode", exact: true }))
     .toBeVisible();
   expect([composer, selector].map((item) => item.getBoundingClientRect().toJSON())).toEqual(
     baseline,
   );
-  const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+  const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Draft the implementation plan");
   await fixture(connection.port, "error", { type: "session.create", code: "invalid_command" });
   await screen.getByRole("button", { name: "Send prompt", exact: true }).click();
   await expect.element(screen.getByRole("alert")).toBeVisible();
-  await expect.element(prompt).toHaveValue("Draft the implementation plan");
+  await expect.poll(() => promptText(prompt.element())).toBe("Draft the implementation plan");
   await expect
     .element(screen.getByRole("button", { name: "Close plan mode", exact: true }))
     .toBeVisible();
@@ -75,8 +76,8 @@ test.each([
     width: 1280,
     dark: false,
     attach: "Attach images",
-    off: "Plan mode Off",
-    on: "Plan mode • On",
+    off: "/plan Plan mode Off",
+    on: "/plan Plan mode • On",
     close: "Close plan mode",
     prompt: "Prompt",
   },
@@ -85,8 +86,8 @@ test.each([
     width: 420,
     dark: true,
     attach: "添加图片",
-    off: "计划模式 已关闭",
-    on: "计划模式 • 已开启",
+    off: "/plan 计划模式 已关闭",
+    on: "/plan 计划模式 • 已开启",
     close: "关闭计划模式",
     prompt: "输入消息",
   },
@@ -114,7 +115,7 @@ test.each([
       fixture(connection.port, "message", { sessionId: "one", ...value });
     const close = screen.getByRole("button", { name: copy.close, exact: true });
     await expect.element(close).not.toBeInTheDocument();
-    const prompt = screen.getByRole("textbox", { name: copy.prompt, exact: true });
+    const prompt = screen.getByRole("combobox", { name: copy.prompt, exact: true });
     await prompt.fill("Preserved Session draft");
     await send({
       type: "snapshot",
@@ -139,9 +140,9 @@ test.each([
       .toBe(true);
     await send({ type: "tool_state_changed", name: "plan", value: { active: false } });
     await expect.element(close).not.toBeInTheDocument();
-    await expect.element(prompt).toHaveValue("Preserved Session draft");
+    await expect.poll(() => promptText(prompt.element())).toBe("Preserved Session draft");
     await screen.getByRole("button", { name: copy.attach, exact: true }).click();
-    await screen.getByRole("menuitem", { name: copy.off, exact: true }).click();
+    await screen.getByRole("option", { name: copy.off, exact: true }).click();
     await expect
       .poll(async () =>
         (await commands(connection.port)).some(
@@ -162,9 +163,7 @@ test.each([
       copy.dark ? "rgb(47, 47, 47)" : "rgb(255, 255, 255)",
     );
     await screen.getByRole("button", { name: copy.attach, exact: true }).click();
-    await expect
-      .element(screen.getByRole("menuitem", { name: copy.on, exact: true }))
-      .toBeVisible();
+    await expect.element(screen.getByRole("option", { name: copy.on, exact: true })).toBeVisible();
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(innerWidth);
   },
 );
@@ -185,7 +184,7 @@ test("enter_plan_mode approval projects the resulting Tool State into C39", asyn
     .click();
   const send = (value: object) =>
     fixture(connection.port, "message", { sessionId: "one", ...value });
-  const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+  const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Keep the draft during approval");
   const identity = { epoch: "enter-plan", requestId: "run", taskId: 1, conversationId: 1 };
   await send({
@@ -218,7 +217,7 @@ test("enter_plan_mode approval projects the resulting Tool State into C39", asyn
   await expect
     .element(screen.getByRole("button", { name: "Close plan mode", exact: true }))
     .toBeVisible();
-  await expect.element(prompt).toHaveValue("Keep the draft during approval");
+  await expect.poll(() => promptText(prompt.element())).toBe("Keep the draft during approval");
   expect(
     screen.getByRole("button", { name: "Permission mode", exact: true }).element().textContent,
   ).toContain("Ask");

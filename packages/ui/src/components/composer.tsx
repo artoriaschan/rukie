@@ -1,6 +1,5 @@
-import { useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
-  Plus,
   X,
   Hand,
   ShieldCheck,
@@ -10,6 +9,7 @@ import {
   Square,
   Target,
   ListTodo,
+  Plug,
 } from "lucide-react";
 import {
   PERMISSION_MODES,
@@ -17,8 +17,10 @@ import {
   type ThinkingLevel,
   type WireModelCatalogEntry,
   type WireCommand,
+  type WireSkill,
   type ContextReport,
 } from "@rukie/shared";
+import { mcpSummary } from "./agents/mcp-status";
 import { PromptInput } from "./agents/prompt-input";
 import { Button } from "./motion/button/base";
 import { Tooltip } from "./motion/tooltip";
@@ -39,6 +41,10 @@ export interface ModelSelection {
 }
 export interface ComposerProps {
   draft: string;
+  skills?: readonly WireSkill[];
+  onSkillsOpen?: () => void;
+  mcpSnapshot?: import("@rukie/shared").McpSnapshot;
+  onMcpOpenChange?: (open: boolean) => void;
   images: PromptImages;
   onDraft: (text: string) => void;
   onImages: (images: PromptImages | ((previous: PromptImages) => PromptImages)) => void;
@@ -66,8 +72,6 @@ export interface ComposerProps {
 export function Composer(props: ComposerProps) {
   const t = useAppText();
   const componentText = useComponentText();
-  const goalDescriptionId = useId();
-  const goalMenuSelection = useRef(false);
   const file = useRef<HTMLInputElement>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const selected = props.models.find((model) => model.spec === props.model);
@@ -152,6 +156,58 @@ export function Composer(props: ComposerProps) {
       <PromptInput
         className="conversation-composer conversation-pencil"
         value={props.draft}
+        skills={props.skills}
+        onSkillsOpen={props.onSkillsOpen}
+        mcpSnapshot={props.mcpSnapshot}
+        onMcpOpenChange={props.onMcpOpenChange}
+        insertionLabel={t("app.attach")}
+        insertionActions={[
+          {
+            name: "/mcp",
+            label: "/mcp",
+            group: "command",
+            description: t("app.mcp-description"),
+            stateLabel: mcpSummary(props.mcpSnapshot, t),
+            icon: <Plug aria-hidden="true" />,
+            onSelect: () => {},
+          },
+          {
+            name: t("app.attach"),
+            label: t("app.attach"),
+            group: "add",
+            icon: <Paperclip aria-hidden="true" />,
+            onSelect: () => file.current?.click(),
+          },
+          ...(props.onGoal
+            ? [
+                {
+                  name: "/goal",
+                  label: t("app.goal-mode"),
+                  description: props.goalDisabledReason ?? t("app.goal-mode-description"),
+                  group: "command" as const,
+                  icon: <Target aria-hidden="true" />,
+                  disabled: Boolean(props.goalDisabledReason) || props.submitting,
+                  stateLabel: t(props.goalEnabled ? "planMode.on" : "planMode.off"),
+                  checked: Boolean(props.goalEnabled),
+                  trailing: (
+                    <span aria-hidden="true" className="composer-insertion-switch">
+                      <span />
+                    </span>
+                  ),
+                  onSelect: props.onGoal,
+                },
+              ]
+            : []),
+          {
+            name: "/plan",
+            label: t("planMode.label"),
+            description: t("planMode.label"),
+            group: "command",
+            icon: <ListTodo aria-hidden="true" />,
+            stateLabel: t(props.planMode ? "planMode.on" : "planMode.off"),
+            onSelect: () => props.onPlanMode(!props.planMode),
+          },
+        ]}
         onValueChange={props.onDraft}
         onPaste={(event) => {
           if (
@@ -180,86 +236,6 @@ export function Composer(props: ComposerProps) {
         onSubmit={props.onSend}
         leadingAction={
           <>
-            <Menu.DropdownMenu>
-              <Tooltip content={t("app.attach")}>
-                <Menu.DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    disabled={props.disabled}
-                    aria-label={t("app.attach")}
-                    className="conversation-add-trigger"
-                  >
-                    <Plus />
-                  </Button>
-                </Menu.DropdownMenuTrigger>
-              </Tooltip>
-              <Menu.DropdownMenuContent
-                side="top"
-                collisionPadding={16}
-                className="conversation-tools-menu conversation-pencil"
-                onCloseAutoFocus={(event) => {
-                  if (goalMenuSelection.current) {
-                    // Radix dispatches selection before closing its FocusScope. Hand off only after unmount.
-                    goalMenuSelection.current = false;
-                    event.preventDefault();
-                    props.onGoal?.();
-                    document
-                      .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
-                      ?.focus();
-                  } else if (props.goalEnabled) {
-                    event.preventDefault();
-                    document
-                      .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
-                      ?.focus();
-                  }
-                }}
-              >
-                <ScrollArea className="conversation-tools-scroll" viewportLabel={t("app.add")}>
-                  <Menu.DropdownMenuGroup>
-                    <Menu.DropdownMenuLabel>{t("app.add")}</Menu.DropdownMenuLabel>
-                    <Menu.DropdownMenuItem
-                      className="conversation-tool-option"
-                      onSelect={() => file.current?.click()}
-                    >
-                      <Paperclip className="size-3" aria-hidden="true" />
-                      <span>{t("app.attach")}</span>
-                    </Menu.DropdownMenuItem>
-                    {props.onGoal ? (
-                      <Menu.DropdownMenuCheckboxItem
-                        className="conversation-tool-option conversation-goal-option"
-                        aria-label={t("app.goal-mode")}
-                        aria-describedby={goalDescriptionId}
-                        checked={props.goalEnabled}
-                        disabled={Boolean(props.goalDisabledReason) || props.submitting}
-                        onCheckedChange={() => {
-                          goalMenuSelection.current = true;
-                        }}
-                      >
-                        <Target className="size-3" aria-hidden="true" />
-                        <span>{t("app.goal-mode")}</span>
-                        <span id={goalDescriptionId} className="goal-menu-description">
-                          {props.goalDisabledReason ?? t("app.goal-mode-description")}
-                        </span>
-                        <span aria-hidden="true" className="goal-menu-switch">
-                          <span />
-                        </span>
-                      </Menu.DropdownMenuCheckboxItem>
-                    ) : null}
-                    <Menu.DropdownMenuItem
-                      className="conversation-tool-option"
-                      onSelect={() => props.onPlanMode(!props.planMode)}
-                    >
-                      <ListTodo className="size-3" aria-hidden="true" />
-                      <span>{t("planMode.label")}</span>
-                      <span className="ml-auto text-ui-sm text-muted-foreground">
-                        {t(props.planMode ? "planMode.on" : "planMode.off")}
-                      </span>
-                    </Menu.DropdownMenuItem>
-                  </Menu.DropdownMenuGroup>
-                </ScrollArea>
-              </Menu.DropdownMenuContent>
-            </Menu.DropdownMenu>
             <Menu.DropdownMenu>
               <Menu.DropdownMenuTrigger asChild>
                 <Button
@@ -322,7 +298,7 @@ export function Composer(props: ComposerProps) {
                 onClick={() => {
                   props.onGoal?.();
                   document
-                    .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+                    .querySelector<HTMLElement>(".conversation-composer [data-prompt-editor]")
                     ?.focus();
                 }}
               >

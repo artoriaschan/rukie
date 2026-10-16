@@ -18,6 +18,15 @@ export default defineConfig({
         optimizeDeps: {
           include: [
             "@floating-ui/dom",
+            "lexical",
+            "@lexical/clipboard",
+            "@lexical/react/LexicalComposer",
+            "@lexical/react/LexicalComposerContext",
+            "@lexical/react/LexicalContentEditable",
+            "@lexical/react/LexicalErrorBoundary",
+            "@lexical/react/LexicalHistoryPlugin",
+            "@lexical/react/LexicalOnChangePlugin",
+            "@lexical/react/LexicalPlainTextPlugin",
             "zustand/vanilla",
             "@lobehub/icons/es/DeepSeek/components/Mono",
             "@lobehub/icons/es/DeepSeek/components/Color",

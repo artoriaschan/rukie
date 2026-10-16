@@ -374,7 +374,7 @@ test("initial and reconnect registry metadata present the canonical configured h
   }
 });
 
-test("startup catalog and history never unlock encrypted execution configuration", async () => {
+test("startup warms only MCP configuration while history keeps Hooks and provider credentials locked", async () => {
   const owner = ownResources();
   try {
     const homeDir = await owner.acquire(
@@ -420,7 +420,7 @@ test("startup catalog and history never unlock encrypted execution configuration
     ])
       await database.saveCredential(identity, { type: "replace", ciphertext: "opaque" });
     await database.close();
-    let decryptions = 0;
+    const decryptions: string[] = [];
     let authorized = false;
     const server = await owner.acquire(
       () =>
@@ -433,8 +433,8 @@ test("startup catalog and history never unlock encrypted execution configuration
             async encrypt() {
               throw new Error("unexpected encryption");
             },
-            async decrypt() {
-              decryptions++;
+            async decrypt(identity) {
+              decryptions.push(identity);
               if (!authorized) throw new Error("system authorization required");
               return "{}";
             },
@@ -457,7 +457,7 @@ test("startup catalog and history never unlock encrypted execution configuration
       permissionMode: "full-access",
       agent: { thinkingLevel: "high" },
     });
-    expect(decryptions).toBe(0);
+    expect(decryptions).toEqual(["configuration:mcp"]);
     await expect(
       createSession({
         homeDir,
@@ -472,7 +472,7 @@ test("startup catalog and history never unlock encrypted execution configuration
     expect((await client.command("session.create", { project: null, text: "run" })).error).toEqual({
       code: "internal",
     });
-    expect(decryptions).toBe(1);
+    expect(decryptions).toEqual(["configuration:mcp", "configuration:hooks"]);
     expect(await filesystem.readdir(join(homeDir, "desktop-data", "workspace"))).toEqual([]);
     authorized = true;
     client.messages.length = 0;
@@ -482,7 +482,9 @@ test("startup catalog and history never unlock encrypted execution configuration
     await client.next((message) => message.type === "result");
     expect(JSON.stringify(client.messages)).toContain("continued history");
     expect(client.messages.some((message) => message.type === "session_state")).toBe(true);
-    expect(decryptions).toBeGreaterThan(1);
+    expect(decryptions).toContain("configuration:hooks");
+    expect(decryptions).not.toContain("oauth:fixture");
+    expect(decryptions).not.toContain("provider:fixture");
   } finally {
     await owner.close();
   }
@@ -5828,6 +5830,641 @@ test("desktop child questions retain origin and settle under the parent Session"
     ).toEqual({});
     await client.next((message) => message.type === "request_settled");
     expect(JSON.stringify(fake.contexts)).toContain("The user declined to answer.");
+  } finally {
+    await owner.close();
+  }
+});
+
+test("MCP Host startup unlocks global HTTP credentials but defers project credentials, Hooks and providers", async () => {
+  const { mcpOAuthServer } = await import("../../agent/tests/helpers/mcp-oauth-server.ts");
+  const { createHash } = await import("node:crypto");
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-mcp-startup-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const global = await owner.acquire(
+      async () => mcpOAuthServer({ authentication: false }),
+      (server) => server.stop(),
+    );
+    const project = await owner.acquire(
+      async () => mcpOAuthServer({ authentication: false }),
+      (server) => server.stop(),
+    );
+    const identity = (name: string, url: string) =>
+      `oauth:${name}|${createHash("sha256")
+        .update(JSON.stringify({ type: "http", url, headers: {} }))
+        .digest("hex")
+        .slice(0, 16)}`;
+    const globalIdentity = identity("global", global.url);
+    const projectIdentity = identity("project", project.url);
+    const plaintext = new Map([
+      [
+        "configuration:mcp",
+        JSON.stringify({
+          global: { url: global.url },
+          project: { url: project.url, headers: { "x-project": "${RUKIE_PROJECT_DIR}" } },
+        }),
+      ],
+      [globalIdentity, JSON.stringify({ serverUrl: global.url })],
+      [projectIdentity, JSON.stringify({ serverUrl: project.url })],
+      ["configuration:hooks", "{}"],
+      ["provider:fixture", "{}"],
+    ]);
+    plaintext.set(
+      "configuration:mcp",
+      JSON.stringify({
+        global: { url: global.url },
+        scoped: { command: process.execPath, args: ["${RUKIE_PROJECT_DIR}/deferred.ts"] },
+      }),
+    );
+    await Bun.write(
+      join(homeDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { project: { url: project.url } } }),
+    );
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (database) => database.close(),
+    );
+    for (const key of plaintext.keys())
+      await database.saveCredential(key, { type: "replace", ciphertext: "opaque" });
+    await database.close();
+    const unlocked: string[] = [];
+    const warmed = Promise.withResolvers<void>();
+    await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          onHandshake: () => {},
+          encryption: {
+            async encrypt() {
+              throw new Error("unexpected write");
+            },
+            async decrypt(key) {
+              unlocked.push(key);
+              if (key === globalIdentity) warmed.resolve();
+              const text = plaintext.get(key);
+              if (text === undefined) throw new Error("unexpected identity");
+              return text;
+            },
+          },
+        }),
+      (server) => server.close(),
+    );
+    await warmed.promise;
+    expect(unlocked).toContain("configuration:mcp");
+    expect(unlocked).toContain(globalIdentity);
+    expect(unlocked).not.toContain(projectIdentity);
+    expect(unlocked).not.toContain("configuration:hooks");
+    expect(unlocked).not.toContain("provider:fixture");
+    expect(project.requests).toEqual([]);
+  } finally {
+    await owner.close();
+  }
+});
+
+test("skills.list works before Session creation and resolves Project overrides", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-skills-wire-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const primary = join(homeDir, "project");
+    const globalPath = join(homeDir, "desktop-data/skills/review/SKILL.md");
+    const projectPath = join(primary, ".agents/skills/review/SKILL.md");
+    await Bun.write(globalPath, "---\nname: review\ndescription: Global\n---\nGLOBAL");
+    await Bun.write(projectPath, "---\nname: review\ndescription: Project\n---\nPROJECT");
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect((await client.command("skills.list")).result).toEqual([
+      { name: "review", description: "Global", scope: "user", filePath: globalPath },
+    ]);
+    const project = (
+      await client.command("project.create", {
+        name: "Project",
+        directories: [primary],
+        trusted: true,
+      })
+    ).result as { id: string };
+    expect((await client.command("skills.list", { projectId: project.id })).result).toEqual([
+      {
+        name: "review",
+        description: "Project",
+        scope: "project",
+        filePath: await realpath(projectPath),
+      },
+    ]);
+    const created = (await client.command("session.create", { project: project.id, text: "hello" }))
+      .result as { sessionId: string };
+    await client.next(
+      (message) => message.type === "result" && message.sessionId === created.sessionId,
+    );
+    expect((await client.command("skills.list", { sessionId: created.sessionId })).result).toEqual([
+      {
+        name: "review",
+        description: "Project",
+        scope: "project",
+        filePath: await realpath(projectPath),
+      },
+    ]);
+    expect((await client.command("skills.list", { sessionId: "missing" })).error).toEqual({
+      code: "session_not_found",
+    });
+    expect((await client.command("skills.list", { projectId: "missing" })).error).toEqual({
+      code: "project_not_found",
+    });
+    expect((await client.command("skills.list", { projectId: 7 })).error).toEqual({
+      code: "invalid_command",
+    });
+    expect(
+      (await client.command("skills.list", { projectId: project.id, sessionId: "missing" })).error,
+    ).toEqual({ code: "invalid_command" });
+  } finally {
+    await owner.close();
+  }
+});
+
+test("split-root skill catalog invokes the same effective skill in persisted wire history", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-skill-roots-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const dataRoot = join(homeDir, "data");
+    const configurationRoot = join(homeDir, "configuration");
+    const primary = join(homeDir, "project");
+    const write = (path: string, name: string, content: string) =>
+      Bun.write(
+        join(path, name, "SKILL.md"),
+        `---\nname: ${name}\ndescription: ${content}\n---\n${content}`,
+      );
+    await write(join(configurationRoot, "skills"), "configuration-only", "WRONG ROOT");
+    await write(join(homeDir, ".agents/skills"), "terminal-only", "TERMINAL ROOT");
+    await write(join(dataRoot, "skills"), "review", "USER ROOT");
+    await write(join(primary, ".agents/skills"), "review", "PROJECT SHADOW");
+    const server = await owner.acquire(
+      () =>
+        startServerImpl({
+          homeDir,
+          dataRoot,
+          configurationRoot,
+          sessionOptions: fakeModel([fauxAssistantMessage("done"), fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    let client = await connect(server, "app://rukie", owner);
+    const global = (await client.command("skills.list")).result;
+    expect(global).toEqual([
+      {
+        name: "review",
+        description: "USER ROOT",
+        scope: "user",
+        filePath: join(dataRoot, "skills/review/SKILL.md"),
+      },
+    ]);
+    const project = (
+      await client.command("project.create", {
+        name: "Project",
+        directories: [primary],
+        trusted: true,
+      })
+    ).result as { id: string };
+    for (const projectId of [null, project.id]) {
+      const catalog = (await client.command("skills.list", projectId ? { projectId } : {}))
+        .result as { name: string; filePath: string }[];
+      expect(catalog).toHaveLength(1);
+      const { sessionId } = (
+        await client.command("session.create", {
+          project: projectId,
+          text: `/${catalog[0]!.name} inspect`,
+        })
+      ).result as { sessionId: string };
+      await client.next((message) => message.type === "result" && message.sessionId === sessionId);
+      const history = await connect(server, "app://rukie", owner);
+      await history.command("session.subscribe", { sessionId });
+      const snapshot = await history.next(
+        (message) => message.type === "snapshot" && message.sessionId === sessionId,
+      );
+      client = history;
+      const messages: unknown = snapshot.messages;
+      if (!Array.isArray(messages)) throw new Error("Missing wire history messages");
+      const prompt: unknown = messages.find(
+        (message: unknown) =>
+          typeof message === "object" && message !== null && "skillInvocation" in message,
+      );
+      if (typeof prompt !== "object" || prompt === null || !("skillInvocation" in prompt))
+        throw new Error("Missing persisted Skill Invocation");
+      expect(prompt).toMatchObject({
+        role: "user",
+        content: [{ type: "text", text: "/review inspect" }],
+      });
+      expect(prompt.skillInvocation).toContain(`location="${catalog[0]!.filePath}"`);
+      expect(prompt.skillInvocation).toContain(projectId ? "PROJECT SHADOW" : "USER ROOT");
+    }
+  } finally {
+    await owner.close();
+  }
+});
+
+test("MCP views inspect without a Session or connection and push live leased status", async () => {
+  const { mcpOAuthServer } = await import("../../agent/tests/helpers/mcp-oauth-server.ts");
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-mcp-view-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const fixture = await owner.acquire(
+      async () => mcpOAuthServer({ authentication: false }),
+      (server) => server.stop(),
+    );
+    const primary = join(homeDir, "project");
+    await Bun.write(
+      join(primary, ".mcp.json"),
+      JSON.stringify({ mcpServers: { local: { url: fixture.url } } }),
+    );
+    const database = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (db) => db.close(),
+    );
+    await database.saveCredential("configuration:mcp", { type: "replace", ciphertext: "opaque" });
+    await database.close();
+    const unlocked: string[] = [];
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          onHandshake: () => {},
+          encryption: {
+            async encrypt() {
+              throw new Error("unexpected");
+            },
+            async decrypt(key) {
+              unlocked.push(key);
+              if (key !== "configuration:mcp") throw new Error("unexpected unlock");
+              return JSON.stringify({
+                scoped: { command: "never-launch", args: ["${RUKIE_PROJECT_DIR}"] },
+              });
+            },
+          },
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect((await client.command("mcp.status")).result).toMatchObject({
+      servers: [
+        { name: "scoped", status: "project-required", scope: "user", tools: [], toolCount: 0 },
+      ],
+    });
+    expect((await client.command("mcp.subscribe", { viewId: "global" })).result).toMatchObject({
+      servers: [{ name: "scoped", status: "project-required" }],
+    });
+    await client.command("mcp.unsubscribe", { viewId: "global" });
+    const project = (
+      await client.command("project.create", {
+        name: "Project",
+        directories: [primary],
+        trusted: true,
+      })
+    ).result as { id: string };
+    expect((await client.command("mcp.status", { projectId: project.id })).result).toMatchObject({
+      servers: [
+        { name: "local", status: "pending" },
+        { name: "scoped", status: "pending" },
+      ],
+    });
+    expect(
+      (
+        await client.command("mcp.subscribe", {
+          viewId: "composer",
+          projectId: project.id,
+          active: false,
+        })
+      ).result,
+    ).toMatchObject({
+      servers: [
+        { name: "local", status: "pending" },
+        { name: "scoped", status: "pending" },
+      ],
+    });
+    expect(fixture.requests).toEqual([]);
+    expect((await client.command("sessions.list")).result).toEqual([]);
+    expect(
+      (await client.command("mcp.subscribe", { viewId: "composer", projectId: project.id })).error,
+    ).toBeUndefined();
+    await client.next(
+      (message) =>
+        message.type === "mcp_status" && JSON.stringify(message).includes('"status":"connected"'),
+    );
+    expect((await client.command("sessions.list")).result).toEqual([]);
+    expect(unlocked.every((key) => key === "configuration:mcp")).toBe(true);
+    expect((await client.command("mcp.unsubscribe", { viewId: "composer" })).result).toEqual({});
+    await Bun.write(join(primary, ".mcp.json"), "invalid JSON");
+    expect((await client.command("mcp.status", { projectId: project.id })).result).toMatchObject({
+      configErrors: [{ scope: "project", path: join(await realpath(primary), ".mcp.json") }],
+      servers: [{ name: "scoped" }],
+    });
+    expect((await client.command("mcp.status", { projectId: "missing" })).error).toEqual({
+      code: "project_not_found",
+    });
+    expect((await client.command("mcp.status", { sessionId: "missing" })).error).toEqual({
+      code: "session_not_found",
+    });
+  } finally {
+    await owner.close();
+  }
+});
+
+for (const leaving of ["unsubscribe", "switch", "socket close"] as const)
+  test(`MCP project view ${leaving} releases its last lease at the grace deadline`, async () => {
+    const { mcpOAuthServer } = await import("../../agent/tests/helpers/mcp-oauth-server.ts");
+    const owner = ownResources();
+    let clock: ReturnType<typeof FakeTimers.install> | undefined;
+    const deleted = Promise.withResolvers<void>();
+    let closed = false;
+    try {
+      const homeDir = await owner.acquire(
+        () => mkdtemp(join(tmpdir(), "rukie-mcp-release-")),
+        (path) => rm(path, { recursive: true, force: true }),
+      );
+      const fixture = await owner.acquire(
+        async () =>
+          mcpOAuthServer({
+            authentication: false,
+            onDelete: () => {
+              closed = true;
+              deleted.resolve();
+            },
+          }),
+        (resource) => resource.stop(),
+      );
+      const primary = join(homeDir, "project");
+      await Bun.write(
+        join(primary, ".mcp.json"),
+        JSON.stringify({ mcpServers: { local: { url: fixture.url } } }),
+      );
+      const server = await owner.acquire(
+        () => startServer({ homeDir, onHandshake: () => {} }),
+        (resource) => resource.close(),
+      );
+      const client = await connect(server, "app://rukie", owner);
+      const project = (
+        await client.command("project.create", {
+          name: "Project",
+          directories: [primary],
+          trusted: true,
+        })
+      ).result as { id: string };
+      await client.command("mcp.subscribe", { viewId: "composer", projectId: project.id });
+      await client.next(
+        (message) =>
+          message.type === "mcp_status" && JSON.stringify(message).includes('"status":"connected"'),
+      );
+      clock = FakeTimers.install({
+        now: Date.now(),
+        shouldClearNativeTimers: true,
+        toFake: ["Date", "setTimeout", "clearTimeout"],
+      });
+      if (leaving === "unsubscribe")
+        await client.command("mcp.unsubscribe", { viewId: "composer" });
+      else if (leaving === "switch")
+        await client.command("mcp.subscribe", { viewId: "composer", active: false });
+      else {
+        const closedSocket = new Promise<void>((resolve) =>
+          client.socket.addEventListener("close", () => resolve(), { once: true }),
+        );
+        client.socket.close();
+        await closedSocket;
+        const replacement = await connect(server, "app://rukie", owner);
+        await replacement.command("mcp.status");
+      }
+      await clock.tickAsync(29_999);
+      expect(closed).toBe(false);
+      await clock.tickAsync(1);
+      await deleted.promise;
+      expect(closed).toBe(true);
+    } finally {
+      await owner.close();
+      clock?.uninstall();
+    }
+  });
+
+test("unsubscribing during MCP configuration read cannot leak a late project lease", async () => {
+  const owner = ownResources();
+  const entered = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  let hold = false;
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-mcp-cancel-view-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const primary = join(homeDir, "project");
+    await mkdir(primary);
+    const db = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (db) => db.close(),
+    );
+    await db.saveCredential("configuration:mcp", { type: "replace", ciphertext: "opaque" });
+    await db.close();
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          onHandshake: () => {},
+          encryption: {
+            async encrypt() {
+              throw new Error("unexpected");
+            },
+            async decrypt() {
+              if (hold) {
+                entered.resolve();
+                await resume.promise;
+              }
+              return JSON.stringify({
+                scoped: { command: "never-launch", args: ["${RUKIE_PROJECT_DIR}"] },
+              });
+            },
+          },
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const project = (
+      await client.command("project.create", {
+        name: "Project",
+        directories: [primary],
+        trusted: true,
+      })
+    ).result as { id: string };
+    await client.command("mcp.status");
+    hold = true;
+    const subscribing = client.command("mcp.subscribe", {
+      viewId: "composer",
+      projectId: project.id,
+    });
+    await entered.promise;
+    expect((await client.command("mcp.unsubscribe", { viewId: "composer" })).result).toEqual({});
+    resume.resolve();
+    expect((await subscribing).result).toEqual({});
+    const status = (await client.command("mcp.status", { projectId: project.id })).result;
+    expect(status).toMatchObject({ servers: [{ name: "scoped", status: "pending" }] });
+    expect(client.messages.filter((message) => message.type === "mcp_status")).toEqual([]);
+  } finally {
+    resume.resolve();
+    await owner.close();
+  }
+});
+
+test("read-only no-project MCP observers receive global warming updates without a Session", async () => {
+  const { mcpOAuthServer } = await import("../../agent/tests/helpers/mcp-oauth-server.ts");
+  const owner = ownResources();
+  const entered = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-mcp-observe-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const fixture = await owner.acquire(
+      async () =>
+        mcpOAuthServer({
+          authentication: false,
+          beforeInitialize: async () => {
+            entered.resolve();
+            await resume.promise;
+          },
+        }),
+      (fixture) => fixture.stop(),
+    );
+    const db = await owner.acquire(
+      () => AppDatabase.open(join(homeDir, "desktop-data")),
+      (db) => db.close(),
+    );
+    await db.saveCredential("configuration:mcp", { type: "replace", ciphertext: "opaque" });
+    await db.close();
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          onHandshake: () => {},
+          encryption: {
+            async encrypt() {
+              throw new Error("unexpected");
+            },
+            async decrypt(key) {
+              expect(key).toBe("configuration:mcp");
+              return JSON.stringify({ global: { url: fixture.url } });
+            },
+          },
+        }),
+      (server) => server.close(),
+    );
+    await entered.promise;
+    const client = await connect(server, "app://rukie", owner);
+    expect(
+      (await client.command("mcp.subscribe", { viewId: "summary", active: false })).result,
+    ).toMatchObject({ servers: [{ name: "global", status: "pending" }] });
+    resume.resolve();
+    expect(
+      await client.next(
+        (message) =>
+          message.type === "mcp_status" && JSON.stringify(message).includes('"status":"connected"'),
+      ),
+    ).toMatchObject({
+      viewId: "summary",
+      snapshot: { servers: [{ name: "global", toolCount: 1 }] },
+    });
+    expect((await client.command("sessions.list")).result).toEqual([]);
+    expect(
+      fixture.requests.filter(
+        (request) =>
+          request.body &&
+          typeof request.body === "object" &&
+          "method" in request.body &&
+          request.body.method === "initialize",
+      ),
+    ).toHaveLength(1);
+    expect((await client.command("mcp.unsubscribe", { viewId: "summary" })).result).toEqual({});
+  } finally {
+    resume.resolve();
+    await owner.close();
+  }
+});
+
+test("MCP Session targets use the persisted Project view while another Core writer holds execution", async () => {
+  const { mcpOAuthServer } = await import("../../agent/tests/helpers/mcp-oauth-server.ts");
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-mcp-session-view-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const primary = await realpath(await mkdtemp(join(homeDir, "project-")));
+    const dataRoot = join(homeDir, "desktop-data");
+    const writer = await owner.acquire(
+      () =>
+        createSession({
+          homeDir,
+          dataRoot,
+          cwd: primary,
+          settings: {},
+          ...fakeModel([fauxAssistantMessage("history")]),
+        }),
+      (session) => session.close(),
+    );
+    await writer.run("history");
+    const fixture = await owner.acquire(
+      async () => mcpOAuthServer({ authentication: false }),
+      (fixture) => fixture.stop(),
+    );
+    await Bun.write(
+      join(primary, ".mcp.json"),
+      JSON.stringify({ mcpServers: { project: { url: fixture.url } } }),
+    );
+    const db = await owner.acquire(
+      () => AppDatabase.open(dataRoot),
+      (db) => db.close(),
+    );
+    await db.saveRegistry({
+      projects: [{ id: "p", name: "Project", primary, directories: [primary], trusted: true }],
+      pinned: [],
+      archived: [],
+      preferences: {},
+    });
+    await db.bindSession(writer.id, "p");
+    await db.close();
+    const server = await owner.acquire(
+      () => startServer({ homeDir, onHandshake: () => {} }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    const previous = (await client.command("sessions.list")).result;
+    expect((await client.command("mcp.status", { sessionId: writer.id })).result).toMatchObject({
+      servers: [{ name: "project", scope: "project", status: "pending" }],
+    });
+    expect(fixture.requests).toEqual([]);
+    expect(
+      (await client.command("mcp.subscribe", { viewId: "session", sessionId: writer.id })).error,
+    ).toBeUndefined();
+    await client.next(
+      (message) =>
+        message.type === "mcp_status" && JSON.stringify(message).includes('"status":"connected"'),
+    );
+    expect((await client.command("mcp.unsubscribe", { viewId: "session" })).result).toEqual({});
+    expect((await client.command("sessions.list")).result).toEqual(previous);
   } finally {
     await owner.close();
   }

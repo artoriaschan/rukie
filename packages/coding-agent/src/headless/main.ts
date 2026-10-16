@@ -1,6 +1,12 @@
 #!/usr/bin/env bun
 import { homedir } from "node:os";
-import { createSession, loadSettings, type Session } from "@rukie/agent";
+import {
+  createSession,
+  createMcpHost,
+  loadSettings,
+  type McpHost,
+  type Session,
+} from "@rukie/agent";
 import type { PermissionMode, ThinkingLevel } from "@rukie/shared";
 import { productVersion } from "../version";
 import type { CliOptions } from "../cli";
@@ -24,6 +30,7 @@ async function readStdin(io: PrintIo): Promise<string> {
 export async function runHeadless(options: CliOptions, io: PrintIo): Promise<number> {
   const { values, prompt: initialPrompt } = options;
   let session: Session | undefined;
+  let mcpHost: McpHost | undefined;
   let unsubscribe: (() => void) | undefined;
   let interrupt: (() => void) | undefined;
   try {
@@ -33,12 +40,25 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
     for (const warning of warnings) io.stderr(`Warning: ${warning}\n`);
     if (values.model) settings.model = values.model;
     if (values.thinking) settings.thinking = values.thinking as ThinkingLevel;
+    mcpHost =
+      io.session?.mcpHost ??
+      createMcpHost({
+        applicationVersion: productVersion,
+        configuration: {
+          homeDir,
+          dataRoot: io.session?.dataRoot,
+          persistence: io.session?.mcpPersistence,
+          settings: io.session?.settings ?? settings,
+          onWarning: (warning) => io.stderr(`Warning: ${warning}\n`),
+        },
+      });
     session = await createSession({
       cwd,
       homeDir,
       settings,
       onWarning: (warning) => io.stderr(`Warning: ${warning}\n`),
       ...io.session,
+      mcpHost,
       applicationVersion: productVersion,
       initializationSignal: io.signal ?? io.session?.initializationSignal,
       resumeId: values.resume,
@@ -129,6 +149,7 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
     try {
       await session?.close("exit");
     } finally {
+      if (!io.session?.mcpHost) await mcpHost?.close();
       unsubscribe?.();
       if (interrupt) io.signal?.removeEventListener("abort", interrupt);
     }

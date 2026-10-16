@@ -1,3 +1,5 @@
+import type { WireSkill } from "@rukie/shared";
+import { SkillPrompt } from "./skill-prompt";
 import { OVERLAY_LAYER } from "@/lib/overlay";
 import { planSubmissions, type PlanSubmission } from "../lib/plans";
 import { PlanPreview } from "./plan-preview";
@@ -28,6 +30,7 @@ function Group({
   waiting,
   readOutput,
   onExpandPlan,
+  skills,
 }: {
   group: PromptGroup;
   reader: TraceReaderState;
@@ -36,6 +39,7 @@ function Group({
   waiting: boolean;
   readOutput?: ReadToolOutput;
   onExpandPlan?: (submission: PlanSubmission) => void;
+  skills?: readonly WireSkill[];
 }) {
   const t = useAppText();
   const failed =
@@ -330,7 +334,11 @@ function Group({
       {user ? (
         <MessageBubble align="end">
           <MessageBubbleContent className="py-3">
-            <div className="whitespace-pre-wrap break-words">{messageText(user)}</div>
+            <SkillPrompt
+              text={messageText(user)}
+              invocation={user.role === "user" ? user.skillInvocation : undefined}
+              skills={skills}
+            />
             {Array.isArray(user.content)
               ? user.content
                   .filter((block) => block.type === "image")
@@ -483,6 +491,7 @@ export function Transcript({
   waiting,
   readOutput,
   onExpandPlan,
+  skills,
 }: {
   reader: TraceReaderState;
   viewportRef?: RefObject<HTMLDivElement | null>;
@@ -492,6 +501,7 @@ export function Transcript({
   waiting: boolean;
   readOutput?: ReadToolOutput;
   onExpandPlan?: (submission: PlanSubmission) => void;
+  skills?: readonly WireSkill[];
 }) {
   const t = useAppText();
   const ownViewport = useRef<HTMLDivElement>(null);
@@ -585,6 +595,7 @@ export function Transcript({
                   waiting={waiting}
                   readOutput={readOutput}
                   onExpandPlan={onExpandPlan}
+                  skills={skills}
                 />
               </article>
             );

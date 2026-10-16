@@ -10,7 +10,7 @@ HTTP MCP Server 可能要求 OAuth。各 Frontend 自行维护登录会复制协
 
 ## 决定
 
-桌面端的凭据落盘方式由 [ADR-0035](0035-desktop-isolated-sqlite-storage.md) 部分替代：使用独立应用数据根和 safeStorage 密文。OAuth 生命周期、服务器身份隔离及项目信任规则保持有效；终端实现继续使用本决定的私有文件存储。
+桌面端的凭据落盘方式由 [ADR-0035](0035-desktop-isolated-sqlite-storage.md) 部分替代：使用独立应用数据根和 safeStorage 密文。OAuth 生命周期、服务器身份隔离及项目信任规则保持有效；终端实现继续使用本决定的私有文件存储。授权状态的持有者由 [ADR-0047](0047-host-owned-mcp-connections.md) 从 Session 改为 MCP Host 的连接，本决定的其余规则不变。
 
 Agent Core 复用锁定 pi-mcp 的 OAuth 能力，管理 callback listener、state 校验、token 交换、刷新和凭据存储。Frontend 的 MCP Interaction 负责授权页面入口、用户响应与取消。连接探测不自动打开浏览器；缺少交互回调时不暴露授权工具。
 

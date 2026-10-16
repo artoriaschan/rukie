@@ -58,6 +58,7 @@ interface PopoverContextValue {
   side: Side;
   align: Align;
   gap: number;
+  allowFlip: boolean;
   contentId: string;
   triggerRef: React.MutableRefObject<HTMLElement | null>;
   contentRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -86,6 +87,8 @@ export interface PopoverProps {
   align?: Align;
   /** Gap between trigger and panel, in px. Default 4. */
   sideOffset?: number;
+  /** Keep required placements on their specified side; content must fit the available space. */
+  allowFlip?: boolean;
   className?: string;
   /** Measure a separate surface without changing its disclosure semantics. */
   anchorRef?: RefObject<HTMLElement | null>;
@@ -102,6 +105,7 @@ export function Popover({
   side = "bottom",
   align = "center",
   sideOffset = 4,
+  allowFlip = true,
   className,
   anchorRef,
   restoreFocusRef,
@@ -181,6 +185,7 @@ export function Popover({
       side,
       align,
       gap: sideOffset,
+      allowFlip,
       contentId,
       triggerRef,
       contentRef,
@@ -195,6 +200,7 @@ export function Popover({
       side,
       align,
       sideOffset,
+      allowFlip,
       contentId,
       triggerRef,
     ],
@@ -330,6 +336,7 @@ export function PopoverContent({
     side,
     align,
     gap,
+    allowFlip,
     contentId,
     triggerRef,
     contentRef,
@@ -370,9 +377,9 @@ export function PopoverContent({
     );
     const below = viewport.height - trigger.top - trigger.height - gap;
     const above = trigger.top - gap;
-    if (side === "bottom" && below < content.height && above >= content.height)
+    if (allowFlip && side === "bottom" && below < content.height && above >= content.height)
       top = -(gap + content.height);
-    if (side === "top" && above < content.height && below >= content.height)
+    if (allowFlip && side === "top" && above < content.height && below >= content.height)
       top = trigger.height + gap;
     top = Math.max(
       8 - trigger.top,

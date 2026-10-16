@@ -26,6 +26,8 @@ Bun 本机 Frontend 通过带鉴权的 WebSocket 驱动 Agent Core。Session 使
 
 `session.create` 可带 `planMode`，在第一次 Run 前调用 Session 的 `setPlanMode`；`session.set_plan_mode { sessionId, on }` 在空闲或运行中切换。状态沿用 snapshot 的 `planMode` 和 `tool_state_changed { name: "plan" }`，不新增 Session state 字段；Plan Mode 独立于 Permission Mode。桌面 Session 提供 `onQuestion` 与 `onPlanReview`，因此模型可使用 `ask_user_question`、`enter_plan_mode` 与 `exit_plan_mode`；进入计划模式仍走权限询问。
 
+`skills.list { projectId?, sessionId? }` 无需创建或恢复 Session：不传标识只列应用用户目录的技能，传 Project 标识按主目录发现，传 Session 标识按其摘要中的工作目录发现。两个标识互斥，类型或组合错误返回 `invalid_command`；不存在的标识分别返回 `project_not_found` 或 `session_not_found`。结果只包含实际生效且允许用户调用的技能，每项提供 `name`、`description`、`scope`（`user` / `project`）和绝对 `filePath`，项目同名技能覆盖用户技能。目录查询与 Session 运行都从 `dataRoot/skills` 读取用户技能；独立的 `configurationRoot` 仅选择共享配置库，不改变技能内容来源。查询只读取技能文件，不启动 Run、执行 Hook 或解密凭证。
+
 `models.list` 读取 `app.sqlite` 中已启用的模型及凭证存在状态，不解密密钥、刷新模型或启动 OAuth。实际模型请求通过选定加密后端按供应商身份取得凭证；认证不采用终端环境 API Key。配置变更在后续发送前刷新，已开始的请求保留其供应商配置；删除选中模型或供应商后发送返回 `model_unavailable`，不会改用另一个供应商。未在当前进程打开的 Session，订阅直接读取已提交历史并返回 `{ readonly: true, modelUnavailable }`；目录与历史阅读不解密执行配置或凭证。历史 snapshot 的 `agent.thinkingLevel` 是已提交的 Thinking Level；其 `permissionMode` 是当前非敏感配置的默认值，并非历史权限事实。只有明确发送或切换模型等执行命令才打开 Session，订阅随后转为实时事件；没有可用模型或凭证时 `modelUnavailable` 为 true。已打开 Session 的订阅和状态更新还提供 `session_state`（permissionMode、thinkingLevel、contextReport），不修改原始 SessionEvent。模型切换要求 Session 空闲，权限模式对下一次工具调用生效。置顶、归档与侧栏偏好写入注册表；首次连接、Run 开始/结束、交互创建/结算和这些修改发送 `sessions_changed`，携带 `sessions`、`projects`、`pinned`、`archived`、`preferences` 与展示用 `homeDir`。`homeDir` 来自 sidecar 配置的家目录，启动时解析为真实路径（路径不存在时保留配置值），仅用于 Frontend 路径缩写，不参与目录归属或信任。Session summary 的 running 和 waitingInteraction 是侧栏状态的权威事实，覆盖未订阅的后台 Session；子代理交互回调归父 Session，等待状态同样归父会话。
 
 Session 摘要的必填 `projectId: string | null` 读取应用数据根 `app.sqlite` 的持久绑定，`sessions.list`、初次连接、重连与 `sessions_changed` 共享该投影；没有绑定时为 `null`，不按 cwd 推测或补写既有 Session。Frontend 用它分组、显示项目标题、搜索、计数、选中及排除移动目标。创建项目 Session 与 Session Move 写入绑定，删除 Session 清除绑定；目录编辑不改变归属。
@@ -73,3 +75,5 @@ Session 摘要的必填 `projectId: string | null` 读取应用数据根 `app.sq
 `worktrees.list` 列出已记录且目录仍存在的工作树。`worktree.delete { worktreeId }` 在绑定 Session 的命令、执行、排队、后台工作、Interaction 或外部写入 lease 活跃时返回 `session_busy`；server 准入锁与 Agent Core 实际写者租约一直覆盖 Git 删除、Session Move 和绑定发布。成功执行 `git worktree remove --force`（丢弃未提交改动、保留分支），清除记录与 `worktreeId` 并把绑定 Session 移到 Project 当前主目录。已删除 Session / Project 的工作树仍可单独删除。Git 删除失败返回带摘要的 `worktree_failed`，记录与绑定保留，可恢复源仓库后重试；若 Git 已删除目录但后续 Session Move 或绑定存储失败，记录仍保留；下一次打开（包括重启后）检测目录缺失，先取得写者租约、同步主目录并清除 `worktreeId`，再执行 Resume，无需手动刷新。
 
 `worktrees.refresh` 删除目录已不存在的记录，清除受影响 Session 的 `worktreeId`；下一次打开才同步主目录。刷新对存在的源仓库执行 `git worktree prune`，源仓库缺失时跳过 Git 操作。刷新同样保护受影响 Session 的准入，并返回现存工作树列表；它不会删除仍存在的工作树或派生分支。
+
+MCP 状态查询和订阅独立于 Session 执行权。`mcp.status` 不启动连接；`mcp.subscribe` 可只观察或取得活动项目视图，按 socket 和 viewId 持有，在取消、替换和连接关闭时释放。新会话页无需供应商凭证即可查看状态，Hooks 仍延迟解密。完整参数、状态和租约合同见 [MCP Frontend 接口](../../docs/mcp.md#无-session-的状态视图)。

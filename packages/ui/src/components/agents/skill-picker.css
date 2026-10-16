@@ -1,0 +1,128 @@
+.composer-insertion-panel {
+  width: var(--composer-insertion-width);
+  max-width: calc(100vw - 32px);
+  padding: 4px;
+  container-type: inline-size;
+}
+.composer-insertion-scroll {
+  max-height: min(var(--composer-insertion-height), calc(100dvh - 32px));
+}
+.composer-insertion-heading {
+  height: 24px;
+  padding-inline: 8px;
+  color: var(--muted-foreground);
+  font-size: var(--text-ui-sm);
+  display: flex;
+  align-items: center;
+}
+.composer-insertion-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding-inline: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: var(--text-ui-control);
+  white-space: nowrap;
+}
+.composer-insertion-option[aria-selected="true"],
+.composer-insertion-option:hover {
+  background: var(--menu-hover);
+}
+.composer-insertion-option > svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+.composer-insertion-name {
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+.composer-insertion-description {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted-foreground);
+}
+.composer-insertion-scope {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted-foreground);
+  max-width: calc(100% - 20px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@container (width < 672px) {
+  .composer-insertion-description {
+    display: none;
+  }
+  .composer-insertion-name {
+    max-width: none;
+  }
+}
+.composer-skill-token {
+  color: var(--accent);
+  cursor: text;
+}
+.composer-skill-token::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.composer-insertion-option * {
+  cursor: inherit;
+}
+.composer-insertion-option[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.composer-insertion-switch {
+  display: inline-flex;
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--secondary);
+}
+.composer-insertion-switch > span {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--foreground);
+}
+[data-checked="true"] .composer-insertion-switch {
+  justify-content: flex-end;
+  background: var(--primary);
+}
+[data-checked="true"] .composer-insertion-switch > span {
+  background: var(--primary-foreground);
+}
+
+.composer-insertion-option[data-mcp-row] {
+  opacity: 1;
+}
+
+/* Radix's intrinsic table wrapper must fit this fixed-width insertion surface. */
+.composer-insertion-scroll [data-slot="scroll-area-viewport"] > div {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.composer-insertion-option[data-mcp-row] .composer-insertion-scope {
+  max-width: calc(100% - 36px);
+}
+@container (width < 672px) {
+  .composer-insertion-option[data-mcp-row] .composer-insertion-scope {
+    max-width: calc(100% - 28px);
+  }
+}

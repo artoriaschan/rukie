@@ -1,6 +1,8 @@
+import { isMcpSnapshot } from "../components/agents/mcp-status";
 import { OVERLAY_LAYER } from "@/lib/overlay";
 import {
   useEffect,
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -30,6 +32,7 @@ import type {
   WireSessionSummary,
   WireProjectGit,
   WireProject,
+  WireSkill,
 } from "@rukie/shared";
 import { createWireClient, WireError, type ClientCommand } from "../client";
 import { createDesktopStore, recentSessions, type SessionViewState } from "../store";
@@ -63,6 +66,7 @@ import { NewChatSelector, parseProjectGit } from "./new-chat-selector";
 export type AppHost = Pick<DesktopHost, "getConnection" | "modelServices"> &
   Partial<Omit<DesktopHost, "getConnection" | "modelServices">>;
 export interface ConversationProps {
+  skills?: readonly WireSkill[];
   footer: (approval?: ReactNode, interaction?: boolean) => ReactNode;
   sessionId: string;
   view: SessionViewState;
@@ -307,12 +311,12 @@ function DesktopApp({
   useEffect(() => {
     if (inputDraft.goalEnabled && !goalConfirmation)
       document
-        .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+        .querySelector<HTMLElement>(".conversation-composer [data-prompt-editor]")
         ?.focus({ preventScroll: true });
   }, [inputDraft.goalEnabled, goalConfirmation]);
   const focusPrompt = () =>
     document
-      .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+      .querySelector<HTMLElement>(".conversation-composer [data-prompt-editor]")
       ?.focus({ preventScroll: true });
 
   const [newPlanMode, setNewPlanMode] = useState(false);
@@ -924,8 +928,121 @@ function DesktopApp({
       focusPrompt();
     }
   };
+  const skillErrorText = useRef(errorText);
+  skillErrorText.current = errorText;
+  const skillRefreshEpochs = useRef(new Map<string, number>());
+  const skillScope = state.selected ? `session:${state.selected}` : `project:${state.target ?? ""}`;
+  const [skillCatalogs, setSkillCatalogs] = useState<Record<string, WireSkill[]>>({});
+  const refreshSkills = useCallback(() => {
+    const epoch = (skillRefreshEpochs.current.get(skillScope) ?? 0) + 1;
+    skillRefreshEpochs.current.set(skillScope, epoch);
+    const command: ClientCommand = state.selected
+      ? { type: "skills.list", sessionId: state.selected }
+      : { type: "skills.list", ...(state.target ? { projectId: state.target } : {}) };
+    void client
+      .request(command)
+      .then((result) => {
+        if (skillRefreshEpochs.current.get(skillScope) !== epoch || !Array.isArray(result)) return;
+        const skills = result.filter((item: unknown): item is WireSkill =>
+          Boolean(
+            item &&
+            typeof item === "object" &&
+            "name" in item &&
+            typeof item.name === "string" &&
+            "description" in item &&
+            typeof item.description === "string" &&
+            "filePath" in item &&
+            typeof item.filePath === "string" &&
+            "scope" in item &&
+            (item.scope === "user" || item.scope === "project"),
+          ),
+        );
+        setSkillCatalogs((previous) => ({ ...previous, [skillScope]: skills }));
+      })
+      .catch((cause: unknown) => setError(skillErrorText.current(cause)));
+  }, [client, state.selected, state.target, skillScope]);
+  useEffect(() => {
+    if (connected) refreshSkills();
+  }, [connected, refreshSkills]);
+  const [mcpOpen, setMcpOpen] = useState(false);
+  const [mcpCatalogs, setMcpCatalogs] = useState<
+    Record<string, import("@rukie/shared").McpSnapshot>
+  >({});
+  const mcpVersion = useRef(0);
+  const mcpProject = state.selected ? currentProject : targetProject;
+  const mcpBinding = JSON.stringify({
+    cwd: state.selected ? current?.cwd : undefined,
+    project: mcpProject && {
+      primary: mcpProject.primary,
+      directories: mcpProject.directories,
+      trusted: mcpProject.trusted,
+    },
+  });
+  const refreshMcp = useCallback(() => {
+    const version = ++mcpVersion.current;
+    const target = state.selected
+      ? { sessionId: state.selected }
+      : state.target
+        ? { projectId: state.target }
+        : {};
+    void client
+      .request({ type: "mcp.status", ...target })
+      .then((snapshot) => {
+        if (version === mcpVersion.current && isMcpSnapshot(snapshot))
+          setMcpCatalogs((previous) => ({ ...previous, [skillScope]: snapshot }));
+      })
+      .catch((cause: unknown) => setError(skillErrorText.current(cause)));
+  }, [client, state.selected, state.target, skillScope, mcpBinding]);
+  useEffect(() => {
+    if (!connected) return;
+    const viewId = `composer:${skillScope}`;
+    const target = state.selected
+      ? { sessionId: state.selected }
+      : state.target
+        ? { projectId: state.target }
+        : {};
+    const version = ++mcpVersion.current;
+    let disposed = false;
+    const remove = client.subscribeMessages((message) => {
+      if (
+        message &&
+        typeof message === "object" &&
+        "type" in message &&
+        message.type === "mcp_status" &&
+        "viewId" in message &&
+        message.viewId === viewId &&
+        "snapshot" in message &&
+        isMcpSnapshot(message.snapshot)
+      ) {
+        mcpVersion.current++;
+        const snapshot = message.snapshot;
+        setMcpCatalogs((previous) => ({ ...previous, [skillScope]: snapshot }));
+      }
+    });
+    void client
+      .subscribeMcp(viewId, target, Boolean(state.selected || state.target || mcpOpen))
+      .then((snapshot) => {
+        if (!disposed && version === mcpVersion.current && isMcpSnapshot(snapshot))
+          setMcpCatalogs((previous) => ({ ...previous, [skillScope]: snapshot }));
+      })
+      .catch((cause: unknown) => {
+        if (!disposed) setError(skillErrorText.current(cause));
+      });
+    return () => {
+      disposed = true;
+      remove();
+      void client.unsubscribeMcp(viewId).catch(() => {});
+    };
+  }, [client, connected, state.selected, state.target, skillScope, mcpOpen, mcpBinding]);
   const composer = (
     <Composer
+      skills={skillCatalogs[skillScope] ?? []}
+      onSkillsOpen={() => {
+        refreshSkills();
+        refreshMcp();
+      }}
+      mcpSnapshot={mcpCatalogs[skillScope]}
+      onMcpOpenChange={setMcpOpen}
       draft={draft}
       images={images}
       onDraft={setDraft}
@@ -1338,6 +1455,7 @@ function DesktopApp({
                   <Conversation
                     key={state.selected}
                     footer={footer}
+                    skills={skillCatalogs[skillScope] ?? []}
                     sessionId={state.selected}
                     view={view}
                     connected={connected}

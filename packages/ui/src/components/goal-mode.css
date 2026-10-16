@@ -77,45 +77,6 @@
 .conversation-goal-chip:focus-visible .goal-target-icon {
   display: none;
 }
-.conversation-goal-option > [data-slot="dropdown-menu-checkbox-item-indicator"] {
-  display: none;
-}
-.conversation-goal-option {
-  padding-right: 10px;
-}
-.goal-menu-description {
-  margin-left: auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted-foreground);
-  font-size: var(--text-ui-sm);
-}
-.goal-menu-switch {
-  display: inline-flex;
-  width: 36px;
-  height: 20px;
-  padding: 2px;
-  flex-shrink: 0;
-  align-items: center;
-  border-radius: 999px;
-  background: var(--secondary);
-}
-.goal-menu-switch > span {
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  background: var(--foreground);
-}
-[aria-checked="true"] .goal-menu-switch {
-  justify-content: flex-end;
-  background: var(--primary);
-}
-[aria-checked="true"] .goal-menu-switch > span {
-  background: var(--primary-foreground);
-}
-
 .goal-status-bar {
   position: relative;
   display: flex;

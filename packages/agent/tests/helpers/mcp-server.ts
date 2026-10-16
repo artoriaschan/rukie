@@ -2,8 +2,13 @@ import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 // A real JSON-RPC stdio server. Its manifest can change between Runs.
-const manifest = await Bun.file(process.env.MCP_MANIFEST!).json();
+let manifest = await Bun.file(process.env.MCP_MANIFEST!).json();
 appendFileSync(process.env.MCP_PIDS!, `${process.pid}\n`);
+if (process.env.MCP_LAUNCHES)
+  appendFileSync(
+    process.env.MCP_LAUNCHES,
+    `${JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2), project: process.env.MCP_PROJECT })}\n`,
+  );
 const lines = createInterface({ input: process.stdin });
 const send = (message: unknown) => process.stdout.write(`${JSON.stringify(message)}\n`);
 for await (const line of lines) {
@@ -21,11 +26,22 @@ for await (const line of lines) {
       };
       break;
     case "tools/list":
+      if (manifest.failList) {
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          error: { code: -32603, message: "Discovery failed" },
+        });
+        continue;
+      }
       result = {
         tools: (manifest.tools ?? ["echo"]).map((name: string) => ({
           name,
           description: manifest.toolDescriptions?.[name] ?? `Test ${name}`,
-          inputSchema: { type: "object", properties: { text: { type: "string" } } },
+          inputSchema: manifest.toolSchemas?.[name] ?? {
+            type: "object",
+            properties: { text: { type: "string" } },
+          },
         })),
       };
       break;
@@ -33,6 +49,10 @@ for await (const line of lines) {
       appendFileSync(process.env.MCP_CALLS!, `${request.params.name}\n`);
       if (process.env.MCP_ARGUMENTS)
         appendFileSync(process.env.MCP_ARGUMENTS, `${JSON.stringify(request.params.arguments)}\n`);
+      if (request.params.name === "notify") {
+        manifest = await Bun.file(process.env.MCP_MANIFEST!).json();
+        send({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
+      }
       if (request.params.name === "hang") continue;
       if (request.params.name === "crash") process.exit(1);
       if (request.params.name === "delayed-json")

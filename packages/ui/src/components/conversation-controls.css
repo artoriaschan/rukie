@@ -15,7 +15,7 @@
   background: var(--background);
   box-shadow: var(--shadow-composer);
 }
-.conversation-composer textarea {
+.conversation-composer .prompt-editor {
   padding: 0;
   padding-top: 0;
 }
@@ -264,7 +264,7 @@
   }
 }
 
-.conversation-composer textarea::placeholder {
+.conversation-composer .prompt-editor::before {
   color: var(--conversation-placeholder);
 }
 .conversation-composer > div:last-child {
@@ -440,35 +440,6 @@
 .conversation-context-footer dt {
   color: var(--muted-foreground);
 }
-.conversation-tools-menu {
-  width: 752px;
-  border-radius: 8px;
-  padding: 0;
-  animation: none;
-  box-shadow: var(--shadow-overlay);
-}
-.conversation-tools-scroll {
-  max-height: min(352px, calc(var(--radix-dropdown-menu-content-available-height) - 2px));
-}
-.conversation-tools-scroll > [data-slot="scroll-area-viewport"] {
-  max-height: inherit;
-}
-.conversation-tools-scroll [data-slot="dropdown-menu-label"] {
-  padding: 9px 15px 10px;
-  min-height: 37px;
-  font-weight: 400;
-}
-.conversation-tool-option {
-  margin: 0 5px 5px;
-  min-height: 32px;
-  padding: 5px 10px;
-  gap: 10px;
-  cursor: pointer;
-}
-.conversation-tool-option svg {
-  color: var(--muted-foreground);
-}
-
 .conversation-plan-mode {
   min-height: 28px;
   padding: 0 10px 0 6px;

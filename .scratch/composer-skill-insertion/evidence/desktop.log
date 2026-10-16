@@ -1,0 +1,55 @@
+$ env -u NO_COLOR vitest run
+
+ RUN  v5.0.3 /Users/artorias_chan/.codex/worktrees/57c2/rukie
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 1 unhandled error during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+Error: browserType.launch: Executable doesn't exist at /var/folders/ql/gqv08x1d593_4fssr6n92gq80000gn/T/rukie-composer-final-jbw9awqo/home/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     npx playwright install                                 ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+ ❯ node_modules/.bun/@vitest+browser-playwright@5.0.3/node_modules/@vitest/browser-playwright/dist/index.js:1053:55
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { log: [] }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files  19 passed (71)
+      Tests  81 passed (81)
+     Errors  1 error
+   Start at  17:26:39
+   Duration  1.16s (transform 42%, tests 32%, import 25%, worker 1%)
+
+error during close browserType.launch: Executable doesn't exist at /var/folders/ql/gqv08x1d593_4fssr6n92gq80000gn/T/rukie-composer-final-jbw9awqo/home/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     npx playwright install                                 ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+    at /Users/artorias_chan/.codex/worktrees/57c2/rukie/node_modules/.bun/@vitest+browser-playwright@5.0.3/node_modules/@vitest/browser-playwright/dist/index.js:1053:55 {
+  log: [],
+  name: 'Error',
+  type: 'Unhandled Error',
+  stacks: [
+    {
+      method: '',
+      file: '/Users/artorias_chan/.codex/worktrees/57c2/rukie/node_modules/.bun/@vitest+browser-playwright@5.0.3/node_modules/@vitest/browser-playwright/dist/index.js',
+      line: 1053,
+      column: 55
+    }
+  ]
+}
+error: script "test:desktop" exited with code 1

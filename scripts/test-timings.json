@@ -105,7 +105,7 @@
     "packages/agent/tests/e2e/web-fetch.test.ts": 3933,
     "packages/agent/tests/interaction/interaction.test.ts": 1,
     "packages/agent/tests/interaction/pending.test.ts": 1,
-    "packages/agent/tests/mcp/manager.test.ts": 83,
+    "packages/agent/tests/mcp/host.test.ts": 83,
     "packages/agent/tests/permissions/bash-rules.test.ts": 3,
     "packages/agent/tests/permissions/batch.test.ts": 29,
     "packages/agent/tests/permissions/paths.test.ts": 50,

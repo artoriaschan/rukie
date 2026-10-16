@@ -1,0 +1,27 @@
+bun test v1.4.2 (744846f84)
+
+packages/coding-agent/tests/ink/terminal/lifecycle.test.tsx:
+(pass) actual child exit restores both injected roots and preserves frontend signal ownership [103.68ms]
+(pass) actual child SIGINT restores both injected roots and preserves frontend signal ownership [107.70ms]
+(pass) actual child SIGTERM restores both injected roots and preserves frontend signal ownership [105.32ms]
+(pass) actual child uncaught restores both injected roots and preserves frontend signal ownership [105.19ms]
+
+packages/coding-agent/tests/ink/primitives/text-style.test.tsx:
+(pass) startup NO_COLOR="1" respects #12ab34, padding and halfblock planes while retaining emphasis [100.92ms]
+(pass) startup NO_COLOR="1" respects ansi:red, padding and halfblock planes while retaining emphasis [97.23ms]
+(pass) startup NO_COLOR="" respects #12ab34, padding and halfblock planes while retaining emphasis [94.92ms]
+(pass) startup NO_COLOR="" respects ansi:red, padding and halfblock planes while retaining emphasis [96.93ms]
+(pass) startup NO_COLOR=undefined respects #12ab34, padding and halfblock planes while retaining emphasis [95.35ms]
+(pass) startup NO_COLOR=undefined respects ansi:red, padding and halfblock planes while retaining emphasis [95.20ms]
+(pass) startup FORCE_COLOR=0 does not override nonempty NO_COLOR [95.29ms]
+(pass) startup FORCE_COLOR=3 does not override nonempty NO_COLOR [95.67ms]
+
+packages/coding-agent/tests/ink/hooks/resize.test.tsx:
+(pass) ordinary duplicate same-grid resize preserves the native surface policy [102.11ms]
+(pass) ConPTY rebuild same-grid resize preserves the native surface policy [111.88ms]
+
+ 14 pass
+ 21 filtered out
+ 0 fail
+ 249 expect() calls
+Ran 14 tests across 3 files. [1489.00ms]

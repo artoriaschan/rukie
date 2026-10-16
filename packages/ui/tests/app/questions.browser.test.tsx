@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { expect, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -32,7 +33,7 @@ test("a question replaces the composer and submits the numbered answer without l
       .getByRole("button", { name: /Fix compiler/ })
       .first()
       .click();
-    const draft = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const draft = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await draft.fill("Keep this draft");
     await send({
       type: "interaction_requested",
@@ -60,7 +61,7 @@ test("a question replaces the composer and submits the numbered answer without l
         .width,
     ).toBeCloseTo(752, 0);
     await userEvent.keyboard("2{Enter}");
-    await expect.element(draft).toHaveValue("Keep this draft");
+    await expect.poll(() => promptText(draft.element())).toBe("Keep this draft");
     await expect.element(draft).toHaveFocus();
     const wire = await (await fetch(`http://127.0.0.1:${connection.port}/commands`)).json();
     expect(wire).toContainEqual(
@@ -118,7 +119,7 @@ test("mixed interactions keep insertion order, settled questions disappear and p
       .getByRole("button", { name: /Fix compiler/ })
       .first()
       .click();
-    const draft = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const draft = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await draft.fill("Queued draft survives");
     await question("First question");
     await question("Second question");
@@ -162,7 +163,7 @@ test("mixed interactions keep insertion order, settled questions disappear and p
     await send({ type: "interaction_settled", identity: identity("plan") });
     await expect.element(screen.getByRole("region", { name: "Permission required" })).toBeVisible();
     await screen.getByRole("button", { name: "Allow", exact: true }).click();
-    await expect.element(draft).toHaveValue("Queued draft survives");
+    await expect.poll(() => promptText(draft.element())).toBe("Queued draft survives");
     await expect.element(draft).toHaveFocus();
   } finally {
     await screen.unmount();
@@ -214,7 +215,7 @@ test("a failed question reply stays retryable, pending replies disable activatio
       .getByRole("button", { name: /Fix compiler/ })
       .first()
       .click();
-    const draft = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const draft = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await draft.fill("Preserve on retry");
     await ask("retry");
     const region = screen.getByRole("region", { name: "Question required" });
@@ -236,14 +237,14 @@ test("a failed question reply stays retryable, pending replies disable activatio
       wire.filter((command: { type: string }) => command.type === "interaction.reply"),
     ).toHaveLength(2);
     await send("flush");
-    await expect.element(draft).toHaveValue("Preserve on retry");
+    await expect.poll(() => promptText(draft.element())).toBe("Preserve on retry");
     await ask("stale");
     await expect.element(region).toBeVisible();
     await send("error", { type: "interaction.reply", code: "interaction_stale" });
     await yes.click();
     await expect.element(region).not.toBeInTheDocument();
     await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
-    await expect.element(draft).toHaveValue("Preserve on retry");
+    await expect.poll(() => promptText(draft.element())).toBe("Preserve on retry");
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);

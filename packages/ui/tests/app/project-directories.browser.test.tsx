@@ -284,7 +284,7 @@ test("any Project directory groups and names history, and switching primary affe
         }),
       );
     await screen
-      .getByRole("textbox", { name: "Prompt", exact: true })
+      .getByRole("combobox", { name: "Prompt", exact: true })
       .fill("new after primary switch");
     await screen.getByRole("button", { name: "Send prompt", exact: true }).click();
     await expect

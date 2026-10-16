@@ -32,6 +32,7 @@ export type {
   JobOutput,
   JobEvent,
 } from "@rukie/shared";
+export { createMcpHost, type McpHost } from "./mcp/index.ts";
 export type { McpAuthRequest, McpAuthReply, McpAuthOutcome, OnMcpAuth } from "./mcp/index.ts";
 export type { ReminderSource } from "./reminders/index.ts";
 export type { TodoItem } from "./tools/todo/index.ts";

@@ -1,4 +1,4 @@
-import { userDataDirectory } from "../config/paths.ts";
+import { readMcpConfiguration, type McpConfiguration } from "./configuration.ts";
 import { awaitWithContext } from "@earendil-works/chord/context";
 import type { PreflightTool } from "../tools/support/preflight.ts";
 import type { PresentedTool } from "../tools/support/presentation.ts";
@@ -21,7 +21,6 @@ import {
   type OAuthFlowOptions,
   type McpOAuthStateStore,
 } from "@earendil-works/pi-mcp/oauth";
-import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -32,7 +31,6 @@ import {
   type McpConfigError,
   type UserVisibleErrorData,
 } from "@rukie/shared";
-import { isTrustedProject } from "../config/index.ts";
 import {
   requestInteraction,
   type OnInteractionStart,
@@ -67,6 +65,7 @@ const StdioConfig = Type.Object({
   command: Type.String({ minLength: 1 }),
   args: Type.Optional(Type.Array(Type.String())),
   env: Type.Optional(Type.Record(Type.String(), Type.String())),
+  cwd: Type.Optional(Type.String({ minLength: 1 })),
   oauth: Type.Optional(Type.Never()),
 });
 const OAuthConfig = Type.Object({
@@ -82,30 +81,6 @@ const HttpConfig = Type.Object({
   oauth: Type.Optional(OAuthConfig),
 });
 const ServerConfig = Type.Union([StdioConfig, HttpConfig]);
-
-function expandEnvironment(value: string): string {
-  return value.replace(
-    /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?\}/g,
-    (_match, name: string, fallback: string | undefined) => {
-      const environment = process.env[name];
-      if (fallback !== undefined && !environment) return fallback;
-      if (environment !== undefined) return environment;
-      throw createUserVisibleError(`Missing MCP environment variable: ${name}`, {
-        code: "mcp-env-missing",
-        params: { name },
-      });
-    },
-  );
-}
-
-function expandValues(values: Record<string, string> | undefined) {
-  return (
-    values &&
-    Object.fromEntries(
-      Object.entries(values).map(([key, value]) => [key, expandEnvironment(value)]),
-    )
-  );
-}
 
 /** Redact literal URL secrets without expanding configuration expressions. */
 function displayUrl(value: string): string {
@@ -146,9 +121,10 @@ function resultDetails(value: unknown): JsonValue {
 
 function adaptTool(
   server: string,
-  client: McpClient,
+  client: () => McpClient,
   tool: Tool,
   reportError: (error: unknown) => void,
+  activity: <T>(call: () => Promise<T>) => Promise<T>,
 ): ToolRegistration {
   const name = `mcp__${server}__${tool.name}`;
   const parameters = Type.Unsafe<Record<string, unknown>>(tool.inputSchema);
@@ -167,7 +143,7 @@ function adaptTool(
     async execute(args, _api, context) {
       const signal = context.abortSignal;
       try {
-        const result = await client.callTool(tool.name, args, { signal });
+        const result = await activity(() => client().callTool(tool.name, args, { signal }));
         return {
           content: toLlmContent(result),
           details: resultDetails(result),
@@ -188,7 +164,7 @@ function requiresAuthentication(error: unknown) {
   );
 }
 
-/** Authorization state belongs to the Session; connections still belong to each Run. */
+/** Authorization state is owned by one Host connection generation. */
 export function createMcpAuthState() {
   return {
     needsAuth: new Set<string>(),
@@ -199,7 +175,7 @@ export function createMcpAuthState() {
   };
 }
 
-/** The Session owns these connections; discovery cancellation ends when connect settles. */
+/** Transport owner used by MCP Host connection generations. */
 export function createMcpConnections(
   authState: ReturnType<typeof createMcpAuthState>,
   applicationVersion?: string,
@@ -226,13 +202,43 @@ export function createMcpConnections(
   const configurations = new Map<string, string>();
   const serverAuthKeys = new Map<string, string>();
   const retired = new WeakSet<McpClient>();
+  const clientCloses = new WeakMap<McpClient, Promise<void>>();
+  const closeClient = (client: McpClient) => {
+    let pending = clientCloses.get(client);
+    if (!pending) {
+      pending = client.close();
+      clientCloses.set(client, pending);
+    }
+    return pending;
+  };
+  type Recovery = {
+    tools?: Promise<void>;
+    attempts: number;
+    stable?: ReturnType<typeof setTimeout>;
+    timer?: ReturnType<typeof setTimeout>;
+    pending?: ReturnType<typeof Promise.withResolvers<void>>;
+  };
+  const recovery = new Map<string, Recovery>();
   const failed = new Set<string>();
+  let activeCalls = 0;
+  let idle: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  const activity = async <T>(call: () => Promise<T>): Promise<T> => {
+    if (!activeCalls++) idle = Promise.withResolvers<void>();
+    try {
+      return await call();
+    } finally {
+      if (!--activeCalls) {
+        idle?.resolve();
+        idle = undefined;
+      }
+    }
+  };
   let closePromise: Promise<void> | undefined;
   let closing = false;
   let onWarning: ((message: string) => void) | undefined;
   let onEvent: ((event: CustomSessionEvent) => void) | undefined;
-  let lifetime = new AbortController();
-  const report = (server: string, error: unknown) => {
+  const lifetime = new AbortController();
+  const report = (server: string, error: unknown, status: "failed" | "pending" = "failed") => {
     if (failed.has(server)) return;
     failed.add(server);
     // Rukie creates coded Errors through createUserVisibleError, matching preserveErrorDetails.
@@ -247,7 +253,7 @@ export function createMcpConnections(
     if (view)
       views.set(server, {
         ...view,
-        status: "failed",
+        status,
         toolCount: 0,
         tools: [],
         error: error instanceof Error ? error.message : String(error),
@@ -265,12 +271,17 @@ export function createMcpConnections(
   const close = () => {
     closing = true;
     lifetime.abort();
+    for (const state of recovery.values()) {
+      clearTimeout(state.timer);
+      clearTimeout(state.stable);
+      state.pending?.resolve();
+    }
     connected.clear();
     // Save the first close promise: pi's subsequent close calls can settle before shutdown.
     closePromise ??= Promise.all(
       clients.map(async (client) => {
         try {
-          await client.close();
+          await closeClient(client);
         } catch (error) {
           report(client.options.title ?? "unknown", error);
         }
@@ -299,42 +310,28 @@ export function createMcpConnections(
       if (client.options.title !== server) continue;
       retired.add(client);
       clients.splice(index, 1);
-      await client.close();
+      await closeClient(client);
     }
     for (const list of [errors, authRequired])
       for (let index = list.length - 1; index >= 0; index--)
         if (list[index]!.server === server) list.splice(index, 1);
   };
-  async function readConfig(
-    path: string,
-    scope: "user" | "project",
-  ): Promise<Record<string, unknown>> {
-    try {
-      const file = Bun.file(path);
-      if (!(await file.exists())) return {};
-      const data = await file.json();
-      if (
-        !Value.Check(Type.Object({ mcpServers: Type.Record(Type.String(), Type.Unknown()) }), data)
-      ) {
-        throw createUserVisibleError("Expected an object containing mcpServers.", {
-          code: "mcp-config-file-invalid",
-          params: { source: path },
-        });
-      }
-      return data.mcpServers;
-    } catch (error) {
-      report(path, error);
-      const recorded = errors.at(-1)!;
-      configErrors.push({
-        scope,
-        path,
-        error: recorded.error,
-        ...(recorded.errorData && { errorData: recorded.errorData }),
-      });
-      return {};
-    }
-  }
-  return {
+  const api = {
+    get authenticating() {
+      return authState.inFlight.size > 0;
+    },
+    get activeCalls() {
+      return activeCalls;
+    },
+    async waitForCalls() {
+      await idle?.promise;
+    },
+    async waitForReady() {
+      await Promise.all([...recovery.values()].map((state) => state.pending?.promise));
+    },
+    async waitForToolSync() {
+      await Promise.all([...recovery.values()].map((state) => state.tools));
+    },
     tools,
     toolServers,
     errors,
@@ -372,7 +369,7 @@ export function createMcpConnections(
           params: { server },
         });
       // Hook execution owns its timeout; the SDK default would cap every hook at 30s.
-      return client.callTool(tool, input, { signal, timeoutMs: 0 });
+      return activity(() => client.callTool(tool, input, { signal, timeoutMs: 0 }));
     },
     get hasServers() {
       return descriptions.size > 0;
@@ -399,38 +396,19 @@ export function createMcpConnections(
       skipServer?: string;
       loadOnly?: boolean;
       reconnect?: boolean;
+      configuration?: McpConfiguration;
+      onChange?(): void;
     }) {
       onWarning = options.onWarning;
       onEvent = options.onEvent;
-      if (closing) {
-        await closePromise;
-        closing = false;
-        closePromise = undefined;
-        lifetime = new AbortController();
-      }
-      const userPath = join(userDataDirectory(options), "mcp.json");
-      const projectPath = join(options.cwd, ".mcp.json");
-      const servers = new Map<
-        string,
-        { value: unknown; scope: "user" | "project"; configPath: string }
-      >();
-      configErrors.length = 0;
-      for (const path of [userPath, projectPath]) {
-        failed.delete(path);
-        for (let index = errors.length - 1; index >= 0; index--)
-          if (errors[index]!.server === path) errors.splice(index, 1);
-      }
-      const userConfiguration = options.persistence
-        ? await options.persistence.configuration()
-        : options.dataRoot !== undefined
-          ? {}
-          : await readConfig(userPath, "user");
-      for (const [name, value] of Object.entries(userConfiguration))
-        servers.set(name, { value, scope: "user", configPath: userPath });
-      if (options.trustProjectMcp || isTrustedProject(options.cwd, options.settings)) {
-        for (const [name, value] of Object.entries(await readConfig(projectPath, "project")))
-          servers.set(name, { value, scope: "project", configPath: projectPath });
-      }
+      if (closing)
+        throw createUserVisibleError("MCP connections are closed.", {
+          code: "mcp-connection-closed",
+          params: {},
+        });
+      const configuration = options.configuration ?? (await readMcpConfiguration(options));
+      const servers = configuration.servers;
+      configErrors.splice(0, configErrors.length, ...configuration.configErrors);
       if (options.onlyServer === undefined && options.skipServer === undefined)
         for (const server of configurations.keys()) if (!servers.has(server)) await retire(server);
       options.signal?.throwIfAborted();
@@ -439,9 +417,10 @@ export function createMcpConnections(
       };
       options.signal?.addEventListener("abort", abort, { once: true });
       try {
-        for (const [server, { value, scope, configPath }] of [...servers.entries()].sort(
-          ([a], [b]) => a.localeCompare(b),
-        )) {
+        for (const [
+          server,
+          { value, rawValue = value, scope, configPath, error: configurationError },
+        ] of [...servers.entries()].sort(([a], [b]) => a.localeCompare(b))) {
           if (options.onlyServer !== undefined && server !== options.onlyServer) continue;
           if (server === options.skipServer) continue;
           options.signal?.throwIfAborted();
@@ -463,8 +442,8 @@ export function createMcpConnections(
             name: server,
             scope,
             configPath,
-            ...(Value.Check(Type.Object({ url: Type.String() }), value)
-              ? { url: displayUrl(value.url) }
+            ...(Value.Check(Type.Object({ url: Type.String() }), rawValue)
+              ? { url: displayUrl(rawValue.url) }
               : {}),
             ...(Value.Check(Type.Object({ command: Type.String() }), value)
               ? { command: value.command }
@@ -474,7 +453,7 @@ export function createMcpConnections(
             ...metadata,
             tools: [],
             transport: Value.Check(Type.Object({ url: Type.String() }), value) ? "http" : "stdio",
-            status: "failed",
+            status: "pending",
             toolCount: 0,
             auth: "none",
           });
@@ -485,25 +464,91 @@ export function createMcpConnections(
           });
           let ready = false;
           let requireAuth: (() => void) | undefined;
-          clients.push(client);
-          client.onError((error) => {
-            if (!closing && !retired.has(client)) {
-              if (requiresAuthentication(error) && requireAuth) requireAuth();
-              else report(server, error);
+          let syncTools: ((activeClient: McpClient) => Promise<void>) | undefined;
+          const state = recovery.get(server) ?? { attempts: 0 };
+          recovery.set(server, state);
+          const settle = () => {
+            state.pending?.resolve();
+            state.pending = undefined;
+          };
+          const recover = (activeClient: McpClient) => {
+            clearTimeout(state.stable);
+            state.stable = undefined;
+            if (
+              closing ||
+              retired.has(activeClient) ||
+              views.get(server)?.status === "needs-auth"
+            ) {
+              settle();
+              return;
             }
-          });
-          client.onClose(() => {
-            if (connected.get(server) === client) connected.delete(server);
-            if (ready && !closing && !retired.has(client))
-              report(
-                server,
-                createUserVisibleError("MCP connection closed unexpectedly.", {
-                  code: "mcp-connection-lost",
-                  params: {},
-                }),
-              );
-          });
+            if (state.timer) return;
+            if (state.attempts >= 5) {
+              descriptions.set(server, `${server}: connection unavailable.`);
+              settle();
+              options.onChange?.();
+              return;
+            }
+            const view = views.get(server);
+            if (view) views.set(server, { ...view, status: "pending", tools: [], toolCount: 0 });
+            descriptions.set(server, `${server}: connection pending.`);
+            state.pending ??= Promise.withResolvers<void>();
+            const delay = Math.min(1000 * 2 ** state.attempts++, 30_000);
+            state.timer = setTimeout(() => {
+              state.timer = undefined;
+              // close() announces onClose before transport cleanup; reuse its original promise.
+              void closeClient(activeClient)
+                .then(() => {
+                  if (!closing && !retired.has(activeClient))
+                    return api.connect({ ...options, onlyServer: server, reconnect: true });
+                })
+                .catch((error: unknown) => {
+                  report(server, error);
+                  settle();
+                  options.onChange?.();
+                });
+            }, delay);
+            state.timer.unref?.();
+            options.onChange?.();
+          };
+          const observe = (activeClient: McpClient) => {
+            activeClient.onError((error) => {
+              if (!closing && !retired.has(activeClient)) {
+                if (requiresAuthentication(error) && requireAuth) requireAuth();
+                else report(server, error);
+              }
+            });
+            activeClient.onClose(() => {
+              const current = connected.get(server) === activeClient;
+              if (current) connected.delete(server);
+              if (ready && current && !closing && !retired.has(activeClient)) {
+                ready = false;
+                for (let index = tools.length - 1; index >= 0; index--) {
+                  if (toolServers.get(tools[index]!.name) !== server) continue;
+                  toolServers.delete(tools[index]!.name);
+                  tools.splice(index, 1);
+                }
+                report(
+                  server,
+                  createUserVisibleError("MCP connection closed unexpectedly.", {
+                    code: "mcp-connection-lost",
+                    params: {},
+                  }),
+                  state.attempts < 5 ? "pending" : "failed",
+                );
+                recover(activeClient);
+              }
+            });
+            activeClient.onNotification("notifications/tools/list_changed", () => {
+              if (connected.get(server) !== activeClient || closing || retired.has(activeClient))
+                return;
+              void syncTools?.(activeClient);
+            });
+          };
+          clients.push(client);
+          observe(client);
           try {
+            if (configurationError) throw configurationError;
             const [invalid] = Value.Errors(ServerConfig, value);
             if (invalid)
               throw createUserVisibleError(
@@ -527,19 +572,12 @@ export function createMcpConnections(
                   { code: "mcp-config-metadata-https", params: {} },
                 );
             }
-            const entry =
-              "url" in parsed
-                ? {
-                    ...parsed,
-                    url: expandEnvironment(parsed.url),
-                    headers: expandValues(parsed.headers),
-                  }
-                : { ...parsed, env: expandValues(parsed.env) };
+            const entry = parsed;
             views.set(server, {
               ...metadata,
               tools: [],
               transport: "url" in entry ? "http" : "stdio",
-              status: "failed",
+              status: "pending",
               toolCount: 0,
               auth:
                 "url" in entry
@@ -586,6 +624,11 @@ export function createMcpConnections(
                   }))
                 : undefined;
             let rejectedToken = (await store?.load())?.tokens?.access_token;
+            if (closing || retired.has(client))
+              throw createUserVisibleError("MCP connections are closed.", {
+                code: "mcp-connection-closed",
+                params: {},
+              });
             const recordAuthorizationChallenge = async (url: URL) => {
               rejectedToken = (await store?.load())?.tokens?.access_token;
               const scope = url.searchParams.get("scope");
@@ -601,12 +644,23 @@ export function createMcpConnections(
               tools.push(...adapted);
               for (const tool of adapted) toolServers.set(tool.name, server);
             };
-            const registerTools = async (activeClient: McpClient, signal = options.signal) => {
+            const registerTools = async (
+              activeClient: McpClient,
+              signal = options.signal,
+              synchronizing = false,
+            ) => {
               const discovered = activeClient.serverCapabilities?.tools
                 ? await activeClient.listTools({ signal })
                 : [];
+              const auth = (await store?.load())?.tokens
+                ? "oauth"
+                : (views.get(server)?.auth ?? "none");
               signal?.throwIfAborted();
-              if (closing)
+              if (
+                closing ||
+                retired.has(activeClient) ||
+                (synchronizing && connected.get(server) !== activeClient)
+              )
                 throw createUserVisibleError("MCP connections are closed.", {
                   code: "mcp-connection-closed",
                   params: {},
@@ -626,21 +680,66 @@ export function createMcpConnections(
                 transport: "url" in entry ? "http" : "stdio",
                 status: "connected",
                 toolCount: discovered.length,
-                auth: (await store?.load())?.tokens ? "oauth" : (views.get(server)?.auth ?? "none"),
+                auth,
               });
               const adapted = discovered.map((tool) =>
-                adaptTool(server, activeClient, tool, (error) => {
-                  if (!closing) {
-                    if (requiresAuthentication(error)) requireAuth?.();
-                    else report(server, error);
-                  }
-                }),
+                adaptTool(
+                  server,
+                  () => {
+                    const active = connected.get(server);
+                    if (!active || views.get(server)?.status !== "connected")
+                      throw createUserVisibleError("MCP server is not connected.", {
+                        code: "mcp-connection-closed",
+                        params: {},
+                      });
+                    return active;
+                  },
+                  tool,
+                  (error) => {
+                    if (!closing) {
+                      if (requiresAuthentication(error)) requireAuth?.();
+                      else report(server, error);
+                    }
+                  },
+                  activity,
+                ),
               );
               replaceTools(adapted);
               descriptions.set(
                 server,
                 `${server}:\n${activeClient.instructions ?? ""}\nTools: ${adapted.map((tool) => tool.name).join(", ") || "none"}`,
               );
+              settle();
+              // Reset only after 30 seconds continuously healthy, never on initialize alone.
+              if (!state.stable) {
+                state.stable = setTimeout(() => {
+                  state.attempts = 0;
+                  state.stable = undefined;
+                }, 30_000);
+                state.stable.unref?.();
+              }
+              options.onChange?.();
+            };
+            let synchronizing = Promise.resolve();
+            syncTools = (activeClient) => {
+              synchronizing = synchronizing.then(async () => {
+                if (connected.get(server) !== activeClient || closing || retired.has(activeClient))
+                  return;
+                try {
+                  await registerTools(activeClient, options.signal, true);
+                } catch (error) {
+                  if (
+                    connected.get(server) === activeClient &&
+                    !closing &&
+                    !retired.has(activeClient)
+                  )
+                    onWarning?.(
+                      `MCP server ${server}: tool discovery failed: ${error instanceof Error ? error.message : String(error)}`,
+                    );
+                }
+              });
+              state.tools = synchronizing;
+              return synchronizing;
             };
             const authenticate = (
               toolSignal?: AbortSignal,
@@ -648,6 +747,7 @@ export function createMcpConnections(
               boundary?: { identity: InteractionIdentity; beforeExchange(): Promise<void> },
             ): Promise<McpAuthOutcome> => {
               const onMcpAuth = options.onMcpAuth;
+              const onInteractionStart = options.onInteractionStart;
               if (!key || !("url" in entry) || !store || !onMcpAuth)
                 return Promise.reject(
                   createUserVisibleError(
@@ -657,6 +757,13 @@ export function createMcpConnections(
                       params: { server },
                     },
                   ),
+                );
+              if (activeCalls)
+                return Promise.reject(
+                  createUserVisibleError("MCP server has active calls.", {
+                    code: "session-mcp-busy",
+                    params: {},
+                  }),
                 );
               const shared = authState.inFlight.get(key);
               if (shared) return shared;
@@ -766,7 +873,7 @@ export function createMcpConnections(
                         notify: (notification) =>
                           // A temporary management transport closes after its reply;
                           // its notification belongs to the caller's operation lifetime.
-                          options.onInteractionStart?.(
+                          onInteractionStart?.(
                             notification,
                             toolSignal ?? signal ?? interactionSignal,
                           ),
@@ -820,6 +927,7 @@ export function createMcpConnections(
                     version: applicationVersion ?? "unversioned",
                   });
                   clients.push(authenticated);
+                  observe(authenticated);
                   await authenticated.connect(
                     new StreamableHttpTransport({
                       url: entry.url,
@@ -866,8 +974,14 @@ export function createMcpConnections(
                 authState.needsAuth.delete(key);
                 authState.rejectedTokens.delete(key);
                 authState.authorizationScopes.delete(key);
-                replaceTools([]);
-                if (usedOAuth) setNeedsAuthView();
+                if (usedOAuth) {
+                  for (const active of clients) {
+                    if (active.options.title !== server) continue;
+                    retired.add(active);
+                    await closeClient(active);
+                  }
+                  requireAuth?.();
+                }
               });
             requireAuth = () => {
               ready = false;
@@ -876,6 +990,10 @@ export function createMcpConnections(
                 authState.needsAuth.add(key);
                 authState.rejectedTokens.set(key, rejectedToken);
               }
+              clearTimeout(state.timer);
+              clearTimeout(state.stable);
+              state.timer = undefined;
+              settle();
               setNeedsAuthView();
               if (!reportedAuth.has(server)) {
                 reportedAuth.add(server);
@@ -885,6 +1003,7 @@ export function createMcpConnections(
               if (!options.interactive) {
                 replaceTools([]);
                 descriptions.set(server, `${server}: requires authentication.`);
+                options.onChange?.();
                 return;
               }
               const name = `mcp__${server}__authenticate`;
@@ -974,6 +1093,7 @@ export function createMcpConnections(
               authTools.add(name);
               toolServers.set(name, server);
               descriptions.set(server, `${server}: requires authentication. Tools: ${name}`);
+              options.onChange?.();
             };
             if (options.loadOnly) continue;
             if (
@@ -1011,15 +1131,20 @@ export function createMcpConnections(
                     command: entry.command,
                     args: entry.args,
                     env: entry.env,
-                    cwd: options.cwd,
+                    cwd: "cwd" in entry ? entry.cwd : options.cwd,
                   });
             await client.connect(transport);
             await registerTools(client);
           } catch (error) {
-            await client.close();
+            await closeClient(client);
             options.signal?.throwIfAborted();
+            if (closing) continue;
             if (requireAuth && requiresAuthentication(error)) requireAuth();
-            else report(server, error);
+            else {
+              report(server, error, state.pending && state.attempts < 5 ? "pending" : "failed");
+              if (state.pending) recover(client);
+              else options.onChange?.();
+            }
           }
         }
       } finally {
@@ -1028,9 +1153,10 @@ export function createMcpConnections(
     },
     close,
   };
+  return api;
 }
 
-export { createMcpManager } from "./manager.ts";
+export { createMcpHost, type McpHost } from "./host.ts";
 
 /** Authentication interactions need MCP transport declarations before resuming. */
 export function isMcpAuthenticationInteraction(kind: string): boolean {

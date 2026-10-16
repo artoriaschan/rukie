@@ -2,7 +2,11 @@ import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
-import { createSession as createAgentSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createAgentSession,
+  listSkills,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -509,4 +513,25 @@ test("user-invocable false skills remain model-callable but do not expand slash 
   expect(reminders(session, "skills")[0]!.content).toContain("model-only");
   expect(JSON.stringify(fake.contexts[0]!.messages)).not.toContain("MODEL_ONLY_BODY");
   expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("MODEL_ONLY_BODY");
+});
+
+test("frontend skill catalog exposes effective source and invocation path without a Session", async () => {
+  dirs = await tempDirs();
+  await writeSkill(dirs.homeDir, ".agents", "review", "Global review", "GLOBAL");
+  const filePath = await writeSkill(dirs.cwd, ".agents", "review", "Project review", "PROJECT");
+  expect(await listSkills(dirs)).toEqual([
+    { name: "review", description: "Project review", scope: "project", filePath },
+  ]);
+  expect(await listSkills({ homeDir: dirs.homeDir })).toEqual([
+    {
+      name: "review",
+      description: "Global review",
+      scope: "user",
+      filePath: join(dirs.homeDir, ".agents/skills/review/SKILL.md"),
+    },
+  ]);
+  const fake = fakeModel([fauxAssistantMessage("done")]);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("/review inspect changes");
+  expect(reminders(session, "skill-invocation")[0]?.content).toContain("PROJECT");
 });

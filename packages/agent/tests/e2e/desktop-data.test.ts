@@ -55,7 +55,12 @@ test("desktop Session discovers only its own user content and tools retain real 
     fauxAssistantMessage("done"),
   ]);
   expect(await listSkills({ ...dirs, dataRoot })).toEqual([
-    { name: "desktop-skill", description: "desktop skill" },
+    {
+      name: "desktop-skill",
+      description: "desktop skill",
+      scope: "user",
+      filePath: join(dataRoot, "skills/desktop-skill/SKILL.md"),
+    },
   ]);
   const warnings: string[] = [];
   session = await createSession({

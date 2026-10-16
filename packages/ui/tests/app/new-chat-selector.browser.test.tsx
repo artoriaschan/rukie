@@ -194,7 +194,7 @@ test.each([
       code: "worktree_failed",
       params: { message: "git denied" },
     });
-    await main.getByRole("textbox", { name: text.prompt, exact: true }).fill("retained prompt");
+    await main.getByRole("combobox", { name: text.prompt, exact: true }).fill("retained prompt");
     await screen.getByRole("button", { name: text.send, exact: true }).click();
     await expect.element(screen.getByRole("alert")).toHaveTextContent(text.error);
     await expect.element(echoed).toBeVisible();
@@ -221,7 +221,7 @@ test.each([
 
     // Once a Session exists the selector is gone and the composer keeps its place.
     const before = document.querySelector(".conversation-composer")!.getBoundingClientRect();
-    await main.getByRole("textbox", { name: text.prompt, exact: true }).fill("start");
+    await main.getByRole("combobox", { name: text.prompt, exact: true }).fill("start");
     await screen.getByRole("button", { name: text.send, exact: true }).click();
     await expect.poll(() => document.querySelector(".new-chat-selector")).toBeNull();
     const after = document.querySelector(".conversation-composer")!.getBoundingClientRect();

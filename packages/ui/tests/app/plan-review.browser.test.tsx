@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { expect, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -36,7 +37,7 @@ test("plan review replaces the composer and approves without losing its draft", 
       .getByRole("button", { name: /Fix compiler/ })
       .first()
       .click();
-    const draft = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const draft = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await draft.fill("Keep this draft");
     await send({ type: "tool_state_changed", name: "plan", value: { active: true } });
     await expect.element(screen.getByRole("button", { name: "Close plan mode" })).toBeVisible();
@@ -59,7 +60,7 @@ test("plan review replaces the composer and approves without losing its draft", 
         .width,
     ).toBeCloseTo(752, 0);
     await userEvent.keyboard("1{Enter}");
-    await expect.element(draft).toHaveValue("Keep this draft");
+    await expect.poll(() => promptText(draft.element())).toBe("Keep this draft");
     await expect.element(draft).toHaveFocus();
     await expect.element(screen.getByRole("button", { name: "Close plan mode" })).toBeVisible();
     await send({ type: "tool_state_changed", name: "plan", value: { active: false } });

@@ -65,7 +65,7 @@ test("restored Summary shows C41 cards in order without moving shell or composer
         },
       }),
     });
-    const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await expect.element(prompt).toBeVisible();
     const composer = prompt.element().closest("form")!;
     const shell = document.querySelector(".app-workspace")!;

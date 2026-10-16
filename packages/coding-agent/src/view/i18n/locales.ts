@@ -87,6 +87,8 @@ const zh = {
   "tool.read-continue": "使用 offset={{offset}} 继续读取",
 
   "mcp.panel.status.connected": "已连接",
+  "mcp.panel.status.project-required": "选择项目后启动",
+  "mcp.panel.status.pending": "连接中",
   "mcp.panel.status.needs-auth": "需要授权",
   "mcp.panel.status.failed": "连接失败",
   "mcp.panel.loading": "正在读取 MCP 状态…",
@@ -566,6 +568,8 @@ const en = {
   "tool.read-continue": "Use offset={{offset}} to continue",
 
   "mcp.panel.status.connected": "connected",
+  "mcp.panel.status.project-required": "select a project to start",
+  "mcp.panel.status.pending": "connecting",
   "mcp.panel.status.needs-auth": "needs auth",
   "mcp.panel.status.failed": "failed",
   "mcp.panel.loading": "Reading MCP status…",

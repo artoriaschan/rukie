@@ -197,3 +197,32 @@ test("public Goal and image errors retain their codes and safe parameters", asyn
     await server.close();
   }
 });
+
+test("MCP view leases replay on reconnect and released views stay released", async () => {
+  const server = await startWireFixture();
+  let reads = 0;
+  const client = createWireClient({
+    getConnection: async () => {
+      reads++;
+      return server.connection;
+    },
+  });
+  try {
+    await client.connect();
+    await client.subscribeMcp("composer", { projectId: "project" });
+    await server.disconnect();
+    await expect
+      .poll(async () => (await server.commands()).filter((c) => c.type === "mcp.subscribe").length)
+      .toBe(2);
+    await client.unsubscribeMcp("composer");
+    await server.disconnect();
+    await expect.poll(() => reads).toBe(3);
+    await expect.poll(() => client.getState()).toBe("connected");
+    await client.request({ type: "projects.list" });
+    expect((await server.commands()).filter((c) => c.type === "mcp.subscribe")).toHaveLength(2);
+    expect((await server.commands()).filter((c) => c.type === "mcp.unsubscribe")).toHaveLength(1);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});

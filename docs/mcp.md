@@ -4,7 +4,7 @@ Agent Core 读取用户的 `~/.rukie/mcp.json`。项目 `.mcp.json` 只在 Trust
 
 ## 配置
 
-两层配置都使用 `mcpServers` 对象。stdio server 使用 `command`、可选的 `args` 和 `env`；Streamable HTTP server 使用 `url`、可选的 `headers` 和 `oauth`。
+两层配置都使用 `mcpServers` 对象。stdio server 使用 `command`、可选的 `args`、`env` 和 `cwd`；Streamable HTTP server 使用 `url`、可选的 `headers` 和 `oauth`。
 
 ```json
 {
@@ -25,7 +25,9 @@ Agent Core 读取用户的 `~/.rukie/mcp.json`。项目 `.mcp.json` 只在 Trust
 }
 ```
 
-`url`、`headers` 的值和 stdio `env` 的值在连接前从当前进程环境展开 `${VAR}` 与 `${VAR:-default}`。不支持嵌套展开或转义；缺少变量且没有默认值时，仅该 server 报配置错误，消息包含变量名。`command` 与 `args` 不展开。
+`url`、`headers` 的值以及 stdio 的 `args`、`env`、`cwd` 在连接前从当前进程环境展开 `${VAR}` 与 `${VAR:-default}`。`${RUKIE_PROJECT_DIR}` 是保留变量，取当前项目根目录。`command` 不展开。不支持嵌套展开或转义；缺少变量且没有默认值时，仅该 server 报配置错误，消息包含变量名。
+
+用户级 server 默认是进程级全局单例；stdio 在配置 `cwd` 或 `homeDir` 启动，不再隐式使用项目目录。依赖项目目录的用户级配置应在 `args`、`env` 或 `cwd` 中使用 `${RUKIE_PROJECT_DIR}`，使每个项目拥有独立实例。项目 `.mcp.json` 的 server 也按项目实例化。项目实例的 stdio 使用配置 `cwd` 或项目根目录；相对 `cwd` 从所属的 home 或项目根目录解析。快照的 `scope` 和 `configPath` 表示配置来源，不表示连接作用域：引用项目目录的用户级 server 仍显示为全局来源。
 
 http 的可选 `oauth` 配置接受 `clientId`、`clientSecret`、`callbackPort` 和 `authServerMetadataUrl`。`clientId` 用于预注册客户端，配合 `clientSecret` 使用 `client_secret_post`。`callbackPort` 必须是 1–65535 的整数；省略时使用随机端口。`authServerMetadataUrl` 必须使用 HTTPS。stdio 不接受 `oauth`。
 
@@ -121,7 +123,15 @@ Headless CLI 不提供授权交互，也不向模型暴露 `authenticate` 工具
 
 写入使用临时文件和 rename。损坏 JSON 被视为空并告警，直到下一次成功写入前保留原文件。pi-mcp 负责 token 刷新；授权失效或需要额外 scopes 时重新回到 `needs-auth`。登出删除本地凭据，不向授权服务器撤销 token。
 
-运行连接属于 Session 宿主，Run 结束后保留未变化的连接。后续 Run 读取当前配置，关闭被移除或配置变化的 server，并更新模型能力；外部 server 自身改变工具或说明时使用显式重连。Session 记住需要授权的 server，避免每次 Run 重复发起未授权请求；登录、登出或重连更新这份状态。子代理的授权交互经父 Session 转发，带上 origin。`session.close()` 关闭连接和未完成的宿主授权资源；Resume 按当前配置建立新连接，不恢复旧 transport。
+运行连接属于进程级 MCP Host。server、TUI 与 Headless 各创建一个 Host 并注入 Session；未注入时 Session 创建私有 Host。项目视图保留项目覆盖同名用户级和 Trusted Project 规则，同项目的 Session 与子代理租用同一连接，TUI 替换 Session 继续复用。全局单例在 Host 创建后后台预热，同时最多初始化 3 个 stdio 和 8 个远程 server，保留到进程退出。项目实例在首次租用时连接，最后一个租约释放 30 秒后关闭；在期限内重新租用取消关闭。
+
+连接身份由作用域、server 名与展开后配置的稳定签名确定。用户消息和原生 Run 开始前重新读取配置；配置变更新建一代连接，旧连接完成进行中的调用后关闭。Run 中止只取消等待与该 Run 的调用，Host 的连接继续服务其他 Session。需要授权的状态属于连接，避免每次 Run 重复发起未授权请求；同连接并发授权共用发起 Session 的 Interaction，发起方取消会向所有等待者返回取消。子代理的授权经父 Session 转发并带上 origin。登录、登出和重连在该 server 有进行中的调用时返回 busy。
+
+连接初始化或退避重连期间，状态立即返回 `pending`，工具数组和 `toolCount` 均为空／0；Run 开始前等待这些连接落定，中止只取消该 Run 的等待。意外关闭最多重试 5 次，依次等待 1、2、4、8、16 秒（退避延迟上限 30 秒）；每次替换前等待旧一代的原始关闭 Promise，确认 transport 清理完成。只有连续健康连接满 30 秒才重置重试次数，初始化成功或短暂恢复不重置；耗尽后保留 `failed`，可手动重连。主动关闭与 `needs-auth` 不自动重试，断线期间旧工具调用直接失败。
+
+MCP Host 订阅协议通知 `notifications/tools/list_changed`，按 server 和连接代串行读取完整的分页工具列表。整次发现成功才替换工具描述、Schema 与工具集；发现失败保留上一代并告警，已退休连接的晚到结果丢弃。根 Session 与子代理在下一 Turn 边界读取变更，包括工具名称相同但描述或输入 Schema 改变的情况。
+
+`session.close()` 取消本 Session 的授权交互并释放租约，私有 Host 同时关闭；注入 Host 的 Frontend 在进程退出时显式 `close()`。Resume 根据当前配置租用连接，不恢复旧 transport。桌面启动只为全局单例解密用户 MCP 配置及对应 HTTP 凭据；项目凭据在首次连接时解密，Hooks 与供应商凭据继续按使用时机读取。
 
 普通 MCP 工具使用原生 unsafe replay，read-only 或 idempotent 提示不授予自动重放。工具执行后、结果提交前中断时，恢复保留未知结果，不重新调用 server；改变当前工具说明、schema 或提示也不能提升已提交 intent 的重放权限。
 
@@ -129,14 +139,22 @@ Headless CLI 不提供授权交互，也不向模型暴露 `authenticate` 工具
 
 Session 暴露 `mcpServers()`、`authenticateMcp(name)`、`clearMcpAuth(name)`、`reconnectMcp(name)`；类型与取消契约以[公共 Session 声明](../packages/agent/src/session/index.ts)和[共享状态类型](../packages/shared/src/mcp.ts)为准。状态中的 `error` 保留原始英文消息；已知 Agent Core 错误另带 `errorData`，Frontend 用它按 locale 呈现。
 
-`mcpServers()` 返回独立副本 `McpSnapshot`，包含 `servers` 与配置文件级 `configErrors`。服务器记录提供生效配置的 `scope`、`configPath`、HTTP `url` 或 stdio `command`，以及真实 MCP 工具的协议名称、完整描述和原始输入 JSON Schema。URL 保留环境变量配置表达式，移除 userinfo、query 和 fragment；快照不包含 headers、env、args、clientSecret 或 MCP Credential。failed/needs-auth 的工具数组为空，`toolCount` 与真实工具数组一致。损坏文件记录来源、路径和错误；缺失文件不算错误，其他合法来源仍可使用，Run 保持 fail-open 和现有警告行为。
+`mcpServers()` 返回独立副本 `McpSnapshot`，包含 `servers` 与配置文件级 `configErrors`。服务器记录提供生效配置的 `scope`、`configPath`、HTTP `url` 或 stdio `command`，以及真实 MCP 工具的协议名称、完整描述和原始输入 JSON Schema。URL 保留环境变量配置表达式，移除 userinfo、query 和 fragment；快照不包含 headers、env、args、clientSecret 或 MCP Credential。pending/failed/needs-auth/project-required 的工具数组为空，`toolCount` 与真实工具数组一致。损坏文件记录来源、路径和错误；缺失文件不算错误，其他合法来源仍可使用，Run 保持 fail-open 和现有警告行为。
 
-快照返回最新提交的状态，包括 Run 连接、同一 Run 授权或失效、管理操作与显式刷新。没有记录时，并发读取复用一次独立探测，发现工具后关闭资源；已有记录时只读缓存，不重新连接或请求工具。调用方修改返回值不会改变 Session 或模型工具声明。`mcpServers({ refresh: true })` 只在空闲时重新读取完整配置并探测，并发刷新复用在途请求；它不自动启动 OAuth 或更改 MCP Credential。Run 中显式刷新及三个管理方法返回 busy 错误。调用方取消管理操作或 `session.close()` 负责收束探测与管理资源，晚到探测不能覆盖较新的 Run 快照。
+普通快照不等待连接完成，返回项目视图中共享连接的最新状态，包括其他租用者触发的连接、授权或失效和管理操作。查询重新读取完整配置，同配置并发读取合并，已有连接继续复用；状态查询不再创建随后关闭的独立探测连接。调用方修改返回值不会改变 Host、Session 或模型工具声明。`mcpServers({ refresh: true })` 提供空闲时的显式刷新并等待连接落定，并发刷新复用在途请求；它不自动启动 OAuth 或更改 MCP Credential。Run 中显式刷新及三个管理方法返回 busy 错误。Session 关闭取消本视图的等待与管理交互，共享连接保留给其他租约；晚到读取不能覆盖较新的连接配置。
 
-公开事件 `mcp_servers_changed` 表示新快照已提交，不携带工具 schema；Frontend 收到事件后调用普通 `mcpServers()` 读取缓存。文件级诊断与服务器状态、工具的实际变化都可触发事件；相同快照和缓存读取不重复通知。面板通过这些事件更新，无轮询或后台重连。稳定服务器名与协议工具名保留导航身份；当前工具消失时退回仍有效的工具列表，没有工具时退回服务器详情，服务器消失时退回服务器列表，并显示变化提示。
+公开事件 `mcp_servers_changed` 表示新快照已提交，不携带工具 schema；Frontend 收到事件后调用普通 `mcpServers()` 读取当前视图。文件级诊断与服务器状态、工具的实际变化都可触发事件；相同快照和缓存读取不重复通知。面板通过这些事件更新，无轮询；连接恢复由 MCP Host 负责。稳定服务器名与协议工具名保留导航身份；当前工具消失时退回仍有效的工具列表，没有工具时退回服务器详情，服务器消失时退回服务器列表，并显示变化提示。
 
 Frontend 提供 `onMcpAuth` 以显示 Interaction；没有回调时主动登录被拒绝，模型也看不到登录工具。管理面板、选择、阅读位置、结果和授权 UI 都属于 Frontend 本地状态，不写 Transcript、Tool State 或 reminder；Session Resume 不恢复面板。Interaction FIFO 临时接管面板输入，队列处理完后恢复有效页面。关闭、Session 替换或退出清理面板订阅，晚到结果不能重新打开面板或更新另一 Session。
 
 原生认证工具挂起时 close/reopen 会按当前信任和精确 endpoint／headers 配置重新发起授权，替换 listener、state 与 verifier；旧 callback 不能完成新授权。code exchange 开始后仍采用 unsafe 中断语义，不能自动重发已使用或结果未知的 code。请求身份与取消契约见 [Agent Core pending interactions](../packages/agent/README.md#pending-interactions)。
 
-MCP transport 是宿主资源；创建失败、初始化取消和正常 close 均释放已建立的连接。`SessionOptions.initializationSignal` 只约束打开过程，打开后的 transport 生命周期仍由 Session close 和对应操作 signal 管理；不会用启动 signal 取消已接受的后台工作。
+`createMcpHost({ configuration, applicationVersion })` 在后台预热用户全局配置，`ready` 可等待预热完成。`acquire` 创建项目视图并绑定调用方的配置读取、事件和 Interaction；Session 负责租约收尾，Frontend 负责 Host 的进程生命周期。MCP transport 创建失败和 Host close 均释放已建立的资源。`SessionOptions.initializationSignal` 只约束打开过程，不取消其他 Session 的共享 transport 或已接受的后台工作。
+
+### 无 Session 的状态视图
+
+`McpHost.inspect({ homeDir, settings, cwd?, persistence? })` 只重读配置并返回已有连接的快照，不取得租约、不启动进程。生效配置尚无匹配连接时显示 `pending`，不代表该只读调用正在启动连接。无项目时只返回用户来源，引用 `${RUKIE_PROJECT_DIR}` 的条目用 `project-required` 表示「选择项目后启动」，工具数为 0；它是配置等待项目的展示状态，不参与连接重试。`observe(input, onChange)` 按相同规则订阅现有 Host 变化，调用方关闭 observer 后不再接收推送。`acquire({ noProject: true, ... })` 可租用无项目视图中的全局连接，仍不启动这些等待项目的条目。以上接口共用 Host 的连接表。
+
+桌面与 Web 通过 `mcp.status` 查询状态，使用 `projectId`、`sessionId` 中至多一个标识；无标识表示无项目。`mcp.subscribe` 另接收调用方生成的 `viewId`，默认取得活动视图租约；`active: false` 只观察现有状态。二者均不打开 Session、不要求模型或供应商凭证，也不读取 Hooks。服务按注册 Project 和持久化 Session 的实际目录、信任解析视图，推送 `{ type: "mcp_status", viewId, snapshot }`。同一 socket 的同名 viewId 替换旧订阅；`mcp.unsubscribe`、socket 关闭及宿主替换释放订阅和租约，晚到读取不会取得租约。客户端重连重新订阅当前视图。
+
+主输入框的 `/mcp` 一级行显示实时汇总，零值分段隐藏，初次加载显示加载状态。进入后按服务名过滤并显示来源、状态、工具数与独立配置错误；所有状态行都是只读的不可用选项，不发送或插入会话。显示已有 Session、选择 Project 或查看 `/mcp` 时租用活动视图；切换范围、退出详情或关闭客户端时释放原订阅，再按当前 Session／Project 范围决定是否取得新活动视图。未选 Project 的新会话普通摘要只观察现有全局状态。Esc 从详情回到上级，再按一次清空并关闭；删除命令前缀也回上级。列表沿用组合框的焦点和键盘语义。
