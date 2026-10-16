@@ -19,6 +19,7 @@ export default defineConfig({
           include: [
             "@floating-ui/dom",
             "lexical",
+            "@lexical/clipboard",
             "@lexical/react/LexicalComposer",
             "@lexical/react/LexicalComposerContext",
             "@lexical/react/LexicalContentEditable",

@@ -8,7 +8,15 @@ import {
   KEY_DOWN_COMMAND,
   COMMAND_PRIORITY_HIGH,
 } from "lexical";
-import { useEffect, useLayoutEffect, useId, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useId,
+  useRef,
+  useState,
+  type RefObject,
+  type ReactNode,
+} from "react";
 import type { WireSkill } from "@rukie/shared";
 import { Sparkles } from "lucide-react";
 import { Popover, PopoverContent } from "../motion/popover";
@@ -17,7 +25,23 @@ import { useAppText } from "@/lib/i18n";
 import { $createSkillToken, $serializePrompt } from "./skill-token";
 import "./skill-picker.css";
 
+export interface ComposerInsertionAction {
+  name: string;
+  label: string;
+  description?: string;
+  group: "add" | "command";
+  icon?: ReactNode;
+  disabled?: boolean;
+  stateLabel?: string;
+  checked?: boolean;
+  trailing?: ReactNode;
+  onSelect: () => void;
+}
+
 export interface SkillPickerProps {
+  insertionOpen?: boolean;
+  onInsertionOpenChange?: (open: boolean) => void;
+  insertionActions?: readonly ComposerInsertionAction[];
   skills?: readonly WireSkill[];
   onSkillsOpen?: () => void;
   disabled?: boolean;

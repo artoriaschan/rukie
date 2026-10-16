@@ -9,9 +9,13 @@ import { $createParagraphNode, $createTextNode, $getRoot, SKIP_DOM_SELECTION_TAG
 import { type HTMLAttributes, type Ref, useLayoutEffect } from "react";
 import { SkillPicker, type SkillPickerProps } from "./skill-picker";
 import { SkillTokenNode, $serializePrompt } from "./skill-token";
+import { SkillClipboard } from "./skill-clipboard";
 
 interface PromptEditorProps extends HTMLAttributes<HTMLDivElement> {
   skills?: SkillPickerProps["skills"];
+  insertionOpen?: SkillPickerProps["insertionOpen"];
+  onInsertionOpenChange?: SkillPickerProps["onInsertionOpenChange"];
+  insertionActions?: SkillPickerProps["insertionActions"];
   onSkillsOpen?: () => void;
   anchorRef: SkillPickerProps["anchorRef"];
   value: string;
@@ -82,6 +86,9 @@ export function PromptEditor({
   editorRef,
   skills,
   onSkillsOpen,
+  insertionOpen,
+  onInsertionOpenChange,
+  insertionActions,
   anchorRef,
   onValueChange,
   onPaste,
@@ -115,9 +122,13 @@ export function PromptEditor({
         ErrorBoundary={LexicalErrorBoundary}
       />
       <HistoryPlugin />
-      {skills && (
+      <SkillClipboard skills={skills} />
+      {(skills || insertionActions) && (
         <SkillPicker
           skills={skills}
+          insertionOpen={insertionOpen}
+          onInsertionOpenChange={onInsertionOpenChange}
+          insertionActions={insertionActions}
           onSkillsOpen={onSkillsOpen}
           anchorRef={anchorRef}
           disabled={disabled}

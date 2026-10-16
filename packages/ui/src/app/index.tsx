@@ -65,6 +65,7 @@ import { NewChatSelector, parseProjectGit } from "./new-chat-selector";
 export type AppHost = Pick<DesktopHost, "getConnection" | "modelServices"> &
   Partial<Omit<DesktopHost, "getConnection" | "modelServices">>;
 export interface ConversationProps {
+  skills?: readonly WireSkill[];
   footer: (approval?: ReactNode, interaction?: boolean) => ReactNode;
   sessionId: string;
   view: SessionViewState;
@@ -1378,6 +1379,7 @@ function DesktopApp({
                   <Conversation
                     key={state.selected}
                     footer={footer}
+                    skills={skillCatalogs[skillScope] ?? []}
                     sessionId={state.selected}
                     view={view}
                     connected={connected}

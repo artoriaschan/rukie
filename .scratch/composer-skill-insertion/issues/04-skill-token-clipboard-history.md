@@ -1,14 +1,33 @@
 # 04：技能标记的复制粘贴与历史渲染
 
-Status: ready-for-agent
+Status: claimed
 Blocked by: 03
 
 **What to build:** 按 [spec](../spec.md) 的「技能标记」一节，让技能标记在剪贴板与历史消息中保持语义：复制得到 Markdown 链接，粘贴到开头能还原成标记，已发送的消息在历史中显示同样的标记。
 
-- [ ] 复制时 `text/plain` 与 `text/html` 都输出 `[$名称](/绝对路径/SKILL.md)` 字面文本，HTML 不做可点击链接；Lexical 内部格式保存节点数据；节点 `getTextContent()` 仍返回名称
-- [ ] 自定义粘贴处理器优先于纯文本默认处理：内部格式的技能节点或以该链接开头且名称为当前可用技能的文本，粘贴位置在开头时还原为标记，否则降级为文本；已有标记时替换
-- [ ] 历史消息依据持久化的 `skillInvocation` 事实把开头的 `/名称` 渲染为同一标记，技能被删除后显示不变
-- [ ] 从历史消息复制时，标记部分输出 Markdown 链接，路径取自当前技能列表，找不到时输出 `/名称`
-- [ ] 浏览器测试覆盖三种剪贴板格式、开头与非开头粘贴、历史渲染与历史复制
+- [x] 复制时 `text/plain` 与 `text/html` 都输出 `[$名称](/绝对路径/SKILL.md)` 字面文本，HTML 不做可点击链接；Lexical 内部格式保存节点数据；节点 `getTextContent()` 仍返回名称
+- [x] 自定义粘贴处理器优先于纯文本默认处理：内部格式的技能节点或以该链接开头且名称为当前可用技能的文本，粘贴位置在开头时还原为标记，否则降级为文本；已有标记时替换
+- [x] 历史消息依据持久化的 `skillInvocation` 事实把开头的 `/名称` 渲染为同一标记，技能被删除后显示不变
+- [x] 从历史消息复制时，标记部分输出 Markdown 链接，路径取自当前技能列表，找不到时输出 `/名称`
+- [x] 浏览器测试覆盖三种剪贴板格式、开头与非开头粘贴、历史渲染与历史复制
 
 ## Comments
+
+## Implementation and verification evidence
+
+Fresh implementer `implement_04`, isolated `/tmp/rukie-composer-04`, branch `feat/composer-ticket-04`, based on integration `54b2c693`. Status remains claimed pending integrated review and final acceptance. Applied TDD at the spec-approved Chromium editor/history seams, plus rukie-doc, React and commit conventions. CodeGraph reported no usable index in this checkout; source inspection used rg and installed Lexical source.
+
+- The clipboard plugin registers above the installed plain-text handler, exports the real selected-node Lexical JSON through the public clipboard API and keeps TextNode text equal to the skill name. Markdown remains literal in plain and escaped HTML channels. Cut removes only the selected range; cut and paste retain their own Lexical undo tags. Plain Markdown and internal nodes restore at the beginning, replace an existing token and remain ordinary text elsewhere. Unknown text names remain ordinary text. Existing image capture handlers remain the owner of image paste.
+- History reads the persisted `skillInvocation` fact; it never rechecks availability to decide whether to show a token. Core already projects that fact through Transcript messages and server forwards the native snapshot/message events unchanged, so no new Core or wire representation was added. UI validates the optional string and forwards the scoped current catalog to Transcript solely to resolve the copy path. Missing catalog entries copy as `/name`. Range-based history copying includes the selected body only, and supports token-only selection.
+- Reused the existing token CSS and MessageBubble; the span represents the same inline token defined by ADR-0048, so no new interactive primitive was needed. The selected-node clipboard helper is a direct pinned `@lexical/clipboard` 0.52.0 dependency; lockfile and tech-stack agree. Ticket 05's exact action type and three optional editor props were added with its owner's agreement, with no built-in or plus-list implementation in this ticket.
+
+Commands below ran through `rtk proxy`, under Node Vitest 5.0.3 / isolated Chromium from `packages/ui`. No real Electron, credentials or Sessions were used. Source dependencies installed with frozen lockfile first; explicit pinned clipboard addition updated the lockfile. Initial test creation attempted a repository-relative output path from packages/ui and failed before writing or collecting tests; an additional root Vitest invocation matched no project. Both startup mistakes were corrected by using the intended working directory; neither is test evidence.
+
+1. Clipboard tracer red: `bunx --no vitest run --project ui-browser tests/components/skill-clipboard.browser.test.tsx` failed as expected: copied `review body` instead of the Markdown token (151ms case, 1.02s total). Initial implementation exposed flattened selected-node JSON; joining adjacent text with paragraph separators failed (138ms case, 1.01s total). Fixed the public-format traversal. Green: 1 passed, 784ms total.
+2. Paste focused case: same file with `-t 'pasted skill'` initially failed replacement (1.224s case, 1.91s total) because the test used a platform-specific modified Home chord which did not move to the token start. Actual Home plus ArrowLeft moves to the public start boundary; unchanged implementation passed (1 passed, 1 skipped, 973ms total). Covers plain start paste, internal-only start/middle paste, single token, existing-token replacement, unknown skill text and undo.
+3. History tracer initially used an incomplete snapshot fixture lacking required model/compactions, so the wire ignored it (1.340s case, 2.15s total; repeated same fixture at 1.353s/2.18s before diagnosis). After matching the actual public snapshot shape and full persisted guidance string, the real token-only copy regression failed (326ms case, 1.13s total): a range inside the span lost its wrapper. Preserving the selected token ancestor fixed it. `bunx --no vitest run --project ui-browser tests/app/skill-history.browser.test.tsx tests/components/skill-clipboard.browser.test.tsx`: 3 passed, 1.19s total. History covers a literal same-name slash message without the fact, current path replacing the persisted old path, deletion fallback and unchanged token display.
+4. Consumer run: `bunx --no vitest run --project ui-browser tests/components/skill-clipboard.browser.test.tsx tests/app/skill-history.browser.test.tsx tests/components/skill-insertion.browser.test.tsx tests/components/compact-composer.browser.test.tsx tests/components/composer.browser.test.tsx`: 26 passed, 1 failed, 16.41s total. Only failure was a whitespace-normalizing matcher expecting trailing space after undo (14.991s timeout); the DOM retained exact `prefix `, as required. Changed that assertion to exact raw DOM text, preserving the requirement. Minimum rerun with `-t 'plain Markdown'`: 1 passed, 2 skipped, 818ms total. Other 26 passing cases remain valid and include IME/newline, paste/drop image handlers, catalog and compact composer consumers.
+5. Expanded cut-token and cut undo assertions, minimum rerun with `-t 'copy and cut'`: 1 passed, 2 skipped, 818ms total. All retained new cases complete below one second individually; the earlier >1s failures were assertion deadlines, not successful synchronization waits.
+6. Focused oxlint of changed production/new-test modules: exit 0. Oxfmt writes and `git diff --check`: exit 0. Initial `bunx --no tsc -b packages/ui` reported only the six pre-existing manager test errors owned by ticket 06 (removed createMcpManager and consequent callback types); no new error was reported. Latest integration is merged before handoff below. Parent owns aggregate static, package/full checks, documentation checks and final manual Light/Dark/narrow Chromium acceptance; no such runs were duplicated here.
+
+ADR coverage: this implements the already accepted ADR-0048 clipboard and historical presentation contract; it introduces no new durable decision. Applicable local source evidence is above, while integrated review and final acceptance remain pending.

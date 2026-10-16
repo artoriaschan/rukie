@@ -5,6 +5,7 @@
   "exports": "./src/index.ts",
   "dependencies": {
     "@floating-ui/dom": "1.8.0",
+    "@lexical/clipboard": "0.52.0",
     "@lexical/react": "0.52.0",
     "@lobehub/icons": "5.23.0",
     "@rukie/i18n": "workspace:*",

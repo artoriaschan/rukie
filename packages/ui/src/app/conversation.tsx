@@ -36,6 +36,7 @@ function queued(value: unknown): value is QueuedInput {
   );
 }
 export function AppConversation({
+  skills,
   footer,
   sessionId,
   view,
@@ -196,6 +197,7 @@ export function AppConversation({
           >
             <Transcript
               reader={traceReader}
+              skills={skills}
               viewportRef={viewport}
               navigationContainer={panel}
               state={state}
