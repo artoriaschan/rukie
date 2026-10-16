@@ -1,0 +1,44 @@
+.scratch/design-system-migration/issues/01-design-spec-gaps.md
+  s_aab3ed73a2fa2a::t_122d4b1afe56ee 1-23
+.scratch/design-system-migration/issues/04-shared-primitives.md
+  s_aab3ed73a2fa2a::t_c751f572fe4283 10-21
+  s_aab3ed73a2fa2a::t_096b6731ee62c4 1-9,22-42
+.scratch/design-system-migration/issues/05-component-cleanup.md
+  s_aab3ed73a2fa2a::t_c751f572fe4283 22
+  s_aab3ed73a2fa2a::t_459da09ca0ce0e 1-21,23-28
+.scratch/design-system-migration/issues/06-appearance-setting.md
+  s_aab3ed73a2fa2a::t_9beac88dda8609 1-26,28-31
+  s_aab3ed73a2fa2a::t_c751f572fe4283 27
+.scratch/design-system-migration/issues/03-settings-palette.md
+  s_aab3ed73a2fa2a::t_d22f740ad42813 1-9,16-32
+  s_aab3ed73a2fa2a::t_c751f572fe4283 10-15
+.scratch/design-system-migration/issues/02-theme-tokens.md
+  s_aab3ed73a2fa2a::t_d452dae45a632c 1-9,23-41
+  s_aab3ed73a2fa2a::t_c751f572fe4283 10-22
+.scratch/design-system-migration/spec.md
+  s_aab3ed73a2fa2a::t_14b993f68b5555 1-48
+  s_aab3ed73a2fa2a::t_a2192264b6c95d 49-88,90-131,138-139
+  s_aab3ed73a2fa2a::t_c751f572fe4283 89,132-137
+.scratch/design-system-migration/issues/08-feature-surface-conformance.md
+  s_aab3ed73a2fa2a::t_c751f572fe4283 12-24
+  s_aab3ed73a2fa2a::t_603f0f9d93f256 1-11,25-40
+.scratch/design-system-migration/issues/07-run-trace-presentation.md
+  s_aab3ed73a2fa2a::t_513707eee51e4c 1-35,37-50
+  s_aab3ed73a2fa2a::t_c751f572fe4283 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "e22f975a1e3111d7cd7887ef4ec5aa5fb8d14853",
+  "prompts": {},
+  "sessions": {
+    "s_aab3ed73a2fa2a": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_vn88g3sp6l3k",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
