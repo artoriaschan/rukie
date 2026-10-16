@@ -37,3 +37,5 @@ Blocked by: 06
 
 - 最后源码审阅补充已过期授权连接的 close 忽略与同步完成时的当前连接检查；只使 Health/OAuth 证据失效，`rtk proxy env -u NO_COLOR bun test .../mcp-health.test.ts .../mcp-oauth-lifecycle.test.ts .../subagent-mcp-oauth.test.ts`：33 pass / 0 fail，166 expects，2.44s。随后将 needs-auth 的 onChange 放到认证工具整代替换完成处，最小 revoked-authorization／scope-step-up 三例 3 pass / 0 fail，22 expects，449ms。其他有效证据复用。
 - 最终 focused tsc（agent/coding-agent）、changed-files oxlint、新 Health oxlint、changed-files oxfmt --check 和 git diff --check 全部退出0。`rtk proxy bun run docs:update` 与 `rtk proxy bun run check:docs` 通过，157 Markdown 文件。无未解决的本票 focused 失败；原始失败与复验范围如上保留。
+
+- 正常提交 `8abced3` 的 Husky lint-staged 格式／lint 与 commitlint 全部通过，没有绕过 hooks。交付前合并最新集成 `f9fafe5b`，自动合并且无冲突；合入仅票 04/05 的 UI/editor/picker/history 与对应文档，没有改动本票 MCP/TUI 源码，按增量复验规则复用上述结果。工作树保持干净，本票分支 `feat/composer-ticket-07` 等待新评审代理及合并代理接手。
