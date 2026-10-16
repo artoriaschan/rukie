@@ -37,7 +37,7 @@ test("plan review replaces the composer and approves without losing its draft", 
       .getByRole("button", { name: /Fix compiler/ })
       .first()
       .click();
-    const draft = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const draft = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await draft.fill("Keep this draft");
     await send({ type: "tool_state_changed", name: "plan", value: { active: true } });
     await expect.element(screen.getByRole("button", { name: "Close plan mode" })).toBeVisible();

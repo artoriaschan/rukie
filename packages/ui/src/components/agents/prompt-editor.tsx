@@ -7,8 +7,13 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { $createParagraphNode, $createTextNode, $getRoot, SKIP_DOM_SELECTION_TAG } from "lexical";
 import { type HTMLAttributes, type Ref, useLayoutEffect } from "react";
+import { SkillPicker, type SkillPickerProps } from "./skill-picker";
+import { SkillTokenNode, $serializePrompt } from "./skill-token";
 
 interface PromptEditorProps extends HTMLAttributes<HTMLDivElement> {
+  skills?: SkillPickerProps["skills"];
+  onSkillsOpen?: () => void;
+  anchorRef: SkillPickerProps["anchorRef"];
   value: string;
   disabled?: boolean;
   placeholder: string;
@@ -22,7 +27,7 @@ function DraftPlugin({ value, disabled }: { value: string; disabled?: boolean })
     editor.setEditable(!disabled);
   }, [editor, disabled]);
   useLayoutEffect(() => {
-    if (editor.getEditorState().read(() => $getRoot().getTextContent()) === value) return;
+    if (editor.getEditorState().read(() => $serializePrompt()) === value) return;
     // Controlled draft restoration must not claim focus from another surface.
     editor.update(
       () => {
@@ -41,6 +46,7 @@ function Editable({
   disabled,
   placeholder,
   editorRef,
+  anchorRef: _anchorRef,
   onPaste,
   onDrop,
   ...props
@@ -74,6 +80,9 @@ export function PromptEditor({
   disabled,
   placeholder,
   editorRef,
+  skills,
+  onSkillsOpen,
+  anchorRef,
   onValueChange,
   onPaste,
   onDrop,
@@ -83,6 +92,7 @@ export function PromptEditor({
     <LexicalComposer
       initialConfig={{
         namespace: "rukie-prompt",
+        nodes: [SkillTokenNode],
         editable: !disabled,
         onError: (error) => {
           throw error;
@@ -99,16 +109,25 @@ export function PromptEditor({
             disabled={disabled}
             placeholder={placeholder}
             editorRef={editorRef}
+            anchorRef={anchorRef}
           />
         }
         ErrorBoundary={LexicalErrorBoundary}
       />
       <HistoryPlugin />
+      {skills && (
+        <SkillPicker
+          skills={skills}
+          onSkillsOpen={onSkillsOpen}
+          anchorRef={anchorRef}
+          disabled={disabled}
+        />
+      )}
       <DraftPlugin value={value} disabled={disabled} />
       <OnChangePlugin
         ignoreSelectionChange
         onChange={(state) => {
-          const next = state.read(() => $getRoot().getTextContent());
+          const next = state.read(() => $serializePrompt());
           if (next !== value) onValueChange(next);
         }}
       />

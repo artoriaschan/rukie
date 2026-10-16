@@ -55,7 +55,7 @@ test("restored plans open from preview and Summary, reuse tabs and restore conve
     await snapshot();
     const preview = screen.getByRole("region", { name: "Plan preview: First plan", exact: true });
     await expect.element(preview).toBeVisible();
-    const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await prompt.fill("Preserve draft");
     const composer = prompt.element().closest("form")!;
     const feed = screen.getByRole("feed").element();

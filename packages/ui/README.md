@@ -56,6 +56,8 @@ Electron 与浏览器宿主都提供完整 `modelServices`，左侧导航开放�
 
 ## 主题角色
 
+主输入框在开头输入 `/` 时显示技能列表，按名称过滤并用方向键、Enter、Tab 或点击选择；焦点留在组合框，Esc 关闭。技能标记使用 Lexical token 节点并在发送时序列化为既有 `/名称 正文`，只有标记也可发送；普通斜杠文本仍交给 Agent Core。列表使用 `skills.list` 的生效目录与来源，首次加载及切换 Project / Session 时刷新，每次打开先展示对应缓存再后台刷新。列表和标记的视觉规则见 [DESIGN.md](../../DESIGN.md#composer-skill-insertion)。
+
 `theme.css` 是共享语义色、结构色与具名阴影的唯一 owner。Light 的主文字为 `#171717`，共享 muted/surface 为 `#f5f5f5`；Dark 的共享 background/card/composer 为 `#212121`、muted/popover 为 `#2f2f2f`。Transcript 继续使用独立的 `layout-content`（Light `#ffffff` / Dark `#000000`），不随共享画布迁移。System 媒体偏好和显式 `.dark` 由同一组声明解析，CSS 首帧即提供正确颜色。覆盖层使用 `--shadow-overlay`，输入框使用 `--shadow-composer`；`text-ui-*` 拥有行高，caption 默认 13px / 18px。设置页当前保留独立的局部表面色。完整角色和可访问颜色配对见 [DESIGN.md](../../DESIGN.md#themes-and-semantic-colors)。
 
 ## 对话呈现

@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/m
 
 import { cn } from "@/lib/utils";
 import { PromptEditor } from "./prompt-editor";
+import type { WireSkill } from "@rukie/shared";
 
 export interface PromptModel {
   value: string;
@@ -46,6 +47,8 @@ export interface PromptInputProps extends Omit<
   "value" | "defaultValue" | "onChange" | "onSubmit" | "children"
 > {
   disabled?: boolean;
+  skills?: readonly WireSkill[];
+  onSkillsOpen?: () => void;
   placeholder?: string;
   value?: string;
   defaultValue?: string;
@@ -90,6 +93,8 @@ export function PromptInput({
   trailingAction,
   className,
   disabled,
+  skills,
+  onSkillsOpen,
   placeholder: placeholderProp,
   "aria-label": ariaLabelProp,
   onKeyDown,
@@ -100,6 +105,7 @@ export function PromptInput({
   const ariaLabel = ariaLabelProp ?? componentText("component.prompt");
 
   const reduce = useReducedMotion() ?? false;
+  const formRef = useRef<HTMLFormElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const measurementRef = useRef<HTMLDivElement>(null);
   const [internalValue, setInternalValue] = useState(defaultValue);
@@ -179,6 +185,12 @@ export function PromptInput({
       event.stopPropagation();
       return;
     }
+    if (
+      event.currentTarget.getAttribute("aria-expanded") === "true" &&
+      !event.nativeEvent.isComposing &&
+      ["Enter", "Tab", "ArrowUp", "ArrowDown", "Escape"].includes(event.key)
+    )
+      return;
     if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
     event.stopPropagation();
@@ -187,6 +199,7 @@ export function PromptInput({
 
   return (
     <form
+      ref={formRef}
       onSubmit={submit}
       className={cn(
         "relative w-full rounded-2xl border border-border/80 bg-background p-2 shadow-(--shadow-composer) focus-within:border-foreground/25",
@@ -202,6 +215,9 @@ export function PromptInput({
       </div>
       <PromptEditor
         editorRef={editorRef}
+        anchorRef={formRef}
+        skills={skills}
+        onSkillsOpen={onSkillsOpen}
         value={currentValue}
         disabled={disabled}
         placeholder={placeholder}

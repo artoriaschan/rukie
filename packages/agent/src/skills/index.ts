@@ -1,7 +1,7 @@
 import { contentDirectories, type UserDataOptions } from "../config/paths.ts";
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import ignore from "ignore";
 
 export interface Skill {
@@ -17,12 +17,17 @@ export function formatSkillInvocation(skill: Skill): string {
   return `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${dirname(skill.filePath)}.\n\n${skill.content}\n</skill>`;
 }
 
-export async function discoverSkills(cwd: string, homeDir: string, dataRoot?: string) {
+export async function discoverSkills(cwd: string | undefined, homeDir: string, dataRoot?: string) {
   const warnings: string[] = [];
   const skills = new Map<string, Skill>();
-  const invocable = new Map<string, { name: string; description: string }>();
-  const paths = contentDirectories(cwd, { homeDir, dataRoot }, "skills");
-  for (const root of paths) {
+  const invocable = new Map<
+    string,
+    { name: string; description: string; scope: "user" | "project"; filePath: string }
+  >();
+  const paths = contentDirectories(cwd, { homeDir, dataRoot }, "skills").map((root) =>
+    resolve(root),
+  );
+  for (const [rootIndex, root] of paths.entries()) {
     const visited = new Set<string>();
     const matcher = ignore();
     async function walk(path: string, relative: string) {
@@ -96,7 +101,12 @@ export async function discoverSkills(cwd: string, homeDir: string, dataRoot?: st
           };
           skills.set(skill.name, skill);
           if (!("user-invocable" in metadata) || metadata["user-invocable"] !== false)
-            invocable.set(skill.name, { name: skill.name, description: skill.description });
+            invocable.set(skill.name, {
+              name: skill.name,
+              description: skill.description,
+              filePath: skill.filePath,
+              scope: cwd && rootIndex >= paths.length - 3 ? "project" : "user",
+            });
           else invocable.delete(skill.name);
         } catch (error) {
           warnings.push(`${next}: ${error instanceof Error ? error.message : String(error)}`);
@@ -108,8 +118,8 @@ export async function discoverSkills(cwd: string, homeDir: string, dataRoot?: st
   return { skills, warnings, invocable: [...invocable.values()] };
 }
 
-/** Discover the skill names a frontend may offer for explicit user invocation. */
-export async function listSkills(options: UserDataOptions & { cwd: string }) {
+/** Return effective user-invocable skills with source metadata. Omitting cwd discovers user roots only. */
+export async function listSkills(options: UserDataOptions & { cwd?: string }) {
   return (await discoverSkills(options.cwd, options.homeDir, options.dataRoot)).invocable;
 }
 

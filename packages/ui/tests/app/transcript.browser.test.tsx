@@ -200,7 +200,7 @@ test("Run title toggles beUI activity without hiding the streaming or final resp
       .toBeVisible();
     await userEvent.keyboard("{Control>}1{/Control}");
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
       .toBeEnabled();
     await send({
       type: "snapshot",
@@ -673,7 +673,7 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
     await expect.element(screen.getByRole("button", { name: "Allow", exact: true })).toBeDisabled();
     await screen.getByRole("button", { name: "Retry", exact: true }).click();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
       .toBeEnabled();
     await ask("replayed");
     await expect
@@ -703,7 +703,7 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
       type: "queued_inputs_update",
       items: [{ requestId: "queued", prompt: "Queued draft", images: [] }],
     });
-    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Existing draft");
+    await screen.getByRole("combobox", { name: "Prompt", exact: true }).fill("Existing draft");
     await screen.getByRole("button", { name: "Send now", exact: true }).click();
     const queuedCommands = await (
       await fetch(`http://127.0.0.1:${connection.port}/commands`)
@@ -714,7 +714,7 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
     await screen.getByRole("button", { name: "Withdraw", exact: true }).click();
     await expect
       .poll(() =>
-        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
       )
       .toBe("Withdrawn draft\n\nExisting draft");
   } finally {
@@ -782,7 +782,7 @@ test.each(["allow", "allow-session"] as const)(
       await page.viewport(420, 800);
       await screen.getByRole("button", { name: "Toggle sidebar", exact: true }).first().click();
       await expect
-        .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+        .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
         .toBeEnabled();
       await send({
         type: "snapshot",
@@ -1223,12 +1223,12 @@ test("an abort response hands queued inputs back to its originating Session afte
       .toBe(true);
     await screen.getByRole("button", { name: "New chat", exact: true }).click();
     await screen
-      .getByRole("textbox", { name: "Prompt", exact: true })
+      .getByRole("combobox", { name: "Prompt", exact: true })
       .fill("New conversation draft");
     await fetch(`${url}/flush`);
     await expect
       .poll(() =>
-        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
       )
       .toBe("New conversation draft");
     await screen
@@ -1237,7 +1237,7 @@ test("an abort response hands queued inputs back to its originating Session afte
       .click();
     await expect
       .poll(() =>
-        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
       )
       .toBe("Queued draft");
   } finally {
@@ -1299,7 +1299,7 @@ test("a pending prompt response preserves newly typed input when the previous Ru
       .getByRole("button", { name: /Fix compiler/ })
       .first()
       .click();
-    const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await expect.element(prompt).toBeEnabled();
     await fetch(`http://127.0.0.1:${connection.port}/hold`);
     await prompt.fill("Submitted input");
@@ -1344,7 +1344,7 @@ test("new-session creation hands edited input to the created Session without sel
     />,
   );
   try {
-    const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+    const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
     await expect.element(prompt).toBeEnabled();
     await fetch(`http://127.0.0.1:${connection.port}/hold`);
     await prompt.fill("Create Session");
@@ -1621,11 +1621,11 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
       .first()
       .click();
     await updateContent(40);
-    await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Preserved draft");
+    await screen.getByRole("combobox", { name: "Prompt", exact: true }).fill("Preserved draft");
     await ask("First approval");
     await ask("Second approval");
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
       .not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Permission required" }).elements()).toHaveLength(1);
     await expect
@@ -1648,11 +1648,11 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
     await screen.getByRole("button", { name: "Deny", exact: true }).click();
     await expect
       .poll(() =>
-        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+        promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()),
       )
       .toBe("Preserved draft");
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
       .toHaveFocus();
     const scrollbar = screen.getByRole("scrollbar", { name: "Conversation scroll position" });
     await expect.element(scrollbar).toBeVisible();

@@ -42,7 +42,7 @@ test("new chat preserves plan preselection after failure and creates its first R
   expect([composer, selector].map((item) => item.getBoundingClientRect().toJSON())).toEqual(
     baseline,
   );
-  const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+  const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Draft the implementation plan");
   await fixture(connection.port, "error", { type: "session.create", code: "invalid_command" });
   await screen.getByRole("button", { name: "Send prompt", exact: true }).click();
@@ -115,7 +115,7 @@ test.each([
       fixture(connection.port, "message", { sessionId: "one", ...value });
     const close = screen.getByRole("button", { name: copy.close, exact: true });
     await expect.element(close).not.toBeInTheDocument();
-    const prompt = screen.getByRole("textbox", { name: copy.prompt, exact: true });
+    const prompt = screen.getByRole("combobox", { name: copy.prompt, exact: true });
     await prompt.fill("Preserved Session draft");
     await send({
       type: "snapshot",
@@ -186,7 +186,7 @@ test("enter_plan_mode approval projects the resulting Tool State into C39", asyn
     .click();
   const send = (value: object) =>
     fixture(connection.port, "message", { sessionId: "one", ...value });
-  const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+  const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Keep the draft during approval");
   const identity = { epoch: "enter-plan", requestId: "run", taskId: 1, conversationId: 1 };
   await send({

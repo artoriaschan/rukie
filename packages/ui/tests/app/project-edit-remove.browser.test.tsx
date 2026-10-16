@@ -498,7 +498,7 @@ test("removal confirmation cancels back to its draft and deletes bound chats, pi
       )
       .not.toBeInTheDocument();
     await screen.getByRole("button", { name: "Search chats", exact: true }).click();
-    await screen.getByRole("combobox").fill("Archived history");
+    await screen.getByRole("dialog").getByRole("combobox").fill("Archived history");
     await expect
       .element(screen.getByRole("option", { name: "Archived history", exact: true }))
       .not.toBeInTheDocument();
@@ -620,7 +620,7 @@ test("a removed Project clears its opened Session and Transcript", async () => {
       .element(screen.getByText("Retained transcript", { exact: true }))
       .not.toBeInTheDocument();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
       .toBeVisible();
     await expect
       .element(screen.getByRole("button", { name: "Fix compiler", exact: true }))
@@ -780,7 +780,7 @@ test("canonical Project edits retain alias Session membership, title, count and 
     await group.getByRole("button", { name: "Existing history", exact: true }).click();
     const header = screen.getByRole("banner");
     await expect.element(header.getByRole("img", { name: "Renamed", exact: true })).toBeVisible();
-    await screen.getByRole("textbox", { name: "Prompt", exact: true }).hover();
+    await screen.getByRole("combobox", { name: "Prompt", exact: true }).hover();
     expect(getComputedStyle(disclosure.element().parentElement!).backgroundColor).not.toBe(
       unselectedBackground,
     );

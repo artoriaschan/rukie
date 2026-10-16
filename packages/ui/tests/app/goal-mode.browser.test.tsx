@@ -16,7 +16,7 @@ test("Goal confirmation initially focuses Cancel and preserves the draft when ca
       locale="en"
     />,
   );
-  const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+  const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Keep my target");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
   await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
@@ -52,7 +52,7 @@ test("Goal confirmation awaits permission success, sends a new Goal and clears o
       locale="en"
     />,
   );
-  const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+  const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Ship my goal");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
   await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
@@ -98,7 +98,7 @@ test("Existing Session enables only after successful permission response and sen
     />,
   );
   await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
-  const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+  const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Existing target");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
   await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
@@ -168,7 +168,7 @@ test("Live Goal state renders above the composer with actions and disappears wit
     />,
   );
   await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
-  await expect.element(screen.getByRole("textbox", { name: "Prompt", exact: true })).toBeVisible();
+  await expect.element(screen.getByRole("combobox", { name: "Prompt", exact: true })).toBeVisible();
   const composer = document.querySelector<HTMLElement>(".conversation-composer")!;
   const baseline = composer.getBoundingClientRect();
   await publishGoal(connection.port, goal);
@@ -238,7 +238,7 @@ test.each(["new", "one"] as const)(
     if (id === "one")
       await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
+      .element(screen.getByRole("combobox", { name: "Prompt", exact: true }))
       .toBeVisible();
     await userEvent.upload(
       document.querySelector<HTMLInputElement>('input[type="file"]')!,
@@ -302,10 +302,10 @@ test("Cancelling a pending permission change never arms the Goal draft", async (
   await userEvent.keyboard("{Escape}");
   await fixture(connection.port, "flush");
   // A subsequent acknowledged prompt is a transport barrier after the permission response.
-  await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("After cancel");
+  await screen.getByRole("combobox", { name: "Prompt", exact: true }).fill("After cancel");
   await screen.getByRole("button", { name: "Send prompt", exact: true }).click();
   await expect
-    .poll(() => promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()))
+    .poll(() => promptText(screen.getByRole("combobox", { name: "Prompt", exact: true }).element()))
     .toBe("");
   expect(screen.getByRole("button", { name: "Close goal mode", exact: true }).query()).toBeNull();
   expect(
@@ -323,7 +323,7 @@ test("Goal drafts follow navigation and C37 keyboard cancellation preserves text
       locale="en"
     />,
   );
-  const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+  const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("New draft target");
   await userEvent.upload(
     document.querySelector<HTMLInputElement>('input[type="file"]')!,
@@ -414,7 +414,7 @@ test("Running and unfinished Goal disable C09, while normal input keeps its prom
     armed: false,
     activeSince: undefined,
   });
-  const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+  const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await expect
     .element(prompt)
     .toHaveAttribute("aria-placeholder", "Add context, or click Resume to continue");
@@ -504,7 +504,7 @@ test.each([
             prompt: "输入消息",
             backdrop: "关闭对话框",
           };
-    const prompt = screen.getByRole("textbox", { name: label.prompt, exact: true });
+    const prompt = screen.getByRole("combobox", { name: label.prompt, exact: true });
     await prompt.fill("Keep this text");
     const open = async () => {
       await screen.getByRole("button", { name: label.attach, exact: true }).click();
@@ -581,7 +581,7 @@ test("C09 hands focus to C42 without competing traps under reduced motion", asyn
       locale="en"
     />,
   );
-  const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
+  const prompt = screen.getByRole("combobox", { name: "Prompt", exact: true });
   await prompt.fill("Keep my focus");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
   const goalRow = screen
@@ -681,7 +681,7 @@ test.each([
       .toBe(2);
     await fixture(connection.port, "flush");
     await expect.element(dialog).not.toBeInTheDocument();
-    const prompt = screen.getByRole("textbox", {
+    const prompt = screen.getByRole("combobox", {
       name: locale === "en" ? "Prompt" : "输入消息",
       exact: true,
     });
@@ -826,5 +826,5 @@ test("Goal removal restores Prompt focus when authoritative removal precedes its
   await expect
     .element(screen.getByRole("button", { name: "Permission mode", exact: true }))
     .toHaveTextContent("Full access");
-  await expect.element(screen.getByRole("textbox", { name: "Prompt", exact: true })).toHaveFocus();
+  await expect.element(screen.getByRole("combobox", { name: "Prompt", exact: true })).toHaveFocus();
 });

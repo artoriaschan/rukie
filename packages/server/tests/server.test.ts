@@ -5832,3 +5832,73 @@ test("desktop child questions retain origin and settle under the parent Session"
     await owner.close();
   }
 });
+
+test("skills.list works before Session creation and resolves Project overrides", async () => {
+  const owner = ownResources();
+  try {
+    const homeDir = await owner.acquire(
+      () => mkdtemp(join(tmpdir(), "rukie-skills-wire-")),
+      (path) => rm(path, { recursive: true, force: true }),
+    );
+    const primary = join(homeDir, "project");
+    const globalPath = join(homeDir, "desktop-data/skills/review/SKILL.md");
+    const projectPath = join(primary, ".agents/skills/review/SKILL.md");
+    await Bun.write(globalPath, "---\nname: review\ndescription: Global\n---\nGLOBAL");
+    await Bun.write(projectPath, "---\nname: review\ndescription: Project\n---\nPROJECT");
+    const server = await owner.acquire(
+      () =>
+        startServer({
+          homeDir,
+          sessionOptions: fakeModel([fauxAssistantMessage("done")]),
+          onHandshake: () => {},
+        }),
+      (server) => server.close(),
+    );
+    const client = await connect(server, "app://rukie", owner);
+    expect((await client.command("skills.list")).result).toEqual([
+      { name: "review", description: "Global", scope: "user", filePath: globalPath },
+    ]);
+    const project = (
+      await client.command("project.create", {
+        name: "Project",
+        directories: [primary],
+        trusted: true,
+      })
+    ).result as { id: string };
+    expect((await client.command("skills.list", { projectId: project.id })).result).toEqual([
+      {
+        name: "review",
+        description: "Project",
+        scope: "project",
+        filePath: await realpath(projectPath),
+      },
+    ]);
+    const created = (await client.command("session.create", { project: project.id, text: "hello" }))
+      .result as { sessionId: string };
+    await client.next(
+      (message) => message.type === "result" && message.sessionId === created.sessionId,
+    );
+    expect((await client.command("skills.list", { sessionId: created.sessionId })).result).toEqual([
+      {
+        name: "review",
+        description: "Project",
+        scope: "project",
+        filePath: await realpath(projectPath),
+      },
+    ]);
+    expect((await client.command("skills.list", { sessionId: "missing" })).error).toEqual({
+      code: "session_not_found",
+    });
+    expect((await client.command("skills.list", { projectId: "missing" })).error).toEqual({
+      code: "project_not_found",
+    });
+    expect((await client.command("skills.list", { projectId: 7 })).error).toEqual({
+      code: "invalid_command",
+    });
+    expect(
+      (await client.command("skills.list", { projectId: project.id, sessionId: "missing" })).error,
+    ).toEqual({ code: "invalid_command" });
+  } finally {
+    await owner.close();
+  }
+});

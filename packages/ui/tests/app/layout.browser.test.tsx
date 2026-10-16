@@ -87,7 +87,7 @@ test.each([
           /Noto Sans SC Variable|JetBrains Mono Variable/.test(face.family),
         ),
       ).toBe(false);
-      const input = screen.getByRole("textbox", { name: "Prompt", exact: true });
+      const input = screen.getByRole("combobox", { name: "Prompt", exact: true });
       const form = input.element().closest("form")!;
       const controls = ["Attach images", "Permission mode", "Choose model", "Send prompt"];
       const assertRegions = (sidebarOpen: boolean) => {
@@ -163,7 +163,7 @@ test.each([
       const selectedSidebarOpen = width >= 768;
       await expect.element(toggle).toHaveAttribute("aria-pressed", String(selectedSidebarOpen));
       // Session selection replaces the welcome footer. Read the new form, not a detached element.
-      const selectedInput = screen.getByRole("textbox", { name: "Prompt", exact: true });
+      const selectedInput = screen.getByRole("combobox", { name: "Prompt", exact: true });
       const selectedForm = selectedInput.element().closest("form")!;
       expect(getComputedStyle(selectedForm).borderRadius).toBe("16px");
       expect(selectedForm.getBoundingClientRect().height).toBeGreaterThanOrEqual(100);
