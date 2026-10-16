@@ -59,14 +59,14 @@ test("Pencil P01-E empty provider state preserves shell and opens the custom cat
       document.documentElement.classList.toggle("dark", dark);
       await expect
         .poll(() => getComputedStyle(panel).backgroundColor)
-        .toBe(dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)");
-      expect(getComputedStyle(title).color).toBe(dark ? "rgb(212, 212, 212)" : "rgb(38, 38, 38)");
+        .toBe(dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)");
+      expect(getComputedStyle(title).color).toBe(dark ? "rgb(250, 250, 250)" : "rgb(23, 23, 23)");
       expect(getComputedStyle(description).fontSize).toBe("14px");
       expect(getComputedStyle(title).fontSize).toBe("16px");
       expect(getComputedStyle(icon).color).toBe(
         dark
-          ? "color(srgb 0.831373 0.831373 0.831373 / 0.3)"
-          : "color(srgb 0.14902 0.14902 0.14902 / 0.4)",
+          ? "color(srgb 0.980392 0.980392 0.980392 / 0.3)"
+          : "color(srgb 0.0901961 0.0901961 0.0901961 / 0.4)",
       );
       await expect
         .poll(() => getComputedStyle(action.element()).backgroundColor)
@@ -88,6 +88,13 @@ test("Pencil P01-E empty provider state preserves shell and opens the custom cat
           Math.abs(box.left + box.width / 2 - (panel.getBoundingClientRect().left + 440)),
         ).toBeLessThanOrEqual(1);
       }
+    }
+    document.documentElement.style.setProperty("--ui-font-size", "18px");
+    try {
+      expect(getComputedStyle(description).fontSize).toBe("18px");
+      expect(getComputedStyle(title).fontSize).toBe("20px");
+    } finally {
+      document.documentElement.style.removeProperty("--ui-font-size");
     }
     await page.viewport(420, 800);
     expect(document.documentElement.scrollWidth).toBe(420);
@@ -141,7 +148,7 @@ test("Pencil model footer keeps cancel surface and primary save colors in both t
     const save = screen.getByRole("button", { name: "Save model", exact: true });
     for (const dark of [true, false]) {
       document.documentElement.classList.toggle("dark", dark);
-      const surface = dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)";
+      const surface = dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)";
       const primary = dark ? "rgb(250, 250, 250)" : "rgb(23, 23, 23)";
       const inverse = dark ? "rgb(10, 10, 10)" : "rgb(255, 255, 255)";
       await expect.poll(() => getComputedStyle(cancel.element()).backgroundColor).toBe(surface);
@@ -316,20 +323,18 @@ test("model services creates a provider and preserves input when encrypted save 
         "Video, PDF, structured output and native web search are unavailable in the current request adapter.",
       );
     document.documentElement.classList.remove("dark");
-    // Model a dark host palette with the independently scoped Light settings theme.
-    document.documentElement.style.setProperty("--background", "#0d1117");
-    document.documentElement.style.setProperty("--foreground", "#e6edf3");
+    // Settings text and hover consume the shared Light palette directly.
     const advanced = screen.getByRole("button", { name: /Advanced settings/ });
     expect(getComputedStyle(advanced.element()).backgroundColor).toBe("rgba(0, 0, 0, 0)");
     await advanced.hover();
     await expect
       .poll(() => getComputedStyle(advanced.element()).backgroundColor)
       .toBe("rgb(236, 236, 236)");
-    await expect.poll(() => getComputedStyle(advanced.element()).color).toBe("rgb(38, 38, 38)");
-    // The neutral F01 hover remains readable against the scoped Light settings surface.
+    await expect.poll(() => getComputedStyle(advanced.element()).color).toBe("rgb(23, 23, 23)");
+    // The neutral F01 hover remains readable against the settings overlay.
     advanced.element().focus();
     await expect.element(advanced).toHaveFocus();
-    expect(getComputedStyle(advanced.element()).color).toBe("rgb(38, 38, 38)");
+    expect(getComputedStyle(advanced.element()).color).toBe("rgb(23, 23, 23)");
     await screen.getByRole("button", { name: /Advanced settings/ }).click();
     await screen.getByRole("textbox", { name: "Model ID", exact: true }).fill("script-model");
     const cancelBox = screen
@@ -813,13 +818,13 @@ test.each([
     theme: "Light",
     dark: false,
     background: "rgb(241, 241, 241)",
-    foreground: "rgb(38, 38, 38)",
+    foreground: "rgb(23, 23, 23)",
   },
   {
     theme: "Dark",
     dark: true,
     background: "rgb(58, 58, 58)",
-    foreground: "rgb(212, 212, 212)",
+    foreground: "rgb(250, 250, 250)",
   },
 ])(
   "API option hover stays neutral and preserves selection and geometry in $theme",
@@ -2409,3 +2414,96 @@ for (const theme of ["light", "dark"] as const) {
     }
   });
 }
+
+test.each([false, true])(
+  "settings named surfaces preserve protected geometry (dark=%s)",
+  async (dark) => {
+    const originalClass = document.documentElement.className;
+    onTestFinished(async () => {
+      document.documentElement.className = originalClass;
+      await page.viewport(1280, 900);
+    });
+    document.documentElement.className = dark ? "dark" : "light";
+    await page.viewport(1887, 1210);
+    const screen = await render(
+      <UiLocaleProvider locale="en">
+        <ModelServices
+          services={{
+            ...modelServicesFixture,
+            list: async () => [
+              {
+                id: "local",
+                name: "Local",
+                api: "openai-completions",
+                baseUrl: "https://example.com/v1",
+                hasCredential: true,
+                models: [],
+              },
+            ],
+            save: async () => {},
+            delete: async () => {},
+          }}
+          onChanged={async () => {}}
+        />
+      </UiLocaleProvider>,
+    );
+    try {
+      await expect
+        .element(screen.getByRole("heading", { name: "Local", exact: true }))
+        .toBeVisible();
+      const root = document.querySelector<HTMLElement>(".model-services")!;
+      const card = document.querySelector<HTMLElement>(".model-services-panel")!;
+      const rail = document.querySelector<HTMLElement>(".model-services-providers-scroll")!;
+      const details = document.querySelector<HTMLElement>(".model-services-details-scroll")!;
+      expect(getComputedStyle(root).backgroundColor).toBe(
+        dark ? "rgb(26, 26, 26)" : "rgb(250, 250, 250)",
+      );
+      for (const navigation of root.querySelectorAll<HTMLElement>(
+        ".model-services-navigation-scroll, .model-services-providers-scroll",
+      ))
+        expect(getComputedStyle(navigation).backgroundColor).toBe(
+          dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)",
+        );
+      expect(getComputedStyle(card).backgroundColor).toBe(
+        dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)",
+      );
+      expect(getComputedStyle(rail).borderRightColor).toBe(
+        dark ? "rgb(58, 58, 58)" : "rgb(235, 235, 235)",
+      );
+      expect(card.getBoundingClientRect().width).toBe(880);
+      expect(rail.getBoundingClientRect().width).toBe(224);
+      expect(details.getBoundingClientRect().width).toBe(656);
+      await screen.getByRole("button", { name: "API format", exact: true }).click();
+      const menu = screen.getByRole("listbox").element();
+      expect(getComputedStyle(menu).backgroundColor).toBe(
+        dark ? "rgb(47, 47, 47)" : "rgb(255, 255, 255)",
+      );
+      expect(getComputedStyle(menu).borderTopColor).toBe(
+        dark ? "rgb(58, 58, 58)" : "rgb(235, 235, 235)",
+      );
+      await userEvent.keyboard("{Escape}");
+      await screen.getByRole("button", { name: "Add model", exact: true }).click();
+      const dialog = screen.getByRole("dialog").element();
+      await expect.poll(() => dialog.getBoundingClientRect().width).toBe(672);
+      expect(dialog.getBoundingClientRect().height).toBe(704);
+      expect(getComputedStyle(dialog).backgroundColor).toBe(
+        dark ? "rgb(47, 47, 47)" : "rgb(255, 255, 255)",
+      );
+      expect(
+        dialog.querySelector(".model-services-model-header")!.getBoundingClientRect().height,
+      ).toBe(82);
+      expect(
+        Math.abs(
+          dialog.querySelector(".model-services-modal-footer")!.getBoundingClientRect().height - 60,
+        ),
+      ).toBeLessThanOrEqual(1);
+      await screen.getByRole("button", { name: /Advanced settings/ }).click();
+      for (const nested of dialog.querySelectorAll<HTMLElement>(".model-services-option-card"))
+        expect(getComputedStyle(nested).backgroundColor).toBe(
+          dark ? "rgb(47, 47, 47)" : "rgb(245, 245, 245)",
+        );
+    } finally {
+      await screen.unmount();
+    }
+  },
+);

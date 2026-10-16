@@ -86,6 +86,28 @@ test.each([
       for (const key of ["x", "y", "width", "height"] as const)
         expect(Math.abs(box[key] - baseline[i]![key])).toBeLessThanOrEqual(1);
     });
+    expect(getComputedStyle(surface).backgroundColor).toBe(
+      dark ? "rgb(26, 26, 26)" : "rgb(250, 250, 250)",
+    );
+    const row = document.querySelector<HTMLElement>(".worktree-settings-row")!;
+    expect(getComputedStyle(row).backgroundColor).toBe(
+      dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)",
+    );
+    expect(getComputedStyle(row).borderTopColor).toBe(
+      dark ? "rgb(58, 58, 58)" : "rgb(235, 235, 235)",
+    );
+    const repository = document.querySelector<HTMLElement>(".worktree-settings-repository")!;
+    expect(getComputedStyle(repository).backgroundColor).toBe(
+      dark ? "rgb(47, 47, 47)" : "rgb(245, 245, 245)",
+    );
+    expect(getComputedStyle(repository).fontSize).toBe("13px");
+    document.documentElement.style.setProperty("--ui-font-size", "18px");
+    try {
+      expect(getComputedStyle(repository).fontSize).toBe("17px");
+      expect(document.documentElement.scrollWidth).toBe(width);
+    } finally {
+      document.documentElement.style.removeProperty("--ui-font-size");
+    }
     const refresh = screen.getByRole("button", { name: labels.refresh, exact: true });
     expect(getComputedStyle(refresh.element()).cursor).toBe("pointer");
     expect(getComputedStyle(refresh.element().querySelector("svg")!).cursor).toBe("pointer");
@@ -93,6 +115,9 @@ test.each([
     await screen.getByRole("button", { name: labels.remove, exact: true }).click();
     const dialog = screen.getByRole("dialog", { name: labels.title, exact: true });
     await expect.element(dialog).toBeVisible();
+    expect(getComputedStyle(dialog.element()).backgroundColor).toBe(
+      dark ? "rgb(47, 47, 47)" : "rgb(255, 255, 255)",
+    );
     const confirm = dialog.getByRole("button", { name: labels.remove, exact: true });
     // C36 uses the solid destructive role, not the scoped soft variant of Project removal.
     const background = dark ? "rgb(255, 92, 92)" : "rgb(224, 49, 49)";

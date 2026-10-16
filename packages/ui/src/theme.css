@@ -133,6 +133,15 @@
   --diff-removed: #ffebe9;
   --diff-removed-word: #ffcecb;
   --overlay: #26262633;
+
+  /* Settings surfaces are owned here, including portalled overlays. */
+  --settings-canvas: #fafafa;
+  --settings-navigation: var(--background);
+  --settings-card: var(--card);
+  --settings-popover: var(--popover);
+  --settings-menu: var(--menu);
+  --settings-surface: var(--muted);
+  --settings-border: var(--border);
 }
 
 :root,
@@ -242,6 +251,13 @@
     --muted: #2f2f2f;
     --accent-foreground: var(--accent-fg);
     --input: var(--input-border);
+    --settings-canvas: #1a1a1a;
+    --settings-navigation: var(--background);
+    --settings-card: var(--card);
+    --settings-popover: var(--popover);
+    --settings-menu: var(--menu);
+    --settings-surface: var(--muted);
+    --settings-border: var(--border);
   }
 }
 
