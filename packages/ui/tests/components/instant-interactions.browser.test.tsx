@@ -210,7 +210,7 @@ for (const theme of ["light", "dark"] as const) {
       expect(checkbox.element().getAttribute("aria-checked")).toBe("true");
       expectImmediate(checkbox.element());
       expect(getComputedStyle(checkbox.element()).backgroundColor).toBe(
-        theme === "light" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)",
+        theme === "light" ? "rgb(23, 23, 23)" : "rgb(250, 250, 250)",
       );
       expect(checkbox.element().querySelector("path")!.getAttribute("stroke-dasharray")).toBeNull();
       const toggle = screen.getByRole("switch", { name: "Enable", exact: true });

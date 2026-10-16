@@ -113,6 +113,8 @@ The shared neutral target resolves as follows. Structural shell colors remain in
 | `border`, `card-border`, `popover-border`                                     | `#ebebeb`             | `#3a3a3a`             |
 | `primary`, `primary-foreground`                                               | `#171717` / `#ffffff` | `#fafafa` / `#0a0a0a` |
 
+Dark `accent` is `#70b0ff` and Dark `danger` is `#ff7a7a`: these accessible adaptations meet 4.5:1 even on the shared `selected` background. The destructive menu action uses Dark `destructive-soft-foreground` `#ff9595` over its translucent `destructive-soft` highlight on popover; this preserves 4.5:1 during hover and keyboard focus. Light retains `accent` `#0969da` and `danger` `#d1242f`.
+
 The base colors and source surface-hover are sampled values; the shared hover/selection aliases above are Rukie mappings for reusable roles, not recovered original component APIs. Hover is transient and selection is durable even when values coincide. A joined role listing in this table shares a value, not ownership or semantics.
 
 The source's weak text, placeholders and some warning pairs do not satisfy Rukie's contrast requirements. Preserve those observations as reference evidence, not as exemptions. Existing accessible corrections remain at the shared owner; future changes must measure the rendered pairs in both themes. Never lower contrast to obtain visual similarity or silently claim that the source palette was already AA-compliant.

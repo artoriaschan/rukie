@@ -162,7 +162,7 @@ test("Plan pane keeps narrow targets accessible in both themes and shares full-p
     for (const dark of [false, true]) {
       document.documentElement.classList.toggle("dark", dark);
       expect(getComputedStyle(pane.element()).backgroundColor).toBe(
-        dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)",
+        dark ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)",
       );
       expect(tab.element().closest(".plan-pane-tab")!.getBoundingClientRect().width).toBe(236);
       expect(tab.element().getBoundingClientRect().height).toBe(32);

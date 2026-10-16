@@ -1169,7 +1169,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
               variant="ghost"
               aria-label={t("app.home")}
               aria-current="page"
-              className="bg-background"
+              className="bg-(--layout-content)"
               onClick={() => newChat(null)}
             >
               <Home className="fill-current" />
@@ -1193,7 +1193,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             <>
               <button
                 aria-label={t("app.close-sidebar")}
-                className="absolute inset-0 z-10 bg-background/60 md:hidden"
+                className="absolute inset-0 z-10 bg-(--layout-content)/60 md:hidden"
                 onClick={() => setSidebar(false)}
               />
               <div className="absolute inset-y-0 left-0 z-20 md:relative md:z-auto">

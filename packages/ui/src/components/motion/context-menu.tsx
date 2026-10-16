@@ -464,7 +464,7 @@ export function ContextMenuContent({
         onKeyDown={onKeyDown}
         onContextMenu={(event) => event.preventDefault()}
         className={cn(
-          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-md outline-none",
+          "min-w-56 max-w-[calc(100vw-32px)] max-h-[calc(100dvh-32px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-(--shadow-overlay) outline-none",
           className,
         )}
       >
@@ -494,7 +494,7 @@ export interface ContextMenuItemProps {
 
 function itemClassName(tone: ContextMenuItemTone, inset: boolean, className?: string) {
   return cn(
-    "relative isolate flex w-full select-none items-center min-h-8 gap-2 rounded-md px-2 py-0 text-left text-ui-base leading-[1.5] outline-none",
+    "relative isolate flex w-full select-none items-center min-h-8 gap-2 rounded-md px-2 py-0 text-left text-ui-base outline-none",
     "focus-visible:ring-2 focus-visible:ring-ring",
     "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:cursor-inherit [&_span]:cursor-inherit",
     inset && "pl-8",
@@ -819,7 +819,7 @@ export function ContextMenuSubContent({
           onKeyDown={onKeyDown}
           onContextMenu={(event) => event.preventDefault()}
           className={cn(
-            "min-w-56 max-w-[min(320px,calc(100vw-16px))] max-h-[calc(100dvh-16px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-md outline-none",
+            "min-w-56 max-w-[min(320px,calc(100vw-16px))] max-h-[calc(100dvh-16px)] overflow-y-auto space-y-0.5 rounded-lg border border-popover-border bg-menu p-1 text-popover-foreground shadow-(--shadow-overlay) outline-none",
             className,
           )}
         >

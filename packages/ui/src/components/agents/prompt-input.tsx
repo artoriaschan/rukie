@@ -183,7 +183,7 @@ export function PromptInput({
     <form
       onSubmit={submit}
       className={cn(
-        "relative w-full rounded-2xl border border-border/80 bg-background p-2 focus-within:border-foreground/25",
+        "relative w-full rounded-2xl border border-border/80 bg-background p-2 shadow-(--shadow-composer) focus-within:border-foreground/25",
         className,
       )}
     >

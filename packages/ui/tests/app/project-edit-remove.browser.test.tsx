@@ -708,7 +708,7 @@ test.each([
       );
       expect(buttonContrast(confirm.element())).toBeGreaterThanOrEqual(4.5);
       expect(getComputedStyle(confirm.element()).color).toBe(
-        dark ? "rgb(255, 122, 122)" : "rgb(207, 34, 46)",
+        dark ? "rgb(255, 149, 149)" : "rgb(207, 34, 46)",
       );
       expect(getComputedStyle(confirm.element()).cursor).toBe("pointer");
       await confirm.hover();

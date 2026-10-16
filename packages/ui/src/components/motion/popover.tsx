@@ -405,7 +405,7 @@ export function PopoverContent({
         style={{ position: "absolute", left, top, pointerEvents: open ? "auto" : "none" }}
         // The shell has no padding; content owns its 6px inset (see DESIGN.md standalone popovers).
         className={cn(
-          "w-max max-w-[min(calc(100vw-32px),320px)] max-h-[calc(100dvh-32px)] overflow-y-auto rounded-xl border border-popover-border bg-popover p-0 text-popover-foreground shadow-md outline-none",
+          "w-max max-w-[min(calc(100vw-32px),320px)] max-h-[calc(100dvh-32px)] overflow-y-auto rounded-xl border border-popover-border bg-popover p-0 text-popover-foreground shadow-(--shadow-overlay) outline-none",
           className,
         )}
       >

@@ -159,7 +159,7 @@ test.each([
       getComputedStyle(close.element().querySelector(".conversation-plan-close")!).visibility,
     ).toBe("visible");
     expect(getComputedStyle(close.element().querySelector(".conversation-plan-close")!).color).toBe(
-      copy.dark ? "rgb(43, 43, 43)" : "rgb(255, 255, 255)",
+      copy.dark ? "rgb(47, 47, 47)" : "rgb(255, 255, 255)",
     );
     await screen.getByRole("button", { name: copy.attach, exact: true }).click();
     await expect

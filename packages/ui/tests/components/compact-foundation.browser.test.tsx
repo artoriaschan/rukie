@@ -39,7 +39,7 @@ test("shared controls render compact geometry and grow with interface text", asy
         name === "Small" || name === "Micro" ? "6px" : "8px",
       );
       expect(getComputedStyle(element).lineHeight).toBe(
-        name === "Small" ? "19.5px" : name === "Micro" ? "18px" : "21px",
+        name === "Small" ? "18px" : name === "Micro" ? "16px" : "20px",
       );
     }
     const icon = screen.getByRole("button", { name: "Icon", exact: true }).element();
@@ -70,7 +70,7 @@ test("shared controls render compact geometry and grow with interface text", asy
     expect(field.parentElement?.getBoundingClientRect().height).toBe(32);
     expect(getComputedStyle(field).fontSize).toBe("14px");
     expect(getComputedStyle(screen.getByText("Caption").element()).fontSize).toBe("13px");
-    expect(getComputedStyle(screen.getByText("Caption").element()).lineHeight).toBe("20px");
+    expect(getComputedStyle(screen.getByText("Caption").element()).lineHeight).toBe("18px");
     screen
       .getByText("Caption")
       .element()

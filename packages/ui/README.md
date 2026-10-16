@@ -54,6 +54,10 @@ Electron 与浏览器宿主都提供完整 `modelServices`，左侧导航开放�
 
 按 [测试策略](../../docs/testing.md#桌面测试入口) 准备 Chromium 后运行 `bun run test:desktop`。Node client/store 测试和 browser app 测试使用脚本化 wire server，不调用模型，也不接触用户设置或 Session；真实 server 与 Agent Core 行为在 server 包测试。Chromium DOM 验证不能代替本地打包后 Electron 验证。
 
+## 主题角色
+
+`theme.css` 是共享语义色、结构色与具名阴影的唯一 owner。Light 的主文字为 `#171717`，共享 muted/surface 为 `#f5f5f5`；Dark 的共享 background/card/composer 为 `#212121`、muted/popover 为 `#2f2f2f`。Transcript 继续使用独立的 `layout-content`（Light `#ffffff` / Dark `#000000`），不随共享画布迁移。System 媒体偏好和显式 `.dark` 由同一组声明解析，CSS 首帧即提供正确颜色。覆盖层使用 `--shadow-overlay`，输入框使用 `--shadow-composer`；`text-ui-*` 拥有行高，caption 默认 13px / 18px。设置页当前保留独立的局部表面色。完整角色和可访问颜色配对见 [DESIGN.md](../../DESIGN.md#themes-and-semantic-colors)。
+
 ## 对话呈现
 
 Transcript 呈现按用户输入分组（`PromptGroup`），组内保留多次 Turn，不改变 Agent Core 的 Turn 定义。所有助手正文独立使用 beUI Streaming Response 展示，不带「消息」步骤标题。连续推理与工具调用组成一个 Agent Activity 的 Agent Trace 活动段，每段助手正文切开前后活动段，保持原始先后顺序；推理和工具调用可在同一段内。活动段执行中仅在最外层段标题以单行 beUI Text Shimmer 展示最新条目的命令、路径或推理详情，长内容截断并保留完整可访问名称和悬停标题；段内所有工具结算后，标题才按工具类别汇总读取、执行、搜索等事实，仅推理的已结束段显示分析完成，展开执行过程后各活动段默认收起，标题可单独展开和收起；手动选择在流式更新和结束后保留。段内条目不展示左侧分割线，工具调用与推理的图标、标题左对齐，统一采用次要字号与主题次要文字色，并缩小条目和活动段的纵向间距。Run 进行中标题复用 beUI Agent Loading States 的 Thinking Shimmer 显示「已处理」时长，尊重减少动态效果偏好；结束后显示「已用时」时长；分割线始终紧接标题。展开活动区展示完整内容，不限制高度，也不使用内部滚动或滑动视窗。组内标题与箭头直接控制活动区展开和收起，支持鼠标、Enter 与 Space；收起执行过程仅隐藏活动段，所有中间与最终助手正文始终可见，没有独立的步骤按钮。推理默认收起，收起后不在条目旁展示内容预览或徽章，点击推理标题或使用 Enter／Space 展开；工具调用仅由工具卡展示一个类型图标。正在执行的组默认展开，允许手动收起；完成后默认收起，中止与失败默认展开并保留状态，原生 provider 错误作为回复组的警告展示。TanStack 按组测量虚拟行，容器为 `role="feed"`；在底部时跟随追加和行高增长，上翻停止跟随，Preview Rail 位于会话详情区域左侧 20px，按包含输入或审批停靠区的完整面板高度垂直居中，刻度跳转并预览问题与回复；窄窗口仍可操作，消息区保留左侧空间避免刻度遮挡正文。右侧滚动条覆盖聊天面板全高度（含输入或审批停靠区），按 Transcript 的实际滚动范围映射位置，聊天滚到底时滑块贴合轨道底部；支持拖动、点击轨道、方向键、PageUp／PageDown、Home／End，并随内容高度和窗口尺寸更新。原生滚动条隐藏，避免重复。刻度默认均为 6px 短线，hover、键盘聚焦或触摸预览时才展示靠近预览项的长度梯度，最大长度 24px，行间距 8px；静止时当前回答组（运行中的组，否则最后一组）使用高对比主题文字色，预览时只有指向或聚焦的组使用高对比色，其余刻度使用浅色层级；预览复用 Tooltip portal，hover 或键盘聚焦可读，Esc 关闭，并在 viewport 内定位，不受轨道滚动裁切。屏幕外的组不在 DOM 中，读屏与页内查找只覆盖已渲染部分。

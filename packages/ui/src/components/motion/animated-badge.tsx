@@ -37,8 +37,8 @@ const STATUS_CLASS: Record<AnimatedBadgeStatus, string> = {
 };
 
 const SIZE_CLASS: Record<AnimatedBadgeSize, string> = {
-  sm: "min-h-5 gap-1.5 px-2 text-ui-sm leading-[1.5]",
-  md: "min-h-5 gap-1.5 px-2 text-ui-sm leading-[1.5]",
+  sm: "min-h-5 gap-1.5 px-2 text-ui-sm",
+  md: "min-h-5 gap-1.5 px-2 text-ui-sm",
 };
 
 const ICON_CLASS = "size-3";

@@ -28,12 +28,12 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {
-  xs: "min-h-6 px-2 py-0 text-ui-sm leading-[1.5] gap-1.5 rounded-md [&>svg]:size-3",
-  sm: "min-h-7 px-2 py-0 text-ui-caption leading-[1.5] gap-1.5 rounded-md [&>svg]:size-3",
-  md: "min-h-[max(32px,calc(var(--ui-font-size)*1.5+8px))] px-2.5 py-0 text-ui-base leading-[1.5] gap-1.5 rounded-lg [&>svg]:size-3",
-  lg: "min-h-9 px-3 py-0 text-ui-base leading-[1.5] gap-1.5 rounded-lg [&>svg]:size-3",
+  xs: "min-h-6 px-2 py-0 text-ui-sm gap-1.5 rounded-md [&>svg]:size-3",
+  sm: "min-h-7 px-2 py-0 text-ui-caption gap-1.5 rounded-md [&>svg]:size-3",
+  md: "min-h-[max(32px,calc(var(--ui-font-size)*1.5+8px))] px-2.5 py-0 text-ui-base gap-1.5 rounded-lg [&>svg]:size-3",
+  lg: "min-h-9 px-3 py-0 text-ui-base gap-1.5 rounded-lg [&>svg]:size-3",
   // Descendant selector: some icon-only callers wrap the icon in an animated span.
-  icon: "size-6 min-h-6 min-w-6 shrink-0 p-0 text-ui-base leading-[1.5] rounded-md [&_svg]:size-3",
+  icon: "size-6 min-h-6 min-w-6 shrink-0 p-0 text-ui-base rounded-md [&_svg]:size-3",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(

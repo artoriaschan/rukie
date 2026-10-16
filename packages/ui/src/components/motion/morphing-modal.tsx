@@ -116,7 +116,7 @@ export function MorphingModal({
                 transition={{ duration: reduce ? 0 : 0.16, ease: EASE_OUT }}
                 {...gate}
                 className={cn(
-                  "pointer-events-auto relative w-full max-w-[480px] max-h-[calc(100dvh-32px)] flex flex-col overflow-hidden rounded-2xl border border-popover-border bg-popover shadow-md will-change-transform",
+                  "pointer-events-auto relative w-full max-w-[480px] max-h-[calc(100dvh-32px)] flex flex-col overflow-hidden rounded-2xl border border-popover-border bg-popover shadow-(--shadow-overlay) will-change-transform",
                   className,
                 )}
               >

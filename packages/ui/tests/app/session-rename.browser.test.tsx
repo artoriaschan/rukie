@@ -33,8 +33,8 @@ test("rename save keeps neutral inverse colors and geometry in both themes", asy
     for (const dark of [false, true]) {
       document.documentElement.classList.toggle("dark", dark);
       document.documentElement.classList.toggle("light", !dark);
-      const fill = dark ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)";
-      const text = dark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
+      const fill = dark ? "rgb(250, 250, 250)" : "rgb(23, 23, 23)";
+      const text = dark ? "rgb(10, 10, 10)" : "rgb(255, 255, 255)";
       await input.hover();
       await expect.poll(() => getComputedStyle(save.element()).backgroundColor).toBe(fill);
       await expect.poll(() => getComputedStyle(save.element()).color).toBe(text);
