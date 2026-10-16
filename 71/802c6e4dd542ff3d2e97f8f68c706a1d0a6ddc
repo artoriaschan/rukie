@@ -1,0 +1,52 @@
+.scratch/composer-skill-insertion/issues/06-scoped-shared-mcp-connections.md
+  s_ee7b982d9c9097::t_56db5d9c65132e 1-20
+.scratch/composer-skill-insertion/issues/09-delivery-acceptance.md
+  s_ee7b982d9c9097::t_a6e88c812a2132 1-15
+.scratch/composer-skill-insertion/issues/03-slash-skill-insertion.md
+  s_ee7b982d9c9097::t_8a11dba38ed1a2 1-20
+.scratch/composer-skill-insertion/issues/07-mcp-connection-health-tool-sync.md
+  s_ee7b982d9c9097::t_013e3567de5854 1-15
+.scratch/composer-skill-insertion/spec.md
+  s_ee7b982d9c9097::t_3d1f101c2b0e99 67-107,113-165,176-177
+  s_ee7b982d9c9097::t_095757525aab45 1-66
+  s_ee7b982d9c9097::t_1421eaf736ff16 108-112,166-175
+CONTEXT.md
+  s_ee7b982d9c9097::t_fa72ced8f428ff 194,197-199
+docs/adr/0047-host-owned-mcp-connections.md
+  s_ee7b982d9c9097::t_896d0c4f7724a0 1-8,10-38
+  s_ee7b982d9c9097::t_8190844581bdb4 9
+docs/adr/README.md
+  s_ee7b982d9c9097::t_1421eaf736ff16 78-79
+.scratch/composer-skill-insertion/issues/08-composer-mcp-status.md
+  s_ee7b982d9c9097::t_d2a2d2dfe1ff2d 1-16
+docs/adr/0048-lexical-composer-editor.md
+  s_ee7b982d9c9097::t_1b6afaa0c1d934 1-26
+.scratch/composer-skill-insertion/issues/05-plus-list-builtin-commands.md
+  s_ee7b982d9c9097::t_1a91e19a0ad8f4 1-17
+.scratch/composer-skill-insertion/issues/04-skill-token-clipboard-history.md
+  s_ee7b982d9c9097::t_37d894371048dc 1-14
+.scratch/composer-skill-insertion/issues/02-extract-mcp-host-prefactor.md
+  s_ee7b982d9c9097::t_ccc939f2ec517f 1-14
+docs/adr/0035-desktop-isolated-sqlite-storage.md
+  s_ee7b982d9c9097::t_93d2bb3e570ff9 13
+docs/adr/0019-mcp-oauth-credential-ownership.md
+  s_ee7b982d9c9097::t_2ee7c871dd96bb 13
+.scratch/composer-skill-insertion/issues/01-lexical-composer-prefactor.md
+  s_ee7b982d9c9097::t_2a581513b180e2 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "71802c6e4dd542ff3d2e97f8f68c706a1d0a6ddc",
+  "prompts": {},
+  "sessions": {
+    "s_ee7b982d9c9097": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_6y232bs6w9bc",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
