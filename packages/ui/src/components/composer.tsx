@@ -205,12 +205,12 @@ export function Composer(props: ComposerProps) {
                     event.preventDefault();
                     props.onGoal?.();
                     document
-                      .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+                      .querySelector<HTMLElement>(".conversation-composer [data-prompt-editor]")
                       ?.focus();
                   } else if (props.goalEnabled) {
                     event.preventDefault();
                     document
-                      .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+                      .querySelector<HTMLElement>(".conversation-composer [data-prompt-editor]")
                       ?.focus();
                   }
                 }}
@@ -322,7 +322,7 @@ export function Composer(props: ComposerProps) {
                 onClick={() => {
                   props.onGoal?.();
                   document
-                    .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+                    .querySelector<HTMLElement>(".conversation-composer [data-prompt-editor]")
                     ?.focus();
                 }}
               >

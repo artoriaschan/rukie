@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { useState } from "react";
 import { expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
@@ -198,7 +199,7 @@ test("Pencil composer, permission and context controls retain their real actions
     expect(form.getBoundingClientRect().width).toBe(736);
     expect(form.getBoundingClientRect().height).toBe(100);
     expect(getComputedStyle(form.querySelector('button[type="submit"]')!).borderRadius).toBe("6px");
-    expect(getComputedStyle(prompt, "::placeholder").color).toBe("rgb(107, 107, 107)");
+    expect(getComputedStyle(prompt, "::before").color).toBe("rgb(107, 107, 107)");
     const trigger = screen.getByRole("button", { name: "Permission mode", exact: true });
     expect(trigger.element().getBoundingClientRect().height).toBe(28);
     await trigger.click();
@@ -498,8 +499,10 @@ test("C09 toggles plan mode and closes its menu without moving composer controls
       .element(screen.getByRole("button", { name: "Close plan mode", exact: true }))
       .not.toBeInTheDocument();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Keep this draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Keep this draft");
   } finally {
     await screen.unmount();
   }
@@ -549,8 +552,10 @@ test("C39 hover and keyboard close preserve the draft and toolbar geometry", asy
     await userEvent.keyboard("{Enter}");
     await expect.element(close).not.toBeInTheDocument();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Keep this draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Keep this draft");
   } finally {
     await screen.unmount();
   }

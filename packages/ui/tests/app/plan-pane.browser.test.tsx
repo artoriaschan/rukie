@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { expect, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
@@ -116,7 +117,7 @@ test("restored plans open from preview and Summary, reuse tabs and restore conve
     await pane.getByRole("button", { name: "Close side pane", exact: true }).click();
     await expect.element(pane).not.toBeInTheDocument();
     expect(rect(composer)).toEqual(baseline);
-    await expect.element(prompt).toHaveValue("Preserve draft");
+    await expect.poll(() => promptText(prompt.element())).toBe("Preserve draft");
     await preview.getByRole("button", { name: "Expand plan" }).click();
     await pane.getByRole("button", { name: "Close plan tab: First plan", exact: true }).click();
     await expect.element(pane).not.toBeInTheDocument();

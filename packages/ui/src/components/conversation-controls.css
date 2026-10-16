@@ -15,7 +15,7 @@
   background: var(--background);
   box-shadow: var(--shadow-composer);
 }
-.conversation-composer textarea {
+.conversation-composer .prompt-editor {
   padding: 0;
   padding-top: 0;
 }
@@ -264,7 +264,7 @@
   }
 }
 
-.conversation-composer textarea::placeholder {
+.conversation-composer .prompt-editor::before {
   color: var(--conversation-placeholder);
 }
 .conversation-composer > div:last-child {

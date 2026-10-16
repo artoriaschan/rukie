@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { modelServicesFixture } from "../helpers/model-services";
 import { expect, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
@@ -712,8 +713,10 @@ test("permission epochs reply by keyboard, stale replies disappear, and queue wi
     );
     await screen.getByRole("button", { name: "Withdraw", exact: true }).click();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Withdrawn draft\n\nExisting draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Withdrawn draft\n\nExisting draft");
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
@@ -1224,15 +1227,19 @@ test("an abort response hands queued inputs back to its originating Session afte
       .fill("New conversation draft");
     await fetch(`${url}/flush`);
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("New conversation draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("New conversation draft");
     await screen
       .getByRole("button", { name: /Fix compiler/ })
       .first()
       .click();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Queued draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Queued draft");
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
@@ -1321,7 +1328,7 @@ test("a pending prompt response preserves newly typed input when the previous Ru
     await expect
       .element(screen.getByRole("button", { name: "Send prompt", exact: true }))
       .toBeEnabled();
-    await expect.element(prompt).toHaveValue("Submitted input");
+    await expect.poll(() => promptText(prompt.element())).toBe("Submitted input");
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
@@ -1358,9 +1365,9 @@ test("new-session creation hands edited input to the created Session without sel
     await expect
       .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
       .toBeVisible();
-    await expect.element(prompt).toHaveValue("");
+    await expect.poll(() => promptText(prompt.element())).toBe("");
     await screen.getByRole("button", { name: "Create Session", exact: true }).first().click();
-    await expect.element(prompt).toHaveValue("Next Session input");
+    await expect.poll(() => promptText(prompt.element())).toBe("Next Session input");
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
@@ -1640,8 +1647,10 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
     await expect.element(screen.getByText("Second approval", { exact: true })).toBeVisible();
     await screen.getByRole("button", { name: "Deny", exact: true }).click();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Preserved draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Preserved draft");
     await expect
       .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
       .toHaveFocus();

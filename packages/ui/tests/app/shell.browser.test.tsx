@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { modelServicesFixture } from "../helpers/model-services";
 import { expect, onTestFinished, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
@@ -244,7 +245,7 @@ test("composer selects reasoning from native capabilities, keeps IME input and u
       (await wire()).filter((c: { type: string }) => c.type === "session.create"),
     ).toHaveLength(0);
     await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
-    await expect.element(input).toHaveValue("编译器\n");
+    await expect.poll(() => promptText(input.element())).toBe("编译器\n");
     const upload = document.querySelector<HTMLInputElement>('input[type="file"]')!;
     const transfer = new DataTransfer();
     transfer.items.add(
@@ -361,7 +362,7 @@ test("paste and drop preserve named image attachments across final disconnect", 
     await expect.element(screen.getByRole("img", { name: "dropped.png" })).toBeVisible();
     window.dispatchEvent(new CustomEvent("rukie:connection-change", { detail: "disconnected" }));
     await expect.element(input).toBeDisabled();
-    await expect.element(input).toHaveValue("Keep my draft");
+    await expect.poll(() => promptText(input.element())).toBe("Keep my draft");
     await expect.element(screen.getByRole("img", { name: "pasted.png" })).toBeVisible();
     await screen.getByRole("button", { name: "Retry", exact: true }).click();
     await expect.element(input).toBeEnabled();
@@ -450,7 +451,7 @@ test("stopping hands queued text and named images back before the current draft"
     const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
     await prompt.fill("Current draft");
     await screen.getByRole("button", { name: "Stop generating", exact: true }).click();
-    await expect.element(prompt).toHaveValue("Queued draft\n\nCurrent draft");
+    await expect.poll(() => promptText(prompt.element())).toBe("Queued draft\n\nCurrent draft");
     await expect.element(screen.getByRole("button", { name: "Remove queued.png" })).toBeVisible();
   } finally {
     await screen.unmount();
@@ -605,7 +606,7 @@ test("missing model errors remain actionable and preserve the current draft", as
     await expect
       .element(screen.getByRole("alert"))
       .toHaveTextContent("Action failed: Choose an available model service before sending.");
-    await expect.element(input).toHaveValue("Preserve this draft");
+    await expect.poll(() => promptText(input.element())).toBe("Preserve this draft");
   } finally {
     await screen.unmount();
     await commands.stopWire(connection.port);
@@ -652,15 +653,19 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
     await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("Session draft");
     await back.click();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Welcome draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Welcome draft");
     await forward.click();
     await expect
       .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
       .toBeVisible();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Session draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Session draft");
     await userEvent.keyboard("{Control>}2{/Control}");
     await expect
       .element(screen.getByRole("heading", { name: "Explore ideas", exact: true }))
@@ -671,15 +676,19 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
       .element(screen.getByRole("heading", { name: "Fix compiler", exact: true }))
       .toBeVisible();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Session draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Session draft");
     await forward.click();
     await expect
       .element(screen.getByRole("heading", { name: "Explore ideas", exact: true }))
       .toBeVisible();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Second Session draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Second Session draft");
     await screen.getByRole("button", { name: "Model services", exact: true }).click();
     await expect.element(screen.getByRole("heading", { name: "No model providers" })).toBeVisible();
     const header = screen.getByRole("banner").element();
@@ -701,8 +710,10 @@ test("C01 navigation restores Session drafts and settings keeps a complete blank
       .element(screen.getByRole("heading", { name: "Explore ideas", exact: true }))
       .toBeVisible();
     await expect
-      .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-      .toHaveValue("Second Session draft");
+      .poll(() =>
+        promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()),
+      )
+      .toBe("Second Session draft");
     await forward.click();
     await expect.element(screen.getByRole("heading", { name: "No model providers" })).toBeVisible();
     await back.click();

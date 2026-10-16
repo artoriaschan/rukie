@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { expect, onTestFinished, test } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { App } from "../../src/app";
@@ -24,7 +25,7 @@ test("Goal confirmation initially focuses Cancel and preserves the draft when ca
   await expect.element(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveFocus();
   await userEvent.keyboard("{Escape}");
   await expect.element(dialog).not.toBeInTheDocument();
-  await expect.element(prompt).toHaveValue("Keep my target");
+  await expect.poll(() => promptText(prompt.element())).toBe("Keep my target");
   expect(screen.getByRole("button", { name: "Close goal mode", exact: true }).query()).toBeNull();
 });
 
@@ -64,7 +65,7 @@ test("Goal confirmation awaits permission success, sends a new Goal and clears o
   await fixture(connection.port, "error", { type: "session.create", code: "goal-busy" });
   await screen.getByRole("button", { name: "Send prompt", exact: true }).click();
   await expect.element(screen.getByRole("alert")).toBeVisible();
-  await expect.element(prompt).toHaveValue("Ship my goal");
+  await expect.poll(() => promptText(prompt.element())).toBe("Ship my goal");
   await expect.element(chip).toBeVisible();
   await fixture(connection.port, "hold");
   await screen.getByRole("button", { name: "Send prompt", exact: true }).click();
@@ -76,7 +77,7 @@ test("Goal confirmation awaits permission success, sends a new Goal and clears o
     .toBe(2);
   await prompt.fill("Newer draft");
   await fixture(connection.port, "flush");
-  await expect.element(prompt).toHaveValue("Newer draft");
+  await expect.poll(() => promptText(prompt.element())).toBe("Newer draft");
   await expect.element(chip).not.toBeInTheDocument();
   const creates = (await recorded(connection.port)).filter((c) => c.type === "session.create");
   expect(creates[1]).toMatchObject({
@@ -132,7 +133,7 @@ test("Existing Session enables only after successful permission response and sen
       (await recorded(connection.port)).find((c) => c.type === "session.goal_create"),
     )
     .toMatchObject({ sessionId: "one", text: "Existing target" });
-  await expect.element(prompt).toHaveValue("");
+  await expect.poll(() => promptText(prompt.element())).toBe("");
 });
 
 const goal = {
@@ -304,8 +305,8 @@ test("Cancelling a pending permission change never arms the Goal draft", async (
   await screen.getByRole("textbox", { name: "Prompt", exact: true }).fill("After cancel");
   await screen.getByRole("button", { name: "Send prompt", exact: true }).click();
   await expect
-    .element(screen.getByRole("textbox", { name: "Prompt", exact: true }))
-    .toHaveValue("");
+    .poll(() => promptText(screen.getByRole("textbox", { name: "Prompt", exact: true }).element()))
+    .toBe("");
   expect(screen.getByRole("button", { name: "Close goal mode", exact: true }).query()).toBeNull();
   expect(
     (await recorded(connection.port)).filter((c) => c.type === "session.goal_create"),
@@ -335,7 +336,7 @@ test("Goal drafts follow navigation and C37 keyboard cancellation preserves text
     .click();
   await screen.getByRole("button", { name: "Fix compiler", exact: true }).click();
   expect(screen.getByRole("button", { name: "Close goal mode", exact: true }).query()).toBeNull();
-  await expect.element(prompt).toHaveValue("");
+  await expect.poll(() => promptText(prompt.element())).toBe("");
   await prompt.fill("Session one draft");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
   await screen.getByRole("menuitemcheckbox", { name: "Goal mode", exact: true }).click();
@@ -345,12 +346,12 @@ test("Goal drafts follow navigation and C37 keyboard cancellation preserves text
   await screen.getByRole("button", { name: "Explore ideas", exact: true }).click();
   expect(screen.getByRole("button", { name: "Close goal mode", exact: true }).query()).toBeNull();
   await screen.getByRole("button", { name: "Back", exact: true }).click();
-  await expect.element(prompt).toHaveValue("Session one draft");
+  await expect.poll(() => promptText(prompt.element())).toBe("Session one draft");
   await expect
     .element(screen.getByRole("button", { name: "Close goal mode", exact: true }))
     .toBeVisible();
   await screen.getByRole("button", { name: "Back", exact: true }).click();
-  await expect.element(prompt).toHaveValue("New draft target");
+  await expect.poll(() => promptText(prompt.element())).toBe("New draft target");
   const chip = screen.getByRole("button", { name: "Close goal mode", exact: true });
   await expect.element(chip).toBeVisible();
   expect(chip.element().getBoundingClientRect().height).toBe(28);
@@ -360,7 +361,7 @@ test("Goal drafts follow navigation and C37 keyboard cancellation preserves text
   chip.element().focus();
   await userEvent.keyboard(" ");
   await expect.element(chip).not.toBeInTheDocument();
-  await expect.element(prompt).toHaveValue("New draft target");
+  await expect.poll(() => promptText(prompt.element())).toBe("New draft target");
   await expect.element(screen.getByRole("img", { name: "keep.png", exact: true })).toBeVisible();
   await expect.element(prompt).toHaveFocus();
   // Full access skips C42; a later permission choice belongs to this draft and is sent unchanged.
@@ -416,7 +417,7 @@ test("Running and unfinished Goal disable C09, while normal input keeps its prom
   const prompt = screen.getByRole("textbox", { name: "Prompt", exact: true });
   await expect
     .element(prompt)
-    .toHaveAttribute("placeholder", "Add context, or click Resume to continue");
+    .toHaveAttribute("aria-placeholder", "Add context, or click Resume to continue");
   await screen.getByRole("button", { name: "Attach images", exact: true }).click();
   await expect.element(row).toHaveAttribute("aria-disabled", "true");
   await expect
@@ -439,16 +440,16 @@ test("Running and unfinished Goal disable C09, while normal input keeps its prom
   });
   await expect
     .element(prompt)
-    .toHaveAttribute("placeholder", "Add context, or click Resume to continue");
+    .toHaveAttribute("aria-placeholder", "Add context, or click Resume to continue");
   await prompt.fill("More context while paused");
   await screen.getByRole("button", { name: "Send prompt", exact: true }).click();
-  await expect.element(prompt).toHaveValue("");
+  await expect.poll(() => promptText(prompt.element())).toBe("");
   await publishGoal(connection.port, goal);
   await fixture(connection.port, "message", { sessionId: "one", type: "run_start" });
-  await expect.element(prompt).toHaveAttribute("placeholder", "Request subsequent changes");
+  await expect.element(prompt).toHaveAttribute("aria-placeholder", "Request subsequent changes");
   await prompt.fill("Change the next round");
   await userEvent.keyboard("{Enter}");
-  await expect.element(prompt).toHaveValue("");
+  await expect.poll(() => promptText(prompt.element())).toBe("");
   const sent = (await recorded(connection.port)).filter((c) => c.type === "prompt");
   expect(sent.map((c) => c.text)).toEqual(["More context while paused", "Change the next round"]);
   expect((await recorded(connection.port)).some((c) => c.type === "session.goal_resume")).toBe(
@@ -542,7 +543,7 @@ test.each([
     chip.element().focus();
     await userEvent.keyboard("{Enter}");
     await expect.element(chip).not.toBeInTheDocument();
-    await expect.element(prompt).toHaveValue("Keep this text");
+    await expect.poll(() => promptText(prompt.element())).toBe("Keep this text");
     await open();
     await expect.element(chip).toBeVisible();
     await screen.getByRole("button", { name: label.attach, exact: true }).click();

@@ -7,7 +7,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
-  type TextareaHTMLAttributes,
+  type HTMLAttributes,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -24,6 +24,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/motion/select";
 
 import { cn } from "@/lib/utils";
+import { PromptEditor } from "./prompt-editor";
 
 export interface PromptModel {
   value: string;
@@ -41,9 +42,11 @@ export interface PromptAction {
 }
 
 export interface PromptInputProps extends Omit<
-  TextareaHTMLAttributes<HTMLTextAreaElement>,
+  HTMLAttributes<HTMLDivElement>,
   "value" | "defaultValue" | "onChange" | "onSubmit" | "children"
 > {
+  disabled?: boolean;
+  placeholder?: string;
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
@@ -56,7 +59,7 @@ export interface PromptInputProps extends Omit<
   onSubmit?: (value: string, model?: string) => void | Promise<void>;
   loading?: boolean;
   submitting?: boolean;
-  /** Explicit opt-in when the controlled owner has content outside the textarea. */
+  /** Explicit opt-in when the controlled owner has content outside the editor. */
   hasExternalContent?: boolean;
   onStop?: () => void;
   minRows?: number;
@@ -90,14 +93,14 @@ export function PromptInput({
   placeholder: placeholderProp,
   "aria-label": ariaLabelProp,
   onKeyDown,
-  ...textareaProps
+  ...editorProps
 }: PromptInputProps) {
   const componentText = useComponentText();
   const placeholder = placeholderProp ?? componentText("component.ask-the-agent-to-do-something");
   const ariaLabel = ariaLabelProp ?? componentText("component.prompt");
 
   const reduce = useReducedMotion() ?? false;
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const measurementRef = useRef<HTMLDivElement>(null);
   const [internalValue, setInternalValue] = useState(defaultValue);
   const [internalModel, setInternalModel] = useState(defaultModel ?? models[0]?.value);
@@ -108,42 +111,42 @@ export function PromptInput({
   const canSubmit =
     (Boolean(currentValue.trim()) || hasExternalContent) && !disabled && !loading && !submitting;
 
-  const resizeTextarea = useCallback(() => {
-    const textarea = textareaRef.current;
+  const resizeEditor = useCallback(() => {
+    const editor = editorRef.current;
     const measurement = measurementRef.current;
-    if (!textarea || !measurement || textarea.value !== currentValue) return;
+    if (!editor || !measurement) return;
 
-    const lineHeight = Number.parseFloat(getComputedStyle(textarea).lineHeight);
+    const lineHeight = Number.parseFloat(getComputedStyle(editor).lineHeight);
     const nextHeight = Math.min(
       Math.max(measurement.scrollHeight, minRows * lineHeight),
       maxRows * lineHeight,
     );
     const height = `${nextHeight}px`;
-    if (textarea.style.height !== height) textarea.style.height = height;
+    if (editor.style.height !== height) editor.style.height = height;
   }, [currentValue, maxRows, minRows]);
 
   useLayoutEffect(() => {
-    resizeTextarea();
-  }, [resizeTextarea]);
+    resizeEditor();
+  }, [resizeEditor]);
 
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea || typeof ResizeObserver === "undefined") return;
+    const editor = editorRef.current;
+    if (!editor || typeof ResizeObserver === "undefined") return;
     let frame: number | null = null;
     const observer = new ResizeObserver(() => {
       if (frame !== null) return;
       frame = requestAnimationFrame(() => {
         frame = null;
-        resizeTextarea();
+        resizeEditor();
       });
     });
-    observer.observe(textarea);
+    observer.observe(editor);
     if (measurementRef.current) observer.observe(measurementRef.current);
     return () => {
       observer.disconnect();
       if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [resizeTextarea]);
+  }, [resizeEditor]);
 
   const setValue = (next: string) => {
     if (value === undefined) setInternalValue(next);
@@ -162,20 +165,23 @@ export function PromptInput({
 
     onSubmit?.(prompt, currentModelValue);
     if (value === undefined) setInternalValue("");
-    textareaRef.current?.focus({ preventScroll: true });
+    editorRef.current?.focus({ preventScroll: true });
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(event);
-    if (
-      event.defaultPrevented ||
-      event.key !== "Enter" ||
-      event.shiftKey ||
-      event.nativeEvent.isComposing
-    ) {
+    if (event.key === "Enter" && event.nativeEvent.isComposing) {
+      // Leave IME confirmation to the browser without inserting an editor line break.
+      event.stopPropagation();
       return;
     }
+    if (event.defaultPrevented) {
+      event.stopPropagation();
+      return;
+    }
+    if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
+    event.stopPropagation();
     submit();
   };
 
@@ -194,17 +200,16 @@ export function PromptInput({
       >
         {`${currentValue}\u200b`}
       </div>
-      <textarea
-        ref={textareaRef}
+      <PromptEditor
+        editorRef={editorRef}
         value={currentValue}
         disabled={disabled}
         placeholder={placeholder}
         aria-label={ariaLabel}
-        rows={minRows}
-        {...textareaProps}
-        onChange={(event) => setValue(event.target.value)}
-        onKeyDown={handleKeyDown}
-        className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 pt-1 text-ui-base text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        {...editorProps}
+        onValueChange={setValue}
+        onKeyDownCapture={handleKeyDown}
+        className="prompt-editor before:pointer-events-none before:absolute before:text-muted-foreground data-[empty]:before:content-[attr(data-placeholder)] scrollbar-hide relative block w-full overflow-y-auto whitespace-pre-wrap bg-transparent px-2 pt-1 text-ui-base text-foreground outline-none [overflow-wrap:break-word] aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
       />
 
       <div className="mt-1 flex min-h-8 flex-wrap items-center gap-1">

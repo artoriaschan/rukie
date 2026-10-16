@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { modelServicesFixture } from "../helpers/model-services";
 import { expect, onTestFinished, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
@@ -691,7 +692,7 @@ test("settings returns keyboard focus and preserves chat geometry and draft", as
       )
       .toHaveFocus();
     await screen.getByRole("button", { name: "Back", exact: true }).click();
-    await expect.element(prompt).toHaveValue("preserved draft");
+    await expect.poll(() => promptText(prompt.element())).toBe("preserved draft");
     await expect
       .element(screen.getByRole("button", { name: "Model services", exact: true }))
       .toHaveFocus();

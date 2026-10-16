@@ -1,3 +1,4 @@
+import { promptText } from "../helpers/prompt";
 import { expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { App } from "../../src/app";
@@ -46,7 +47,7 @@ test("new chat preserves plan preselection after failure and creates its first R
   await fixture(connection.port, "error", { type: "session.create", code: "invalid_command" });
   await screen.getByRole("button", { name: "Send prompt", exact: true }).click();
   await expect.element(screen.getByRole("alert")).toBeVisible();
-  await expect.element(prompt).toHaveValue("Draft the implementation plan");
+  await expect.poll(() => promptText(prompt.element())).toBe("Draft the implementation plan");
   await expect
     .element(screen.getByRole("button", { name: "Close plan mode", exact: true }))
     .toBeVisible();
@@ -139,7 +140,7 @@ test.each([
       .toBe(true);
     await send({ type: "tool_state_changed", name: "plan", value: { active: false } });
     await expect.element(close).not.toBeInTheDocument();
-    await expect.element(prompt).toHaveValue("Preserved Session draft");
+    await expect.poll(() => promptText(prompt.element())).toBe("Preserved Session draft");
     await screen.getByRole("button", { name: copy.attach, exact: true }).click();
     await screen.getByRole("menuitem", { name: copy.off, exact: true }).click();
     await expect
@@ -218,7 +219,7 @@ test("enter_plan_mode approval projects the resulting Tool State into C39", asyn
   await expect
     .element(screen.getByRole("button", { name: "Close plan mode", exact: true }))
     .toBeVisible();
-  await expect.element(prompt).toHaveValue("Keep the draft during approval");
+  await expect.poll(() => promptText(prompt.element())).toBe("Keep the draft during approval");
   expect(
     screen.getByRole("button", { name: "Permission mode", exact: true }).element().textContent,
   ).toContain("Ask");

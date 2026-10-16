@@ -1,0 +1,117 @@
+import { LexicalComposer } from "@lexical/react/LexicalComposer";
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { ContentEditableElement } from "@lexical/react/LexicalContentEditable";
+import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
+import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
+import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
+import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
+import { $createParagraphNode, $createTextNode, $getRoot, SKIP_DOM_SELECTION_TAG } from "lexical";
+import { type HTMLAttributes, type Ref, useLayoutEffect } from "react";
+
+interface PromptEditorProps extends HTMLAttributes<HTMLDivElement> {
+  value: string;
+  disabled?: boolean;
+  placeholder: string;
+  editorRef: Ref<HTMLDivElement>;
+  onValueChange: (value: string) => void;
+}
+
+function DraftPlugin({ value, disabled }: { value: string; disabled?: boolean }) {
+  const [editor] = useLexicalComposerContext();
+  useLayoutEffect(() => {
+    editor.setEditable(!disabled);
+  }, [editor, disabled]);
+  useLayoutEffect(() => {
+    if (editor.getEditorState().read(() => $getRoot().getTextContent()) === value) return;
+    // Controlled draft restoration must not claim focus from another surface.
+    editor.update(
+      () => {
+        const paragraph = $createParagraphNode();
+        if (value) paragraph.append($createTextNode(value));
+        $getRoot().clear().append(paragraph);
+      },
+      { tag: SKIP_DOM_SELECTION_TAG },
+    );
+  }, [editor, value]);
+  return null;
+}
+
+function Editable({
+  value,
+  disabled,
+  placeholder,
+  editorRef,
+  onPaste,
+  onDrop,
+  ...props
+}: Omit<PromptEditorProps, "onValueChange">) {
+  const [editor] = useLexicalComposerContext();
+  return (
+    <ContentEditableElement
+      editor={editor}
+      {...props}
+      onPasteCapture={(event) => {
+        onPaste?.(event);
+        if (event.defaultPrevented) event.stopPropagation();
+      }}
+      onDropCapture={(event) => {
+        onDrop?.(event);
+        if (event.defaultPrevented) event.stopPropagation();
+      }}
+      ref={editorRef}
+      aria-disabled={disabled || undefined}
+      aria-placeholder={placeholder}
+      aria-multiline="true"
+      data-prompt-editor
+      data-empty={!value || undefined}
+      data-placeholder={placeholder}
+    />
+  );
+}
+
+export function PromptEditor({
+  value,
+  disabled,
+  placeholder,
+  editorRef,
+  onValueChange,
+  onPaste,
+  onDrop,
+  ...props
+}: PromptEditorProps) {
+  return (
+    <LexicalComposer
+      initialConfig={{
+        namespace: "rukie-prompt",
+        editable: !disabled,
+        onError: (error) => {
+          throw error;
+        },
+      }}
+    >
+      <PlainTextPlugin
+        contentEditable={
+          <Editable
+            {...props}
+            onPaste={onPaste}
+            onDrop={onDrop}
+            value={value}
+            disabled={disabled}
+            placeholder={placeholder}
+            editorRef={editorRef}
+          />
+        }
+        ErrorBoundary={LexicalErrorBoundary}
+      />
+      <HistoryPlugin />
+      <DraftPlugin value={value} disabled={disabled} />
+      <OnChangePlugin
+        ignoreSelectionChange
+        onChange={(state) => {
+          const next = state.read(() => $getRoot().getTextContent());
+          if (next !== value) onValueChange(next);
+        }}
+      />
+    </LexicalComposer>
+  );
+}

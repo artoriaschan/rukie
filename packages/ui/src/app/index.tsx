@@ -307,12 +307,12 @@ function DesktopApp({
   useEffect(() => {
     if (inputDraft.goalEnabled && !goalConfirmation)
       document
-        .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+        .querySelector<HTMLElement>(".conversation-composer [data-prompt-editor]")
         ?.focus({ preventScroll: true });
   }, [inputDraft.goalEnabled, goalConfirmation]);
   const focusPrompt = () =>
     document
-      .querySelector<HTMLTextAreaElement>(".conversation-composer textarea")
+      .querySelector<HTMLElement>(".conversation-composer [data-prompt-editor]")
       ?.focus({ preventScroll: true });
 
   const [newPlanMode, setNewPlanMode] = useState(false);

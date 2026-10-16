@@ -59,7 +59,7 @@ export function AppConversation({
       document.activeElement === document.body &&
       !document.querySelector('[role="dialog"][aria-modal="true"], [role="menu"]')
     )
-      panel?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+      panel?.querySelector<HTMLElement>("[data-prompt-editor]")?.focus({ preventScroll: true });
     hadApproval.current = approvalCount > 0;
   }, [approvalCount, panel]);
   const t = useAppText();
@@ -109,7 +109,8 @@ export function AppConversation({
     setActivePlan("");
     requestAnimationFrame(() => {
       if (opener.current?.isConnected) opener.current.focus({ preventScroll: true });
-      else panel?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+      else
+        panel?.querySelector<HTMLElement>("[data-prompt-editor]")?.focus({ preventScroll: true });
     });
   };
   const closePlan = (id: string) => {

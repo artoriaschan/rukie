@@ -142,6 +142,8 @@ CI 与发布 workflows 的官方 Actions 使用 Node.js 24 runtime：checkout 7.
 
 `packages/ui` installs complete beUI source and shadcn dropdown-menu through shadcn CLI 4.21.4. Runtime dependencies are motion 14.1.0, @floating-ui/dom 1.8.0, shiki 4.5.0, radix-ui 1.7.0, tw-animate-css 1.4.0, clsx 2.1.1, tailwind-merge 3.7.0, lucide-react 1.55.0 and Tailwind CSS 4.3.3. The Vite Tailwind plugin is 4.3.3; React DOM declarations are @types/react-dom 19.2.3. Code highlighting shares shiki/core with the JavaScript raw engine, @shikijs/langs-precompiled 4.5.0 and GitHub Light/Dark themes; streaming uses @shikijs/stream 4.5.0. Transcript virtualization uses @tanstack/react-virtual 3.14.14, ANSI output uses anser 2.3.5, unified diff uses diff 8.0.4, and React Markdown parsing uses mdast-util-from-markdown 2.1.0 with @types/mdast 4.0.4.
 
+主输入框在已安装的 beUI PromptInput 内使用 lexical 0.52.0 与 @lexical/react 0.52.0 的纯文本编辑器，保留纯文本草稿、图片附件、键盘与布局合同，依据 [ADR-0048](adr/0048-lexical-composer-editor.md)。
+
 ui 状态使用 Zustand vanilla store，React 订阅由 app 层的 `useSyncExternalStore` 接线，遵循 ADR-0029 的无 React store 边界。
 
 ## 本地桌面打包
