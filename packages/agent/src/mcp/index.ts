@@ -1030,7 +1030,7 @@ export function createMcpConnections(
   };
 }
 
-export { createMcpManager } from "./manager.ts";
+export { createMcpHost, type McpHost } from "./host.ts";
 
 /** Authentication interactions need MCP transport declarations before resuming. */
 export function isMcpAuthenticationInteraction(kind: string): boolean {
