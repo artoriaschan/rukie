@@ -316,13 +316,103 @@ Use the installed navigation ScrollArea: transparent 8px track, centered 4px thu
 
 Use beUI-based presentation composed around actual Session/Run/Transcript state. Preserve the existing 736px desktop Transcript width and 752px composer width; the composer starts at 100px height with 16px corners. These Rukie dimensions override the source home's 768px/97px/18px sample and the generic field role.
 
-Keep assistant content, tool/reasoning Trace and user messages distinguishable. Trace summaries are 28px rows; real disclosure levels may indent 16px. Closed groups expose no visible or focusable detail body. Live progress belongs to the active outer summary rather than repeated previews on every nested row.
+Keep assistant content, tool/reasoning Trace and user messages distinguishable. Their grouping, disclosure, lifecycle and reading-position contract is defined in [Run and Trace presentation](#run-and-trace-presentation).
 
 A pending Interaction replaces only the composer dock with one card at a time, preserving queue order, draft and focus restoration. Permission requests use Tool Approval; questions and plan review use the installed Approval Card adaptation. Keep neutral primary actions, visible wrapped footer actions and collapsed permission details. Programmatic initial focus must not paint a keyboard-only blue ring; actual keyboard navigation must show focus. UI approval never substitutes for Core authorization.
 
 Code, diff, tool-result and citation surfaces expose actual available data. Copy handles failure; code supports unknown-language fallback; file paths and outputs wrap or scroll internally. Streaming follows the live edge only while the reader is following; user scrolling releases that control. Completion or cancellation must not snap a reader back to the bottom.
 
 The right conversation scrollbar maps the Transcript scroll range while spanning the complete detail panel, including the dock; preserve its 12px track and 24px minimum thumb. Preview Rail remains 20px from the left edge and centered in the complete panel, with 8px row gaps, 6px resting ticks and 24px maximum active previews. Preserve its 40px text gutter, keyboard behavior and narrow-window availability. A tick click changes navigation immediately without decorative feedback.
+
+### Run and Trace presentation
+
+This contract governs the visible execution process, not the execution model. [CONTEXT.md](CONTEXT.md) owns Run, Turn, Transcript, Run Outcome and Interaction meanings; [conversation rendering](packages/ui/README.md#对话呈现) owns the current projection and rendering implementation. The existing `PromptGroup` is a user-input presentation group and must not be redefined as a new domain Run or assumed to map one-to-one to every Core Run.
+
+#### Structure and chronology
+
+Keep the existing group header, user input, assistant content and process regions. A group may contain multiple Turns and multiple Trace activity segments. Consecutive reasoning and tool entries form an activity segment; each assistant text message separates the preceding and following segments. Render intermediate and final assistant bodies in their actual chronological positions with beUI Streaming Response, without an artificial “message” step heading. Do not move all assistant content to the end or merge activity across those bodies.
+
+The group header is the process disclosure control and carries its execution status and elapsed-time label. Its divider stays immediately below it in both open and closed states. Collapsing the outer process hides only Trace segments; user input, every assistant body, provider warnings and actionable pending Interactions remain available. Do not add a separate steps button or a card around every entry.
+
+Use beUI Agent Activity for the outer process and each activity segment, the installed reasoning disclosure for thinking, Tool Result for tool detail presentation, and the selected code/diff/ANSI renderers for their content. An ordinary tool call has one type icon supplied by its tool card; wrappers do not add a second identical icon. Rendering components consume actual projected data rather than generating execution facts from their visual state.
+
+#### Disclosure and reader control
+
+Defaults apply only while the reader has not made an explicit disclosure choice for that presentation identity.
+
+| Target / lifecycle              | Default presentation                                                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Active outer process            | Open; the reader may collapse it while execution continues.                                                    |
+| Normally settled outer process  | Closed, without changing assistant body visibility or implying that the task succeeded.                        |
+| Failed or aborted outer process | Open with the actual outcome visible; an explicit reader choice still wins.                                    |
+| Restored history                | Derive the initial default from its known outcome; do not replay running animation or infer a missing outcome. |
+| Trace activity segment          | Closed when the outer process is opened; segment headers toggle independently.                                 |
+| Reasoning entry                 | Closed; no leaked inline preview or duplicate badge beside its collapsed title.                                |
+| Tool parameters and result      | Closed by default; a failed tool opens its detail by default unless the reader already chose otherwise.        |
+| Pending permission parameters   | Closed in the active Tool Approval card; its action footer is always visible.                                  |
+
+A failed tool keeps its failure indication even when the Run stops normally; an untouched outer process uses the failed default. This does not change the Core Run Outcome.
+
+Retain reader choices across streamed deltas, tool completion, outer-process settlement and virtualized remounts in the current keyed Session view. Do not reopen or close an explicitly controlled region when a new token, another tool result or an error arrives. Keep an error/outcome indication visible on the collapsed summary instead. A full view reset or application reload uses history defaults unless an existing separately documented preference restores a choice; this contract adds no persisted preference or Core state.
+
+Title and chevron activate the same disclosure via pointer, Enter or Space, expose expanded state and identify the controlled region. Closed details are absent from keyboard navigation and the accessibility tree. Collapsing a region containing focus returns focus to its disclosure before hiding the controls; streaming and settlement never steal focus.
+
+#### Running summary and reasoning
+
+Only the active segment's outer summary shows its latest available command, path or reasoning detail as one truncated line with beUI Text Shimmer. Preserve the full label through an accessible name and hover/focus disclosure. Nested rows show stable titles and actual per-entry status rather than repeating that live preview or animating every row.
+
+After every tool in a segment has settled, replace the live preview with a localized factual category summary such as reading, executing or searching. A reasoning-only settled segment may say analysis finished. Do not summarize an unfinished segment as complete, fabricate a tool count or percentage, or label ordinary Run termination as task success. Run Outcome and per-tool outcomes remain independent.
+
+The outer group uses the actual elapsed-time presentation: running copy equivalent to “Processed” and settled copy equivalent to “Elapsed”, localized through `@rukie/i18n`. Duration is a fact or a supported live duration estimate, never a countdown or simulated progress. Missing history timing stays unavailable rather than starting a new timer.
+
+Expanded reasoning shows the actual received text and preserves its order, selectable content and existing Markdown/text rendering. Append updates to the same projected entry; do not create an entry for every token or regenerate a fictional explanation when content is missing. Streaming updates do not reset disclosure or text selection. Loading feedback stops on success, failure, cancellation or loss of confirmed running state, with a static reduced-motion alternative.
+
+#### Tool calls, parallel work and outcomes
+
+A collapsed tool row identifies the action, a concise target when available and its real status. Expanded detail separates parameters from returned output; commands, paths and identifiers use the shared mono role. File edits use the installed diff presentation, command output uses the installed ANSI presentation, and ordinary structured results use their typed presentation or readable text fallback. Missing output, truncated source output and rendering failure are distinct visible conditions; never silently replace them with an invented result.
+
+Preserve call initiation order and stable row identity as results arrive. Parallel calls remain independent rows with independent states; completion order does not reorder them. Use the existing [projection identity](packages/ui/src/lib/transcript.ts) and event association; a reused provider call ID must not overwrite a prior call, reopen a different row or move an approval result. A user retry is a distinct recorded attempt, not an unrecorded reset of the failed call.
+
+| Visible state               | Required information                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Queued / waiting to execute | Show only when the underlying state provides it; distinguish it from running and from waiting for permission.    |
+| Running                     | Actual pending activity and any available partial output; no completed checkmark.                                |
+| Completed                   | Settled tool result; a successful tool does not certify the whole Run or task.                                   |
+| Failed                      | Readable failure summary, available error detail and recovery action only where a real capability exists.        |
+| Denied                      | Explicit denial treatment, distinct from execution failure and cancellation.                                     |
+| Cancelled / interrupted     | Preserve available partial content and the actual end reason; do not relabel it as success or erase the attempt. |
+| Unknown / unavailable       | State uncertainty explicitly; do not infer execution, duration or success from absent events.                    |
+
+Failure, cancellation and denial remain discoverable when enclosing regions are collapsed. Use semantic status copy and glyphs with the shared colors, not color alone. Never expose raw credentials through parameter previews, copied summaries or accessible titles; use the existing safe presentation values and masking behavior.
+
+#### Approval placement
+
+Pending permissions remain in the composer dock, one actionable request at a time, preserving queue order, draft, attachments and focus restoration. Do not duplicate active approval buttons inside Trace or hide the only approval action in a collapsed process. Questions and plan review use their own installed Interaction presentation.
+
+After settlement, the process shows the existing projected outcome in its original activity position. Keep denied results associated with their tool; do not append them to the latest segment or duplicate approved permission cards. On reconnect or history restore, use the current request and committed facts supplied by the owning layer. [Permission rules](docs/permission-rules.md) and the UI projection own decision, identity and reply semantics; this section does not create a frontend authorization path.
+
+#### Geometry, overflow and reading position
+
+Use the existing 28px Trace summary row role, 12px Lucide glyphs and 8px inline joins. Outer execution headings use the base type role; inner reasoning/tool titles use the existing secondary `text-ui-control` role and `muted-foreground`. Real nested disclosures may indent 16px per level; do not invent hierarchy from visual grouping. Keep 4px between repeated entries, 8px between process sections and 16px between independent messages where those shared roles apply. Rows grow for enlarged text and wrapping instead of clipping status or actions.
+
+Expanded process content follows the Transcript's vertical scroll owner without an arbitrary height cap, nested vertical scroll viewport or sliding window. Long commands and paths wrap; code/diff horizontal scrolling stays inside its content renderer. Do not introduce a new output truncation limit in a styling change. Explicit show-more or full-output affordances must reflect available source content and preserve their local disclosure state.
+
+Disclosure and row-height changes preserve the reader's visual anchor. Follow appended output only while the reader is already following the live edge; scrolling upward releases follow mode. Expanding a result, receiving parallel output, changing width or settling a Run must not force a jump to the bottom. Virtualization measures real expanded heights and preserves group identity. Keep actions and outcomes usable at 420px width without page overflow. Streamed detail is selectable content, not a per-token live announcement; status announcements are concise and do not reread the entire result.
+
+#### Required presentation scenarios
+
+These are acceptance obligations for implementation changes, not claims that the current renderer has passed every case.
+
+| Scenario                                                                  | Observable requirement                                                                                     |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Reasoning → tool → assistant text → more reasoning/tools → assistant text | Activity segments split at actual assistant bodies; chronological order survives outer collapse.           |
+| Active, normal stop, failure, abort and unknown historical outcome        | Defaults follow the lifecycle table without a fabricated success state; warnings remain visible.           |
+| Reader expands/collapses before a streamed update or settlement           | Explicit choices survive updates and virtualized remounts; no focus or selection reset.                    |
+| Parallel calls, out-of-order results and reused provider IDs              | Rows retain position/identity, output and outcome stay with the correct attempt.                           |
+| Long parameters, code, diff, ANSI, empty/missing/truncated output         | Correct content presentation, readable fallback, discoverable errors and no lost actions.                  |
+| Pending permission, denial, disconnect and restoration                    | One active dock request; correct historical placement, preserved draft and no duplicate authorization.     |
+| Reader at top/middle/live edge; expand, resize and complete               | Stable visual anchor, deliberate following and accurate shared scrollbar/Preview Rail mapping.             |
+| Light/Dark, narrow/low height, enlarged text, zh/en and reduced motion    | Readable hierarchy, accessible controls, static alternatives and no process-internal vertical scroll trap. |
 
 ### Conversation model controls
 

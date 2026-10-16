@@ -29,3 +29,10 @@ Completely rewrite root DESIGN.md around the inspected Chengxiaobang-derived vis
 - `bunx --no -- oxfmt` initially attempted registry resolution and failed with `UNABLE_TO_VERIFY_LEAF_SIGNATURE`; reused the existing exact-version formatter binary without modifying dependency or certificate configuration.
 - Reviewed the complete replacement, authority order, source/Rukie adaptations, installed-component constraints, surviving documentation anchors and protected layout obligations. No application source or generated ADR index changed.
 - Product tests/browser/native acceptance: not applicable to this documentation-only change.
+
+## Run / Trace contract addition
+
+- Scope: add a dedicated presentation contract to DESIGN.md, preserving chronological assistant bodies and the existing user-input PromptGroup boundary rather than redefining Core Run/Turn semantics.
+- Checked current CONTEXT definitions, packages/ui README conversation behavior, Transcript renderer disclosure/lifecycle wiring and projection identity association. No runtime implementation changes or new ADR: this adds observable presentation requirements without changing event, permission, persistence or execution ownership.
+- Normative additions include lifecycle defaults with explicit reader-choice precedence, reasoning/tool detail rules, independent parallel outcomes, original approval placement, no nested vertical activity viewport, stable reading anchors and implementation acceptance scenarios. The specification does not certify current compliance, especially reader-state preservation across lifecycle transitions and virtualized remounts.
+- Prior source provenance and unchanged-document evidence remain valid. Incremental checks passed: `bun run docs:update`, `bun run check:docs` (155 Markdown files), exact-version oxfmt 0.71.0 changed-Markdown format check and `git diff --check`; full incremental documentation diff reviewed. Product tests/browser/native acceptance remain outside this documentation-only change.
