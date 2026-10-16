@@ -195,7 +195,7 @@ _Avoid_: plugin, recipe
 _Avoid_: connector, integration
 
 **MCP Host**:
-进程内唯一持有 MCP Server 连接、工具列表、状态与授权状态的所有者。它按项目解析生效的 server，Session 只租用连接；同一连接被所有租用它的 Session 与子代理共用，Frontend 不经 Session 也能读取某个项目的 MCP 状态。决定见 [ADR-0047](docs/adr/0047-host-owned-mcp-connections.md)。
+持有 MCP Server 连接、工具列表、状态与授权状态的所有者。Frontend 以进程为生命周期共享 MCP Host；它按项目解析生效的 server，Session 只租用连接，同一连接被所有租用它的 Session 与子代理共用。Frontend 不经 Session 也能观察某个项目的 MCP 状态，观察本身不取得连接租约。决定见 [ADR-0047](docs/adr/0047-host-owned-mcp-connections.md)。
 _Avoid_: MCP manager, connection pool
 
 **Deferred Tool**:

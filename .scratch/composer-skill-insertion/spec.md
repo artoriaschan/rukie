@@ -108,7 +108,7 @@ Status: claimed
 | 来源                                           | 作用域       | stdio 启动目录                         |
 | ---------------------------------------------- | ------------ | -------------------------------------- |
 | 用户级 server，配置未引用项目目录              | 全局单例     | 配置的 `cwd`，否则 `homeDir`           |
-| 用户级 server，配置引用 `${RUKIE_PROJECT_DIR}` | 每个项目一份 | 项目目录                               |
+| 用户级 server，配置引用 `${RUKIE_PROJECT_DIR}` | 每个项目一份 | 配置的 `cwd`（相对项目根），否则项目根 |
 | 项目 `.mcp.json` 中的 server                   | 每个项目一份 | 配置的 `cwd`（相对项目根），否则项目根 |
 
 - 连接键由作用域、server 名和展开后配置的稳定签名组成。签名变化即新建连接，旧连接在进行中的调用结束后关闭。
@@ -117,8 +117,8 @@ Status: claimed
 - 启动：全局单例在 MCP Host 创建时后台并行连接（stdio 并发 3、远程并发 8）。项目实例在首次被租用时连接；TUI 与 Headless 启动时租用 cwd 对应项目。连接过程不发起 OAuth。
 - 重读配置：发送用户消息前、原生 Run 开始前、打开 `/mcp` 时；并发重读合并；不监听配置文件。
 - Run 开始前等待仍在连接中的 server 落定；中止 Run 只取消等待，不关闭共享连接。
-- 断线监督：意外关闭后状态为连接中，指数退避重连（初始 1 秒、上限 30 秒、最多 5 次），稳定后计数清零；重连前确认旧一代连接已关闭；需要授权的 server 不进入重连；断线期间工具调用直接向模型返回错误。
-- 工具同步：订阅 `tools/list_changed`，每个 server 串行同步，新一代整体替换，失败保留上一代并告警。工具注册绑定连接而非某一代 client，名称保持 `mcp__<server>__<tool>`；Session 在 Turn 边界读取工具集，沿用现有 loadout 漂移检测。
+- 断线监督：意外关闭后状态为连接中，指数退避重连（初始 1 秒、上限 30 秒、最多 5 次），连续健康连接满 30 秒后计数清零，初始化成功或短暂恢复不清零；重连前确认旧一代连接已关闭；需要授权的 server 不进入重连；断线期间工具调用直接向模型返回错误。
+- 工具同步：订阅 `tools/list_changed`，每个 server 串行同步，新一代整体替换，失败保留上一代并告警。工具注册绑定连接而非某一代 client，名称保持 `mcp__<server>__<tool>`；根 Session 与子代理在 Turn 边界读取工具集，包括同名工具的描述与 Schema 变化，沿用现有 loadout 漂移检测。
 - 授权：needs-auth、被拒 token、授权范围与进行中的授权流程挂在连接上，并发授权去重；Interaction 由发起方 Session 的回调提供，发起方取消时共享等待者收到取消结果。登录、登出、重连在该 server 有进行中的调用时返回 busy。MCP Credential 的身份与存储不变。
 - Session 继续提供 `mcpServers()` 及管理方法，返回其项目视图快照；`mcp_servers_changed` 由视图变化驱动。MCP reminder、Hook 调用 MCP、`authenticate` 工具的暴露规则不变。
 
@@ -126,7 +126,7 @@ Status: claimed
 
 - `McpServerView.status` 新增 `pending`，表示连接中或重连中；非已连接状态工具数为 0。
 - MCP Host 按项目视图返回快照并推送变化。wire 新增 MCP 状态查询命令（参数为项目或会话标识）与状态变化事件；新会话页与会话内使用同一来源。无项目时返回全局单例，并把引用项目目录的用户级 server 标为需要项目。
-- 只读查询不启动进程；进入 `/mcp` 或选中项目时租用视图并触发连接，离开后释放。
+- 只读查询不启动进程；显示已有 Session、选中项目或进入 `/mcp` 时租用活动视图并触发连接，切换范围或断开时释放原视图。未选项目的新会话普通摘要只观察；退出详情后按当前 Session／项目范围恢复订阅。
 
 ### MCP 配置格式
 
@@ -163,15 +163,18 @@ Status: claimed
 
 ## ADR Coverage
 
-| 决定或修改                                                           | 归属                                                                                                                                            | 理由                                                                                 |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| MCP 连接由进程级 MCP Host 持有，作用域、连接键、租约、监督与工具同步 | 新增 [ADR-0047](../../docs/adr/0047-host-owned-mcp-connections.md)                                                                              | 改变连接与授权状态的所有权和资源生命周期，替代 docs/mcp.md「连接属于 Session」的约定 |
-| 启动时为全局单例解密用户级 MCP 配置与凭据                            | 新增 [ADR-0047](../../docs/adr/0047-host-owned-mcp-connections.md)，部分替代 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md) | 启动预热需要明文配置；Hooks 与供应商凭证仍不在启动时解密                             |
-| 授权状态从 Session 移到连接，凭据身份不变                            | 新增 [ADR-0047](../../docs/adr/0047-host-owned-mcp-connections.md)，沿用 [ADR-0019](../../docs/adr/0019-mcp-oauth-credential-ownership.md)      | OAuth 生命周期、身份隔离与项目信任规则不变，只改变状态的持有者                       |
-| 项目 `.mcp.json` 仍要求 Trusted Project                              | 沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md) 与 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md) | 视图解析沿用信任判定，信任状态参与项目视图                                           |
-| 主输入框改用 Lexical 纯文本编辑器与 token 节点                       | 新增 [ADR-0048](../../docs/adr/0048-lexical-composer-editor.md)                                                                                 | 引入长期的编辑器依赖并改变输入框的内容模型                                           |
-| 技能标记序列化为 `/名称 正文`                                        | 沿用 Skill Invocation 定义与 [ADR-0046](../../docs/adr/0046-system-prompt-sections-and-reminder-roles.md)                                       | Agent Core 匹配与 reminder 位置不变                                                  |
-| 新增技能列表与 MCP 状态 wire 命令和事件                              | 沿用 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md)                                                                    | 扩展既有命令校验与本地认证边界                                                       |
-| 插入列表、技能标记的视觉与交互                                       | 无需 ADR                                                                                                                                        | 局部呈现由 DESIGN.md 维护，使用已安装组件                                            |
+| 决定或修改                                                           | 归属                                                                                                                                            | 理由                                                                                          |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| MCP 连接由进程级 MCP Host 持有，作用域、连接键、租约、监督与工具同步 | 新增 [ADR-0047](../../docs/adr/0047-host-owned-mcp-connections.md)                                                                              | 改变连接与授权状态的所有权和资源生命周期，替代 docs/mcp.md「连接属于 Session」的约定          |
+| 启动时为全局单例解密用户级 MCP 配置与凭据                            | 新增 [ADR-0047](../../docs/adr/0047-host-owned-mcp-connections.md)，部分替代 [ADR-0035](../../docs/adr/0035-desktop-isolated-sqlite-storage.md) | 启动预热需要明文配置；Hooks 与供应商凭证仍不在启动时解密                                      |
+| 授权状态从 Session 移到连接，凭据身份不变                            | 新增 [ADR-0047](../../docs/adr/0047-host-owned-mcp-connections.md)，沿用 [ADR-0019](../../docs/adr/0019-mcp-oauth-credential-ownership.md)      | OAuth 生命周期、身份隔离与项目信任规则不变，只改变状态的持有者                                |
+| 项目 `.mcp.json` 仍要求 Trusted Project                              | 沿用 [ADR-0014](../../docs/adr/0014-permission-rules-and-project-trust.md) 与 [ADR-0041](../../docs/adr/0041-desktop-project-explicit-trust.md) | 视图解析沿用信任判定，信任状态参与项目视图                                                    |
+| MCP 模块、Session 与 Frontend 的依赖方向                             | 沿用 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md) 与 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                   | MCP Host 拥有协议资源，Session 组合能力；原生 harness 继续拥有执行与恢复                      |
+| 主输入框改用 Lexical 纯文本编辑器与 token 节点                       | 新增 [ADR-0048](../../docs/adr/0048-lexical-composer-editor.md)                                                                                 | 引入长期的编辑器依赖并改变输入框的内容模型                                                    |
+| 技能标记发送序列化、剪贴板表示与历史事实渲染                         | 沿用 Skill Invocation 定义与 [ADR-0046](../../docs/adr/0046-system-prompt-sections-and-reminder-roles.md)                                       | 发送沿用 Skill Invocation；剪贴板和历史仅作 Frontend 呈现，保留已有持久化事实与 reminder 位置 |
+| 新增技能列表与 MCP 状态 wire 命令、事件及视图订阅                    | 沿用 [ADR-0031](../../docs/adr/0031-desktop-wire-protocol-and-local-auth.md)                                                                    | 扩展既有命令校验与本地认证边界，查询和观察不打开 Session 或取得执行权                         |
+| 插入列表、技能标记的视觉与交互                                       | 无需 ADR                                                                                                                                        | 局部呈现由 DESIGN.md 维护，使用已安装组件                                                     |
 
 ## Comments
+
+- 2026-10-16 ADR Coverage 交付审阅（待独立评审）：对照基线 `71802c6e` 至集成 `49bc9dd1` 的最终实现，检查模块所有权、依赖方向、授权与信任、持久化与恢复、连接退休与租约、监督、工具同步以及本地 wire 边界。ADR-0047/0048 均为 accepted；ADR-0047 对 ADR-0035 的部分替代已在双方记录。补齐沿用 ADR-0011/0024、查询/观察与活动租约的区别、剪贴板及历史使用既有事实的归属；没有新增持久化格式或改变 Skill Invocation、权限、凭据身份与原生 unsafe replay 决定。DESIGN.md 继续拥有局部视觉规范，相关实现差异交由独立评审，不通过修改规范消除。项目相关用户 server 的启动目录表补为显式 `cwd`（相对项目根）或项目根，澄清表格简写，与票 06 已确认配置行为一致。文档审阅完成不关闭 spec，仍等待主代理统一验证与新评审代理结论。

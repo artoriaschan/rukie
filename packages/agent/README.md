@@ -101,13 +101,17 @@ View 不写入 Transcript，也不进入模型上下文。`Session.messages` 在
 
 # Skills
 
-Agent Core 从用户目录和当前项目的 `.rukie/skills`、`.claude/skills`、`.agents/skills` 发现 `SKILL.md`，项目同名技能覆盖用户技能；无效定义发出警告并跳过。Frontend 可通过 `listSkills({ cwd, homeDir })` 获取用户可调用的名称与描述；`user-invocable: false` 不进入该列表，也不展开 `/name`，但仍可供模型加载。
+Agent Core 从用户目录和当前项目的 `.rukie/skills`、`.claude/skills`、`.agents/skills` 发现 `SKILL.md`，项目同名技能覆盖用户技能；无效定义发出警告并跳过。Frontend 可通过 `listSkills({ cwd?, homeDir, dataRoot? })` 获取用户可调用的名称、描述、配置来源 `scope` 与绝对 `filePath`；省略 `cwd` 只读取用户技能，同名覆盖后只返回生效项；`user-invocable: false` 不进入该列表，也不展开 `/name`，但仍可供模型加载。
 
 模型目录只提供技能摘要。条目只包含名称和描述，不包含正文、绝对路径或 `whenToUse`；连续空白合并为单个空格，去掉首尾空白，每条描述最多 500 个字符，超出时保留前 497 个字符并追加 `...`。`disable-model-invocation: true` 的技能不进入模型目录，也不能经 `skill` 工具加载。目录为空或当前工具集没有 `skill` 时，不发布初始目录；子 Session 按自己的工具白名单判断。
 
 模型调用 `skill({ name })` 才收到完整正文及文件位置、相对引用基准；工具调用照常受权限和 Hook 约束。用户在 prompt 开头直接输入 `/name` 时，程序保留原 prompt，并将正文作为 `skill-invocation` System Reminder 注入，提醒模型正文已提供、不要再次调用 `skill` 加载。这仍可调用禁止模型主动加载的技能；未知名称和 `user-invocable: false` 保持普通文字。
 
 目录的规范化条目经过摘要比较，历史只取原生当前模型上下文中仍可见的技能目录。条目未变就不追加，正文、文件路径或被截掉的描述尾部变化不导致目录更新；可见条目改变时发布完整替换目录，明确停用旧名单，最后一个条目移除时发布空替换。Compaction 后目录已不再可见时重新发布，仍可见时复用；Resume 与 Rewind 使用各自当前分支的可见上下文，不保存另一个进程内“已发布”状态。
+
+# MCP Host
+
+Frontend 创建一个 `createMcpHost` 并通过 `SessionOptions.mcpHost` 注入同进程的 Session；调用方负责 Host 关闭，Session 关闭只释放自己的视图。未注入时 Session 拥有私有 Host。无 Session 的状态查询、观察与活动租约，以及配置来源、连接作用域、取消和授权合同见 [MCP Frontend 接口](../../docs/mcp.md#frontend-接口)。
 
 # Context Usage
 

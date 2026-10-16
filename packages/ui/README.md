@@ -56,7 +56,7 @@ Electron 与浏览器宿主都提供完整 `modelServices`，左侧导航开放�
 
 ## 主题角色
 
-主输入框的「+」与开头输入 `/` 共用插入列表。「+」显示附件、内置命令与全部技能；`/` 显示按名称过滤的内置命令和技能，方向键、Enter、Tab 或点击选择，焦点留在组合框，Esc 关闭。`/goal` 与 `/plan` 沿用目标和计划模式的可用性、开关及状态；选择 `/goal`、`/plan` 保留输入，选择技能从「+」插到开头并保留正文。「+」打开时输入开头的 `/` 会切换入口，其他文字输入关闭列表；Run 进行中仍可插入技能或使用可用命令。技能标记使用 Lexical token 节点并在发送时序列化为既有 `/名称 正文`，只有标记也可发送；普通斜杠文本仍交给 Agent Core。列表使用 `skills.list` 的生效目录与来源，首次加载及切换 Project / Session 时刷新，每次打开先展示对应缓存再后台刷新。技能标记按所选范围复制为字面的 Markdown 链接，内部剪贴板保留节点；粘贴在开头时还原或替换标记，其他位置保留普通文本。历史根据持久化的 Skill Invocation 显示标记，复制时用当前目录补路径，技能已删除则退回 `/名称`。列表和标记的视觉规则见 [DESIGN.md](../../DESIGN.md#composer-skill-insertion)。
+主输入框的「+」与开头输入 `/` 共用插入列表。「+」显示附件、内置命令与全部技能；`/` 显示按名称过滤的内置命令和技能，方向键、Enter、Tab 或点击选择，焦点留在组合框，Esc 关闭。`/goal` 与 `/plan` 沿用目标和计划模式的可用性、开关及状态；选择 `/goal`、`/plan` 保留输入，选择技能从「+」插到开头并保留正文。「+」打开时输入开头的 `/` 会切换入口，其他文字输入关闭列表；Run 进行中仍可插入技能或使用可用命令。技能标记使用 Lexical token 节点并在发送时序列化为既有 `/名称 正文`，只有标记也可发送；普通斜杠文本仍交给 Agent Core。列表使用 `skills.list` 的生效目录与来源，首次加载及切换 Project / Session 时刷新，每次打开先展示对应缓存再后台刷新。技能标记按所选范围在 text/plain 与 text/html 中复制为字面的 Markdown 链接，HTML 不生成可点击链接，Lexical 内部剪贴板保留节点；粘贴在开头时还原或替换标记，其他位置保留普通文本。历史根据持久化的 Skill Invocation 显示标记，复制时用当前目录补路径，技能已删除则退回 `/名称`。列表和标记的视觉规则见 [DESIGN.md](../../DESIGN.md#composer-skill-insertion)。
 
 `theme.css` 是共享语义色、结构色与具名阴影的唯一 owner。Light 的主文字为 `#171717`，共享 muted/surface 为 `#f5f5f5`；Dark 的共享 background/card/composer 为 `#212121`、muted/popover 为 `#2f2f2f`。Transcript 继续使用独立的 `layout-content`（Light `#ffffff` / Dark `#000000`），不随共享画布迁移。System 媒体偏好和显式 `.dark` 由同一组声明解析，CSS 首帧即提供正确颜色。覆盖层使用 `--shadow-overlay`，输入框使用 `--shadow-composer`；`text-ui-*` 拥有行高，caption 默认 13px / 18px。设置页当前保留独立的局部表面色。完整角色和可访问颜色配对见 [DESIGN.md](../../DESIGN.md#themes-and-semantic-colors)。
 
@@ -70,7 +70,7 @@ Transcript 呈现按用户输入分组（`PromptGroup`），组内保留多次 T
 
 权限请求到达时按 Interaction epoch 保存当前 PromptGroup 与活动位置；拒绝后，Tool Approval 结果卡位于对应工具执行卡之前，子代理请求保留其父活动位置，不会随后续活动或复用的 provider call ID 移到 Run 末尾。长命令在参数详情中换行，窄窗口将参数标签与内容纵向排列。断连期间保留停靠卡并禁用按钮，恢复连接时清除旧 epoch，重新订阅后接受补发；待审批及提交应答期间保留草稿和附件并隐藏输入框，审批按钮在命令应答前禁用；断线说明和重试入口保持可见。
 
-The conversation Plus opens the Pencil C09 attachment menu and keeps image picking, paste and drop on their existing path. Context details use the Pencil C08 usage/legend layout with the current System, Messages and Tools report estimates; displayed percentages divide by used tokens, while the capacity bar divides by the model window. Opening context and compaction count remain separate facts. Unsupported plugin actions and finer message category totals are not fabricated.
+Image picking, paste and drop keep their existing path. Context details use the Pencil C08 usage/legend layout with the current System, Messages and Tools report estimates; displayed percentages divide by used tokens, while the capacity bar divides by the model window. Opening context and compaction count remain separate facts. Unsupported plugin actions and finer message category totals are not fabricated.
 
 供应商表单自动保存：Base URL 和 API Key 停止输入 500ms 后提交，切换服务、离开设置或卸载立即提交待保存输入；服务开关、协议和模型操作立即提交。请求串行执行，保存结果不覆盖后续编辑，失败保留输入并显示安全错误提示。表单没有保存与取消按钮；重命名和模型编辑在确认后提交，取消或关闭不提交。服务开关独立控制 `enabled`，不改变模型自身开关。
 
@@ -86,4 +86,4 @@ The conversation Plus opens the Pencil C09 attachment menu and keeps image picki
 
 Electron 通过枚举限定的 `setThemeSource` host 能力同步原生界面主题，窗口底色跟随壳层表面；浏览器 host 对应方法为空操作。renderer 初始化前的原生窗口仍采用系统主题，首帧前应用保证针对产品内容。外观 owner 在 renderer 热替换时释放系统监听；原生宿主在关闭或启动失败时释放窗口主题监听。
 
-`/mcp` 使用同一插入列表显示 Host 的实时状态汇总和只读服务行。App 按 Project / Session 缓存快照；无项目时只观察全局状态，选中 Project 或进入详情时取得视图租约，切换范围、退出详情或断开连接时释放，重连恢复当前订阅。查询和订阅不要求已有 Session 或模型。详情使用不可用选项与组合框当前项，Enter/Tab 不发送，Esc 返回上级再清空关闭。协议和状态归属见 [MCP Frontend 接口](../../docs/mcp.md#无-session-的状态视图)。
+`/mcp` 使用同一插入列表显示 Host 的实时状态汇总和只读服务行。App 按 Project / Session 缓存快照；未选 Project 的新会话普通摘要只观察全局状态；显示已有 Session、选中 Project 或进入详情时取得活动视图租约。切换范围、退出详情或断开连接时释放原订阅，再按当前范围恢复观察或活动视图；重连恢复当前订阅。查询和订阅不要求已有 Session 或模型。详情使用不可用选项与组合框当前项，Enter/Tab 不发送，Esc 返回上级再清空关闭。协议和状态归属见 [MCP Frontend 接口](../../docs/mcp.md#无-session-的状态视图)。

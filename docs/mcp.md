@@ -27,7 +27,7 @@ Agent Core 读取用户的 `~/.rukie/mcp.json`。项目 `.mcp.json` 只在 Trust
 
 `url`、`headers` 的值以及 stdio 的 `args`、`env`、`cwd` 在连接前从当前进程环境展开 `${VAR}` 与 `${VAR:-default}`。`${RUKIE_PROJECT_DIR}` 是保留变量，取当前项目根目录。`command` 不展开。不支持嵌套展开或转义；缺少变量且没有默认值时，仅该 server 报配置错误，消息包含变量名。
 
-用户级 server 默认是进程级全局单例；stdio 在配置 `cwd` 或 `homeDir` 启动，不再隐式使用项目目录。依赖项目目录的用户级配置应在 `args`、`env` 或 `cwd` 中使用 `${RUKIE_PROJECT_DIR}`，使每个项目拥有独立实例。项目 `.mcp.json` 的 server 也按项目实例化。项目实例的 stdio 使用配置 `cwd` 或项目根目录；相对 `cwd` 从所属的 home 或项目根目录解析。
+用户级 server 默认是进程级全局单例；stdio 在配置 `cwd` 或 `homeDir` 启动，不再隐式使用项目目录。依赖项目目录的用户级配置应在 `args`、`env` 或 `cwd` 中使用 `${RUKIE_PROJECT_DIR}`，使每个项目拥有独立实例。项目 `.mcp.json` 的 server 也按项目实例化。项目实例的 stdio 使用配置 `cwd` 或项目根目录；相对 `cwd` 从所属的 home 或项目根目录解析。快照的 `scope` 和 `configPath` 表示配置来源，不表示连接作用域：引用项目目录的用户级 server 仍显示为全局来源。
 
 http 的可选 `oauth` 配置接受 `clientId`、`clientSecret`、`callbackPort` 和 `authServerMetadataUrl`。`clientId` 用于预注册客户端，配合 `clientSecret` 使用 `client_secret_post`。`callbackPort` 必须是 1–65535 的整数；省略时使用随机端口。`authServerMetadataUrl` 必须使用 HTTPS。stdio 不接受 `oauth`。
 
@@ -141,7 +141,7 @@ Session 暴露 `mcpServers()`、`authenticateMcp(name)`、`clearMcpAuth(name)`�
 
 `mcpServers()` 返回独立副本 `McpSnapshot`，包含 `servers` 与配置文件级 `configErrors`。服务器记录提供生效配置的 `scope`、`configPath`、HTTP `url` 或 stdio `command`，以及真实 MCP 工具的协议名称、完整描述和原始输入 JSON Schema。URL 保留环境变量配置表达式，移除 userinfo、query 和 fragment；快照不包含 headers、env、args、clientSecret 或 MCP Credential。pending/failed/needs-auth/project-required 的工具数组为空，`toolCount` 与真实工具数组一致。损坏文件记录来源、路径和错误；缺失文件不算错误，其他合法来源仍可使用，Run 保持 fail-open 和现有警告行为。
 
-普通快照不等待连接完成，返回项目视图中共享连接的最新状态，包括 Run 连接、同一 Run 授权或失效和管理操作。查询重新读取完整配置，同配置并发读取合并，已有连接继续复用；状态查询不再创建随后关闭的独立探测连接。调用方修改返回值不会改变 Host、Session 或模型工具声明。`mcpServers({ refresh: true })` 提供空闲时的显式刷新并等待连接落定，并发刷新复用在途请求；它不自动启动 OAuth 或更改 MCP Credential。Run 中显式刷新及三个管理方法返回 busy 错误。Session 关闭取消本视图的等待与管理交互，共享连接保留给其他租约；晚到读取不能覆盖较新的连接配置。
+普通快照不等待连接完成，返回项目视图中共享连接的最新状态，包括其他租用者触发的连接、授权或失效和管理操作。查询重新读取完整配置，同配置并发读取合并，已有连接继续复用；状态查询不再创建随后关闭的独立探测连接。调用方修改返回值不会改变 Host、Session 或模型工具声明。`mcpServers({ refresh: true })` 提供空闲时的显式刷新并等待连接落定，并发刷新复用在途请求；它不自动启动 OAuth 或更改 MCP Credential。Run 中显式刷新及三个管理方法返回 busy 错误。Session 关闭取消本视图的等待与管理交互，共享连接保留给其他租约；晚到读取不能覆盖较新的连接配置。
 
 公开事件 `mcp_servers_changed` 表示新快照已提交，不携带工具 schema；Frontend 收到事件后调用普通 `mcpServers()` 读取当前视图。文件级诊断与服务器状态、工具的实际变化都可触发事件；相同快照和缓存读取不重复通知。面板通过这些事件更新，无轮询；连接恢复由 MCP Host 负责。稳定服务器名与协议工具名保留导航身份；当前工具消失时退回仍有效的工具列表，没有工具时退回服务器详情，服务器消失时退回服务器列表，并显示变化提示。
 
@@ -153,8 +153,8 @@ Frontend 提供 `onMcpAuth` 以显示 Interaction；没有回调时主动登录�
 
 ### 无 Session 的状态视图
 
-`McpHost.inspect({ homeDir, settings, cwd?, persistence? })` 只重读配置并返回已有连接的快照，不取得租约、不启动进程。无项目时只返回用户来源，引用 `${RUKIE_PROJECT_DIR}` 的条目用 `project-required` 表示「选择项目后启动」，工具数为 0；它是配置等待项目的展示状态，不参与连接重试。`observe(input, onChange)` 按相同规则订阅现有 Host 变化，调用方关闭 observer 后不再接收推送。`acquire({ noProject: true, ... })` 可租用无项目视图中的全局连接，仍不启动这些等待项目的条目。以上接口共用 Host 的连接表。
+`McpHost.inspect({ homeDir, settings, cwd?, persistence? })` 只重读配置并返回已有连接的快照，不取得租约、不启动进程。生效配置尚无匹配连接时显示 `pending`，不代表该只读调用正在启动连接。无项目时只返回用户来源，引用 `${RUKIE_PROJECT_DIR}` 的条目用 `project-required` 表示「选择项目后启动」，工具数为 0；它是配置等待项目的展示状态，不参与连接重试。`observe(input, onChange)` 按相同规则订阅现有 Host 变化，调用方关闭 observer 后不再接收推送。`acquire({ noProject: true, ... })` 可租用无项目视图中的全局连接，仍不启动这些等待项目的条目。以上接口共用 Host 的连接表。
 
 桌面与 Web 通过 `mcp.status` 查询状态，使用 `projectId`、`sessionId` 中至多一个标识；无标识表示无项目。`mcp.subscribe` 另接收调用方生成的 `viewId`，默认取得活动视图租约；`active: false` 只观察现有状态。二者均不打开 Session、不要求模型或供应商凭证，也不读取 Hooks。服务按注册 Project 和持久化 Session 的实际目录、信任解析视图，推送 `{ type: "mcp_status", viewId, snapshot }`。同一 socket 的同名 viewId 替换旧订阅；`mcp.unsubscribe`、socket 关闭及宿主替换释放订阅和租约，晚到读取不会取得租约。客户端重连重新订阅当前视图。
 
-主输入框的 `/mcp` 一级行显示实时汇总，零值分段隐藏，初次加载显示加载状态。进入后按服务名过滤并显示来源、状态、工具数与独立配置错误；所有状态行都是只读的不可用选项，不发送或插入会话。选择 Project 或查看 `/mcp` 时租用活动视图，切换 Project、离开查看或关闭客户端时释放；无项目的普通摘要只订阅现有全局状态。Esc 从详情回到上级，再按一次清空并关闭；删除命令前缀也回上级。列表沿用组合框的焦点和键盘语义。
+主输入框的 `/mcp` 一级行显示实时汇总，零值分段隐藏，初次加载显示加载状态。进入后按服务名过滤并显示来源、状态、工具数与独立配置错误；所有状态行都是只读的不可用选项，不发送或插入会话。显示已有 Session、选择 Project 或查看 `/mcp` 时租用活动视图；切换范围、退出详情或关闭客户端时释放原订阅，再按当前 Session／Project 范围决定是否取得新活动视图。未选 Project 的新会话普通摘要只观察现有全局状态。Esc 从详情回到上级，再按一次清空并关闭；删除命令前缀也回上级。列表沿用组合框的焦点和键盘语义。
