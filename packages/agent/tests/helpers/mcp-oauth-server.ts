@@ -21,6 +21,7 @@ export function mcpOAuthServer(
     tokenEndpointAuthMethods?: string[];
     beforeInitialize?: () => Promise<void>;
     beforeToolResponse?: () => Promise<void>;
+    onDelete?: () => void;
   } = {},
 ) {
   const requests: {
@@ -177,7 +178,10 @@ export function mcpOAuthServer(
               },
             });
           if (request.method === "GET") return new Response(null, { status: 405 });
-          if (request.method === "DELETE") return new Response(null, { status: 204 });
+          if (request.method === "DELETE") {
+            options.onDelete?.();
+            return new Response(null, { status: 204 });
+          }
           if (!Value.Check(Rpc, body)) return new Response(null, { status: 400 });
           if (body.id === undefined) return new Response(null, { status: 202 });
           if (body.method === "initialize") await options.beforeInitialize?.();

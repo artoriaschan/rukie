@@ -268,3 +268,15 @@ test.each([false, true])(
     }
   },
 );
+
+test.each(["", 7])(
+  "stdio rejects invalid cwd without normalizing it into a valid directory (%j)",
+  async (cwd) => {
+    dirs = await tempDirs();
+    await writeConfig({ local: { command: "never-started", cwd } });
+    const { events } = await runConfigured();
+    expect(events.filter((event) => event.type === "mcp_server_error")).toMatchObject([
+      { server: "local", errorData: { code: "mcp-config-invalid" } },
+    ]);
+  },
+);

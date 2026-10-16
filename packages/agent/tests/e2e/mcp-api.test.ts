@@ -12,7 +12,7 @@ async function configure(dirs: Awaited<ReturnType<typeof tempDirs>>, servers: ob
   await Bun.write(join(dirs.homeDir, ".rukie/mcp.json"), JSON.stringify({ mcpServers: servers }));
 }
 
-test("first MCP status query independently probes servers and leaves Transcript untouched", async () => {
+test("first MCP status query leases Host servers and leaves Transcript untouched", async () => {
   const dirs = await tempDirs();
   const healthy = mcpOAuthServer({ authentication: false });
   const oauth = mcpOAuthServer();
@@ -75,10 +75,12 @@ test("first MCP status query independently probes servers and leaves Transcript 
       ]);
       expect(session.messages).toEqual(before);
       expect(fake.contexts).toEqual([]);
-      expect(healthy.requests.at(-1)?.method).toBe("DELETE");
+      expect(healthy.requests.some((request) => request.method === "DELETE")).toBe(false);
       const requestCount = healthy.requests.length;
       await session.mcpServers();
       expect(healthy.requests).toHaveLength(requestCount);
+      await session.close();
+      expect(healthy.requests.at(-1)?.method).toBe("DELETE");
     } finally {
       await session.close();
     }
@@ -176,7 +178,7 @@ test("logout deletes only the selected credential and status returns to needs-au
         server.requests.filter(
           (request) => request.path === "/mcp" && request.authorization === null,
         ).length,
-      ).toBeGreaterThan(unauthenticatedRequests);
+      ).toBe(unauthenticatedRequests);
       expect((await session.mcpServers()).servers.find((view) => view.name === "srv")?.status).toBe(
         "needs-auth",
       );
@@ -223,7 +225,8 @@ test("reconnect refreshes the selected failed server without probing other cache
         tools: [{ name: "echo" }],
       });
       expect(other.requests).toHaveLength(requests);
-      expect(server.requests.at(-1)?.method).toBe("DELETE");
+      expect(server.requests.filter((request) => request.method === "DELETE")).toHaveLength(1);
+      expect(server.requests.at(-1)?.method).not.toBe("DELETE");
     } finally {
       await session.close();
     }
@@ -592,7 +595,15 @@ test("MCP snapshot exposes effective configuration and original tools without sh
           },
         ],
       });
-      expect(user.requests).toEqual([]);
+      expect(
+        user.requests.filter(
+          (request) =>
+            typeof request.body === "object" &&
+            request.body !== null &&
+            "method" in request.body &&
+            request.body.method === "initialize",
+        ),
+      ).toHaveLength(1);
       const count = project.requests.length;
       snapshot.servers[0]!.tools[0]!.inputSchema = { changed: true };
       snapshot.servers[0]!.tools[0]!.name = "changed";
@@ -644,7 +655,17 @@ test.each([false, true])("MCP provenance respects project trust (%s)", async (tr
       });
       expect(JSON.stringify(snapshot)).not.toContain("private-arg");
       expect(JSON.stringify(snapshot)).not.toContain("private-env");
-      expect(trusted ? user.requests : project.requests).toEqual([]);
+      if (trusted)
+        expect(
+          user.requests.filter(
+            (request) =>
+              typeof request.body === "object" &&
+              request.body !== null &&
+              "method" in request.body &&
+              request.body.method === "initialize",
+          ),
+        ).toHaveLength(1);
+      else expect(project.requests).toEqual([]);
     } finally {
       await session.close();
     }
@@ -878,7 +899,7 @@ test("explicit MCP refresh repairs configuration diagnostics and replaces the co
       const broken = await session.mcpServers();
       expect(broken.configErrors).toHaveLength(1);
       await configure(dirs, { srv: { url: server.url } });
-      expect(await session.mcpServers()).toEqual(broken);
+      expect((await session.mcpServers()).configErrors).toEqual([]);
       const repaired = await session.mcpServers({ refresh: true });
       expect(repaired.configErrors).toEqual([]);
       expect(repaired.servers).toMatchObject([{ name: "srv", status: "connected", toolCount: 1 }]);

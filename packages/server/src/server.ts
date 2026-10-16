@@ -7,6 +7,8 @@ import type { WSContext } from "hono/ws";
 import { Context, Effect, FiberMap, Layer, ManagedRuntime } from "effect";
 import {
   createSession,
+  createMcpHost,
+  type McpHost,
   createApplicationModels,
   listSessions,
   renameSessionTitle,
@@ -159,6 +161,7 @@ export async function startServer(options: ServerOptions) {
   let localDatabase = database;
   const sharedConfiguration =
     options.configurationRoot !== undefined && options.configurationRoot !== directory;
+  let mcpHost: McpHost | undefined;
   let closeListener: (() => Promise<unknown>) | undefined;
   try {
     if (sharedConfiguration) localDatabase = await AppDatabase.open(directory);
@@ -174,6 +177,15 @@ export async function startServer(options: ServerOptions) {
           userSettings: await database.settings(),
         })
       ).settings;
+    mcpHost = createMcpHost({
+      configuration: {
+        homeDir: options.homeDir,
+        dataRoot: options.dataRoot,
+        persistence: applicationMcpPersistence(vault),
+        settings: await database.settings(),
+        onWarning: warning,
+      },
+    });
     const registry = await localDatabase.registry();
     // Preserve legacy registry spelling; filesystem identity is used for directory conflicts.
     const presentationHomeDir = await realpath(options.homeDir).catch(() => options.homeDir);
@@ -609,6 +621,7 @@ export async function startServer(options: ServerOptions) {
           ),
           homeDir: options.homeDir,
           dataRoot: options.dataRoot,
+          mcpHost,
           mcpPersistence: applicationMcpPersistence(vault),
           resumeId,
           resumeModelSelection,
@@ -1899,6 +1912,7 @@ export async function startServer(options: ServerOptions) {
           await releaseResource(async () => {
             await Promise.all(changes);
           });
+          await releaseResource(() => mcpHost!.close());
           if (localDatabase !== database) await releaseResource(() => localDatabase.close());
           await releaseResource(() => database.close());
           await releaseResource(() => server.stop(true));
@@ -1907,6 +1921,7 @@ export async function startServer(options: ServerOptions) {
     };
   } catch (error) {
     await closeListener?.();
+    await mcpHost?.close();
     if (localDatabase !== database) await localDatabase.close();
     await database.close();
     throw error;
