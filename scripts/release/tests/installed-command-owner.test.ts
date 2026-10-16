@@ -40,7 +40,7 @@ test("expired installed-command owner restores resources before the next real co
   ).href;
   await Bun.write(
     source,
-    `import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
+    `import { afterAll, beforeAll, beforeEach, expect, onTestFinished, test } from "bun:test";
 import { rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createInstalledCommandOwner } from ${JSON.stringify(helper)};
@@ -59,6 +59,13 @@ beforeEach(async () => {
   owner = createInstalledCommandOwner(fixture);
   if (prepared) return;
   prepared = true;
+  const epoch = process.hrtime.bigint();
+  const stages = [];
+  const mark = (stage, facts = {}) => {
+    if (stages.length === 48) stages.shift();
+    stages.push({ stage, ms: Number(process.hrtime.bigint() - epoch) / 1_000_000, facts });
+  };
+  onTestFinished(() => console.error("[installed-owner-failure]", JSON.stringify(stages)));
   let rgMoved = false, platformMoved = false;
   restoreFiles = owner.ownCleanup(async () => {
     // Restore the containing directory before its owned native executable.
@@ -67,10 +74,10 @@ beforeEach(async () => {
   });
   await rename(rg, rg + ".hidden");
   rgMoved = true;
-  server = fakeOpenAI("held expired owner", { holdOpen: true });
+  server = fakeOpenAI("held expired owner", { holdOpen: true, onRequest: (facts) => mark("request", facts) });
   closeServer = owner.ownCleanup(() => server.stop());
   await configureProvider(fixture.homeDir, server.baseUrl);
-  active = await owner.start(["-p", "held installed owner"]);
+  active = await owner.start(["-p", "held installed owner"], { onStage: mark });
   // Prepare the real process/transport before applying the test-body deadline.
   await server.received;
   await rename(platform, platform + ".hidden");
@@ -118,6 +125,39 @@ test("next owner observes restored resources and executes installed grep", async
     );
     expect(output).toMatch(/^\s*1 pass\s*$/m);
     expect(output).toMatch(/^\s*1 fail\s*$/m);
+    const diagnostic = output
+      .split("\n")
+      .find((line) => line.startsWith("[installed-owner-failure] "));
+    expect(diagnostic).toBeDefined();
+    const parsed: unknown = JSON.parse(diagnostic!.slice("[installed-owner-failure] ".length));
+    if (!Array.isArray(parsed)) throw new Error("Installed-owner stages must be an array");
+    const stages = parsed.filter(
+      (entry: unknown): entry is { stage: string; facts: Record<string, unknown> } =>
+        typeof entry === "object" &&
+        entry !== null &&
+        "stage" in entry &&
+        typeof entry.stage === "string" &&
+        "facts" in entry &&
+        typeof entry.facts === "object" &&
+        entry.facts !== null &&
+        !Array.isArray(entry.facts),
+    );
+    expect(stages).toHaveLength(parsed.length);
+    expect(stages.find((entry) => entry.stage === "spawn")?.facts.pid).toBeGreaterThan(0);
+    expect(
+      stages.find((entry) => entry.stage === "request" && entry.facts.kind === "model")?.facts,
+    ).toEqual({
+      kind: "model",
+      ordinal: 1,
+      toolResults: 0,
+    });
+    expect(stages.some((entry) => entry.stage === "kill")).toBe(true);
+    expect(stages.some((entry) => entry.stage === "stdout-eof")).toBe(true);
+    expect(stages.some((entry) => entry.stage === "stderr-eof")).toBe(true);
+    expect(stages.some((entry) => entry.stage === "exit")).toBe(true);
+    expect(diagnostic).not.toContain("held installed owner");
+    expect(diagnostic).not.toContain("Bearer");
+    expect(diagnostic).not.toContain("packaged-key");
     expect(output).not.toContain("Unhandled error");
     expect(output).not.toContain("error between tests");
   } finally {

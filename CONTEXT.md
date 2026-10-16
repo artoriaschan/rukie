@@ -34,6 +34,14 @@ _Avoid_: copy session, workspace migration
 一个 Session 的有序追加事实，包括原始消息、工具结果、提醒与上下文边界。Tool State 由独立的 typed documents 持久化。Compaction 和上下文 reset 改变后续模型可见的投影，不删除原始事实；Rewind 保留原对话。`Session.messages` 呈现当前选中对话的完整消息序列，包括已压缩的旧消息，不等同于当前模型上下文，也不包含所有被回退的对话。
 _Avoid_: history, log
 
+**Trace**:
+一个 PromptGroup 中可见的推理与工具执行过程，属于呈现层，不是执行模型，也不定义 Run 或 Turn 的边界。
+_Avoid_: Run, step
+
+**Activity Segment**:
+Trace 中一段连续的推理与工具条目，由助手正文切开前后活动段。
+_Avoid_: Run, step
+
 **Turn**:
 一次模型调用，加上这次调用返回的工具调用。
 _Avoid_: step, round

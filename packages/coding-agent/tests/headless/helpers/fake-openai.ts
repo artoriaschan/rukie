@@ -13,6 +13,8 @@ export interface FakeOpenAIOptions {
   reviewReply?: string;
   /** Provider-reported prompt usage for native compaction threshold scenarios. */
   promptTokens?: number;
+  /** Request progress without exposing bodies, authorization, or model content. */
+  onRequest?: (facts: { kind: "title" | "model"; ordinal: number; toolResults: number }) => void;
 }
 
 export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
@@ -45,6 +47,7 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
         )
       ) {
         titleRequests.push(request);
+        options.onRequest?.({ kind: "title", ordinal: titleRequests.length, toolResults: 0 });
         return new Response(
           chunk({ role: "assistant", content: "Test session" }, null) +
             chunk({}, "stop") +
@@ -53,6 +56,13 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
         );
       }
       requests.push(request);
+      options.onRequest?.({
+        kind: "model",
+        ordinal: requests.length,
+        toolResults: request.body.messages.filter(
+          (message: { role: string }) => message.role === "tool",
+        ).length,
+      });
       received.resolve();
       const scripted = options.responses?.[requests.length - 1];
       if (options.error) {

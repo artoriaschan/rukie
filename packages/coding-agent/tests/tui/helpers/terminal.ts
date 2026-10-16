@@ -39,6 +39,7 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
       stdout,
       () =>
         `cursor=${terminal.buffer.active.cursorX},${terminal.buffer.active.cursorY}; screen=${screen().join("|")}`,
+      terminal,
     );
   function screen() {
     const buffer = terminal.buffer.active;

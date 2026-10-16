@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, expect, onTestFinished, test } from "bun:test";
 import { chmod, mkdtemp, readFile, readdir, rename, rm, symlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -18,12 +18,17 @@ const {
       holdOpen?: boolean;
       toolCalls?: { name: string; arguments: object }[];
       responses?: (string | { toolCalls: { name: string; arguments: object }[] })[];
+      onRequest?: (facts: {
+        kind: "title" | "model";
+        ordinal: number;
+        toolResults: number;
+      }) => void;
     },
   ) => {
     baseUrl: string;
     requests: { body: unknown; authorization: string | null }[];
     received: Promise<void>;
-    stop(): void;
+    stop(): void | Promise<void>;
   };
 } = await import(
   new URL("../../../packages/coding-agent/tests/headless/helpers/fake-openai.ts", import.meta.url)
@@ -90,7 +95,16 @@ test.each(["launcher version", "native version", "English help", "Chinese help",
 
 test("installed command preserves cwd/environment/stdin and performs shipped grep and bash through a real Session", async () => {
   const owner = commandOwner;
+  const epoch = process.hrtime.bigint();
+  const stages: { stage: string; ms: number; facts: Record<string, string | number> }[] = [];
+  const mark = (stage: string, facts: Record<string, string | number> = {}) => {
+    if (stages.length === 48) stages.shift();
+    stages.push({ stage, ms: Number(process.hrtime.bigint() - epoch) / 1_000_000, facts });
+  };
+  let complete = false;
+  mark("case-start", { runnerPid: process.pid });
   const server = fakeOpenAI("packaged done", {
+    onRequest: (facts) => mark("request", facts),
     toolCalls: [
       { name: "grep", arguments: { pattern: "release-needle", path: "fixture.txt" } },
       {
@@ -103,15 +117,29 @@ test("installed command preserves cwd/environment/stdin and performs shipped gre
       },
     ],
   });
-  const closeServer = owner.ownCleanup(() => server.stop());
+  const closeServer = owner.ownCleanup(async () => {
+    mark("provider-cleanup-start");
+    await server.stop();
+    mark("provider-cleanup-end");
+  });
+  // Bun abandons a timed-out body; its registered owner still settles the child first.
+  onTestFinished(() => {
+    mark("runner-cleanup-complete");
+    if (!complete) console.error("[installed-command-failure]", JSON.stringify(stages));
+  });
   try {
+    mark("configure-start");
     await configureProvider(fixture.homeDir, server.baseUrl);
+    mark("configure-end");
     await Bun.write(join(fixture.cwd, "fixture.txt"), "release-needle\n");
+    mark("write-end");
     const link = join(fixture.root, "user command with spaces");
     await symlink(fixture.command, link);
+    mark("symlink-end");
     const result = await owner.run(["-p", "--permission-mode", "full-access"], {
       stdin: "piped installed question\n",
       command: link,
+      onStage: mark,
     });
     expect(result).toEqual({ code: 0, stdout: "packaged done\n", stderr: "" });
     expect(server.requests[0]!.authorization).toBe("Bearer packaged-key");
@@ -125,8 +153,11 @@ test("installed command preserves cwd/environment/stdin and performs shipped gre
       (await readdir(fixture.tempDir)).filter((name) => name.startsWith("rukie-jobs-")),
     ).toEqual([]);
   } finally {
+    mark("case-cleanup-start");
     await closeServer();
+    mark("case-cleanup-end");
   }
+  complete = true;
 });
 
 test("stream-json output and persisted Session Resume use the installed executable", async () => {
