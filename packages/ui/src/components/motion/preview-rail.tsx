@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useComponentText } from "@/lib/i18n";
 
 import { useReducedMotion } from "motion/react";
@@ -156,7 +157,7 @@ export function PreviewRail({
           isHorizontal ? { gridTemplateColumns: rowTemplate } : { gridTemplateRows: rowTemplate }
         }
         className={cn(
-          "relative z-10 grid shrink-0",
+          `relative ${OVERLAY_LAYER.localForeground} grid shrink-0`,
           isHorizontal ? "h-12 w-fit max-w-full self-center justify-center" : "w-12 content-center",
           railClassName,
         )}

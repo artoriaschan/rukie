@@ -1,4 +1,7 @@
 "use client";
+
+import { OVERLAY_LAYER } from "@/lib/overlay";
+
 // beui.dev/components/motion/animated-badge
 
 import { AlertTriangle, Check, Circle, Info, LoaderCircle, X, type LucideIcon } from "lucide-react";
@@ -152,7 +155,7 @@ export function AnimatedBadge({
         <motion.span
           layout={slotLayout}
           transition={{ duration: 0.12, ease: EASE_OUT }}
-          className="relative z-10 inline-grid shrink-0 place-items-center overflow-hidden"
+          className={`relative ${OVERLAY_LAYER.localForeground} inline-grid shrink-0 place-items-center overflow-hidden`}
         >
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.span
@@ -186,7 +189,7 @@ export function AnimatedBadge({
         <motion.span
           layout={slotLayout}
           transition={{ duration: 0.12, ease: EASE_OUT }}
-          className="relative z-10 inline-flex"
+          className={`relative ${OVERLAY_LAYER.localForeground} inline-flex`}
           style={{ clipPath: "inset(0 -999px)" }}
         >
           <AnimatePresence mode="popLayout" initial={false}>

@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { Button } from "@/components/motion/button/base";
 import { useComponentText } from "@/lib/i18n";
 
@@ -130,7 +131,7 @@ export function MessageBubble({
 
 function bubbleContentClass(variant: MessageBubbleVariant, interactive: boolean) {
   return cn(
-    "relative z-0 min-w-9 max-w-[82%] rounded-xl px-3 py-2 text-ui-base text-foreground",
+    `relative ${OVERLAY_LAYER.localBase} min-w-9 max-w-[82%] rounded-xl px-3 py-2 text-ui-base text-foreground`,
     "[&_a]:font-medium [&_a]:underline [&_a]:underline-offset-4 [&_code]:rounded-sm [&_code]:bg-background/60 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-ui-sm [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p+p]:mt-2 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-background/60 [&_pre]:p-3 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
     variant === "solid" && "text-background",
     variant === "ghost" && "w-full max-w-none rounded-none px-0 py-0",
@@ -142,7 +143,7 @@ function bubbleContentClass(variant: MessageBubbleVariant, interactive: boolean)
 
 function bubbleSurfaceClass(variant: MessageBubbleVariant, align: MessageBubbleAlign) {
   return cn(
-    "pointer-events-none absolute inset-0 -z-10 rounded-[inherit]",
+    `pointer-events-none absolute inset-0 ${OVERLAY_LAYER.localBackground} rounded-[inherit]`,
     align === "end" ? "origin-bottom-right" : "origin-bottom-left",
     variant === "solid" && "bg-foreground",
     variant === "soft" && "bg-muted",

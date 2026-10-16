@@ -279,7 +279,7 @@ export function CommandPalette({
                 transition={reduce ? { duration: 0 } : PANEL_TRANSITION}
                 {...gate}
                 onKeyDown={onKeyDown}
-                className="pointer-events-auto flex w-full max-w-[520px] max-h-full flex-col overflow-hidden rounded-[20px] border border-popover-border bg-popover shadow-(--shadow-overlay) will-change-transform"
+                className="pointer-events-auto flex w-full max-w-[520px] max-h-full flex-col overflow-hidden rounded-search-shell border border-popover-border bg-popover shadow-(--shadow-overlay) will-change-transform"
               >
                 <div className="flex shrink-0 items-center px-4 py-1">
                   <input
@@ -326,7 +326,7 @@ export function CommandPalette({
                       >
                         <div
                           aria-hidden
-                          className="shrink-0 px-[14px] py-1 text-ui-caption text-muted-foreground"
+                          className="shrink-0 px-3.5 py-1 text-ui-caption text-muted-foreground"
                         >
                           {group}
                         </div>
@@ -348,22 +348,32 @@ export function CommandPalette({
                                 onFocus={() => moveTo(it.id)}
                                 onClick={() => choose(it)}
                                 className={cn(
-                                  "relative isolate flex w-full min-w-0 cursor-pointer items-center min-h-[31px] gap-2 rounded-xl px-[10px] py-1 text-left text-ui-base outline-none hover:bg-menu-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
+                                  "relative isolate flex w-full min-w-0 cursor-pointer items-center min-h-[31px] gap-2 rounded-xl px-2.5 py-1 text-left text-ui-base outline-none hover:bg-menu-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
                                   isActive
                                     ? "bg-menu-hover text-foreground"
                                     : "text-muted-foreground",
                                 )}
                               >
                                 {Icon ? (
-                                  <Icon className="relative z-10 size-3" />
+                                  <Icon
+                                    className={`relative ${OVERLAY_LAYER.localForeground} size-3`}
+                                  />
                                 ) : (
-                                  <span className="relative z-10 size-3 shrink-0">{it.status}</span>
+                                  <span
+                                    className={`relative ${OVERLAY_LAYER.localForeground} size-3 shrink-0`}
+                                  >
+                                    {it.status}
+                                  </span>
                                 )}
-                                <span className="relative z-10 min-w-0 flex-1 truncate">
+                                <span
+                                  className={`relative ${OVERLAY_LAYER.localForeground} min-w-0 flex-1 truncate`}
+                                >
                                   {it.label}
                                 </span>
                                 {it.badge ? (
-                                  <span className="relative z-10 max-w-[108px] shrink-0 truncate text-right text-ui-caption text-muted-foreground">
+                                  <span
+                                    className={`relative ${OVERLAY_LAYER.localForeground} max-w-search-project shrink-0 truncate text-right text-ui-caption text-muted-foreground`}
+                                  >
                                     {it.badge}
                                   </span>
                                 ) : null}
@@ -398,7 +408,7 @@ function PaletteGroup({
   return (
     <ScrollArea
       viewportLabel={group}
-      className="mx-2 h-[min(279px,calc(100dvh-206px))] shrink min-h-0"
+      className="mx-2 h-[min(var(--spacing-search-results),calc(100dvh-var(--spacing-search-reserve)))] shrink min-h-0"
       viewportClassName="min-w-0 [contain:inline-size]"
     >
       {children}

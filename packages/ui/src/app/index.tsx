@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import {
   useEffect,
   useMemo,
@@ -275,6 +276,10 @@ function DesktopApp({
     key: string;
     sessionId: string | null;
   } | null>(null);
+  const [goalRemoval, setGoalRemoval] = useState<{ sessionId: string; goalId: string } | null>(
+    null,
+  );
+  const clearedGoalSession = useRef<string | null>(null);
   const goalConfirmationOwner = useRef(goalConfirmation);
   const changeGoalConfirmation = (next: typeof goalConfirmation) => {
     goalConfirmationOwner.current = next;
@@ -330,6 +335,24 @@ function DesktopApp({
   const goal = readGoal(view.transcript?.toolStates.goal);
   const unfinishedGoal = goal && goal.phase !== "complete" ? goal : undefined;
   const hasGoal = Boolean(unfinishedGoal);
+  useEffect(() => {
+    if (
+      clearedGoalSession.current !== null &&
+      clearedGoalSession.current === state.selected &&
+      !unfinishedGoal &&
+      !goalRemoval
+    ) {
+      clearedGoalSession.current = null;
+      focusPrompt();
+    } else if (clearedGoalSession.current !== state.selected) clearedGoalSession.current = null;
+  }, [state.selected, unfinishedGoal, goalRemoval]);
+  useEffect(() => {
+    if (
+      goalRemoval &&
+      (goalRemoval.sessionId !== state.selected || goalRemoval.goalId !== unfinishedGoal?.id)
+    )
+      setGoalRemoval(null);
+  }, [goalRemoval, state.selected, unfinishedGoal?.id]);
   const goalEnabled = inputDraft.goalEnabled && !hasGoal;
   useEffect(() => {
     if (!hasGoal || !inputDraft.goalEnabled) return;
@@ -930,7 +953,7 @@ function DesktopApp({
     <div
       className={cn(
         "mx-auto flex w-full min-w-0 flex-col gap-2 px-3 pb-4 sm:px-6",
-        approval && !interaction ? "max-w-3xl" : "max-w-[800px]",
+        approval && !interaction ? "max-w-3xl" : "max-w-composer-frame",
       )}
     >
       {!connected ? (
@@ -986,6 +1009,10 @@ function DesktopApp({
                 goal={unfinishedGoal}
                 disabled={!connected}
                 onAction={async (action) => {
+                  if (action === "clear") {
+                    setGoalRemoval({ sessionId: state.selected!, goalId: unfinishedGoal.id });
+                    return;
+                  }
                   try {
                     await client.request({
                       type:
@@ -1228,13 +1255,15 @@ function DesktopApp({
               <button
                 type="button"
                 aria-label={t("app.close-sidebar")}
-                className="absolute inset-0 z-10 cursor-pointer bg-(--layout-content)/60 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:hidden"
+                className={`absolute inset-0 ${OVERLAY_LAYER.navigationScrim} cursor-pointer bg-(--layout-content)/60 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:hidden`}
                 onClick={() => {
                   setSidebar(false);
                   sidebarToggle.current?.focus();
                 }}
               />
-              <div className="absolute inset-y-0 left-0 z-20 md:relative md:z-auto">
+              <div
+                className={`absolute inset-y-0 left-0 ${OVERLAY_LAYER.navigation} md:relative md:z-auto`}
+              >
                 <Sidebar
                   recent={recent}
                   homeDir={state.homeDir}
@@ -1355,6 +1384,17 @@ function DesktopApp({
           request={client.request}
           onChanged={async () => {
             store.setModels(await client.request({ type: "models.list" }));
+          }}
+        />
+      ) : null}
+      {goalRemoval ? (
+        <GoalConfirmation
+          intent="remove"
+          onClose={() => setGoalRemoval(null)}
+          onConfirm={async () => {
+            await client.request({ type: "session.goal_clear", sessionId: goalRemoval.sessionId });
+            clearedGoalSession.current = goalRemoval.sessionId;
+            setGoalRemoval(null);
           }}
         />
       ) : null}

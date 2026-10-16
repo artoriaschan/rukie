@@ -136,6 +136,7 @@
   top: 14px;
   transform: translateY(220px);
   font-size: var(--text-ui-sm);
+  line-height: var(--text-ui-sm--line-height);
 }
 .model-services-provider-form .relative > p {
   font-weight: 400;
@@ -371,14 +372,14 @@
 }
 .model-services,
 .model-services-modal {
-  line-height: 1.5;
+  line-height: var(--text-ui-base--line-height);
 }
 .model-services-header > h1 {
-  line-height: 1.5;
+  line-height: var(--text-ui-xl--line-height);
 }
 .model-services-provider-form label,
 .model-services-model-fields label {
-  line-height: 21px;
+  line-height: var(--text-ui-base--line-height);
 }
 .model-services-provider-form > div:has(> label[for]),
 .model-services-model-fields > div:has(> label[for]),
@@ -392,7 +393,7 @@
   color: var(--foreground);
 }
 .model-services-provider-form > .relative > p {
-  line-height: 21px;
+  line-height: var(--text-ui-base--line-height);
   margin-bottom: 5px;
 }
 .model-services [data-state="focused"] {
@@ -452,7 +453,7 @@
 }
 .model-services-builtins > p {
   padding: 0 8px;
-  line-height: 18px;
+  line-height: var(--text-ui-sm--line-height);
   margin-bottom: 2px;
 }
 .model-services-builtins > button {
@@ -514,6 +515,7 @@
   gap: 14px;
   font-weight: 500;
   font-size: var(--text-ui-lg);
+  line-height: var(--text-ui-lg--line-height);
   justify-content: flex-start;
 }
 .model-services-catalog-tile:not(:disabled),
@@ -532,7 +534,7 @@
   min-width: 0;
   white-space: normal;
   text-align: left;
-  line-height: 1.4;
+  line-height: var(--text-ui-lg--line-height);
 }
 .model-services-custom-icon,
 .model-services-preset-icon {
@@ -594,6 +596,7 @@
   min-width: 104px;
   margin-left: 0;
   font-size: var(--text-ui-xs);
+  line-height: var(--text-ui-xs--line-height);
 }
 .model-services-api-menu {
   top: 0;
@@ -686,10 +689,10 @@
 
 .model-services-delete > h2 {
   font-size: var(--text-ui-lg);
-  line-height: 1.5;
+  line-height: var(--text-ui-lg--line-height);
 }
 .model-services-delete > p {
-  line-height: 1.5;
+  line-height: var(--text-ui-sm--line-height);
 }
 .model-services-model-metadata > span:first-child {
   width: 28px;
@@ -800,7 +803,7 @@
 }
 .model-services-model-header h2 {
   padding-right: 32px;
-  line-height: 27px;
+  line-height: var(--text-ui-xl--line-height);
 }
 .model-services-close {
   right: 16px;
@@ -834,7 +837,7 @@
 }
 .model-services-model-fields label {
   font-size: var(--text-ui-sm);
-  line-height: 18px;
+  line-height: var(--text-ui-sm--line-height);
 }
 .model-services-basic-columns {
   display: grid;
@@ -860,6 +863,7 @@
 }
 .model-services-reasoning [role="radiogroup"] > label > span {
   font-size: var(--text-ui-sm);
+  line-height: var(--text-ui-sm--line-height);
 }
 .model-services-chips {
   gap: 6px;
@@ -873,6 +877,7 @@
 }
 .model-services-chips > label > span {
   font-size: var(--text-ui-sm);
+  line-height: var(--text-ui-sm--line-height);
 }
 .model-services-chips [role="checkbox"] {
   width: 16px;
@@ -880,6 +885,7 @@
 }
 .model-services-multimodal > .model-services-help-label {
   font-size: var(--text-ui-sm);
+  line-height: var(--text-ui-sm--line-height);
   color: var(--muted-foreground);
   margin-bottom: -6px;
 }
@@ -987,7 +993,7 @@
   background: var(--selected);
 }
 .model-services-multimodal > .model-services-help-label {
-  line-height: 18px;
+  line-height: var(--text-ui-sm--line-height);
 }
 
 .model-services-advanced-columns {
@@ -1042,7 +1048,7 @@
 
 .model-services-option-card h3 {
   font-size: var(--text-ui-base);
-  line-height: 1.5;
+  line-height: var(--text-ui-base--line-height);
 }
 .model-services-option-card .model-services-basic-columns {
   gap: 10px;
@@ -1057,7 +1063,7 @@
 
 /* This field is near the dialog footer; open its options into the form body. */
 .model-services-default-reasoning > p {
-  line-height: 18px;
+  line-height: var(--text-ui-sm--line-height);
 }
 .model-services-reasoning-menu {
   top: auto;
@@ -1094,12 +1100,12 @@
 }
 .model-services-provider-empty h2 {
   font-size: var(--text-ui-lg);
-  line-height: 24px;
+  line-height: var(--text-ui-lg--line-height);
   margin-bottom: 12px;
 }
 .model-services-provider-empty > p:not([role="alert"]) {
   font-size: var(--text-ui-base);
-  line-height: 21px;
+  line-height: var(--text-ui-base--line-height);
   color: var(--muted-foreground);
   margin-bottom: 23px;
 }

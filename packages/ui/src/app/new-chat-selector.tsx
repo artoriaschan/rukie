@@ -232,7 +232,7 @@ export function NewChatSelector(props: NewChatSelectorProps) {
             }
           }}
         >
-          <Tooltip content={label}>
+          <Tooltip content={label} wrapperClassName="new-chat-branch-wrapper">
             <Menu.DropdownMenuTrigger asChild disabled={props.disabled}>
               <Button
                 size="compact"

@@ -514,7 +514,7 @@ function ItemHighlight({ tone }: { tone: ContextMenuItemTone }) {
   return (
     <span
       className={cn(
-        "absolute inset-0 -z-10 rounded-lg",
+        `absolute inset-0 ${OVERLAY_LAYER.localBackground} rounded-lg`,
         tone === "destructive" ? "bg-destructive-soft" : "bg-menu-hover",
       )}
     />

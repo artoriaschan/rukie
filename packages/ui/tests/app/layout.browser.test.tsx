@@ -165,6 +165,13 @@ test.each([
       // Session selection replaces the welcome footer. Read the new form, not a detached element.
       const selectedInput = screen.getByRole("textbox", { name: "Prompt", exact: true });
       const selectedForm = selectedInput.element().closest("form")!;
+      expect(getComputedStyle(selectedForm).borderRadius).toBe("16px");
+      expect(selectedForm.getBoundingClientRect().height).toBeGreaterThanOrEqual(100);
+      if (width >= 768) {
+        const current = screen.getByRole("button", { name: "Fix compiler", exact: true }).element();
+        expect(getComputedStyle(current).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+        expect(getComputedStyle(current.parentElement!).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+      }
       const footer = selectedForm.parentElement!.parentElement!;
       const assertConversation = (sidebarOpen = selectedSidebarOpen) => {
         const bounds = main.getBoundingClientRect();
@@ -398,7 +405,11 @@ test.each([1280, 420])(
       const scrollbar = screen.getByRole("scrollbar", { name: "Session navigation", exact: true });
       await expect.element(scrollbar).toBeVisible();
       near(scrollbar.element().getBoundingClientRect().width, 8);
+      const thumb = scrollbar.element().firstElementChild!;
+      near(thumb.getBoundingClientRect().width, 4);
+      expect(thumb.getBoundingClientRect().height).toBeGreaterThanOrEqual(24);
       const row = screen.getByRole("button", { name: "Scroll Session 29", exact: true }).element();
+      expect(getComputedStyle(row).backgroundColor).toBe("rgba(0, 0, 0, 0)");
       expect(row.parentElement!.getBoundingClientRect().right).toBeGreaterThan(before.right - 9);
       scrollbar.element().focus();
       await userEvent.keyboard("{End}");

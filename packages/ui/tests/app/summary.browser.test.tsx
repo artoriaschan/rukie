@@ -92,7 +92,7 @@ test("restored Summary shows C41 cards in order without moving shell or composer
     for (const card of cards) {
       expect(getComputedStyle(card).borderRadius).toBe("16px");
       const rows = Array.from(card.querySelectorAll("li,button"));
-      expect(rows[0]!.getBoundingClientRect().top - card.getBoundingClientRect().top).toBe(45);
+      expect(rows[0]!.getBoundingClientRect().top - card.getBoundingClientRect().top).toBe(44);
       for (const row of rows) {
         expect(row.getBoundingClientRect().height).toBe(32);
         expect(getComputedStyle(row.querySelector("svg")!).width).toBe("12px");
@@ -147,6 +147,8 @@ test("Summary hides empty cards and its plan row supports both themes, narrow bo
       </div>
     </UiLocaleProvider>
   );
+  const priorFont = document.documentElement.style.getPropertyValue("--ui-font-size");
+  document.documentElement.style.setProperty("--ui-font-size", "18px");
   const screen = await render(content(false));
   try {
     const summary = screen.getByRole("complementary", { name: "会话摘要" });
@@ -160,6 +162,7 @@ test("Summary hides empty cards and its plan row supports both themes, narrow bo
         theme === "dark" ? "rgb(33, 33, 33)" : "rgb(255, 255, 255)",
       );
       expect(summary.element().getBoundingClientRect().width).toBe(300);
+      expect(button.element().scrollWidth).toBeLessThanOrEqual(button.element().clientWidth);
       const resting = getComputedStyle(button.element()).backgroundColor;
       await button.hover();
       expect(getComputedStyle(button.element()).backgroundColor).not.toBe(resting);
@@ -181,6 +184,8 @@ test("Summary hides empty cards and its plan row supports both themes, narrow bo
   } finally {
     document.documentElement.classList.remove("dark");
     await screen.unmount();
+    if (priorFont) document.documentElement.style.setProperty("--ui-font-size", priorFont);
+    else document.documentElement.style.removeProperty("--ui-font-size");
     await page.viewport(1280, 900);
   }
 });

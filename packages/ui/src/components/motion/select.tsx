@@ -183,7 +183,7 @@ export function SelectTrigger({
       aria-controls={ctx.listId}
       onClick={() => ctx.setOpen(!ctx.open)}
       className={cn(
-        "relative z-10 flex w-full items-center justify-between gap-2 border border-input-border bg-input-surface px-3 text-ui-base text-foreground outline-none",
+        `relative ${OVERLAY_LAYER.localForeground} flex w-full items-center justify-between gap-2 border border-input-border bg-input-surface px-3 text-ui-base text-foreground outline-none`,
         size === "standard" ? "min-h-9 rounded-xl py-2" : "min-h-8 rounded-lg py-1",
         "not-disabled:hover:border-input-border-hover focus-visible:border-input-border-focused focus-visible:bg-input-focused focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         "cursor-pointer [&_svg]:cursor-inherit [&_span]:cursor-inherit disabled:cursor-not-allowed disabled:opacity-50",

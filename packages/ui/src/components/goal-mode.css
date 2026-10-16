@@ -9,8 +9,12 @@
   overflow-y: auto;
   overflow-wrap: anywhere;
 }
+.goal-removal-content {
+  padding: 20px 24px;
+}
 .goal-confirmation-footer {
   display: flex;
+  align-items: center;
   flex-shrink: 0;
   justify-content: flex-end;
   gap: 8px;
@@ -56,8 +60,8 @@
 }
 .conversation-goal-chip .goal-close-icon {
   display: none;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 .conversation-goal-chip:hover .conversation-goal-chip-icon,
 .conversation-goal-chip:focus-visible .conversation-goal-chip-icon {

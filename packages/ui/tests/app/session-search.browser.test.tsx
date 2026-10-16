@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { App } from "../../src/app";
@@ -164,6 +164,18 @@ test("search is centered, clamps narrow viewports and keeps shortcuts outside it
     />,
   );
   const wasDark = document.documentElement.classList.contains("dark");
+  const animation = vi.spyOn(Element.prototype, "animate");
+  const scales: DOMMatrix[] = [];
+  const observer = new MutationObserver(() => {
+    const panel = document.querySelector('[role="dialog"][aria-label="Search chats"]');
+    if (panel) scales.push(new DOMMatrix(getComputedStyle(panel).transform));
+  });
+  observer.observe(document.body, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["style"],
+  });
   try {
     await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
     await fetch(`http://127.0.0.1:${connection.port}/message`, {
@@ -194,6 +206,15 @@ test("search is centered, clamps narrow viewports and keeps shortcuts outside it
     await expect.element(dialog.getByRole("combobox")).toHaveFocus();
     // Opacity reaching its target also waits for normal scale entrance; no fixed sleep.
     await expect.poll(() => getComputedStyle(dialog.element()).transform).toBe("none");
+    const entrances = animation.mock.calls.filter(
+      (_, index) => animation.mock.contexts[index] === dialog.element(),
+    );
+    expect(
+      entrances.some(([, options]) => typeof options === "object" && options?.duration === 160),
+    ).toBe(true);
+    expect(Math.min(...scales.map((matrix) => matrix.a))).toBeCloseTo(0.98, 2);
+    expect(scales.every((matrix) => matrix.e === 0 && matrix.f === 0)).toBe(true);
+    observer.disconnect();
     const bounds = dialog.element().getBoundingClientRect();
     expect(bounds.width).toBe(520);
     expect(bounds.left + bounds.width / 2).toBe(640);
@@ -209,6 +230,9 @@ test("search is centered, clamps narrow viewports and keeps shortcuts outside it
     expect(getComputedStyle(viewport).scrollbarWidth).toBe("none");
     expect(scroll.element().getBoundingClientRect().width).toBe(8);
     expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.clientWidth);
+    expect(dialog.element().querySelector("kbd")).toBeNull();
+    for (const option of dialog.getByRole("option").elements())
+      expect(option.getBoundingClientRect().height).toBeGreaterThanOrEqual(31);
     const action = dialog.getByRole("option", { name: "Open folder", exact: true });
     const actionTop = action.element().getBoundingClientRect().top;
     viewport.scrollTop = viewport.scrollHeight;
@@ -232,6 +256,8 @@ test("search is centered, clamps narrow viewports and keeps shortcuts outside it
     await expect.element(dialog.getByRole("option").first()).toBeVisible();
     await expect.poll(() => getComputedStyle(scrollbar).visibility).toBe("hidden");
   } finally {
+    observer.disconnect();
+    animation.mockRestore();
     await screen.unmount();
     await commands.stopWire(connection.port);
     await page.viewport(1280, 900);

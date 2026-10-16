@@ -4,6 +4,7 @@ import ts from "typescript";
 
 /** Enforce DESIGN.md's interface font scale in UI source, including composed classes. */
 export function checkUiTypography(file: string, text: string): string[] {
+  if (file.endsWith(".css")) return checkCssTypography(file, text);
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const failures: string[] = [];
   function fail(node: ts.Node) {
@@ -39,6 +40,23 @@ export function checkUiTypography(file: string, text: string): string[] {
   return failures;
 }
 
+/** Mask inert CSS text without moving declaration offsets or line numbers. */
+function checkCssTypography(file: string, text: string): string[] {
+  const masked = text.replace(
+    /\/\*[\s\S]*?\*\/|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/gu,
+    (inert) => inert.replace(/[^\n]/gu, " "),
+  );
+  const failures: string[] = [];
+  for (const declaration of masked.matchAll(/(?:^|[;{])\s*(font-size)\s*:\s*([^;{}]*)/giu)) {
+    if (/^var\(--(?:text-ui-[a-z0-9-]+|text-code)\)\s*(?:!important)?\s*$/iu.test(declaration[2]!))
+      continue;
+    const offset = declaration.index + declaration[0].indexOf(declaration[1]!);
+    const line = text.slice(0, offset).split("\n").length;
+    failures.push(`${file}:${line}: use text-ui-* or text-code for interface font sizes`);
+  }
+  return failures;
+}
+
 if (import.meta.main) {
   const root = resolve(import.meta.dir, "..");
   const failures: string[] = [];
@@ -46,7 +64,7 @@ if (import.meta.main) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const file = resolve(directory, entry.name);
       if (entry.isDirectory()) walk(file);
-      else if (/\.tsx?$/u.test(file))
+      else if (/\.(?:tsx?|css)$/u.test(file))
         failures.push(...checkUiTypography(relative(root, file), readFileSync(file, "utf8")));
     }
   }

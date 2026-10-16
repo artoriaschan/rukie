@@ -506,7 +506,7 @@ Keep password masking/reveal, numeric-field stepping, localized alerts and pendi
 
 Preserve the existing 28px toolbar role and 40px status bar above the unchanged composer. The bar retains 12px left/8px right padding, 8px information/action gaps, truncated objective and nonshrinking time/actions. States come from authoritative Goal state; round-limit/unarmed takes precedence over Resume availability. Complete/removed state leaves no bar. Closing a draft mode preserves input.
 
-Goal removal retains the existing 448px modal, 16px radius, 20px vertical/24px horizontal body padding, separate footer and initial Cancel focus. These local values do not modify the shared modal.
+Goal removal uses a 448px confirmation modal, 16px radius, 20px vertical/24px horizontal body padding, separate footer and initial Cancel focus. These local values do not modify the shared modal. Trash opens this confirmation before sending the removal command; cancellation preserves the Goal. The enable-mode confirmation remains a separate action.
 
 ### Plan and Interaction surfaces
 
@@ -544,3 +544,11 @@ For each changed shared role, identify affected screens and check the smallest s
 Implementation work follows the repository's affected tests/static checks and one final isolated browser verification using the [agent-browser skill](.agents/skills/agent-browser/SKILL.md). Inspect Light/Dark and narrow captures plus console/network errors. Do not launch native Electron outside its separate authorization boundary. Record actual failures, remaining deviations and absent-feature exclusions; never turn an unexecuted path into a pass.
 
 For documentation-only edits, run the documentation and formatting checks required by [the documentation workflow](docs/agents/documentation.md). Do not run product tests, browser acceptance or native packaging and describe them as necessary evidence for a document change.
+
+### Named feature implementation roles
+
+Structural layers retain their established levels in `lib/overlay.ts`: navigation scrim and Preview Rail10, navigation and Summary20, settings and Transcript scrollbar30. Local isolated backgrounds/roots/foregrounds retain -10/0/10; these local levels are not global overlays. Passive hints40, modals50, modal hints55 and interactive menus60 remain above structure.
+
+Search shell radius is the local20px role. Border-inset model/context scrolling corners derive11px from the12px shell minus its1px border. Alpha masks use opaque black solely as coverage, not a palette color.
+
+Preserve named local clearances: sidebar trailing actions reserve60px; Summary reserves332px including its300px card and surrounding space; composer outer frame800px contains its752px content plus horizontal padding. Search retains a108px Project slot and279px/206px normal/low result viewport; empty Project directory selection104px and custom Interaction option52px remain local geometry.

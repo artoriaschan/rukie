@@ -80,6 +80,14 @@ test("restored plans open from preview and Summary, reuse tabs and restore conve
       pane.element().getBoundingClientRect().left -
         composer.closest("[data-conversation-frame]")!.getBoundingClientRect().right,
     ).toBe(4);
+    const frames = document.querySelector<HTMLElement>(".conversation-frames")!;
+    for (const mainWidth of [959, 960]) {
+      await page.viewport(innerWidth + mainWidth - frames.clientWidth, 1000);
+      await expect.poll(() => frames.clientWidth).toBe(mainWidth);
+      await expect.poll(() => frames.dataset.planOverlay).toBe(mainWidth < 960 ? "true" : "false");
+    }
+    await page.viewport(1887, 1000);
+    await expect.poll(() => frames.dataset.planOverlay).toBe("false");
     const first = pane.getByRole("tab", { name: "First plan", exact: true });
     await expect.element(first).toHaveFocus();
     await preview.getByRole("button", { name: "Expand plan" }).click();

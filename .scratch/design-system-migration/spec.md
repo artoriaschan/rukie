@@ -136,4 +136,6 @@ DESIGN.md 已整体重写，但 `packages/ui` 仍按旧规范实现。规范第 
 | token、原语几何与组件来源                   | 无需 ADR                                                          | DESIGN.md 和 AGENTS.md 已规定组件来源顺序和视觉规则，本工作只是实现它们，不引入新的长期取舍 |
 | 外观偏好存于 renderer localStorage          | 无需 ADR                                                          | 偏好只影响前端呈现，不进 settings schema、Core 或 wire，以后改变存储位置的成本很低          |
 
+最终实现覆盖审阅（08）：nativeTheme同步沿用[ADR-0029](../../docs/adr/0029-desktop-package-structure.md)的Electron main/preload宿主边界，renderer仅提交三种呈现偏好；不扩展Core、settings或wire。Goal删除确认只在现有Frontend请求前增加可取消呈现，沿用既有Session Goal命令语义，无需新ADR。CSS门禁、层级及几何具名化不改变外部协议、持久化、信任或资源生命周期，无需新ADR。最终代码与证据见[验证记录](verification.md)，关闭前仍须完成fresh Standards/Spec评审。
+
 ## Comments

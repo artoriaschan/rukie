@@ -312,6 +312,16 @@
   --radius-lg: 8px;
   --radius-xl: 12px;
   --radius-2xl: 16px;
+  --spacing-sidebar-actions: 60px;
+  --spacing-summary-reserve: 332px;
+  --container-composer-frame: 800px;
+  --container-search-project: 108px;
+  --spacing-search-results: 279px;
+  --spacing-search-reserve: 206px;
+  --spacing-project-empty: 104px;
+  --spacing-interaction-custom: 52px;
+  --radius-search-shell: 20px;
+  --radius-panel-inset: 11px;
   --color-ansi-black: var(--ansi-black);
   --color-ansi-red: var(--ansi-red);
   --color-ansi-green: var(--ansi-green);
@@ -568,6 +578,7 @@
 
 /* C02 keeps long Session names readable until their trailing fade. */
 .session-row-title {
+  /* Black supplies alpha-mask coverage; it is not a text or surface color. */
   mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
 }
 
@@ -587,14 +598,16 @@
 .f01-primary:not(:disabled):hover {
   --tw-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-foreground) 25%, transparent);
   box-shadow:
-    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
-    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+    var(--tw-inset-shadow, 0 0 transparent), var(--tw-inset-ring-shadow, 0 0 transparent),
+    var(--tw-ring-offset-shadow, 0 0 transparent), var(--tw-ring-shadow, 0 0 transparent),
+    var(--tw-shadow);
 }
 .f01-destructive:not(:disabled):hover {
   --tw-shadow: inset 0 0 0 1px color-mix(in srgb, var(--destructive-foreground) 25%, transparent);
   box-shadow:
-    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
-    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+    var(--tw-inset-shadow, 0 0 transparent), var(--tw-inset-ring-shadow, 0 0 transparent),
+    var(--tw-ring-offset-shadow, 0 0 transparent), var(--tw-ring-shadow, 0 0 transparent),
+    var(--tw-shadow);
 }
 
 .conversation-summary-card {
@@ -609,7 +622,7 @@
   padding: 0 4px 6px;
   margin-bottom: 4px;
   font-size: var(--text-ui-base);
-  line-height: 1.5;
+  line-height: var(--text-ui-base--line-height);
   font-weight: 600;
 }
 .conversation-summary-row {
@@ -622,7 +635,7 @@
   border-radius: 8px;
   padding: 0 4px;
   font-size: var(--text-ui-base);
-  line-height: 1.5;
+  line-height: var(--text-ui-base--line-height);
   font-weight: 400;
 }
 
@@ -699,6 +712,7 @@
   background: var(--selected);
 }
 .plan-pane-trigger {
+  line-height: var(--text-ui-base--line-height);
   display: flex;
   align-items: center;
   gap: 8px;

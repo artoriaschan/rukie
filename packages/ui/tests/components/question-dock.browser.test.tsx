@@ -146,9 +146,11 @@ test("C43 uses 752px input surface, 16px corners, 48px rows and readable narrow 
         dark ? "rgb(47, 47, 47)" : "rgb(245, 245, 245)",
       );
       await page.viewport(420, 700);
+      document.documentElement.style.setProperty("--ui-font-size", "18px");
       expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(innerWidth);
       expect(region.getBoundingClientRect().right).toBeLessThanOrEqual(innerWidth);
-      expect(row.getBoundingClientRect().height).toBeCloseTo(48, 0);
+      expect(row.getBoundingClientRect().height).toBeGreaterThanOrEqual(48);
+      document.documentElement.style.removeProperty("--ui-font-size");
     }
   } finally {
     document.documentElement.classList.remove("dark");

@@ -100,7 +100,7 @@ export function Sidebar(props: SidebarProps) {
               size="compact"
               variant="ghost"
               onClick={() => props.onSelect(session.id)}
-              className="flex justify-start not-disabled:hover:bg-transparent not-disabled:hover:text-current text-current cursor-pointer min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/row:pr-[60px] group-focus-within/row:pr-[60px]"
+              className="flex justify-start not-disabled:hover:bg-transparent not-disabled:hover:text-current text-current cursor-pointer min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 min-h-8 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/row:pr-sidebar-actions group-focus-within/row:pr-sidebar-actions"
               aria-current={props.selected === session.id ? "page" : undefined}
             >
               {session.running && !session.waitingInteraction ? (

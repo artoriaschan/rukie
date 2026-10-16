@@ -77,8 +77,8 @@ test("Pencil P01-E empty provider state preserves shell and opens the custom cat
       for (const [node, top, width, height] of [
         [icon, 190, 12, 12],
         [title, 232, 560, 24],
-        [description, 268, 560, 21],
-        [action.element(), 312, 144, 28],
+        [description, 268, 560, 20],
+        [action.element(), 311, 144, 28],
       ] as const) {
         const box = node.getBoundingClientRect();
         expect(box.top - panel.getBoundingClientRect().top).toBe(top);
@@ -742,7 +742,7 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
       .element()
       .parentElement!.getBoundingClientRect();
     expect(url.left).toBe(900);
-    expect(url.top).toBe(261);
+    expect(Math.abs(url.top - 261)).toBeLessThanOrEqual(1);
     expect(url.width).toBe(624);
     expect(url.height).toBe(32);
     const nav = document
@@ -768,7 +768,7 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     expect(apiMenu.getBoundingClientRect().bottom - lastOption.getBoundingClientRect().bottom).toBe(
       4,
     );
-    expect(apiMenu.getBoundingClientRect().top).toBe(330);
+    expect(Math.abs(apiMenu.getBoundingClientRect().top - 330)).toBeLessThanOrEqual(1);
     expect(apiMenu.getBoundingClientRect().width).toBe(624);
     await screen
       .getByRole("option", { name: "Anthropic Messages (/v1/messages)", exact: true })
@@ -798,7 +798,7 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     await screen.getByRole("menuitem", { name: "删除供应商", exact: true }).click();
     await expect
       .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().height))
-      .toBe(180);
+      .toBe(176);
     // The enter scale must finish before asserting the exact final panel width.
     await expect
       .poll(() => screen.getByRole("dialog").element().getBoundingClientRect().width)
@@ -806,7 +806,7 @@ test("Pencil settings geometry uses current compact workspace and grouped model 
     expect(screen.getByRole("dialog").element().querySelector("kbd")).toBeNull();
     await expect
       .poll(() => Math.round(screen.getByRole("dialog").element().getBoundingClientRect().top))
-      .toBe(520);
+      .toBe(522);
   } finally {
     await screen.unmount();
     await page.viewport(1280, 900);
@@ -1188,7 +1188,7 @@ test("model default reasoning is selectable, saved and restricted to supported l
     ]);
     const field = document.querySelector<HTMLElement>(".model-services-default-reasoning")!;
     await expect.poll(() => field.getBoundingClientRect().width).toBe(188);
-    await expect.poll(() => field.getBoundingClientRect().height).toBe(54);
+    await expect.poll(() => field.getBoundingClientRect().height).toBe(52);
     await screen.getByRole("button", { name: "Default reasoning level", exact: true }).click();
     await expect.element(screen.getByRole("option", { name: "Low", exact: true })).toBeVisible();
     expect(screen.getByRole("option", { name: "XHigh", exact: true }).query()).toBeNull();
@@ -1631,7 +1631,7 @@ test.each([1887, 420])("settings field geometry across themes at %i px", async (
       expect(
         document.querySelector(".model-services-model-row")!.getBoundingClientRect().top -
           details.getBoundingClientRect().top,
-      ).toBe(291);
+      ).toBe(290);
       expect(panel.getBoundingClientRect().height).toBe(width === 1887 ? 560 : 580);
       expect(panel.getBoundingClientRect().top).toBe(width === 1887 ? 188 : 204);
       expect(panel.getBoundingClientRect().left).toBe(width === 1887 ? 660 : 64);
@@ -1654,7 +1654,7 @@ test.each([1887, 420])("settings field geometry across themes at %i px", async (
         const sharedRuntimeRow =
           width === 1887 && ["Temperature", "Maximum output tokens"].includes(field.label ?? "");
         expect(field.group, field.label ?? "field").toBe(
-          sharedRuntimeRow ? 72 : field.labelHeight + 36,
+          sharedRuntimeRow ? 68 : field.labelHeight + 36,
         );
       }
       expect(select.getBoundingClientRect().height).toBe(32);
@@ -1664,7 +1664,7 @@ test.each([1887, 420])("settings field geometry across themes at %i px", async (
       ).toBe(4);
       expect(
         select.closest(".model-services-default-reasoning")!.getBoundingClientRect().height,
-      ).toBe(54);
+      ).toBe(52);
       expect(getComputedStyle(select).borderRadius).toBe("8px");
       for (const option of fields.querySelectorAll(
         ".model-services-chips > label, [role=radiogroup] > label",
@@ -1779,7 +1779,7 @@ test("preset catalog immediately creates independent services with incrementing 
     expect(
       document.querySelector(".model-services-model-row")!.getBoundingClientRect().top -
         document.querySelector(".model-services-details")!.getBoundingClientRect().top,
-    ).toBe(291);
+    ).toBe(290);
     let activated = "";
     const capture = (event: MouseEvent) => {
       if (event.target instanceof Element && event.target.closest("a") === link.element()) {

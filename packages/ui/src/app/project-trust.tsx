@@ -44,7 +44,7 @@ export function ProjectTrust({
           {project.directories.map((directory) => (
             <li
               key={directory}
-              className="break-all text-center text-ui-base leading-[1.5] text-muted-foreground"
+              className="break-all text-center text-ui-base text-muted-foreground"
             >
               <span>{directory}</span>
               {directory === project.primary ? (

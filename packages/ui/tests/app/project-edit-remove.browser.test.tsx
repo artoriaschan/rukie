@@ -640,6 +640,7 @@ test.each([
     await page.viewport(width, 700);
     await commands.reducedMotion(true);
     document.documentElement.classList.toggle("dark", dark);
+    document.documentElement.style.setProperty("--ui-font-size", "18px");
     document.documentElement.classList.toggle("light", !dark);
     const connection = await owner.startWire();
     const name = "repository-with-a-very-long-name-".repeat(4);

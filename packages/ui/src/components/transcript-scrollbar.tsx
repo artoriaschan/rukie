@@ -1,3 +1,4 @@
+import { OVERLAY_LAYER } from "@/lib/overlay";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { cn } from "../lib/utils";
 import { useAppText } from "../lib/i18n";
@@ -86,7 +87,7 @@ export function TranscriptScrollbar({
       aria-valuenow={Math.round(geometry.scroll)}
       tabIndex={geometry.max > 0 ? 0 : -1}
       className={cn(
-        "absolute inset-y-0 right-0 z-30 w-3 touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        `absolute inset-y-0 right-0 ${OVERLAY_LAYER.transcriptScrollbar} w-3 touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring`,
         className,
       )}
       style={{ visibility: geometry.max > 0 ? "visible" : "hidden" }}

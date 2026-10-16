@@ -1418,6 +1418,12 @@ test("navigation uses equal resting ticks and highlights only the previewed resp
       )
       .toBeLessThan(1);
     expect(railBounds().height).toBe(16);
+    expect(getComputedStyle(screen.getByRole("feed").element()).paddingLeft).toBe("40px");
+    const content = screen
+      .getByRole("feed")
+      .element()
+      .querySelector<HTMLElement>("article .max-w-3xl")!;
+    expect(content.clientWidth - 32).toBe(736);
     const tick = (button: Element) =>
       button.querySelector<HTMLElement>('[data-slot="preview-rail-tick"]')!;
     await expect.poll(() => tick(current.element()).getBoundingClientRect().width).toBe(6);
@@ -1643,6 +1649,8 @@ test("approval queue replaces the composer and the full edge scrollbar maps tran
     await expect.element(scrollbar).toBeVisible();
     const track = scrollbar.element();
     const thumb = track.firstElementChild!;
+    expect(track.getBoundingClientRect().width).toBe(12);
+    expect(thumb.getBoundingClientRect().height).toBeGreaterThanOrEqual(24);
     const verifyBottom = async () => {
       track.focus();
       await userEvent.keyboard("{End}");
